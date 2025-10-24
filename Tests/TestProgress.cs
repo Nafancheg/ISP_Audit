@@ -1,0 +1,9 @@
+using System;
+
+namespace IspAudit.Tests
+{
+    public enum TestKind { DNS, TCP, HTTP, TRACEROUTE, UDP, RST }
+
+    public record TestProgress(TestKind Kind, string Status, bool? Success = null, string? Message = null);
+}
+

@@ -1,0 +1,340 @@
+{
+  "run_at": "2025-10-24T09:20:16.9420091Z",
+  "cli": "--no-trace --json --report isp_report_gui.json",
+  "ext_ip": "185.53.46.108",
+  "summary": {
+    "dns": "WARN",
+    "tcp": "OK",
+    "udp": "FAIL",
+    "tls": "OK",
+    "rst_inject": "UNKNOWN"
+  },
+  "targets": {
+    "youtube.com": {
+      "host": "youtube.com",
+      "system_dns": [
+        "142.251.36.78"
+      ],
+      "doh": [
+        "142.251.36.142"
+      ],
+      "dns_status": "WARN",
+      "tcp": [
+        {
+          "ip": "142.251.36.78",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        }
+      ],
+      "http": [
+        {
+          "url": "https://youtube.com",
+          "success": true,
+          "status": 200,
+          "serverHeader": "ESF",
+          "cert_cn": "*.google.com"
+        },
+        {
+          "url": "https://www.youtube.com",
+          "success": true,
+          "status": 200,
+          "serverHeader": "ESF",
+          "cert_cn": "*.google.com"
+        },
+        {
+          "url": "https://youtube.com/generate_204",
+          "success": true,
+          "status": 204,
+          "serverHeader": "",
+          "cert_cn": "*.google.com"
+        }
+      ]
+    },
+    "discord.com": {
+      "host": "discord.com",
+      "system_dns": [
+        "162.159.137.232",
+        "162.159.135.232",
+        "162.159.138.232",
+        "162.159.128.233",
+        "162.159.136.232"
+      ],
+      "doh": [
+        "162.159.136.232",
+        "162.159.138.232",
+        "162.159.137.232",
+        "162.159.135.232",
+        "162.159.128.233"
+      ],
+      "dns_status": "OK",
+      "tcp": [
+        {
+          "ip": "162.159.137.232",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        }
+      ],
+      "http": [
+        {
+          "url": "https://discord.com",
+          "success": true,
+          "status": 200,
+          "serverHeader": "cloudflare",
+          "cert_cn": "discord.com"
+        },
+        {
+          "url": "https://www.discord.com",
+          "success": true,
+          "status": 200,
+          "serverHeader": "cloudflare",
+          "cert_cn": "discord.com"
+        },
+        {
+          "url": "https://discord.com/generate_204",
+          "success": true,
+          "status": 404,
+          "serverHeader": "cloudflare",
+          "cert_cn": "discord.com"
+        }
+      ]
+    },
+    "google.com": {
+      "host": "google.com",
+      "system_dns": [
+        "142.251.36.110"
+      ],
+      "doh": [
+        "142.251.38.142"
+      ],
+      "dns_status": "WARN",
+      "tcp": [
+        {
+          "ip": "142.251.36.110",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        }
+      ],
+      "http": [
+        {
+          "url": "https://google.com",
+          "success": true,
+          "status": 200,
+          "serverHeader": "gws",
+          "cert_cn": "www.google.com"
+        },
+        {
+          "url": "https://www.google.com",
+          "success": true,
+          "status": 200,
+          "serverHeader": "gws",
+          "cert_cn": "www.google.com"
+        },
+        {
+          "url": "https://google.com/generate_204",
+          "success": true,
+          "status": 204,
+          "serverHeader": "",
+          "cert_cn": "*.google.com"
+        }
+      ]
+    },
+    "example.com": {
+      "host": "example.com",
+      "system_dns": [
+        "23.215.0.138",
+        "23.220.75.245",
+        "23.192.228.80",
+        "23.192.228.84",
+        "23.215.0.136",
+        "23.220.75.232"
+      ],
+      "doh": [
+        "23.192.228.80",
+        "23.192.228.84",
+        "23.220.75.245",
+        "23.215.0.138",
+        "23.215.0.136",
+        "23.220.75.232"
+      ],
+      "dns_status": "OK",
+      "tcp": [
+        {
+          "ip": "23.215.0.138",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "23.215.0.138",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "23.220.75.245",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "23.220.75.245",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "23.192.228.80",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "23.192.228.80",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "23.192.228.84",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "23.192.228.84",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "23.215.0.136",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "23.215.0.136",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "23.220.75.232",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "23.220.75.232",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        }
+      ],
+      "http": [
+        {
+          "url": "https://example.com",
+          "success": true,
+          "status": 200,
+          "serverHeader": "",
+          "cert_cn": "*.example.com"
+        },
+        {
+          "url": "https://www.example.com",
+          "success": true,
+          "status": 200,
+          "serverHeader": "",
+          "cert_cn": "*.example.com"
+        },
+        {
+          "url": "https://example.com/generate_204",
+          "success": true,
+          "status": 404,
+          "serverHeader": "AkamaiNetStorage",
+          "cert_cn": "*.example.com"
+        }
+      ]
+    }
+  },
+  "udp_test": {
+    "target": "1.1.1.1",
+    "reply": false,
+    "replyBytes": 0,
+    "note": "timeout"
+  },
+  "rst_heuristic": {
+    "ip": "1.1.1.1",
+    "port": 81,
+    "connectSucceeded": true,
+    "elapsedMs": 0
+  }
+}
