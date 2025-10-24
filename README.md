@@ -1,45 +1,59 @@
-# ISP_Audit
+# ISP_Audit (русская версия)
 
-Single-file, self-contained Windows .NET tool to run quick ISP diagnostics for DNS filtering/bogus answers, TCP port reachability, UDP/QUIC availability (UDP DNS probe), HTTPS/TLS behavior, traceroute wrapper, and RST-injection heuristic. Produces human-readable console output and a structured JSON `report.json`.
+Автономный однофайловый инструмент для Windows (single‑file, self‑contained .NET), который выполняет быстрые сетевые проверки для диагностики поведения провайдера: DNS‑подмена/фильтрация, доступность TCP портов, доступность UDP/QUIC (через UDP‑DNS), HTTPS/TLS/SNI, трассировка (обёртка над `tracert`) и эвристика RST‑инжекции. Результаты выводятся в человекочитаемом виде и сохраняются в структурированный JSON‑отчёт.
 
-## Build
+По умолчанию запускается GUI. CLI доступен при запуске с аргументами.
 
-Requires .NET 9 SDK.
+## Сборка
 
-- Debug build: `dotnet build -c Debug`
-- Single-file publish: `dotnet publish -c Release -r win-x64 /p:PublishSingleFile=true /p:SelfContained=true /p:PublishTrimmed=false -o ./publish`
+Требуется .NET 9 SDK.
 
-GitHub Actions workflow is included at `.github/workflows/build.yml` and uploads `ISP_Audit.exe` as an artifact.
+- Отладочная сборка: `dotnet build -c Debug`
+- Публикация single‑file: `dotnet publish -c Release -r win-x64 /p:PublishSingleFile=true /p:SelfContained=true /p:PublishTrimmed=false -o ./publish`
 
-## Usage
+GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP_Audit.exe` и выкладывает артефакт.
 
-Examples:
+## Использование (GUI)
 
-- Default targets and save report:
+- Запустите `ISP_Audit.exe` без аргументов — откроется окно.
+- Верхняя панель (авто‑размер, не обрезает текст, DPI‑дружелюбно):
+  - Кнопки: `Запустить`, `Отмена`, `Сохранить JSON`, `Показать отчёт` (немодально, основная форма не блокируется).
+  - Чекбоксы включения тестов: `DNS`, `TCP`, `HTTP`, `Traceroute`, `UDP`, `RST`.
+  - Поле `Таймаут, с` — глобальный таймаут для сетевых операций (по умолчанию HTTP=12с, TCP/UDP=3с).
+- Справа сверху — таблица шагов с живыми статусами: ожидание → выполняется… → пройден (зелёный)/не пройден (красный). Отдельная строка состояния и прогресс‑бар.
+- Справа снизу — подробный лог (моноширинный шрифт Consolas). Для `Traceroute` хопы выводятся потоково в реальном времени; кодировка фикcирована (OEM866) — без «кракозябр».
+- Слева — список целей (редактируемый: Add/Update, Remove).
+- Кнопка `Сохранить JSON` не блокирует форму: файл сохраняется в выбранный путь; ошибки отображаются диалогом.
+
+## Использование (CLI)
+
+Примеры:
+
+- По умолчанию + сохранить отчёт:  
   `ISP_Audit.exe --report isp_report.json`
-
-- Explicit targets and short JSON to stdout:
+- Явные цели и короткий JSON в stdout:  
   `ISP_Audit.exe --targets youtube.com,discord.com --json --report result.json`
-
-- Disable traceroute and increase timeouts:
+- Отключить трассировку и увеличить таймауты:  
   `ISP_Audit.exe --no-trace --timeout 12 --verbose`
 
-Options:
+Флаги:
 
-- `--targets <file|list>` Comma-separated hosts or path to JSON/CSV
-- `--report <path>` Save JSON report (default `isp_report.json`)
-- `--timeout <s>` Global timeout hint (http=12s, tcp/udp=3s by default)
-- `--ports <list>` TCP ports to test (default `80,443`)
-- `--no-trace` Disable system `tracert` wrapper
-- `--verbose` Verbose logging
-- `--json` Also print a short JSON summary to stdout
-- `--help` Show help
+- `--targets <file|list>` список через запятую или путь к JSON/CSV
+- `--report <path>` путь для JSON‑отчёта (по умолчанию `isp_report.json` в CWD)
+- `--timeout <s>` таймаут в секундах (HTTP=12с, TCP/UDP=3с по умолчанию)
+- `--ports <list>` список TCP‑портов (по умолчанию `80,443`)
+- `--no-trace` отключить вызов системного `tracert`
+- `--verbose` подробный лог в консоли
+- `--json` вывести короткий JSON‑сводку в stdout
+- `--help` показать справку
 
-Default targets: `youtube.com, discord.com, google.com, example.com`.
+Цели по умолчанию: `youtube.com, discord.com, google.com, example.com`.
 
-## Report format (JSON)
+Примечание: при запуске с аргументами всегда используется CLI; без аргументов — открывается GUI.
 
-Top-level shape:
+## Формат отчёта (JSON)
+
+Пример верхнего уровня:
 
 ```
 {
@@ -47,41 +61,79 @@ Top-level shape:
   "cli": "--targets youtube.com,discord.com --report report.json",
   "ext_ip": "185.53.46.108",
   "summary": {
-    "dns": "WARN|OK|DNS_FILTERED|DNS_BOGUS",
+    "dns": "OK|WARN|DNS_FILTERED|DNS_BOGUS",
     "tcp": "OK|FAIL|UNKNOWN",
     "udp": "OK|FAIL|UNKNOWN",
     "tls": "OK|SUSPECT|FAIL|UNKNOWN",
     "rst_inject": "UNKNOWN"
   },
   "targets": {
-    "host": {
-      "system_dns": ["A-IPv4"],
-      "doh": ["A-IPv4"],
-      "dns_status": "OK|WARN|DNS_FILTERED|DNS_BOGUS",
-      "tcp": [{"ip":"1.2.3.4","port":443,"open":true,"elapsed_ms":50}],
-      "http": [{"url":"https://host","success":true,"status":200,"serverHeader":"...","cert_cn":"..."}],
-      "traceroute": {"hops":[{"hop":1,"ip":"10.0.0.1","status":"Hop|TimedOut"}],"rawOutput":["..."]}
+    "youtube.com": {
+      "system_dns": ["142.251.36.78"],
+      "doh": ["142.251.36.110"],
+      "dns_status": "WARN",
+      "tcp": [
+        {"ip":"142.251.36.78","port":80,"open":true,"elapsed_ms":45},
+        {"ip":"142.251.36.78","port":443,"open":true,"elapsed_ms":110}
+      ],
+      "http": [
+        {"url":"https://youtube.com","success":true,"status":200,"serverHeader":"...","cert_cn":"*.google.com"}
+      ],
+      "traceroute": {"hops":[{"hop":1,"ip":"10.0.0.1","status":"TtlExpired"}]}
     }
   },
   "udp_test": {"target":"1.1.1.1","reply":false,"rtt_ms":null}
 }
 ```
 
-## Status logic
+## Правила определения статусов
 
 - DNS:
-  - `DNS_FILTERED` if system DNS returns no A while DoH has answers
-  - `DNS_BOGUS` if any system A is in RFC1918, 127.0.0.0/8, or 0.0.0.0/8
-  - `WARN` if system and DoH sets are disjoint (possible CDN/geo)
-  - `OK` otherwise
-- TCP: `OK` if any port open across all targets; `FAIL` otherwise
-- UDP: `OK` if UDP DNS reply from `1.1.1.1:53` received; `FAIL` on timeout/error
-- TLS: `SUSPECT` if TCP 443 open but HTTPS consistently fails for a target; else `OK` if any 2xx/3xx; `FAIL` if no success and targets present
-- RST heuristic: `UNKNOWN` (only timing-based without pcap)
+  - `DNS_FILTERED` — системный DNS пуст, а DoH возвращает A‑записи.
+  - `DNS_BOGUS` — системный DNS вернул 0.0.0.0/8, 127.0.0.0/8, 10/8, 172.16/12, 192.168/16.
+  - `WARN` — множества системных и DoH‑адресов не пересекаются (возможно CDN/гео, но обратите внимание).
+  - `OK` — остальные случаи.
+- TCP: `OK`, если где‑то порт открыт; иначе `FAIL`.
+- UDP: `OK`, если получен ответ от `1.1.1.1:53`; иначе `FAIL`.
+- TLS: `SUSPECT`, если 443 открыт, но HTTPS не проходит; `OK`, если есть 2xx/3xx; `FAIL`, если ни одного успеха.
+- RST: `UNKNOWN` — эвристика по таймингам без pcap.
 
-## Notes
+## Советы по устранению проблем
 
-- No external binaries used at runtime except optional `tracert` wrapper on Windows. If `tracert` is unavailable, traceroute is skipped.
-- No raw sockets or packet capture in the main build.
-- No data is uploaded by default; `report.json` is stored locally. If you need an upload option, add a dedicated flag and token flow.
+- `DNS_FILTERED / DNS_BOGUS`
+  - Включите DoH/DoT (Chrome/Firefox/Windows 11), смените резолвер (1.1.1.1/8.8.8.8).
+  - Возможные обходы: DoH/DoT, DNSCrypt, VPN, локальный резолвер (unbound) c TLS.
+- `TCP = FAIL`
+  - Проверьте локальный фаервол/антивирус/роутер/MTU, задержки DNS.
+  - Обход: VPN/HTTPS‑прокси, смена сети/роутера.
+- `UDP = FAIL`
+  - Возможна блокировка UDP/QUIC. Используйте DoH/DoT вместо UDP‑DNS или VPN.
+- `TLS = SUSPECT`
+  - Возможна блокировка TLS/SNI. Обход: VPN, HTTPS‑прокси/HTTP2, ECH/ESNI (если доступно), временно зеркала по HTTP (без чувствительных данных).
 
+## Соответствие текущей реализации
+
+- GUI по умолчанию, современная верхняя панель (FlowLayoutPanel, AutoSize), русские подписи — есть.
+- Прогресс по шагам, статус/цвета, прогресс‑бар, отмена выполнения — есть.
+- Traceroute через системный `tracert`, потоковый вывод хопов, фикс кодировки — есть.
+- UDP‑DNS на `1.1.1.1:53`, минимальный парсинг ответа — есть.
+- DNS сравнение System vs DoH (Cloudflare), эвристика мусорных IP — есть.
+- TCP‑порты по умолчанию 80/443 с повторной попыткой — есть.
+- HTTP(S) запросы с SNI, чтение CN сертификата, таймауты — есть.
+- JSON‑отчёт (summary + по целям) и человекочитаемые рекомендации — есть.
+- Сборка single‑file win‑x64 + workflow GitHub Actions — есть.
+
+## Ограничения и безопасность
+
+- Во время запуска не используются внешние бинарники, кроме системного `tracert` (если недоступен — шаг пропускается).
+- Raw‑сокеты, pcap и пр. не используются в основном билде (не требуются права администратора).
+- По умолчанию ничего никуда не отправляется; отчёт хранится локально. Внешняя загрузка отчётов — только по явному флагу (не реализовано) и с токеном.
+
+## Частые вопросы
+
+- Кнопки «узкие»/обрезается текст?
+  - Верхняя панель авто‑размерная, элементы растягиваются под текст и DPI. Если всё же узко — укажите ваш масштаб/DPI и скриншот, подстроим отступы.
+- «Показать отчёт» зависает?
+  - Окно отчёта немодальное (`Show`), основная форма остаётся активной. Если видите зависание — укажите шаги воспроизведения.
+- Трассировка «висит»?
+  - Во время traceroute в лог идут строки хопов; в строке состояния видно текущий шаг. Можно прервать `Отмена`.
