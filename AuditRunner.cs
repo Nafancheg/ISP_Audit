@@ -11,9 +11,7 @@ namespace IspAudit
     {
         public static async Task<RunReport> RunAsync(Config config, IProgress<IspAudit.Tests.TestProgress>? progress = null, System.Threading.CancellationToken ct = default)
         {
-            var targets = config.Targets.Count > 0
-                ? config.Targets
-                : new List<string> { "youtube.com", "discord.com", "google.com", "example.com" };
+            var targetDefinitions = config.ResolveTargets();
 
             var run = new RunReport
             {
@@ -27,59 +25,59 @@ namespace IspAudit
             var tcpTest = new TcpTest(config);
             var httpTest = new HttpTest(config);
             var traceTest = new TracerouteTest(config);
-            var udp = new UdpDnsTest(config);
+            var udpRunner = new Tests.UdpProbeRunner(config);
             var rst = new RstHeuristic(config);
 
             bool anyTargetTests = config.EnableDns || config.EnableTcp || config.EnableHttp || (config.EnableTrace && !config.NoTrace);
             if (anyTargetTests)
             {
-                foreach (var host in targets)
+                foreach (var def in targetDefinitions)
                 {
                     ct.ThrowIfCancellationRequested();
-                    var targetReport = new TargetReport { host = host };
+                    var targetReport = new TargetReport { host = def.Host, display_name = def.Name, service = def.Service };
 
                     if (config.EnableDns)
                     {
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, $"{host}: старт"));
-                        var dnsRes = await dnsTest.ResolveAsync(host).ConfigureAwait(false);
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, $"{def.Name}: старт"));
+                        var dnsRes = await dnsTest.ResolveAsync(def.Host).ConfigureAwait(false);
                         targetReport.system_dns = dnsRes.SystemV4;
                         targetReport.doh = dnsRes.DohV4;
                         targetReport.dns_status = dnsRes.Status.ToString();
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, $"{host}: завершено", true, targetReport.dns_status));
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, $"{def.Name}: завершено", true, targetReport.dns_status));
                     }
 
                     if (config.EnableTcp)
                     {
                         ct.ThrowIfCancellationRequested();
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TCP, $"{host}: старт"));
-                        targetReport.tcp = await tcpTest.CheckAsync(host, targetReport.system_dns).ConfigureAwait(false);
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TCP, $"{def.Name}: старт"));
+                        targetReport.tcp = await tcpTest.CheckAsync(def.Host, targetReport.system_dns).ConfigureAwait(false);
                         bool ok = targetReport.tcp.Exists(r => r.open);
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TCP, $"{host}: завершено", ok, ok?"open найден":"все закрыто"));
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TCP, $"{def.Name}: завершено", ok, ok?"open найден":"все закрыто"));
                     }
 
                     if (config.EnableHttp)
                     {
                         ct.ThrowIfCancellationRequested();
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{host}: старт"));
-                        targetReport.http = await httpTest.CheckAsync(host).ConfigureAwait(false);
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{def.Name}: старт"));
+                        targetReport.http = await httpTest.CheckAsync(def.Host).ConfigureAwait(false);
                         bool ok = targetReport.http.Exists(h => h.success && h.status is >= 200 and < 400);
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{host}: завершено", ok, ok?"2xx/3xx":"ошибки/таймаут"));
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{def.Name}: завершено", ok, ok?"2xx/3xx":"ошибки/таймаут"));
                     }
 
                     if (config.EnableTrace && !config.NoTrace)
                     {
                         ct.ThrowIfCancellationRequested();
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{host}: старт"));
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{def.Name}: старт"));
                         var hopProgress = new System.Progress<string>(line =>
                         {
-                            progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{host}: hop", null, line));
+                            progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{def.Name}: hop", null, line));
                         });
-                        targetReport.traceroute = await traceTest.RunAsync(host, hopProgress, ct).ConfigureAwait(false);
+                        targetReport.traceroute = await traceTest.RunAsync(def.Host, hopProgress, ct).ConfigureAwait(false);
                         bool ok = targetReport.traceroute.hops.Count > 0;
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{host}: завершено", ok));
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{def.Name}: завершено", ok));
                     }
 
-                    run.targets[host] = targetReport;
+                    run.targets[def.Name] = targetReport;
                 }
 
                 // финальные агрегированные статусы по per-target тестам
@@ -128,12 +126,26 @@ namespace IspAudit
                 }
             }
 
-            if (config.EnableUdp)
+            if (config.EnableUdp && config.UdpProbes.Count > 0)
             {
                 ct.ThrowIfCancellationRequested();
-                progress?.Report(new Tests.TestProgress(Tests.TestKind.UDP, "UDP: старт"));
-                run.udp_test = await udp.ProbeAsync().ConfigureAwait(false);
-                progress?.Report(new Tests.TestProgress(Tests.TestKind.UDP, "UDP: завершено", run.udp_test.reply));
+                var udpResults = new List<Output.UdpProbeResult>();
+                foreach (var probe in config.UdpProbes)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    progress?.Report(new Tests.TestProgress(Tests.TestKind.UDP, $"{probe.Name}: старт"));
+                    var res = await udpRunner.ProbeAsync(probe).ConfigureAwait(false);
+                    udpResults.Add(res);
+                    var ok = res.success;
+                    var message = ok
+                        ? (res.reply ? $"ответ {res.rtt_ms?.ToString() ?? "?"}мс" : "пакет отправлен")
+                        : (res.note ?? "ошибка");
+                    progress?.Report(new Tests.TestProgress(Tests.TestKind.UDP, $"{probe.Name}: завершено", ok, message));
+                }
+                run.udp_tests = udpResults;
+                bool udpFail = udpResults.Any(r => r.expect_reply && !r.success);
+                var summaryMsg = udpFail ? "ожидаемые ответы отсутствуют" : "ожидаемые ответы получены";
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.UDP, "сводка", !udpFail, summaryMsg));
             }
             if (config.EnableRst)
             {
