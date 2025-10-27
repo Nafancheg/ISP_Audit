@@ -1,336 +1,119 @@
 {
-  "run_at": "2025-10-24T09:10:20.4970295Z",
-  "cli": "--verbose --no-trace --report isp_report.json --json",
+  "run_at": "2025-10-24T15:00:00Z",
+  "cli": "--report isp_report.json",
   "ext_ip": "185.53.46.108",
   "summary": {
-    "dns": "WARN",
+    "dns": "OK",
     "tcp": "OK",
-    "udp": "FAIL",
+    "udp": "INFO",
     "tls": "OK",
     "rst_inject": "UNKNOWN"
   },
   "targets": {
-    "youtube.com": {
-      "host": "youtube.com",
+    "RSI Портал": {
+      "host": "robertsspaceindustries.com",
+      "service": "Портал",
       "system_dns": [
-        "142.251.36.78"
+        "104.20.41.21",
+        "104.20.40.21"
       ],
       "doh": [
-        "142.251.36.78"
+        "104.20.41.21",
+        "104.20.40.21"
       ],
       "dns_status": "OK",
       "tcp": [
         {
-          "ip": "142.251.36.78",
+          "ip": "104.20.41.21",
           "port": 80,
           "open": true,
-          "elapsed_ms": 1
+          "elapsed_ms": 3
         },
         {
-          "ip": "142.251.36.78",
+          "ip": "104.20.41.21",
           "port": 443,
-          "open": true,
-          "elapsed_ms": 0
-        }
-      ],
-      "http": [
-        {
-          "url": "https://youtube.com",
-          "success": true,
-          "status": 200,
-          "serverHeader": "ESF",
-          "cert_cn": "*.google.com"
-        },
-        {
-          "url": "https://www.youtube.com",
-          "success": true,
-          "status": 200,
-          "serverHeader": "ESF",
-          "cert_cn": "*.google.com"
-        },
-        {
-          "url": "https://youtube.com/generate_204",
-          "success": true,
-          "status": 204,
-          "serverHeader": "",
-          "cert_cn": "*.google.com"
-        }
-      ]
-    },
-    "discord.com": {
-      "host": "discord.com",
-      "system_dns": [
-        "162.159.135.232",
-        "162.159.137.232",
-        "162.159.136.232",
-        "162.159.138.232",
-        "162.159.128.233"
-      ],
-      "doh": [
-        "162.159.137.232",
-        "162.159.128.233",
-        "162.159.138.232",
-        "162.159.136.232",
-        "162.159.135.232"
-      ],
-      "dns_status": "OK",
-      "tcp": [
-        {
-          "ip": "162.159.135.232",
-          "port": 80,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "162.159.135.232",
-          "port": 443,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "162.159.137.232",
-          "port": 80,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "162.159.137.232",
-          "port": 443,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "162.159.136.232",
-          "port": 80,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "162.159.136.232",
-          "port": 443,
-          "open": true,
-          "elapsed_ms": 1
-        },
-        {
-          "ip": "162.159.138.232",
-          "port": 80,
           "open": true,
           "elapsed_ms": 4
-        },
-        {
-          "ip": "162.159.138.232",
-          "port": 443,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "162.159.128.233",
-          "port": 80,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "162.159.128.233",
-          "port": 443,
-          "open": true,
-          "elapsed_ms": 0
         }
       ],
       "http": [
         {
-          "url": "https://discord.com",
+          "url": "https://robertsspaceindustries.com",
           "success": true,
           "status": 200,
-          "serverHeader": "cloudflare",
-          "cert_cn": "discord.com"
-        },
-        {
-          "url": "https://www.discord.com",
-          "success": true,
-          "status": 200,
-          "serverHeader": "cloudflare",
-          "cert_cn": "discord.com"
-        },
-        {
-          "url": "https://discord.com/generate_204",
-          "success": true,
-          "status": 404,
-          "serverHeader": "cloudflare",
-          "cert_cn": "discord.com"
-        }
-      ]
-    },
-    "google.com": {
-      "host": "google.com",
-      "system_dns": [
-        "142.251.36.110"
-      ],
-      "doh": [
-        "142.251.36.78"
-      ],
-      "dns_status": "WARN",
-      "tcp": [
-        {
-          "ip": "142.251.36.110",
-          "port": 80,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "142.251.36.110",
-          "port": 443,
-          "open": true,
-          "elapsed_ms": 0
-        }
-      ],
-      "http": [
-        {
-          "url": "https://google.com",
-          "success": true,
-          "status": 200,
-          "serverHeader": "gws",
-          "cert_cn": "www.google.com"
-        },
-        {
-          "url": "https://www.google.com",
-          "success": true,
-          "status": 200,
-          "serverHeader": "gws",
-          "cert_cn": "www.google.com"
-        },
-        {
-          "url": "https://google.com/generate_204",
-          "success": true,
-          "status": 204,
           "serverHeader": "",
-          "cert_cn": "*.google.com"
+          "cert_cn": "*.robertsspaceindustries.com"
         }
-      ]
+      ],
+      "traceroute": {
+        "hops": [
+          { "hop": 1, "ip": "10.0.0.1", "status": "TtlExpired" }
+        ]
+      }
     },
-    "example.com": {
-      "host": "example.com",
+    "RSI Лаунчер": {
+      "host": "launcher.robertsspaceindustries.com",
+      "service": "Лаунчер",
       "system_dns": [
-        "23.215.0.138",
-        "23.220.75.245",
-        "23.220.75.232",
-        "23.192.228.80",
-        "23.192.228.84",
-        "23.215.0.136"
+        "23.215.0.138"
       ],
       "doh": [
-        "23.192.228.80",
-        "23.192.228.84",
-        "23.220.75.232",
-        "23.215.0.136",
-        "23.220.75.245",
-        "23.215.0.138"
+        "23.215.0.140"
       ],
       "dns_status": "OK",
       "tcp": [
         {
           "ip": "23.215.0.138",
-          "port": 80,
+          "port": 8000,
           "open": true,
-          "elapsed_ms": 0
+          "elapsed_ms": 15
         },
         {
           "ip": "23.215.0.138",
-          "port": 443,
+          "port": 8020,
           "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "23.220.75.245",
-          "port": 80,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "23.220.75.245",
-          "port": 443,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "23.220.75.232",
-          "port": 80,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "23.220.75.232",
-          "port": 443,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "23.192.228.80",
-          "port": 80,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "23.192.228.80",
-          "port": 443,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "23.192.228.84",
-          "port": 80,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "23.192.228.84",
-          "port": 443,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "23.215.0.136",
-          "port": 80,
-          "open": true,
-          "elapsed_ms": 0
-        },
-        {
-          "ip": "23.215.0.136",
-          "port": 443,
-          "open": true,
-          "elapsed_ms": 0
+          "elapsed_ms": 16
         }
       ],
       "http": [
         {
-          "url": "https://example.com",
+          "url": "https://launcher.robertsspaceindustries.com",
           "success": true,
           "status": 200,
           "serverHeader": "",
-          "cert_cn": "*.example.com"
-        },
-        {
-          "url": "https://www.example.com",
-          "success": true,
-          "status": 200,
-          "serverHeader": "",
-          "cert_cn": "*.example.com"
-        },
-        {
-          "url": "https://example.com/generate_204",
-          "success": true,
-          "status": 404,
-          "serverHeader": "AkamaiNetStorage",
-          "cert_cn": "*.example.com"
+          "cert_cn": "*.robertsspaceindustries.com"
         }
       ]
     }
   },
-  "udp_test": {
-    "target": "1.1.1.1",
-    "reply": false,
-    "replyBytes": 0,
-    "note": "timeout"
-  },
+  "udp_tests": [
+    {
+      "name": "Cloudflare DNS",
+      "service": "Базовая сеть",
+      "host": "1.1.1.1",
+      "port": 53,
+      "expect_reply": true,
+      "success": true,
+      "reply": true,
+      "rtt_ms": 11,
+      "reply_bytes": 120,
+      "note": "ответ получен",
+      "description": "Проверка UDP DNS"
+    },
+    {
+      "name": "Star Citizen EU шлюз",
+      "service": "Игровые сервера",
+      "host": "p4eu-live.cloudimperiumgames.com",
+      "port": 64090,
+      "expect_reply": false,
+      "success": true,
+      "reply": false,
+      "rtt_ms": 2,
+      "reply_bytes": 0,
+      "note": "пакет отправлен",
+      "description": "Отправка тестового пакета, ответ не ожидается"
+    }
+  ],
   "rst_heuristic": {
     "ip": "1.1.1.1",
     "port": 81,

@@ -11,14 +11,8 @@ namespace IspAudit
 {
     internal static class Program
     {
-        // Retained for GUI compatibility: name -> host
-        public static Dictionary<string, string> Targets = new()
-        {
-            { "YouTube", "youtube.com" },
-            { "Discord", "discord.com" },
-            { "Google",  "google.com"  },
-            { "Example", "example.com" }
-        };
+        // Retained for GUI compatibility: name -> target definition
+        public static Dictionary<string, TargetDefinition> Targets { get; private set; } = TargetCatalog.CreateDefaultTargetMap();
 
         [STAThread]
         private static async Task<int> Main(string[] args)
@@ -51,13 +45,12 @@ namespace IspAudit
             }
 
             // Build targets list
-            var targets = config.Targets.Count > 0
-                ? config.Targets
-                : Targets.Values.Distinct().ToList();
+            var targetDefinitions = config.ResolveTargets();
+            var targets = targetDefinitions.Select(t => t.Host).Distinct().ToList();
 
             // Human header
             PrettyHeader("ISP Audit – Network Diagnostics");
-            Console.WriteLine($"Targets: {string.Join(", ", targets)}");
+            Console.WriteLine($"Targets: {string.Join(", ", targetDefinitions.Select(t => $"{t.Name} ({t.Host})"))}");
             Console.WriteLine($"Timeouts: http={config.HttpTimeoutSeconds}s tcp={config.TcpTimeoutSeconds}s udp={config.UdpTimeoutSeconds}s");
             Console.WriteLine();
 
@@ -70,6 +63,7 @@ namespace IspAudit
             var run = await AuditRunner.RunAsync(new Config
             {
                 Targets = targets,
+                TargetMap = config.TargetMap.ToDictionary(kv => kv.Key, kv => kv.Value.Copy(), StringComparer.OrdinalIgnoreCase),
                 ReportPath = config.ReportPath,
                 Verbose = config.Verbose,
                 PrintJson = config.PrintJson,
@@ -77,7 +71,8 @@ namespace IspAudit
                 HttpTimeoutSeconds = config.HttpTimeoutSeconds,
                 TcpTimeoutSeconds = config.TcpTimeoutSeconds,
                 UdpTimeoutSeconds = config.UdpTimeoutSeconds,
-                Ports = config.Ports
+                Ports = new List<int>(config.Ports),
+                UdpProbes = config.UdpProbes.Select(p => p.Copy()).ToList()
             }).ConfigureAwait(false);
             run.cli = string.Join(' ', args);
             run.ext_ip = extIp;
@@ -103,7 +98,8 @@ namespace IspAudit
         public static async Task RunAllChecksAsync()
         {
             var config = Config.Default();
-            config.Targets = Targets.Values.Distinct().ToList();
+            config.TargetMap = Targets.ToDictionary(kv => kv.Key, kv => kv.Value.Copy(), StringComparer.OrdinalIgnoreCase);
+            config.Targets = config.TargetMap.Values.Select(t => t.Host).Distinct().ToList();
             await Main(config.ToArgsArray());
         }
 

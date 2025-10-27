@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,6 +26,7 @@ namespace IspAudit
         private readonly ListView lvSteps;
         private readonly TextBox txtName;
         private readonly TextBox txtHost;
+        private readonly ComboBox cmbService;
         private readonly Button btnAdd;
         private readonly Button btnRemove;
         private readonly TextBox txtLog;
@@ -87,21 +89,27 @@ namespace IspAudit
             tips.SetToolTip(btnSaveJson, "Сохранить полный JSON отчёт");
             tips.SetToolTip(btnShowReport, "Показать краткие выводы и советы");
             tips.SetToolTip(chkDns, "Сравнение системного DNS и DoH (Cloudflare)");
-            tips.SetToolTip(chkTcp, "Проверка TCP-портов (80/443)");
+            tips.SetToolTip(chkTcp, "Проверка TCP-портов (80/443/8000-8020)");
             tips.SetToolTip(chkHttp, "HTTP(S) запросы с SNI и чтением сертификата");
             tips.SetToolTip(chkTrace, "tracert -d (без DNS-имен), до 30 хопов");
             tips.SetToolTip(chkUdp, "UDP DNS запрос к 1.1.1.1:53 (проверка UDP/QUIC)");
             tips.SetToolTip(chkRst, "Эвристика RST-инжекции (подозрение по таймингам)");
             tips.SetToolTip(txtTimeout, "Глобальный таймаут для сетевых операций, с");
 
-            lvTargets = new ListView { Left = 10, Top = 45, Width = 320, Height = 450, View = View.Details, FullRowSelect = true, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left };
+            lvTargets = new ListView { Left = 10, Top = 45, Width = 360, Height = 450, View = View.Details, FullRowSelect = true, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left };
             lvTargets.Columns.Add("Name", 140);
-            lvTargets.Columns.Add("Host", 160);
+            lvTargets.Columns.Add("Host", 140);
+            lvTargets.Columns.Add("Service", 140);
 
-            txtName = new TextBox { Left = 10, Top = 505, Width = 150 };
-            txtHost = new TextBox { Left = 170, Top = 505, Width = 160 };
-            btnAdd = new Button { Text = "Add / Update", Left = 10, Top = 535, Width = 120 };
-            btnRemove = new Button { Text = "Remove", Left = 140, Top = 535, Width = 80 };
+            txtName = new TextBox { Left = 10, Top = 505, Width = 140 };
+            txtHost = new TextBox { Left = 160, Top = 505, Width = 170 };
+            cmbService = new ComboBox { Left = 10, Top = 535, Width = 150, DropDownStyle = ComboBoxStyle.DropDown };
+            cmbService.Items.AddRange(new object[] { "Портал", "Лаунчер", "CDN", "Игровые сервера", "Базовая сеть", "Прочее" });
+            cmbService.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
+            cmbService.AutoCompleteSource = AutoCompleteSource.ListItems;
+            if (cmbService.Items.Count > 0) cmbService.SelectedIndex = 0;
+            btnAdd = new Button { Text = "Add / Update", Left = 170, Top = 535, Width = 120 };
+            btnRemove = new Button { Text = "Remove", Left = 300, Top = 535, Width = 80 };
             btnAdd.Click += BtnAdd_Click;
             btnRemove.Click += BtnRemove_Click;
 
@@ -121,7 +129,7 @@ namespace IspAudit
             {
                 topBar,
                 lvTargets, lvSteps,
-                txtName, txtHost, btnAdd, btnRemove,
+                txtName, txtHost, cmbService, btnAdd, btnRemove,
                 pbOverall, lblStatus,
                 txtLog, txtAnalysis
             });
@@ -136,12 +144,15 @@ namespace IspAudit
             var it = lvTargets.SelectedItems[0];
             txtName.Text = it.SubItems[0].Text;
             txtHost.Text = it.SubItems[1].Text;
+            cmbService.Text = it.SubItems.Count > 2 ? it.SubItems[2].Text : string.Empty;
         }
 
         private void BtnAdd_Click(object? sender, EventArgs e)
         {
             string name = txtName.Text.Trim();
             string host = txtHost.Text.Trim();
+            string service = cmbService.Text.Trim();
+            if (string.IsNullOrEmpty(service)) service = "Прочее";
             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(host)) return;
 
             foreach (ListViewItem it in lvTargets.Items)
@@ -149,10 +160,12 @@ namespace IspAudit
                 if (it.SubItems[0].Text.Equals(name, StringComparison.OrdinalIgnoreCase))
                 {
                     it.SubItems[1].Text = host;
+                    if (it.SubItems.Count < 3) it.SubItems.Add(service);
+                    else it.SubItems[2].Text = service;
                     return;
                 }
             }
-            lvTargets.Items.Add(new ListViewItem(new[] { name, host }));
+            lvTargets.Items.Add(new ListViewItem(new[] { name, host, service }));
         }
 
         private void BtnRemove_Click(object? sender, EventArgs e)
@@ -166,7 +179,7 @@ namespace IspAudit
             lvTargets.Items.Clear();
             foreach (var kv in Program.Targets)
             {
-                lvTargets.Items.Add(new ListViewItem(new[] { kv.Key, kv.Value }));
+                lvTargets.Items.Add(new ListViewItem(new[] { kv.Key, kv.Value.Host, kv.Value.Service }));
             }
         }
 
@@ -177,7 +190,15 @@ namespace IspAudit
             {
                 var name = it.SubItems[0].Text;
                 var host = it.SubItems[1].Text;
-                if (!Program.Targets.ContainsKey(name)) Program.Targets.Add(name, host);
+                var service = it.SubItems.Count > 2 ? it.SubItems[2].Text : string.Empty;
+                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(host)) continue;
+                var def = new TargetDefinition
+                {
+                    Name = name,
+                    Host = host,
+                    Service = string.IsNullOrWhiteSpace(service) ? "Прочее" : service
+                };
+                Program.Targets[name] = def;
             }
         }
 
@@ -196,7 +217,8 @@ namespace IspAudit
             try
             {
                 var cfg = Config.Default();
-                cfg.Targets = Program.Targets.Values.ToList();
+                cfg.TargetMap = Program.Targets.ToDictionary(kv => kv.Key, kv => kv.Value.Copy(), StringComparer.OrdinalIgnoreCase);
+                cfg.Targets = cfg.TargetMap.Values.Select(t => t.Host).ToList();
                 cfg.NoTrace = !chkTrace.Checked;
                 cfg.EnableDns = chkDns.Checked;
                 cfg.EnableTcp = chkTcp.Checked;
@@ -302,18 +324,28 @@ namespace IspAudit
         {
             var sb = new StringBuilder();
             sb.AppendLine($"Итог: DNS={run.summary.dns} TCP={run.summary.tcp} UDP={run.summary.udp} TLS={run.summary.tls}");
+            if (_lastConfig?.Ports?.Count > 0)
+            {
+                sb.AppendLine($"Проверяемые TCP-порты: {string.Join(", ", _lastConfig.Ports)}");
+            }
             sb.AppendLine();
             foreach (var kv in run.targets)
             {
                 var t = kv.Value;
                 bool anyOpen = t.tcp.Exists(r => r.open);
                 bool httpOk = t.http.Exists(h => h.success && h.status is >= 200 and < 400);
-                sb.AppendLine($"— {kv.Key}: DNS={t.dns_status}; Порты={(anyOpen ? "есть" : "нет")}; HTTPS={(httpOk ? "ОК" : "нет")}");
+                var label = string.IsNullOrWhiteSpace(t.service) ? kv.Key : $"{kv.Key} ({t.service})";
+                sb.AppendLine($"— {label}: DNS={t.dns_status}; TCP={(anyOpen ? "открыт" : "закрыт")}; HTTPS={(httpOk ? "ОК" : "нет")}");
             }
-            if (run.udp_test != null)
+            if (run.udp_tests != null && run.udp_tests.Count > 0)
             {
                 sb.AppendLine();
-                sb.AppendLine($"UDP DNS {run.udp_test.target}: {(run.udp_test.reply ? "ответ" : "нет ответа")}, RTT={run.udp_test.rtt_ms?.ToString() ?? "-"}мс");
+                foreach (var u in run.udp_tests)
+                {
+                    var status = u.success ? (u.reply ? "ответ" : "пакет отправлен") : (u.note ?? "ошибка");
+                    var rtt = u.rtt_ms.HasValue ? $"{u.rtt_ms}мс" : "—";
+                    sb.AppendLine($"UDP {u.name} ({u.service}): {status} (ожидался ответ: {(u.expect_reply ? "да" : "нет")}, RTT={rtt})");
+                }
             }
             return sb.ToString();
         }
