@@ -109,7 +109,7 @@ namespace IspAudit
             chkTrace = new CheckBox { AutoSize = true, Text = "Traceroute", Checked = true };
             chkUdp = new CheckBox { AutoSize = true, Text = "UDP", Checked = true };
             chkRst = new CheckBox { AutoSize = true, Text = "RST", Checked = true };
-            chkAdvanced = new CheckBox { AutoSize = true, Text = "Расширенный режим" };
+            chkAdvanced = new CheckBox { AutoSize = true, Text = "Показать подробности" };
 
             txtTimeout = new TextBox { Width = 50, Text = "12" };
             var lblTimeout = new Label { AutoSize = true, Text = "Таймаут, с" };
@@ -117,7 +117,8 @@ namespace IspAudit
 
             lvTargets = new ListView { View = View.Details, FullRowSelect = true, Dock = DockStyle.Fill };
             lvTargets.Columns.Add("Название", 160);
-            lvTargets.Columns.Add("Адрес", 180);
+            lvTargets.Columns.Add("Адрес", 200);
+            lvTargets.Columns.Add("Сервис", 140);
 
             txtName = new TextBox { Dock = DockStyle.Fill };
             txtHost = new TextBox { Dock = DockStyle.Fill };
@@ -159,10 +160,10 @@ namespace IspAudit
             tips.SetToolTip(btnSaveProfile, "Сохранить цели, порты и включённые тесты в файл профиля");
             tips.SetToolTip(btnLoadProfile, "Загрузить профиль проверки из файла");
             tips.SetToolTip(chkDns, "Сравнить системный DNS и Cloudflare DoH");
-            tips.SetToolTip(chkTcp, "Попробовать подключиться к портам 80/443");
+            tips.SetToolTip(chkTcp, "Проверить доступность TCP-портов Star Citizen");
             tips.SetToolTip(chkHttp, "Сделать HTTPS-запросы и проверить сертификаты");
             tips.SetToolTip(chkTrace, "Выполнить трассировку до цели");
-            tips.SetToolTip(chkUdp, "Отправить UDP-запрос на 1.1.1.1:53");
+            tips.SetToolTip(chkUdp, "Отправить UDP-запросы к DNS и игровым шлюзам");
             tips.SetToolTip(chkRst, "Проверить подозрение на RST-блокировку");
             tips.SetToolTip(txtTimeout, "Максимальное время ожидания сетевых операций, с");
             tips.SetToolTip(txtPorts, "Список TCP-портов через запятую, поддерживаются диапазоны (например 8000-8020)");
@@ -172,7 +173,7 @@ namespace IspAudit
                 Text = "Проверка ещё не запускалась",
                 AutoSize = false,
                 Dock = DockStyle.Fill,
-                Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold),
+                Font = new System.Drawing.Font("Segoe UI", 14F, System.Drawing.FontStyle.Bold),
                 ForeColor = System.Drawing.Color.DimGray,
                 Margin = new Padding(0, 0, 12, 6)
             };
@@ -1169,9 +1170,28 @@ namespace IspAudit
             foreach (var kv in run.targets)
             {
                 var t = kv.Value;
-                bool anyOpen = t.tcp.Exists(r => r.open);
-                bool httpOk = t.http.Exists(h => h.success && h.status is >= 200 and < 400);
-                sb.AppendLine($"— {kv.Key}: DNS {FormatStatus(t.dns_status)}, порты {(anyOpen ? "доступны" : "закрыты")}, HTTPS {(httpOk ? "отвечает" : "не отвечает")}");
+                var label = string.IsNullOrWhiteSpace(t.display_name) ? kv.Key : t.display_name;
+                var parts = new List<string>();
+                parts.Add(t.dns_enabled ? $"DNS {FormatStatus(t.dns_status)}" : "DNS не проверялся");
+                if (t.tcp_enabled)
+                {
+                    bool anyOpen = t.tcp.Exists(r => r.open);
+                    parts.Add(anyOpen ? "TCP-порты открыты" : "TCP-порты закрыты");
+                }
+                else
+                {
+                    parts.Add("TCP не проверялся");
+                }
+                if (t.http_enabled)
+                {
+                    bool httpOk = t.http.Exists(h => h.success && h.status is >= 200 and < 400);
+                    parts.Add(httpOk ? "HTTPS отвечает" : "HTTPS не отвечает");
+                }
+                else
+                {
+                    parts.Add("HTTPS не проверялся");
+                }
+                sb.AppendLine($"— {label}: {string.Join(", ", parts)}");
             }
             if (!string.Equals(run.summary.udp, "UNKNOWN", StringComparison.OrdinalIgnoreCase))
             {
@@ -1219,13 +1239,24 @@ namespace IspAudit
             {
                 if (it.SubItems[0].Text.Equals(name, StringComparison.OrdinalIgnoreCase))
                 {
-                    it.SubItems[1].Text = p.Success == null ? "идёт проверка" : (p.Success.Value ? "успешно" : "ошибка");
-                    it.SubItems[2].Text = p.Message ?? string.Empty;
-                    it.ForeColor = p.Success == null ? System.Drawing.Color.DodgerBlue : (p.Success.Value ? System.Drawing.Color.ForestGreen : System.Drawing.Color.Crimson);
-                    if (p.Success == null)
-                        lblStatus.Text = $"{name}: {p.Status}";
+                    bool skipped = !string.IsNullOrWhiteSpace(p.Message) && p.Message.StartsWith("пропущено", StringComparison.OrdinalIgnoreCase);
+                    if (skipped)
+                    {
+                        it.SubItems[1].Text = "пропущено";
+                        it.SubItems[2].Text = p.Message ?? string.Empty;
+                        it.ForeColor = System.Drawing.Color.DimGray;
+                        lblStatus.Text = $"{name}: пропущено";
+                    }
                     else
-                        lblStatus.Text = $"{name}: {(p.Success.Value ? "успешно" : "ошибка")}";
+                    {
+                        it.SubItems[1].Text = p.Success == null ? "идёт проверка" : (p.Success.Value ? "успешно" : "ошибка");
+                        it.SubItems[2].Text = p.Message ?? string.Empty;
+                        it.ForeColor = p.Success == null ? System.Drawing.Color.DodgerBlue : (p.Success.Value ? System.Drawing.Color.ForestGreen : System.Drawing.Color.Crimson);
+                        if (p.Success == null)
+                            lblStatus.Text = $"{name}: {p.Status}";
+                        else
+                            lblStatus.Text = $"{name}: {(p.Success.Value ? "успешно" : "ошибка")}";
+                    }
                     if (p.Kind == IspAudit.Tests.TestKind.TRACEROUTE && !string.IsNullOrWhiteSpace(p.Message))
                     {
                         txtLog.AppendText(p.Message + Environment.NewLine);
@@ -1247,7 +1278,7 @@ namespace IspAudit
         private void UpdateSummaryBlock(Output.RunReport run, string advice)
         {
             bool hasIssues = HasIssues(run);
-            lblSummaryStatus.Text = hasIssues ? "Проблемы обнаружены" : "Проблемы не обнаружены";
+            lblSummaryStatus.Text = hasIssues ? "Обнаружены проблемы со связью" : "Сеть готова для Star Citizen";
             lblSummaryStatus.ForeColor = hasIssues ? System.Drawing.Color.Crimson : System.Drawing.Color.ForestGreen;
 
             lblSummaryIssues.Text = BuildIssuesText(run);
@@ -1285,26 +1316,26 @@ namespace IspAudit
             switch (run.summary.dns)
             {
                 case "DNS_BOGUS":
-                    AddIssue("DNS возвращает недействительные ответы.");
+                    AddIssue("Системный DNS возвращает ошибочные адреса для сервисов Star Citizen.");
                     break;
                 case "DNS_FILTERED":
-                    AddIssue("Похоже на фильтрацию или подмену DNS.");
+                    AddIssue("Провайдер подменяет DNS-ответы Star Citizen — вероятна блокировка.");
                     break;
                 case "WARN":
-                    AddIssue("Ответы системного DNS и DoH не совпадают.");
+                    AddIssue("Ответы системного DNS и DoH расходятся — убедитесь, что IP принадлежит серверам Star Citizen.");
                     break;
             }
 
             if (run.summary.tcp == "FAIL")
-                AddIssue("Не получилось подключиться к проверенным TCP-портам.");
+                AddIssue("Нужные TCP-порты Star Citizen не открываются.");
 
             if (run.summary.udp == "FAIL")
-                AddIssue("Нет ответа на UDP-запрос к 1.1.1.1:53.");
+                AddIssue("UDP-тесты (DNS или игровые шлюзы) не получают ответ.");
 
             if (run.summary.tls == "FAIL")
-                AddIssue("HTTPS-сервисы не ответили на запросы.");
+                AddIssue("HTTPS-сервисы Star Citizen не отвечают на запросы.");
             else if (run.summary.tls == "SUSPECT")
-                AddIssue("Есть подозрение на блокировку HTTPS по SNI.");
+                AddIssue("Есть признаки DPI-блокировки HTTPS по SNI.");
 
             if (issues.Length == 0)
                 issues.Append("Явных проблем не найдено.");
