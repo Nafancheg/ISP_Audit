@@ -61,16 +61,19 @@ namespace IspAudit.Output
 
         public static string GetReadableStatus(string status)
         {
-            return status switch
+            if (string.IsNullOrWhiteSpace(status)) return "нет данных";
+
+            return status.ToUpperInvariant() switch
             {
-                "OK" => "норма",
-                "WARN" => "есть предупреждения",
-                "FAIL" => "не пройдено",
+                "OK" => "всё работает",
+                "WARN" => "есть расхождения",
+                "FAIL" => "не работает",
                 "SUSPECT" => "подозрение на блокировку",
-                "DNS_BOGUS" => "ошибочные ответы",
-                "DNS_FILTERED" => "возможна фильтрация",
-                "INFO" => "информативно",
+                "DNS_BOGUS" => "ошибочные DNS-ответы",
+                "DNS_FILTERED" => "провайдер подменяет DNS",
+                "INFO" => "информационный тест",
                 "UNKNOWN" => "нет данных",
+                "SKIPPED" => "не проверялось",
                 _ => status
             };
         }
@@ -124,10 +127,17 @@ namespace IspAudit.Output
             bool suspect = false;
             foreach (var t in run.targets.Values.Where(t => t.http_executed))
             {
-                bool tcp443Open = t.tcp.Any(r => r.port == 443 && r.open);
-                bool httpOk = t.http.Any(h => h.success && h.status is >= 200 and < 400);
-                if (httpOk) anyTlsOk = true;
-                if (tcp443Open && !httpOk) suspect = true;
+                bool anyTlsOk = false;
+                bool suspect = false;
+                foreach (var t in httpTargets)
+                {
+                    bool tcp443Open = t.tcp_enabled && t.tcp.Any(r => r.port == 443 && r.open);
+                    bool httpOk = t.http.Any(h => h.success && h.status is >= 200 and < 400);
+                    if (httpOk) anyTlsOk = true;
+                    if (tcp443Open && !httpOk) suspect = true;
+                }
+
+                summary.tls = suspect ? "SUSPECT" : (anyTlsOk ? "OK" : "FAIL");
             }
             if (!run.targets.Values.Any(t => t.http_executed))
             {
@@ -152,7 +162,7 @@ namespace IspAudit.Output
             var udpTests = run.udp_tests ?? new List<UdpProbeResult>();
 
             var dnsBadTargets = run.targets
-                .Where(kv => kv.Value.dns_status == nameof(DnsStatus.DNS_BOGUS) || kv.Value.dns_status == nameof(DnsStatus.DNS_FILTERED))
+                .Where(kv => kv.Value.dns_enabled && (kv.Value.dns_status == nameof(DnsStatus.DNS_BOGUS) || kv.Value.dns_status == nameof(DnsStatus.DNS_FILTERED)))
                 .Select(FormatTarget)
                 .ToList();
             if (dnsBadTargets.Count > 0)
@@ -165,7 +175,7 @@ namespace IspAudit.Output
             else if (run.summary.dns == nameof(DnsStatus.WARN))
             {
                 var warnTargets = run.targets
-                    .Where(kv => kv.Value.dns_status == nameof(DnsStatus.WARN))
+                    .Where(kv => kv.Value.dns_enabled && kv.Value.dns_status == nameof(DnsStatus.WARN))
                     .Select(FormatTarget)
                     .ToList();
                 var suffix = warnTargets.Count > 0 ? $" ({string.Join(", ", warnTargets)})" : string.Empty;
@@ -173,7 +183,7 @@ namespace IspAudit.Output
             }
 
             var tcpFailures = run.targets
-                .Where(kv => kv.Value.tcp.Count > 0 && !kv.Value.tcp.Any(r => r.open))
+                .Where(kv => kv.Value.tcp_enabled && kv.Value.tcp.Count > 0 && !kv.Value.tcp.Any(r => r.open))
                 .Select(FormatTarget)
                 .ToList();
             if (tcpFailures.Count > 0)
@@ -345,6 +355,10 @@ namespace IspAudit.Output
                 {
                     W("  traceroute: тест не выполнялся (не требуется)");
                 }
+                else if (!t.trace_enabled)
+                {
+                    W("  traceroute: skipped for this service");
+                }
 
                 W();
             }
@@ -484,21 +498,26 @@ namespace IspAudit.Output
                     var t = kv.Value;
                     string displayName = string.IsNullOrWhiteSpace(t.display_name) ? kv.Key : t.display_name;
                     string service = string.IsNullOrWhiteSpace(t.service) ? "—" : t.service;
-                    bool anyOpen = t.tcp.Any(r => r.open);
-                    bool httpOk = t.http.Any(h => h.success && h.status is >= 200 and < 400);
-                    string tcpPorts = t.tcp.Count == 0 ? "—" : string.Join(", ", t.tcp.Select(r => $"{r.port}:{(r.open ? "открыт" : "закрыт")}"));
-                    string httpSummary = t.http.Count == 0
-                        ? "HTTP-запросы не выполнялись"
-                        : string.Join(", ", t.http.Select(h => h.success ? (h.status?.ToString() ?? "успех") : (h.error ?? "ошибка")));
+                    bool anyOpen = t.tcp_enabled && t.tcp.Any(r => r.open);
+                    bool httpOk = t.http_enabled && t.http.Any(h => h.success && h.status is >= 200 and < 400);
+                    string tcpPorts = (!t.tcp_enabled || t.tcp_ports_checked.Count == 0)
+                        ? "не проверялось"
+                        : string.Join(", ", t.tcp_ports_checked.Select(p => p.ToString()));
+                    string httpSummary = !t.http_enabled
+                        ? "HTTPS не проверялся для этой цели"
+                        : (t.http.Count == 0
+                            ? "ответов нет"
+                            : string.Join(", ", t.http.Select(h => h.success ? (h.status?.ToString() ?? "успех") : (h.error ?? "ошибка"))));
 
                     sbHtml.AppendLine("      <article class=\"target\">");
                     sbHtml.AppendLine($"        <h3>{HtmlEncode(displayName)}</h3>");
                     sbHtml.AppendLine($"        <p class=\"meta\">{HtmlEncode(service)} · {HtmlEncode(t.host)}</p>");
                     sbHtml.AppendLine("        <ul>");
-                    sbHtml.AppendLine($"          <li><strong>DNS:</strong> <span class=\"status {GetStatusCssClass(t.dns_status)}\">{HtmlEncode(GetReadableStatus(t.dns_status))}</span></li>");
-                    sbHtml.AppendLine($"          <li><strong>TCP:</strong> {HtmlEncode(anyOpen ? "порты доступны" : "порты закрыты")}</li>");
+                    var dnsText = t.dns_enabled ? GetReadableStatus(t.dns_status) : GetReadableStatus("SKIPPED");
+                    sbHtml.AppendLine($"          <li><strong>DNS:</strong> <span class=\"status {GetStatusCssClass(t.dns_enabled ? t.dns_status : "SKIPPED")}\">{HtmlEncode(dnsText)}</span></li>");
+                    sbHtml.AppendLine($"          <li><strong>TCP:</strong> {HtmlEncode(!t.tcp_enabled ? "не проверялось" : (anyOpen ? "порты доступны" : "порты закрыты"))}</li>");
                     sbHtml.AppendLine($"          <li><strong>TCP-порты проверены:</strong> {HtmlEncode(tcpPorts)}</li>");
-                    sbHtml.AppendLine($"          <li><strong>HTTPS:</strong> {HtmlEncode(httpOk ? "ответ есть" : "ответов нет")}</li>");
+                    sbHtml.AppendLine($"          <li><strong>HTTPS:</strong> {HtmlEncode(!t.http_enabled ? "не проверялось" : (httpOk ? "ответ есть" : "ответов нет"))}</li>");
                     sbHtml.AppendLine($"          <li><strong>HTTP детали:</strong> {HtmlEncode(httpSummary)}</li>");
                     if (t.traceroute != null && t.traceroute.hops.Count > 0)
                     {
@@ -741,14 +760,13 @@ namespace IspAudit.Output
             foreach (var kv in run.targets.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
             {
                 var t = kv.Value;
-                bool anyOpen = t.tcp.Any(r => r.open);
-                bool httpOk = t.http.Any(h => h.success && h.status is >= 200 and < 400);
                 string name = string.IsNullOrWhiteSpace(t.display_name) ? kv.Key : t.display_name;
                 string dnsText = t.dns_executed ? GetReadableStatus(t.dns_status) : "не проверялось";
                 string tcpText = t.tcp_executed ? (anyOpen ? "доступны" : "закрыты") : "не проверялись";
                 string httpText = t.http_executed ? (httpOk ? "отвечает" : "не отвечает") : "не проверялся";
                 list.Add($"{name}: DNS {dnsText}, TCP {tcpText}, HTTPS {httpText}");
             }
+
             return list;
         }
 
@@ -787,6 +805,8 @@ namespace IspAudit.Output
                 "SUSPECT" => "status-warn",
                 "DNS_BOGUS" => "status-fail",
                 "DNS_FILTERED" => "status-warn",
+                "SKIPPED" => "status-unknown",
+                "INFO" => "status-warn",
                 _ => "status-unknown"
             };
         }
