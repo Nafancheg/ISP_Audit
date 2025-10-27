@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -7,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using IspAudit.Bypass;
+using IspAudit.Utils;
 
 namespace IspAudit
 {
@@ -17,7 +20,9 @@ namespace IspAudit
         private readonly Button btnSaveJson;
         private readonly Button btnShowReport;
         private readonly Button btnSummaryActions;
+        private readonly Button btnCopySummary;
         private readonly Button btnCopyReport;
+        private readonly Button btnExportReport;
         private readonly CheckBox chkDns;
         private readonly CheckBox chkTcp;
         private readonly CheckBox chkHttp;
@@ -34,8 +39,12 @@ namespace IspAudit
         private readonly ComboBox cmbService;
         private readonly Button btnAdd;
         private readonly Button btnRemove;
+        private readonly Button btnSaveProfile;
+        private readonly Button btnLoadProfile;
         private readonly TextBox txtLog;
         private readonly TextBox txtAnalysis;
+        private readonly TextBox txtPorts;
+        private readonly Label lblPorts;
         private readonly ProgressBar pbOverall;
         private readonly Label lblStatus;
         private readonly Label lblSummaryStatus;
@@ -54,10 +63,13 @@ namespace IspAudit
         private CancellationTokenSource? _cts;
         private string _lastAdviceText = string.Empty;
         private string _lastSummaryPlainText = string.Empty;
+        private string _lastSummaryCompactText = string.Empty;
         private Form? _summaryPopup;
         private bool _summaryReady;
         private readonly WinDivertBypassManager _bypassManager;
         private bool _bypassActivationAllowed;
+        private const string ProfileFileFilter = "Профиль ISP Audit (*.iaprofile)|*.iaprofile|JSON (*.json)|*.json";
+        private const string ProfileDefaultFileName = "isp_profile.iaprofile";
 
         public GuiForm()
         {
@@ -78,15 +90,18 @@ namespace IspAudit
             btnSaveJson = new Button { Text = "Сохранить JSON", AutoSize = true };
             btnSaveJson.Click += BtnSaveJson_Click;
 
+            btnExportReport = new Button { Text = "Экспорт HTML/PDF", AutoSize = true, Enabled = false };
+            btnExportReport.Click += BtnExportReport_Click;
+
             btnShowReport = new Button { Text = "Подробный отчёт", AutoSize = true };
             btnShowReport.Click += BtnShowReport_Click;
 
-            btnSummaryActions = new Button { Text = "Что делать?", AutoSize = true };
+            btnSummaryActions = new Button { Text = "Что делать?", AutoSize = true, Enabled = false };
             btnSummaryActions.Click += BtnSummaryActions_Click;
-            btnCopyReport = new Button { Text = "Скопировать отчёт", AutoSize = true };
+            btnCopySummary = new Button { Text = "Скопировать итог", AutoSize = true, Enabled = false };
+            btnCopySummary.Click += BtnCopySummary_Click;
+            btnCopyReport = new Button { Text = "Скопировать отчёт", AutoSize = true, Enabled = false };
             btnCopyReport.Click += BtnCopyReport_Click;
-            btnSummaryActions.Enabled = false;
-            btnCopyReport.Enabled = false;
 
             chkDns = new CheckBox { AutoSize = true, Text = "DNS", Checked = true };
             chkTcp = new CheckBox { AutoSize = true, Text = "TCP", Checked = true };
@@ -104,7 +119,12 @@ namespace IspAudit
             tips.SetToolTip(btnRun, "Запустить быструю проверку");
             tips.SetToolTip(btnCancel, "Остановить текущую проверку");
             tips.SetToolTip(btnSaveJson, "Сохранить полный JSON отчёт");
+            tips.SetToolTip(btnExportReport, "Сохранить HTML или PDF отчёт");
             tips.SetToolTip(btnShowReport, "Открыть подробные результаты");
+            tips.SetToolTip(btnCopySummary, "Скопировать краткий итог для поддержки");
+            tips.SetToolTip(btnCopyReport, "Скопировать подробный текстовый отчёт");
+            tips.SetToolTip(btnSaveProfile, "Сохранить цели, порты и включённые тесты в файл профиля");
+            tips.SetToolTip(btnLoadProfile, "Загрузить профиль проверки из файла");
             tips.SetToolTip(chkDns, "Сравнить системный DNS и Cloudflare DoH");
             tips.SetToolTip(chkTcp, "Попробовать подключиться к портам 80/443");
             tips.SetToolTip(chkHttp, "Сделать HTTPS-запросы и проверить сертификаты");
@@ -112,6 +132,7 @@ namespace IspAudit
             tips.SetToolTip(chkUdp, "Отправить UDP-запрос на 1.1.1.1:53");
             tips.SetToolTip(chkRst, "Проверить подозрение на RST-блокировку");
             tips.SetToolTip(txtTimeout, "Максимальное время ожидания сетевых операций, с");
+            tips.SetToolTip(txtPorts, "Список TCP-портов через запятую, поддерживаются диапазоны (например 8000-8020)");
 
             lvTargets = new ListView { View = View.Details, FullRowSelect = true, Dock = DockStyle.Fill };
             lvTargets.Columns.Add("Название", 160);
@@ -127,6 +148,11 @@ namespace IspAudit
             btnAdd.Click += BtnAdd_Click;
             btnRemove.Click += BtnRemove_Click;
 
+            btnSaveProfile = new Button { Text = "Сохранить профиль", AutoSize = true };
+            btnSaveProfile.Click += BtnSaveProfile_Click;
+            btnLoadProfile = new Button { Text = "Загрузить профиль", AutoSize = true };
+            btnLoadProfile.Click += BtnLoadProfile_Click;
+
             lvSteps = new ListView { View = View.Details, FullRowSelect = true, GridLines = true, Dock = DockStyle.Fill };
             lvSteps.Columns.Add("Тест", 160);
             lvSteps.Columns.Add("Статус", 150);
@@ -137,6 +163,9 @@ namespace IspAudit
 
             txtLog = new TextBox { Multiline = true, ScrollBars = ScrollBars.Both, ReadOnly = true, Dock = DockStyle.Fill, Font = new System.Drawing.Font("Consolas", 10) };
             txtAnalysis = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill };
+
+            txtPorts = new TextBox { Width = 160, Text = Output.ReportWriter.FormatPortList(Config.Default().Ports) };
+            lblPorts = new Label { AutoSize = true, Text = "Порты" };
 
             lblSummaryStatus = new Label
             {
@@ -237,6 +266,7 @@ namespace IspAudit
                 WrapContents = false
             };
             actionPanel.Controls.Add(btnSummaryActions);
+            actionPanel.Controls.Add(btnCopySummary);
             actionPanel.Controls.Add(btnCopyReport);
 
             summaryLayout.Controls.Add(actionPanel, 1, 0);
@@ -291,13 +321,18 @@ namespace IspAudit
             foreach (var c in new Control[]
             {
                 btnSaveJson,
+                btnExportReport,
                 btnShowReport,
+                btnSaveProfile,
+                btnLoadProfile,
                 chkDns,
                 chkTcp,
                 chkHttp,
                 chkTrace,
                 chkUdp,
                 chkRst,
+                lblPorts,
+                txtPorts,
                 txtTimeout,
                 lblTimeout,
                 lblExtIp
@@ -359,6 +394,8 @@ namespace IspAudit
             var targetButtons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
             targetButtons.Controls.Add(btnAdd);
             targetButtons.Controls.Add(btnRemove);
+            targetButtons.Controls.Add(btnSaveProfile);
+            targetButtons.Controls.Add(btnLoadProfile);
             targetsLayout.Controls.Add(targetButtons, 0, 4);
 
             advancedLayout.Controls.Add(targetsLayout, 0, 0);
@@ -445,6 +482,55 @@ namespace IspAudit
         {
             if (lvTargets.SelectedItems.Count == 0) return;
             lvTargets.Items.Remove(lvTargets.SelectedItems[0]);
+        }
+
+        private async void BtnSaveProfile_Click(object? sender, EventArgs e)
+        {
+            if (!TryGetPorts(out var ports, true)) return;
+            int timeout = GetTimeoutSeconds();
+            var profile = BuildProfileData(ports, timeout);
+
+            using var sfd = new SaveFileDialog { Filter = ProfileFileFilter, FileName = ProfileDefaultFileName };
+            if (sfd.ShowDialog(this) == DialogResult.OK)
+            {
+                try
+                {
+                    UseWaitCursor = true;
+                    await GuiProfileStorage.SaveAsync(profile, sfd.FileName).ConfigureAwait(true);
+                    MessageBox.Show(this, "Профиль сохранён:\r\n" + sfd.FileName, "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "Не удалось сохранить профиль:\r\n" + ex.Message, "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    UseWaitCursor = false;
+                }
+            }
+        }
+
+        private async void BtnLoadProfile_Click(object? sender, EventArgs e)
+        {
+            using var ofd = new OpenFileDialog { Filter = ProfileFileFilter };
+            if (ofd.ShowDialog(this) == DialogResult.OK)
+            {
+                try
+                {
+                    UseWaitCursor = true;
+                    var profile = await GuiProfileStorage.LoadAsync(ofd.FileName).ConfigureAwait(true);
+                    ApplyProfile(profile);
+                    MessageBox.Show(this, "Профиль загружен:\r\n" + ofd.FileName, "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "Не удалось загрузить профиль:\r\n" + ex.Message, "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    UseWaitCursor = false;
+                }
+            }
         }
 
         private async void BtnBypassToggle_Click(object? sender, EventArgs e)
@@ -637,8 +723,182 @@ namespace IspAudit
             }
         }
 
+        private GuiProfileData BuildProfileData(List<int> ports, int timeoutSeconds)
+        {
+            var profile = new GuiProfileData
+            {
+                Ports = new List<int>(ports),
+                TimeoutSeconds = timeoutSeconds,
+                EnableDns = chkDns.Checked,
+                EnableTcp = chkTcp.Checked,
+                EnableHttp = chkHttp.Checked,
+                EnableTrace = chkTrace.Checked,
+                EnableUdp = chkUdp.Checked,
+                EnableRst = chkRst.Checked
+            };
+
+            foreach (ListViewItem it in lvTargets.Items)
+            {
+                if (it.SubItems.Count < 2) continue;
+                var name = it.SubItems[0].Text?.Trim() ?? string.Empty;
+                var host = it.SubItems[1].Text?.Trim() ?? string.Empty;
+                var service = it.SubItems.Count > 2 ? it.SubItems[2].Text?.Trim() ?? string.Empty : string.Empty;
+                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(host)) continue;
+                profile.Targets.Add(new GuiProfileTarget
+                {
+                    Name = name,
+                    Host = host,
+                    Service = string.IsNullOrWhiteSpace(service) ? "Прочее" : service
+                });
+            }
+
+            return profile;
+        }
+
+        private void ApplyProfile(GuiProfileData profile)
+        {
+            lvTargets.BeginUpdate();
+            try
+            {
+                lvTargets.Items.Clear();
+                foreach (var target in profile.Targets)
+                {
+                    if (string.IsNullOrWhiteSpace(target.Name) || string.IsNullOrWhiteSpace(target.Host)) continue;
+                    var service = string.IsNullOrWhiteSpace(target.Service) ? "Прочее" : target.Service;
+                    lvTargets.Items.Add(new ListViewItem(new[] { target.Name, target.Host, service }));
+                }
+                if (profile.Targets.Count == 0)
+                {
+                    foreach (var kv in TargetCatalog.CreateDefaultTargetMap())
+                    {
+                        lvTargets.Items.Add(new ListViewItem(new[] { kv.Key, kv.Value.Host, kv.Value.Service }));
+                    }
+                }
+            }
+            finally
+            {
+                lvTargets.EndUpdate();
+            }
+
+            chkDns.Checked = profile.EnableDns;
+            chkTcp.Checked = profile.EnableTcp;
+            chkHttp.Checked = profile.EnableHttp;
+            chkTrace.Checked = profile.EnableTrace;
+            chkUdp.Checked = profile.EnableUdp;
+            chkRst.Checked = profile.EnableRst;
+
+            if (profile.TimeoutSeconds > 0)
+            {
+                txtTimeout.Text = profile.TimeoutSeconds.ToString();
+            }
+            else
+            {
+                txtTimeout.Text = "12";
+            }
+
+            if (profile.Ports.Count > 0)
+            {
+                txtPorts.Text = Output.ReportWriter.FormatPortList(profile.Ports);
+            }
+            else
+            {
+                txtPorts.Text = Output.ReportWriter.FormatPortList(Config.Default().Ports);
+            }
+
+            SaveListViewToProgramTargets();
+            _lastConfig = Config.Default();
+            _lastConfig.TargetMap = Program.Targets.ToDictionary(kv => kv.Key, kv => kv.Value.Copy(), StringComparer.OrdinalIgnoreCase);
+            _lastConfig.Targets = _lastConfig.TargetMap.Values.Select(t => t.Host).ToList();
+            _lastConfig.EnableDns = profile.EnableDns;
+            _lastConfig.EnableTcp = profile.EnableTcp;
+            _lastConfig.EnableHttp = profile.EnableHttp;
+            _lastConfig.EnableTrace = profile.EnableTrace;
+            _lastConfig.EnableUdp = profile.EnableUdp;
+            _lastConfig.EnableRst = profile.EnableRst;
+            _lastConfig.Ports = profile.Ports.Count > 0 ? new List<int>(profile.Ports) : Config.Default().Ports;
+            _lastConfig.HttpTimeoutSeconds = profile.TimeoutSeconds > 0 ? profile.TimeoutSeconds : 12;
+            _lastConfig.TcpTimeoutSeconds = Math.Min(10, _lastConfig.HttpTimeoutSeconds);
+            _lastConfig.UdpTimeoutSeconds = Math.Min(10, _lastConfig.HttpTimeoutSeconds);
+
+            _summaryReady = false;
+            _lastRun = null;
+            _lastAdviceText = string.Empty;
+            _lastSummaryPlainText = string.Empty;
+            _lastSummaryCompactText = string.Empty;
+            UpdateSummaryActionsState();
+            UpdateBypassUi();
+        }
+
+        private bool TryGetPorts(out List<int> ports, bool showErrors)
+        {
+            ports = new List<int>();
+            string text = txtPorts.Text.Trim();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                ports = Config.Default().Ports;
+                txtPorts.Text = Output.ReportWriter.FormatPortList(ports);
+                return true;
+            }
+
+            var parts = text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var result = new SortedSet<int>();
+
+            foreach (var part in parts)
+            {
+                if (part.Contains('-', StringComparison.Ordinal))
+                {
+                    var range = part.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (range.Length != 2 || !int.TryParse(range[0], out int start) || !int.TryParse(range[1], out int end) || start <= 0 || end > 65535 || end < start)
+                    {
+                        if (showErrors)
+                            MessageBox.Show(this, "Неверный диапазон портов: " + part, "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return false;
+                    }
+                    for (int p = start; p <= end; p++)
+                    {
+                        result.Add(p);
+                    }
+                }
+                else if (int.TryParse(part, out int single) && single > 0 && single <= 65535)
+                {
+                    result.Add(single);
+                }
+                else
+                {
+                    if (showErrors)
+                        MessageBox.Show(this, "Неверный порт: " + part, "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return false;
+                }
+            }
+
+            if (result.Count == 0)
+            {
+                if (showErrors)
+                    MessageBox.Show(this, "Не указано ни одного порта.", "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+
+            ports = result.ToList();
+            var normalized = Output.ReportWriter.FormatPortList(ports);
+            if (!string.Equals(normalized, txtPorts.Text.Trim(), StringComparison.Ordinal))
+            {
+                txtPorts.Text = normalized;
+            }
+            return true;
+        }
+
+        private int GetTimeoutSeconds()
+        {
+            return int.TryParse(txtTimeout.Text.Trim(), out int seconds) && seconds > 0 ? seconds : 12;
+        }
+
         private async void BtnRun_Click(object? sender, EventArgs e)
         {
+            if (!TryGetPorts(out var selectedPorts, true))
+            {
+                return;
+            }
+
             btnRun.Enabled = false;
             btnCancel.Enabled = true;
             btnCancel.Visible = true;
@@ -653,6 +913,8 @@ namespace IspAudit
             lblSummaryRecommendations.Text = string.Empty;
             _lastAdviceText = string.Empty;
             _lastSummaryPlainText = string.Empty;
+            _lastSummaryCompactText = string.Empty;
+            _lastRun = null;
             _summaryReady = false;
             UpdateSummaryActionsState();
             CloseSummaryPopup();
@@ -673,6 +935,7 @@ namespace IspAudit
                 cfg.EnableTrace = chkTrace.Checked;
                 cfg.EnableUdp = chkUdp.Checked;
                 cfg.EnableRst = chkRst.Checked;
+                cfg.Ports = selectedPorts;
                 if (int.TryParse(txtTimeout.Text.Trim(), out int t) && t > 0)
                 {
                     cfg.HttpTimeoutSeconds = t;
@@ -763,6 +1026,61 @@ namespace IspAudit
             }
         }
 
+        private async void BtnExportReport_Click(object? sender, EventArgs e)
+        {
+            if (_lastRun == null)
+            {
+                MessageBox.Show(this, "Сначала выполните проверку.", "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using var sfd = new SaveFileDialog
+            {
+                Filter = "HTML (*.html)|*.html|PDF (*.pdf)|*.pdf",
+                FileName = "isp_report.html"
+            };
+
+            if (sfd.ShowDialog(this) == DialogResult.OK)
+            {
+                try
+                {
+                    UseWaitCursor = true;
+                    btnExportReport.Enabled = false;
+                    var ext = Path.GetExtension(sfd.FileName).ToLowerInvariant();
+                    if (ext == ".pdf")
+                    {
+                        await Output.ReportWriter.SavePdfReportAsync(_lastRun, _lastConfig, sfd.FileName).ConfigureAwait(true);
+                    }
+                    else
+                    {
+                        await Output.ReportWriter.SaveHtmlReportAsync(_lastRun, _lastConfig, sfd.FileName).ConfigureAwait(true);
+                    }
+
+                    var dialogResult = MessageBox.Show(this, "Отчёт сохранён:\r\n" + sfd.FileName + "\r\n\r\nОткрыть файл сейчас?", "ISP Audit", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+                    if (dialogResult == DialogResult.Yes)
+                    {
+                        try
+                        {
+                            Process.Start(new ProcessStartInfo { FileName = sfd.FileName, UseShellExecute = true });
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show(this, "Не удалось открыть файл:\r\n" + ex.Message, "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "Не удалось экспортировать отчёт:\r\n" + ex.Message, "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    UseWaitCursor = false;
+                    btnExportReport.Enabled = _lastRun != null;
+                }
+            }
+        }
+
         private void BtnShowReport_Click(object? sender, EventArgs e)
         {
             if (_lastRun == null)
@@ -787,6 +1105,23 @@ namespace IspAudit
                 _lastAdviceText = Output.ReportWriter.BuildAdviceText(_lastRun);
             }
             ShowTextWindow("Что делать дальше", _lastAdviceText);
+        }
+
+        private void BtnCopySummary_Click(object? sender, EventArgs e)
+        {
+            if (!_summaryReady || string.IsNullOrWhiteSpace(_lastSummaryCompactText))
+            {
+                MessageBox.Show(this, "Итог появится после завершения проверки.", "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            try
+            {
+                Clipboard.SetText(_lastSummaryCompactText);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Не удалось скопировать итог: " + ex.Message, "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private void BtnCopyReport_Click(object? sender, EventArgs e)
@@ -919,6 +1254,7 @@ namespace IspAudit
             lblSummaryRecommendations.Text = advice;
 
             _lastSummaryPlainText = $"Статус: {lblSummaryStatus.Text}{Environment.NewLine}{Environment.NewLine}Проблемы:{Environment.NewLine}{lblSummaryIssues.Text}{Environment.NewLine}{Environment.NewLine}Рекомендации:{Environment.NewLine}{advice}";
+            _lastSummaryCompactText = Output.ReportWriter.BuildCompactSummaryText(run, advice);
             _summaryReady = true;
             _bypassActivationAllowed = hasIssues;
             UpdateSummaryActionsState();
@@ -976,25 +1312,14 @@ namespace IspAudit
             return issues.ToString();
         }
 
-        private static string FormatStatus(string status)
-        {
-            return status switch
-            {
-                "OK" => "норма",
-                "WARN" => "есть предупреждения",
-                "FAIL" => "не пройдено",
-                "SUSPECT" => "подозрение на блокировку",
-                "DNS_BOGUS" => "ошибочные ответы",
-                "DNS_FILTERED" => "возможна фильтрация",
-                "UNKNOWN" => "нет данных",
-                _ => status
-            };
-        }
+        private static string FormatStatus(string status) => Output.ReportWriter.GetReadableStatus(status);
 
         private void UpdateSummaryActionsState()
         {
             btnSummaryActions.Enabled = _summaryReady;
+            btnCopySummary.Enabled = _summaryReady;
             btnCopyReport.Enabled = _summaryReady;
+            btnExportReport.Enabled = _lastRun != null;
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
@@ -1089,12 +1414,27 @@ namespace IspAudit
             var btnClose = new Button { Text = "Закрыть", AutoSize = true };
             btnClose.Click += (_, _) => popup.Close();
 
-            var btnCopy = new Button { Text = "Скопировать отчёт", AutoSize = true };
-            btnCopy.Click += (_, _) =>
+            var btnCopyCompact = new Button { Text = "Скопировать итог", AutoSize = true };
+            btnCopyCompact.Click += (_, _) =>
             {
                 try
                 {
-                    Clipboard.SetText(_lastSummaryPlainText);
+                    if (!string.IsNullOrWhiteSpace(_lastSummaryCompactText))
+                        Clipboard.SetText(_lastSummaryCompactText);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(popup, "Не удалось скопировать итог: " + ex.Message, "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+
+            var btnCopyFull = new Button { Text = "Скопировать отчёт", AutoSize = true };
+            btnCopyFull.Click += (_, _) =>
+            {
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(_lastSummaryPlainText))
+                        Clipboard.SetText(_lastSummaryPlainText);
                 }
                 catch (Exception ex)
                 {
@@ -1106,7 +1446,8 @@ namespace IspAudit
             btnDetails.Click += (_, _) => BtnSummaryActions_Click(btnDetails, EventArgs.Empty);
 
             buttonsPanel.Controls.Add(btnClose);
-            buttonsPanel.Controls.Add(btnCopy);
+            buttonsPanel.Controls.Add(btnCopyFull);
+            buttonsPanel.Controls.Add(btnCopyCompact);
             buttonsPanel.Controls.Add(btnDetails);
 
             layout.Controls.Add(statusLabel, 0, 0);
