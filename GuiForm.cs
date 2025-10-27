@@ -46,6 +46,8 @@ namespace IspAudit
         private CancellationTokenSource? _cts;
         private string _lastAdviceText = string.Empty;
         private string _lastSummaryPlainText = string.Empty;
+        private Form? _summaryPopup;
+        private bool _summaryReady;
 
         public GuiForm()
         {
@@ -69,6 +71,8 @@ namespace IspAudit
             btnSummaryActions.Click += BtnSummaryActions_Click;
             btnCopyReport = new Button { Text = "Скопировать отчёт", AutoSize = true };
             btnCopyReport.Click += BtnCopyReport_Click;
+            btnSummaryActions.Enabled = false;
+            btnCopyReport.Enabled = false;
 
             chkDns = new CheckBox { AutoSize = true, Text = "DNS", Checked = true };
             chkTcp = new CheckBox { AutoSize = true, Text = "TCP", Checked = true };
@@ -409,6 +413,9 @@ namespace IspAudit
             lblSummaryRecommendations.Text = string.Empty;
             _lastAdviceText = string.Empty;
             _lastSummaryPlainText = string.Empty;
+            _summaryReady = false;
+            UpdateSummaryActionsState();
+            CloseSummaryPopup();
 
             SaveListViewToProgramTargets();
 
@@ -452,6 +459,9 @@ namespace IspAudit
                 lblStatus.Text = "Проверка остановлена";
                 lblSummaryStatus.Text = "Проверка остановлена";
                 lblSummaryStatus.ForeColor = System.Drawing.Color.DimGray;
+                lblSummaryRecommendations.Text = string.Empty;
+                _summaryReady = false;
+                UpdateSummaryActionsState();
             }
             catch (Exception ex)
             {
@@ -459,6 +469,9 @@ namespace IspAudit
                 lblSummaryStatus.Text = "Произошла ошибка";
                 lblSummaryStatus.ForeColor = System.Drawing.Color.Crimson;
                 lblSummaryIssues.Text = ex.Message;
+                lblSummaryRecommendations.Text = string.Empty;
+                _summaryReady = false;
+                UpdateSummaryActionsState();
             }
             finally
             {
@@ -518,7 +531,7 @@ namespace IspAudit
 
         private void BtnSummaryActions_Click(object? sender, EventArgs e)
         {
-            if (_lastRun == null)
+            if (!_summaryReady || _lastRun == null)
             {
                 MessageBox.Show(this, "Сначала выполните проверку.", "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -532,7 +545,7 @@ namespace IspAudit
 
         private void BtnCopyReport_Click(object? sender, EventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(_lastSummaryPlainText))
+            if (!_summaryReady || string.IsNullOrWhiteSpace(_lastSummaryPlainText))
             {
                 MessageBox.Show(this, "Отчёт появится после завершения проверки.", "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -657,6 +670,9 @@ namespace IspAudit
             lblSummaryRecommendations.Text = advice;
 
             _lastSummaryPlainText = $"Статус: {lblSummaryStatus.Text}{Environment.NewLine}{Environment.NewLine}Проблемы:{Environment.NewLine}{lblSummaryIssues.Text}{Environment.NewLine}{Environment.NewLine}Рекомендации:{Environment.NewLine}{advice}";
+            _summaryReady = true;
+            UpdateSummaryActionsState();
+            ShowSummaryPopup(lblSummaryStatus.Text, lblSummaryIssues.Text, advice, hasIssues);
         }
 
         private static bool HasIssues(Output.RunReport run)
@@ -722,6 +738,130 @@ namespace IspAudit
                 "UNKNOWN" => "нет данных",
                 _ => status
             };
+        }
+
+        private void UpdateSummaryActionsState()
+        {
+            btnSummaryActions.Enabled = _summaryReady;
+            btnCopyReport.Enabled = _summaryReady;
+        }
+
+        private void CloseSummaryPopup()
+        {
+            if (_summaryPopup != null)
+            {
+                if (!_summaryPopup.IsDisposed)
+                {
+                    _summaryPopup.Close();
+                }
+                _summaryPopup = null;
+            }
+        }
+
+        private void ShowSummaryPopup(string status, string issues, string advice, bool hasIssues)
+        {
+            CloseSummaryPopup();
+
+            var popup = new Form
+            {
+                Text = "Итоги проверки",
+                Width = 540,
+                Height = 420,
+                StartPosition = FormStartPosition.CenterParent,
+                MinimizeBox = false,
+                MaximizeBox = false
+            };
+
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 4,
+                Padding = new Padding(12)
+            };
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+            var statusLabel = new Label
+            {
+                Text = status,
+                AutoSize = true,
+                Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold),
+                ForeColor = hasIssues ? System.Drawing.Color.Crimson : System.Drawing.Color.ForestGreen,
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 0, 0, 8)
+            };
+
+            var issuesBox = new TextBox
+            {
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Dock = DockStyle.Fill,
+                Text = issues,
+                Font = new System.Drawing.Font("Segoe UI", 9F)
+            };
+
+            var adviceBox = new TextBox
+            {
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Dock = DockStyle.Fill,
+                Text = advice,
+                Font = new System.Drawing.Font("Segoe UI", 9F)
+            };
+
+            var buttonsPanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.RightToLeft,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink
+            };
+
+            var btnClose = new Button { Text = "Закрыть", AutoSize = true };
+            btnClose.Click += (_, _) => popup.Close();
+
+            var btnCopy = new Button { Text = "Скопировать отчёт", AutoSize = true };
+            btnCopy.Click += (_, _) =>
+            {
+                try
+                {
+                    Clipboard.SetText(_lastSummaryPlainText);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(popup, "Не удалось скопировать отчёт: " + ex.Message, "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+
+            var btnDetails = new Button { Text = "Что делать?", AutoSize = true };
+            btnDetails.Click += (_, _) => BtnSummaryActions_Click(btnDetails, EventArgs.Empty);
+
+            buttonsPanel.Controls.Add(btnClose);
+            buttonsPanel.Controls.Add(btnCopy);
+            buttonsPanel.Controls.Add(btnDetails);
+
+            layout.Controls.Add(statusLabel, 0, 0);
+            layout.Controls.Add(issuesBox, 0, 1);
+            layout.Controls.Add(adviceBox, 0, 2);
+            layout.Controls.Add(buttonsPanel, 0, 3);
+
+            popup.Controls.Add(layout);
+
+            popup.FormClosed += (_, _) =>
+            {
+                if (_summaryPopup == popup)
+                {
+                    _summaryPopup = null;
+                }
+            };
+
+            _summaryPopup = popup;
+            popup.Show(this);
         }
     }
 }
