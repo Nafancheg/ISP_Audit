@@ -55,6 +55,12 @@ namespace IspAudit
                         targetReport.dns_status = dnsRes.Status.ToString();
                         progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, $"{def.Name}: завершено", true, targetReport.dns_status));
                     }
+                    else
+                    {
+                        targetReport.dns_status = "SKIPPED";
+                        var message = config.EnableDns ? "пропущено: не требуется для этой цели" : "пропущено: тест отключён";
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, $"{def.Name}: пропущено", true, message));
+                    }
 
                     if (plan.RunTcp)
                     {
@@ -64,6 +70,11 @@ namespace IspAudit
                         bool ok = targetReport.tcp.Exists(r => r.open);
                         progress?.Report(new Tests.TestProgress(Tests.TestKind.TCP, $"{def.Name}: завершено", ok, ok?"open найден":"все закрыто"));
                     }
+                    else
+                    {
+                        var message = config.EnableTcp ? "пропущено: тест TCP не требуется" : "пропущено: тест отключён";
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TCP, $"{def.Name}: пропущено", true, message));
+                    }
 
                     if (plan.RunHttp)
                     {
@@ -72,6 +83,11 @@ namespace IspAudit
                         targetReport.http = await httpTest.CheckAsync(def.Host).ConfigureAwait(false);
                         bool ok = targetReport.http.Exists(h => h.success && h.status is >= 200 and < 400);
                         progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{def.Name}: завершено", ok, ok?"2xx/3xx":"ошибки/таймаут"));
+                    }
+                    else
+                    {
+                        var message = config.EnableHttp ? "пропущено: HTTPS не применяется" : "пропущено: тест отключён";
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{def.Name}: пропущено", true, message));
                     }
 
                     if (plan.RunTrace)
@@ -86,12 +102,23 @@ namespace IspAudit
                         bool ok = targetReport.traceroute.hops.Count > 0;
                         progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{def.Name}: завершено", ok));
                     }
+                    else
+                    {
+                        string message;
+                        if (!config.EnableTrace)
+                            message = "пропущено: тест отключён";
+                        else if (config.NoTrace)
+                            message = "пропущено: трассировка отключена в настройках";
+                        else
+                            message = "пропущено: не требуется для этой цели";
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{def.Name}: пропущено", true, message));
+                    }
 
                     run.targets[def.Name] = targetReport;
                 }
 
                 // финальные агрегированные статусы по per-target тестам
-                if (config.EnableDns)
+                if (config.EnableDns && run.targets.Values.Any(t => t.dns_enabled))
                 {
                     bool fail = false; bool warn = false; bool any = false;
                     foreach (var t in run.targets.Values)
@@ -104,8 +131,12 @@ namespace IspAudit
                     var msg = !any ? "не требуется" : (fail ? "обнаружены BOGUS/FILTERED" : (warn ? "есть WARN" : "OK"));
                     progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, "сводка", !fail, msg));
                 }
+                else if (config.EnableDns)
+                {
+                    progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, "сводка", true, "не требовалось"));
+                }
 
-                if (config.EnableTcp)
+                if (config.EnableTcp && run.targets.Values.Any(t => t.tcp_enabled))
                 {
                     bool fail = false; bool any = false;
                     foreach (var t in run.targets.Values)
@@ -118,8 +149,12 @@ namespace IspAudit
                     var msg = !any ? "не требуется" : (!fail ? "порт(ы) открыты" : "все закрыто");
                     progress?.Report(new Tests.TestProgress(Tests.TestKind.TCP, "сводка", !fail, msg));
                 }
+                else if (config.EnableTcp)
+                {
+                    progress?.Report(new Tests.TestProgress(Tests.TestKind.TCP, "сводка", true, "не требовалось"));
+                }
 
-                if (config.EnableHttp)
+                if (config.EnableHttp && run.targets.Values.Any(t => t.http_enabled))
                 {
                     bool fail = false; bool any = false;
                     foreach (var t in run.targets.Values)
@@ -132,8 +167,12 @@ namespace IspAudit
                     var msg = !any ? "не требуется" : (!fail ? "2xx/3xx есть" : "ошибки/таймаут");
                     progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, "сводка", !fail, msg));
                 }
+                else if (config.EnableHttp)
+                {
+                    progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, "сводка", true, "не требовалось"));
+                }
 
-                if (config.EnableTrace && !config.NoTrace)
+                if (config.EnableTrace && !config.NoTrace && run.targets.Values.Any(t => t.trace_enabled))
                 {
                     bool fail = false; bool any = false;
                     foreach (var t in run.targets.Values)
@@ -144,6 +183,10 @@ namespace IspAudit
                     }
                     var msg = !any ? "не требуется" : (!fail ? "готово" : "нет маршрута");
                     progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, "сводка", !fail, msg));
+                }
+                else if (config.EnableTrace && !config.NoTrace)
+                {
+                    progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, "сводка", true, "не требовалось"));
                 }
             }
 
