@@ -170,6 +170,40 @@ namespace IspAudit
                 ForeColor = System.Drawing.Color.Black
             };
 
+            lblBypassTitle = new Label
+            {
+                Text = "Обход блокировок",
+                AutoSize = true,
+                Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold),
+                Margin = new Padding(0, 0, 0, 4)
+            };
+
+            lblBypassHint = new Label
+            {
+                Text = "WinDivert требует запуск программы от имени администратора. Модуль фильтрует TCP RST, " +
+                       "фрагментирует TLS ClientHello и может переадресовывать трафик Star Citizen.",
+                AutoSize = true,
+                MaximumSize = new Size(640, 0),
+                ForeColor = Color.DimGray,
+                Margin = new Padding(0, 0, 0, 4)
+            };
+
+            lblBypassStatus = new Label
+            {
+                Text = "WinDivert не активен",
+                AutoSize = true,
+                ForeColor = Color.DimGray,
+                Margin = new Padding(0, 0, 0, 4)
+            };
+
+            btnBypassToggle = new Button
+            {
+                Text = "Включить обход",
+                AutoSize = true,
+                Enabled = false
+            };
+            btnBypassToggle.Click += BtnBypassToggle_Click;
+
             var summaryLayout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -534,40 +568,6 @@ namespace IspAudit
 
         private Panel BuildBypassPanel()
         {
-            lblBypassTitle = new Label
-            {
-                Text = "Обход блокировок",
-                AutoSize = true,
-                Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold),
-                Margin = new Padding(0, 0, 0, 4)
-            };
-
-            lblBypassHint = new Label
-            {
-                Text = "WinDivert требует запуск программы от имени администратора. Модуль фильтрует TCP RST, " +
-                       "фрагментирует TLS ClientHello и может переадресовывать трафик Star Citizen.",
-                AutoSize = true,
-                MaximumSize = new Size(640, 0),
-                ForeColor = Color.DimGray,
-                Margin = new Padding(0, 0, 0, 4)
-            };
-
-            lblBypassStatus = new Label
-            {
-                Text = "WinDivert не активен",
-                AutoSize = true,
-                ForeColor = Color.DimGray,
-                Margin = new Padding(0, 0, 0, 4)
-            };
-
-            btnBypassToggle = new Button
-            {
-                Text = "Включить обход",
-                AutoSize = true,
-                Enabled = false
-            };
-            btnBypassToggle.Click += BtnBypassToggle_Click;
-
             var textLayout = new TableLayoutPanel
             {
                 ColumnCount = 1,

@@ -69,8 +69,12 @@ namespace IspAudit.Bypass
                     FragmentTlsClientHello = doc.FragmentTlsClientHello,
                     TlsFirstFragmentSize = doc.TlsFirstFragmentSize > 0 ? doc.TlsFirstFragmentSize : 64,
                     TlsFragmentThreshold = doc.TlsFragmentThreshold > 0 ? doc.TlsFragmentThreshold : 128,
-                    RedirectRules = doc.RedirectRules?.Select(r => r.ToRule()).Where(r => r != null)!.Cast<BypassRedirectRule>().ToList()
-                        ?? Array.Empty<BypassRedirectRule>()
+                    RedirectRules = doc.RedirectRules?
+                        .Select(r => r.ToRule())
+                        .Where(r => r != null)!
+                        .Cast<BypassRedirectRule>()
+                        .ToList()
+                        ?? new List<BypassRedirectRule>()
                 };
             }
             catch
