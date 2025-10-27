@@ -45,6 +45,10 @@ namespace IspAudit.Output
         public List<TcpResult> tcp { get; set; } = new();
         public List<HttpResult> http { get; set; } = new();
         public TraceResult? traceroute { get; set; }
+        public bool dns_executed { get; set; }
+        public bool tcp_executed { get; set; }
+        public bool http_executed { get; set; }
+        public bool trace_executed { get; set; }
     }
 
     public static class ReportWriter
@@ -85,13 +89,19 @@ namespace IspAudit.Output
                 nameof(DnsStatus.OK) => "OK",
                 _ => "UNKNOWN"
             };
-            var dnsStatuses = run.targets.Values.Select(t => DnsRank(t.dns_status)).ToList();
-            summary.dns = dnsStatuses.Contains("DNS_BOGUS") ? "DNS_BOGUS" :
+            var dnsStatuses = run.targets.Values
+                .Where(t => t.dns_executed)
+                .Select(t => DnsRank(t.dns_status))
+                .ToList();
+            summary.dns = dnsStatuses.Count == 0 ? "UNKNOWN" :
+                          dnsStatuses.Contains("DNS_BOGUS") ? "DNS_BOGUS" :
                           dnsStatuses.Contains("DNS_FILTERED") ? "DNS_FILTERED" :
-                          dnsStatuses.Contains("WARN") ? "WARN" :
-                          dnsStatuses.Count > 0 ? "OK" : "UNKNOWN";
+                          dnsStatuses.Contains("WARN") ? "WARN" : "OK";
 
-            var tcpAll = run.targets.Values.SelectMany(t => t.tcp).ToList();
+            var tcpAll = run.targets.Values
+                .Where(t => t.tcp_executed)
+                .SelectMany(t => t.tcp)
+                .ToList();
             if (tcpAll.Count == 0) summary.tcp = "UNKNOWN";
             else summary.tcp = tcpAll.Any(r => r.open) ? "OK" : "FAIL";
 
@@ -112,14 +122,21 @@ namespace IspAudit.Output
 
             bool anyTlsOk = false;
             bool suspect = false;
-            foreach (var t in run.targets.Values)
+            foreach (var t in run.targets.Values.Where(t => t.http_executed))
             {
                 bool tcp443Open = t.tcp.Any(r => r.port == 443 && r.open);
                 bool httpOk = t.http.Any(h => h.success && h.status is >= 200 and < 400);
                 if (httpOk) anyTlsOk = true;
                 if (tcp443Open && !httpOk) suspect = true;
             }
-            summary.tls = suspect ? "SUSPECT" : (anyTlsOk ? "OK" : (run.targets.Count == 0 ? "UNKNOWN" : "FAIL"));
+            if (!run.targets.Values.Any(t => t.http_executed))
+            {
+                summary.tls = "UNKNOWN";
+            }
+            else
+            {
+                summary.tls = suspect ? "SUSPECT" : (anyTlsOk ? "OK" : "FAIL");
+            }
 
             if (run.rst_heuristic == null) summary.rst_inject = "UNKNOWN";
             else summary.rst_inject = "UNKNOWN";
@@ -184,15 +201,33 @@ namespace IspAudit.Output
                 lines.Add("— Убедитесь, что провайдер не блокирует исходящие UDP 64090+ и что NAT/UPnP открывает сессии для игры.");
             }
 
+            if (run.summary.tls == "FAIL")
+            {
+                var tlsFails = run.targets
+                    .Where(kv => kv.Value.http_executed && !kv.Value.http.Any(h => h.success && h.status is >= 200 and < 400))
+                    .Select(FormatTarget)
+                    .ToList();
+                if (tlsFails.Count > 0)
+                {
+                    lines.Add($"HTTPS: нет ответа от {string.Join(", ", tlsFails)}.");
+                    lines.Add("— Попробуйте VPN или обход DPI, проверьте локальные фильтры HTTPS и брандмауэр.");
+                }
+            }
+
             if (run.summary.tls == "SUSPECT")
             {
                 var tlsSuspects = run.targets
-                    .Where(kv => kv.Value.tcp.Any(r => r.port == 443 && r.open) && !kv.Value.http.Any(h => h.success && h.status is >= 200 and < 400))
+                    .Where(kv => kv.Value.http_executed && kv.Value.tcp.Any(r => r.port == 443 && r.open) && !kv.Value.http.Any(h => h.success && h.status is >= 200 and < 400))
                     .Select(FormatTarget)
                     .ToList();
                 var suffix = tlsSuspects.Count > 0 ? $": {string.Join(", ", tlsSuspects)}" : string.Empty;
                 lines.Add($"TLS: подозрение на блокировку TLS/SNI{suffix} — TCP:443 открыт, но HTTPS не отвечает.");
                 lines.Add("— Попробуйте VPN, прокси по HTTPS/HTTP2, либо дождитесь разблокировки. Для лаунчера можно временно переключиться на альтернативную сеть.");
+            }
+
+            if (!run.targets.Values.Any(t => t.http_executed))
+            {
+                lines.Add("HTTPS для выбранных целей не проверялся (не требуется). Если нужен тест TLS, добавьте цели портала или лаунчера.");
             }
 
             if (lines.Count == 0)
@@ -246,26 +281,69 @@ namespace IspAudit.Output
                 var serviceLabel = string.IsNullOrWhiteSpace(t.service) ? string.Empty : $" [{t.service}]";
                 W($"Target: {kv.Key}{serviceLabel}");
                 W($"  host: {t.host}");
-                W($"  system_dns: [{string.Join(", ", t.system_dns)}]");
-                W($"  doh:        [{string.Join(", ", t.doh)}]");
-                W($"  dns_status: {t.dns_status}");
 
-                W("  tcp:");
-                foreach (var r in t.tcp)
-                    W($"    {r.ip}:{r.port} -> {(r.open ? "open" : "closed")} ({r.elapsed_ms} ms)");
-
-                W("  http:");
-                foreach (var h in t.http)
+                if (t.dns_executed)
                 {
-                    string status = h.success ? (h.status?.ToString() ?? "-") : (h.error ?? "error");
-                    W($"    {h.url} => {status}{(string.IsNullOrEmpty(h.cert_cn) ? "" : $", cert={h.cert_cn}")}");
+                    W($"  system_dns: [{string.Join(", ", t.system_dns)}]");
+                    W($"  doh:        [{string.Join(", ", t.doh)}]");
+                    W($"  dns_status: {t.dns_status}");
+                }
+                if (!t.dns_executed)
+                {
+                    W("  dns: тест не выполнялся (не требуется)");
                 }
 
-                if (t.traceroute != null && t.traceroute.hops.Count > 0)
+                if (t.tcp_executed && t.tcp.Count > 0)
+                {
+                    W("  tcp:");
+                    foreach (var r in t.tcp)
+                    {
+                        W($"    {r.ip}:{r.port} -> {(r.open ? "open" : "closed")} ({r.elapsed_ms} ms)");
+                    }
+                }
+                if (t.tcp_executed && t.tcp.Count == 0)
+                {
+                    W("  tcp: результатов нет (проверка выполнена)");
+                }
+                if (!t.tcp_executed)
+                {
+                    W("  tcp: тест не выполнялся (не требуется)");
+                }
+
+                if (t.http_executed && t.http.Count > 0)
+                {
+                    W("  http:");
+                    foreach (var h in t.http)
+                    {
+                        string status = h.success ? (h.status?.ToString() ?? "-") : (h.error ?? "error");
+                        var certSuffix = string.IsNullOrEmpty(h.cert_cn) ? string.Empty : $", cert={h.cert_cn}";
+                        W($"    {h.url} => {status}{certSuffix}");
+                    }
+                }
+                if (t.http_executed && t.http.Count == 0)
+                {
+                    W("  http: результатов нет (проверка выполнена)");
+                }
+                if (!t.http_executed)
+                {
+                    W("  http: тест не выполнялся (не требуется)");
+                }
+
+                if (t.trace_executed && t.traceroute != null && t.traceroute.hops.Count > 0)
                 {
                     W("  traceroute:");
                     foreach (var hop in t.traceroute.hops)
+                    {
                         W($"    {hop.hop}\t{hop.ip}\t{hop.status}");
+                    }
+                }
+                if (t.trace_executed && (t.traceroute == null || t.traceroute.hops.Count == 0))
+                {
+                    W("  traceroute: нет ответов или таймаут");
+                }
+                if (!t.trace_executed)
+                {
+                    W("  traceroute: тест не выполнялся (не требуется)");
                 }
 
                 W();
@@ -340,20 +418,12 @@ namespace IspAudit.Output
             var targetSummaries = BuildTargetSummaries(run);
             var udpSummaries = BuildUdpSummaries(run);
 
-            static string ParagraphsToHtml(IEnumerable<string> paragraphs)
-            {
-                var sb = new StringBuilder();
-                foreach (var paragraph in paragraphs)
-                {
-                    if (string.IsNullOrWhiteSpace(paragraph)) continue;
-                    sb.Append("<p>");
-                    sb.Append(paragraph);
-                    sb.AppendLine("</p>");
-                }
-                return sb.ToString();
-            }
-
-            string adviceHtml = ParagraphsToHtml(advice.Split(Environment.NewLine).Select(line => HtmlEncode(line.Trim())));
+            var adviceParagraphs = advice
+                .Split(Environment.NewLine)
+                .Select(line => line.Trim())
+                .Where(line => !string.IsNullOrEmpty(line))
+                .Select(line => $"<p>{HtmlEncode(line)}</p>")
+                .ToList();
             var sbHtml = new StringBuilder();
             sbHtml.AppendLine("<!DOCTYPE html>");
             sbHtml.AppendLine("<html lang=\"ru\">");
@@ -455,9 +525,12 @@ namespace IspAudit.Output
             sbHtml.AppendLine("  <section>");
             sbHtml.AppendLine("    <h2>Рекомендации</h2>");
             sbHtml.AppendLine("    <div class=\"recommendations\">");
-            if (!string.IsNullOrWhiteSpace(adviceHtml))
+            if (adviceParagraphs.Count > 0)
             {
-                sbHtml.Append(adviceHtml);
+                foreach (var paragraph in adviceParagraphs)
+                {
+                    sbHtml.AppendLine(paragraph);
+                }
             }
             else
             {
@@ -666,7 +739,10 @@ namespace IspAudit.Output
                 bool anyOpen = t.tcp.Any(r => r.open);
                 bool httpOk = t.http.Any(h => h.success && h.status is >= 200 and < 400);
                 string name = string.IsNullOrWhiteSpace(t.display_name) ? kv.Key : t.display_name;
-                list.Add($"{name}: DNS {GetReadableStatus(t.dns_status)}, TCP {(anyOpen ? "доступны" : "закрыты")}, HTTPS {(httpOk ? "отвечает" : "не отвечает")}");
+                string dnsText = t.dns_executed ? GetReadableStatus(t.dns_status) : "не проверялось";
+                string tcpText = t.tcp_executed ? (anyOpen ? "доступны" : "закрыты") : "не проверялись";
+                string httpText = t.http_executed ? (httpOk ? "отвечает" : "не отвечает") : "не проверялся";
+                list.Add($"{name}: DNS {dnsText}, TCP {tcpText}, HTTPS {httpText}");
             }
             return list;
         }
