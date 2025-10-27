@@ -189,7 +189,7 @@ namespace IspAudit
 
             if (Targets.Count == 0)
             {
-                return map.Values.Select(t => t.Clone()).ToList();
+                return map.Values.Select(t => t.Copy()).ToList();
             }
 
             var result = new List<TargetDefinition>();
@@ -198,7 +198,7 @@ namespace IspAudit
                 var matched = map.Values.FirstOrDefault(t => string.Equals(t.Host, host, StringComparison.OrdinalIgnoreCase));
                 if (matched != null)
                 {
-                    result.Add(matched.Clone());
+                    result.Add(matched.Copy());
                     continue;
                 }
 

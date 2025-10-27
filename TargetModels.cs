@@ -11,7 +11,7 @@ namespace IspAudit
         public string Host { get; init; } = string.Empty;
         public string Service { get; init; } = string.Empty;
 
-        public TargetDefinition Clone() => this with { };
+        public TargetDefinition Copy() => this with { };
     }
 
     public enum UdpProbeKind
@@ -32,7 +32,7 @@ namespace IspAudit
         public string? PayloadHex { get; init; }
         public string? Note { get; init; }
 
-        public UdpProbeDefinition Clone() => this with { };
+        public UdpProbeDefinition Copy() => this with { };
     }
 
     public class TargetCatalogData

@@ -63,7 +63,7 @@ namespace IspAudit
             var run = await AuditRunner.RunAsync(new Config
             {
                 Targets = targets,
-                TargetMap = config.TargetMap.ToDictionary(kv => kv.Key, kv => kv.Value.Clone(), StringComparer.OrdinalIgnoreCase),
+                TargetMap = config.TargetMap.ToDictionary(kv => kv.Key, kv => kv.Value.Copy(), StringComparer.OrdinalIgnoreCase),
                 ReportPath = config.ReportPath,
                 Verbose = config.Verbose,
                 PrintJson = config.PrintJson,
@@ -72,7 +72,7 @@ namespace IspAudit
                 TcpTimeoutSeconds = config.TcpTimeoutSeconds,
                 UdpTimeoutSeconds = config.UdpTimeoutSeconds,
                 Ports = new List<int>(config.Ports),
-                UdpProbes = config.UdpProbes.Select(p => p.Clone()).ToList()
+                UdpProbes = config.UdpProbes.Select(p => p.Copy()).ToList()
             }).ConfigureAwait(false);
             run.cli = string.Join(' ', args);
             run.ext_ip = extIp;
@@ -98,7 +98,7 @@ namespace IspAudit
         public static async Task RunAllChecksAsync()
         {
             var config = Config.Default();
-            config.TargetMap = Targets.ToDictionary(kv => kv.Key, kv => kv.Value.Clone(), StringComparer.OrdinalIgnoreCase);
+            config.TargetMap = Targets.ToDictionary(kv => kv.Key, kv => kv.Value.Copy(), StringComparer.OrdinalIgnoreCase);
             config.Targets = config.TargetMap.Values.Select(t => t.Host).Distinct().ToList();
             await Main(config.ToArgsArray());
         }

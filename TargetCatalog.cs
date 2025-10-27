@@ -54,25 +54,25 @@ namespace IspAudit
             UdpProbes = data.UdpProbes.Count > 0 ? data.UdpProbes : fallback.UdpProbes;
             TargetsByHost = Targets
                 .GroupBy(t => t.Host, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(g => g.Key, g => g.First().Clone(), StringComparer.OrdinalIgnoreCase);
+                .ToDictionary(g => g.Key, g => g.First().Copy(), StringComparer.OrdinalIgnoreCase);
         }
 
         public static Dictionary<string, TargetDefinition> CreateDefaultTargetMap()
         {
-            return Targets.ToDictionary(t => t.Name, t => t.Clone(), StringComparer.OrdinalIgnoreCase);
+            return Targets.ToDictionary(t => t.Name, t => t.Copy(), StringComparer.OrdinalIgnoreCase);
         }
 
         public static List<int> CreateDefaultTcpPorts() => new(DefaultTcpPorts);
 
         public static List<UdpProbeDefinition> CreateDefaultUdpProbes()
         {
-            return UdpProbes.Select(p => p.Clone()).ToList();
+            return UdpProbes.Select(p => p.Copy()).ToList();
         }
 
         public static TargetDefinition? TryGetByHost(string host)
         {
             if (string.IsNullOrWhiteSpace(host)) return null;
-            return TargetsByHost.TryGetValue(host, out var def) ? def.Clone() : null;
+            return TargetsByHost.TryGetValue(host, out var def) ? def.Copy() : null;
         }
 
         private static string? LocateCatalogFile()

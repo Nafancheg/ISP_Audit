@@ -217,7 +217,7 @@ namespace IspAudit
             try
             {
                 var cfg = Config.Default();
-                cfg.TargetMap = Program.Targets.ToDictionary(kv => kv.Key, kv => kv.Value.Clone(), StringComparer.OrdinalIgnoreCase);
+                cfg.TargetMap = Program.Targets.ToDictionary(kv => kv.Key, kv => kv.Value.Copy(), StringComparer.OrdinalIgnoreCase);
                 cfg.Targets = cfg.TargetMap.Values.Select(t => t.Host).ToList();
                 cfg.NoTrace = !chkTrace.Checked;
                 cfg.EnableDns = chkDns.Checked;
