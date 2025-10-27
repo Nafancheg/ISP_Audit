@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
+using System.Linq;
 using System.Threading.Tasks;
 using IspAudit.Utils;
 
@@ -14,7 +15,7 @@ namespace IspAudit.Tests
         private readonly Config _cfg;
         public TcpTest(Config cfg) { _cfg = cfg; }
 
-        public async Task<List<TcpResult>> CheckAsync(string host, List<string> systemIps)
+        public async Task<List<TcpResult>> CheckAsync(string host, List<string> systemIps, IEnumerable<int>? portsOverride = null)
         {
             var results = new List<TcpResult>();
             var ips = new List<IPAddress>();
@@ -29,9 +30,18 @@ namespace IspAudit.Tests
                 ips.AddRange(resolved);
             }
 
+            var ports = (portsOverride ?? _cfg.Ports)
+                .Where(p => p > 0 && p <= 65535)
+                .Distinct()
+                .ToList();
+            if (ports.Count == 0)
+            {
+                ports = _cfg.Ports;
+            }
+
             foreach (var ip in ips)
             {
-                foreach (var port in _cfg.Ports)
+                foreach (var port in ports)
                 {
                     var open = await ProbeWithRetry(ip, port).ConfigureAwait(false);
                     results.Add(open);
