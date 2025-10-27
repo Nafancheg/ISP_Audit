@@ -1,0 +1,21 @@
+{
+  "dropTcpRst": true,
+  "fragmentTlsClientHello": true,
+  "tlsFirstFragmentSize": 64,
+  "tlsFragmentThreshold": 128,
+  "redirectRules": [
+    {
+      "name": "Star Citizen игровые шлюзы (пример)",
+      "protocol": "Udp",
+      "port": 64090,
+      "redirectIp": "203.0.113.10",
+      "redirectPort": 64090,
+      "enabled": false,
+      "hosts": [
+        "p4eu-live.cloudimperiumgames.com",
+        "p4us-live.cloudimperiumgames.com",
+        "p4aus-live.cloudimperiumgames.com"
+      ]
+    }
+  ]
+}
