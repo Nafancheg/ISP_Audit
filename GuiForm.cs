@@ -1,11 +1,12 @@
 using System;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using IspAudit.Bypass;
 
 namespace IspAudit
 {
@@ -41,6 +42,11 @@ namespace IspAudit
         private readonly Label lblSummaryIssues;
         private readonly Label lblSummaryRecommendations;
         private readonly Panel pnlAdvanced;
+        private readonly Panel pnlBypass;
+        private readonly Label lblBypassTitle;
+        private readonly Label lblBypassHint;
+        private readonly Label lblBypassStatus;
+        private readonly Button btnBypassToggle;
 
         private readonly StringBuilder _logBuffer = new();
         private Output.RunReport? _lastRun;
@@ -50,6 +56,8 @@ namespace IspAudit
         private string _lastSummaryPlainText = string.Empty;
         private Form? _summaryPopup;
         private bool _summaryReady;
+        private readonly WinDivertBypassManager _bypassManager;
+        private bool _bypassActivationAllowed;
 
         public GuiForm()
         {
@@ -57,6 +65,10 @@ namespace IspAudit
             Text = "ISP Audit";
             Width = 1100;
             Height = 720;
+
+            _bypassManager = new WinDivertBypassManager();
+            _bypassManager.StateChanged += BypassManager_StateChanged;
+            _bypassActivationAllowed = false;
 
             btnRun = new Button { Text = "Проверить", AutoSize = true };
             btnRun.Click += BtnRun_Click;
@@ -107,6 +119,9 @@ namespace IspAudit
 
             txtName = new TextBox { Dock = DockStyle.Fill };
             txtHost = new TextBox { Dock = DockStyle.Fill };
+            cmbService = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDown };
+            cmbService.Items.AddRange(new object[] { "Портал", "Лаунчер", "CDN", "Игровые сервера", "Прочее" });
+            cmbService.SelectedIndex = cmbService.Items.Count - 1;
             btnAdd = new Button { Text = "Добавить / Обновить", AutoSize = true };
             btnRemove = new Button { Text = "Удалить", AutoSize = true };
             btnAdd.Click += BtnAdd_Click;
@@ -275,11 +290,12 @@ namespace IspAudit
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 4,
+                RowCount = 5,
                 Padding = new Padding(0, 0, 8, 0)
             };
             targetsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             targetsLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            targetsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             targetsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             targetsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             targetsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -299,10 +315,17 @@ namespace IspAudit
             hostLayout.Controls.Add(txtHost, 1, 0);
             targetsLayout.Controls.Add(hostLayout, 0, 2);
 
+            var serviceLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2 };
+            serviceLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+            serviceLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            serviceLayout.Controls.Add(new Label { Text = "Сервис", Dock = DockStyle.Fill, TextAlign = System.Drawing.ContentAlignment.MiddleLeft }, 0, 0);
+            serviceLayout.Controls.Add(cmbService, 1, 0);
+            targetsLayout.Controls.Add(serviceLayout, 0, 3);
+
             var targetButtons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
             targetButtons.Controls.Add(btnAdd);
             targetButtons.Controls.Add(btnRemove);
-            targetsLayout.Controls.Add(targetButtons, 0, 3);
+            targetsLayout.Controls.Add(targetButtons, 0, 4);
 
             advancedLayout.Controls.Add(targetsLayout, 0, 0);
 
@@ -329,23 +352,28 @@ namespace IspAudit
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 4
+                RowCount = 5
             };
+            rootLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
+            pnlBypass = BuildBypassPanel();
+
             rootLayout.Controls.Add(summaryPanel, 0, 0);
-            rootLayout.Controls.Add(runPanel, 0, 1);
-            rootLayout.Controls.Add(progressPanel, 0, 2);
-            rootLayout.Controls.Add(pnlAdvanced, 0, 3);
+            rootLayout.Controls.Add(pnlBypass, 0, 1);
+            rootLayout.Controls.Add(runPanel, 0, 2);
+            rootLayout.Controls.Add(progressPanel, 0, 3);
+            rootLayout.Controls.Add(pnlAdvanced, 0, 4);
 
             Controls.Add(rootLayout);
 
             LoadTargetsToListView();
             lvTargets.SelectedIndexChanged += LvTargets_SelectedIndexChanged;
             chkAdvanced.CheckedChanged += ChkAdvanced_CheckedChanged;
+            UpdateBypassUi();
         }
 
         private void LvTargets_SelectedIndexChanged(object? sender, EventArgs e)
@@ -385,6 +413,116 @@ namespace IspAudit
             lvTargets.Items.Remove(lvTargets.SelectedItems[0]);
         }
 
+        private async void BtnBypassToggle_Click(object? sender, EventArgs e)
+        {
+            if (!WinDivertBypassManager.IsPlatformSupported)
+            {
+                MessageBox.Show(this, "WinDivert доступен только в Windows.", "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (!WinDivertBypassManager.HasAdministratorRights)
+            {
+                MessageBox.Show(this, "Запустите программу от имени администратора для включения обхода.", "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            btnBypassToggle.Enabled = false;
+            try
+            {
+                if (_bypassManager.State == BypassState.Enabled || _bypassManager.State == BypassState.Enabling)
+                {
+                    await _bypassManager.DisableAsync();
+                }
+                else
+                {
+                    await _bypassManager.EnableAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Не удалось переключить WinDivert: " + ex.Message, "ISP Audit", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                UpdateBypassUi();
+            }
+        }
+
+        private void BypassManager_StateChanged(object? sender, EventArgs e)
+        {
+            if (!IsHandleCreated || IsDisposed) return;
+            try
+            {
+                BeginInvoke(new Action(UpdateBypassUi));
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
+        private void UpdateBypassUi()
+        {
+            if (lblBypassStatus == null || btnBypassToggle == null) return;
+
+            if (!WinDivertBypassManager.IsPlatformSupported)
+            {
+                lblBypassStatus.Text = "WinDivert доступен только в Windows.";
+                lblBypassStatus.ForeColor = Color.Crimson;
+                lblBypassHint.ForeColor = Color.DimGray;
+                btnBypassToggle.Text = "Включить обход";
+                btnBypassToggle.Enabled = false;
+                return;
+            }
+
+            if (!WinDivertBypassManager.HasAdministratorRights)
+            {
+                lblBypassStatus.Text = "Запустите программу от имени администратора, чтобы активировать WinDivert.";
+                lblBypassStatus.ForeColor = Color.DarkOrange;
+                lblBypassHint.ForeColor = Color.DarkOrange;
+                btnBypassToggle.Text = "Включить обход";
+                btnBypassToggle.Enabled = false;
+                return;
+            }
+
+            lblBypassHint.ForeColor = Color.DimGray;
+
+            switch (_bypassManager.State)
+            {
+                case BypassState.Disabled:
+                    lblBypassStatus.Text = "WinDivert выключен. Фильтрация не выполняется.";
+                    lblBypassStatus.ForeColor = Color.DimGray;
+                    btnBypassToggle.Text = "Включить обход";
+                    btnBypassToggle.Enabled = _bypassActivationAllowed;
+                    break;
+                case BypassState.Enabling:
+                    lblBypassStatus.Text = "WinDivert запускается…";
+                    lblBypassStatus.ForeColor = Color.DodgerBlue;
+                    btnBypassToggle.Text = "Включить обход";
+                    btnBypassToggle.Enabled = false;
+                    break;
+                case BypassState.Enabled:
+                    lblBypassStatus.Text = "WinDivert активен: фильтрация RST, фрагментация TLS и переадресация Star Citizen включены.";
+                    lblBypassStatus.ForeColor = Color.ForestGreen;
+                    btnBypassToggle.Text = "Выключить обход";
+                    btnBypassToggle.Enabled = true;
+                    break;
+                case BypassState.Disabling:
+                    lblBypassStatus.Text = "WinDivert останавливается…";
+                    lblBypassStatus.ForeColor = Color.DodgerBlue;
+                    btnBypassToggle.Text = "Выключить обход";
+                    btnBypassToggle.Enabled = false;
+                    break;
+                case BypassState.Faulted:
+                    var err = _bypassManager.LastError?.Message ?? "Неизвестная ошибка.";
+                    lblBypassStatus.Text = "Ошибка WinDivert: " + err;
+                    lblBypassStatus.ForeColor = Color.Crimson;
+                    btnBypassToggle.Text = "Включить обход";
+                    btnBypassToggle.Enabled = _bypassActivationAllowed;
+                    break;
+            }
+        }
+
         private void LoadTargetsToListView()
         {
             lvTargets.Items.Clear();
@@ -392,6 +530,92 @@ namespace IspAudit
             {
                 lvTargets.Items.Add(new ListViewItem(new[] { kv.Key, kv.Value.Host, kv.Value.Service }));
             }
+        }
+
+        private Panel BuildBypassPanel()
+        {
+            lblBypassTitle = new Label
+            {
+                Text = "Обход блокировок",
+                AutoSize = true,
+                Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold),
+                Margin = new Padding(0, 0, 0, 4)
+            };
+
+            lblBypassHint = new Label
+            {
+                Text = "WinDivert требует запуск программы от имени администратора. Модуль фильтрует TCP RST, " +
+                       "фрагментирует TLS ClientHello и может переадресовывать трафик Star Citizen.",
+                AutoSize = true,
+                MaximumSize = new Size(640, 0),
+                ForeColor = Color.DimGray,
+                Margin = new Padding(0, 0, 0, 4)
+            };
+
+            lblBypassStatus = new Label
+            {
+                Text = "WinDivert не активен",
+                AutoSize = true,
+                ForeColor = Color.DimGray,
+                Margin = new Padding(0, 0, 0, 4)
+            };
+
+            btnBypassToggle = new Button
+            {
+                Text = "Включить обход",
+                AutoSize = true,
+                Enabled = false
+            };
+            btnBypassToggle.Click += BtnBypassToggle_Click;
+
+            var textLayout = new TableLayoutPanel
+            {
+                ColumnCount = 1,
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink
+            };
+            textLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            textLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            textLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            textLayout.Controls.Add(lblBypassTitle, 0, 0);
+            textLayout.Controls.Add(lblBypassHint, 0, 1);
+            textLayout.Controls.Add(lblBypassStatus, 0, 2);
+
+            var buttonsLayout = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
+                Padding = new Padding(0, 4, 0, 0)
+            };
+            buttonsLayout.Controls.Add(btnBypassToggle);
+
+            var layout = new TableLayoutPanel
+            {
+                ColumnCount = 2,
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink
+            };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 75));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+            layout.Controls.Add(textLayout, 0, 0);
+            layout.Controls.Add(buttonsLayout, 1, 0);
+
+            var panel = new Panel
+            {
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Padding = new Padding(12, 6, 12, 6),
+                BackColor = Color.FromArgb(248, 250, 252)
+            };
+            panel.Controls.Add(layout);
+
+            return panel;
         }
 
         private void SaveListViewToProgramTargets()
@@ -432,6 +656,8 @@ namespace IspAudit
             _summaryReady = false;
             UpdateSummaryActionsState();
             CloseSummaryPopup();
+            _bypassActivationAllowed = false;
+            UpdateBypassUi();
 
             SaveListViewToProgramTargets();
 
@@ -479,6 +705,7 @@ namespace IspAudit
                 lblSummaryRecommendations.Text = string.Empty;
                 _summaryReady = false;
                 UpdateSummaryActionsState();
+                UpdateBypassUi();
             }
             catch (Exception ex)
             {
@@ -489,6 +716,7 @@ namespace IspAudit
                 lblSummaryRecommendations.Text = string.Empty;
                 _summaryReady = false;
                 UpdateSummaryActionsState();
+                UpdateBypassUi();
             }
             finally
             {
@@ -497,6 +725,7 @@ namespace IspAudit
                 btnRun.Enabled = true;
                 btnCancel.Enabled = false;
                 btnCancel.Visible = chkAdvanced.Checked;
+                UpdateBypassUi();
             }
         }
 
@@ -691,7 +920,9 @@ namespace IspAudit
 
             _lastSummaryPlainText = $"Статус: {lblSummaryStatus.Text}{Environment.NewLine}{Environment.NewLine}Проблемы:{Environment.NewLine}{lblSummaryIssues.Text}{Environment.NewLine}{Environment.NewLine}Рекомендации:{Environment.NewLine}{advice}";
             _summaryReady = true;
+            _bypassActivationAllowed = hasIssues;
             UpdateSummaryActionsState();
+            UpdateBypassUi();
             ShowSummaryPopup(lblSummaryStatus.Text, lblSummaryIssues.Text, advice, hasIssues);
         }
 
@@ -764,6 +995,19 @@ namespace IspAudit
         {
             btnSummaryActions.Enabled = _summaryReady;
             btnCopyReport.Enabled = _summaryReady;
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            base.OnFormClosed(e);
+            _bypassManager.StateChanged -= BypassManager_StateChanged;
+            try
+            {
+                _bypassManager.Dispose();
+            }
+            catch
+            {
+            }
         }
 
         private void CloseSummaryPopup()
