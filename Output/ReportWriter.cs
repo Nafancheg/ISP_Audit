@@ -16,7 +16,7 @@ namespace IspAudit.Output
         public string ext_ip { get; set; } = string.Empty;
         public Summary summary { get; set; } = new Summary();
         public Dictionary<string, TargetReport> targets { get; set; } = new();
-        public UdpDnsResult? udp_test { get; set; }
+        public List<UdpProbeResult> udp_tests { get; set; } = new();
         public RstHeuristicResult? rst_heuristic { get; set; }
     }
 
@@ -32,6 +32,8 @@ namespace IspAudit.Output
     public class TargetReport
     {
         public string host { get; set; } = string.Empty;
+        public string display_name { get; set; } = string.Empty;
+        public string service { get; set; } = string.Empty;
         public List<string> system_dns { get; set; } = new();
         public List<string> doh { get; set; } = new();
         public string dns_status { get; set; } = "UNKNOWN";
@@ -72,8 +74,21 @@ namespace IspAudit.Output
             if (tcpAll.Count == 0) summary.tcp = "UNKNOWN";
             else summary.tcp = tcpAll.Any(r => r.open) ? "OK" : "FAIL";
 
-            // UDP: from udp_test
-            summary.udp = run.udp_test == null ? "UNKNOWN" : (run.udp_test.reply ? "OK" : "FAIL");
+            // UDP: анализируем ожидаемые ответы
+            if (run.udp_tests == null || run.udp_tests.Count == 0)
+            {
+                summary.udp = "UNKNOWN";
+            }
+            else if (run.udp_tests.Any(r => r.expect_reply))
+            {
+                bool fail = run.udp_tests.Any(r => r.expect_reply && !r.success);
+                bool ok = run.udp_tests.Any(r => r.expect_reply && r.success);
+                summary.udp = fail ? "FAIL" : (ok ? "OK" : "UNKNOWN");
+            }
+            else
+            {
+                summary.udp = "INFO";
+            }
 
             // TLS: SUSPECT if any target has failures while TCP 443 open; else OK if any 2xx/3xx
             bool anyTlsOk = false;
@@ -97,46 +112,79 @@ namespace IspAudit.Output
         public static string BuildAdviceText(RunReport run)
         {
             var lines = new List<string>();
+            string FormatTarget(KeyValuePair<string, TargetReport> kv)
+                => string.IsNullOrWhiteSpace(kv.Value.service) ? kv.Key : $"{kv.Key} ({kv.Value.service})";
+            var udpTests = run.udp_tests ?? new List<UdpProbeResult>();
 
             // DNS advice
-            var dnsBadTargets = run.targets.Where(kv => kv.Value.dns_status == nameof(DnsStatus.DNS_BOGUS) || kv.Value.dns_status == nameof(DnsStatus.DNS_FILTERED))
-                                           .Select(kv => kv.Key).ToList();
+            var dnsBadTargets = run.targets
+                .Where(kv => kv.Value.dns_status == nameof(DnsStatus.DNS_BOGUS) || kv.Value.dns_status == nameof(DnsStatus.DNS_FILTERED))
+                .Select(FormatTarget)
+                .ToList();
             if (dnsBadTargets.Count > 0)
             {
-                lines.Add($"DNS: обнаружены проблемы у: {string.Join(", ", dnsBadTargets)}.");
-                lines.Add("— Системный DNS пуст или возвращает приватные/некорректные адреса. Возможна фильтрация провайдером.");
-                lines.Add("— Сравните с DoH (Cloudflare). Рекомендуется сменить резолвер или включить DoH/DoT в ОС/браузере (Chrome/Firefox/Windows 11).");
-                lines.Add("— Обход: DoH/DoT, DNSCrypt, VPN, или локальный резолвер (unbound) с TLS.");
+                lines.Add($"DNS: обнаружены проблемы у сервисов: {string.Join(", ", dnsBadTargets)}.");
+                lines.Add("— Системный DNS пуст или возвращает приватные/некорректные адреса. Возможна фильтрация провайдером или некорректный локальный DNS.");
+                lines.Add("— Сравните результаты с DoH (Cloudflare) и при необходимости переключите лаунчер/игру на DoH/DoT или альтернативный резолвер.");
+                lines.Add("— Обход: DoH/DoT, DNSCrypt, VPN, либо локальный резолвер (unbound) с TLS.");
             }
-            else if (run.summary.dns == "WARN")
+            else if (run.summary.dns == nameof(DnsStatus.WARN))
             {
-                lines.Add("DNS: предупреждение — системный и DoH ответы не пересекаются. Это может быть геолокация/CDN, но проверьте, нет ли невалидных IP.");
-            }
-
-            // TCP advice
-            if (run.summary.tcp == "FAIL")
-            {
-                lines.Add("TCP: все проверенные порты закрыты. Возможна блокировка на уровне сети/фаервола/провайдера.");
-                lines.Add("— Проверьте локальный фаервол/VPN, анти-вирус, ограничения роутера.");
-                lines.Add("— Обход: VPN/прокси, смена сети/роутера, проверка MTU.");
+                var warnTargets = run.targets
+                    .Where(kv => kv.Value.dns_status == nameof(DnsStatus.WARN))
+                    .Select(FormatTarget)
+                    .ToList();
+                var suffix = warnTargets.Count > 0 ? $" ({string.Join(", ", warnTargets)})" : string.Empty;
+                lines.Add($"DNS: предупреждение{suffix} — системный и DoH ответы не совпадают. Это может быть CDN, но проверьте гео/валидность IP.");
             }
 
-            // UDP advice
-            if (run.summary.udp == "FAIL")
+            // TCP advice (лаунчер/CDN/игровые сервера)
+            var tcpFailures = run.targets
+                .Where(kv => kv.Value.tcp.Count > 0 && !kv.Value.tcp.Any(r => r.open))
+                .Select(FormatTarget)
+                .ToList();
+            if (tcpFailures.Count > 0)
             {
-                lines.Add("UDP: нет ответа от 1.1.1.1:53 — возможна блокировка UDP/QUIC или проблемы DNS/периметра.");
-                lines.Add("— Обход: переключиться на DoH/DoT (HTTPS/TLS), либо использовать VPN.");
+                lines.Add($"TCP: порты закрыты для: {string.Join(", ", tcpFailures)}.");
+                lines.Add("— Проверьте, что порты 80/443 и диапазон 8000–8020 для лаунчера/патчера Star Citizen не блокируются файрволом или провайдером.");
+                lines.Add("— Обход: открыть порты на роутере, временно отключить фильтрацию, протестировать через VPN/другую сеть.");
+            }
+
+            // UDP advice (DNS + игровые шлюзы)
+            var udpExpectedFails = udpTests
+                .Where(u => u.expect_reply && !u.success)
+                .ToList();
+            if (udpExpectedFails.Count > 0)
+            {
+                lines.Add($"UDP: нет ответа от {string.Join(", ", udpExpectedFails.Select(u => $"{u.name} ({u.service})"))}.");
+                lines.Add("— Возможна блокировка UDP/QUIC на порту 53 или ограничение провайдера. Проверьте настройки роутера и брандмауэра.");
+            }
+
+            var udpRawErrors = udpTests
+                .Where(u => !u.expect_reply && !u.success)
+                .ToList();
+            if (udpRawErrors.Count > 0)
+            {
+                lines.Add($"UDP: не удалось отправить пакеты к шлюзам Star Citizen: {string.Join(", ", udpRawErrors.Select(u => $"{u.name} ({u.host}:{u.port})"))}.");
+                lines.Add("— Убедитесь, что провайдер не блокирует исходящие UDP 64090+ и что NAT/UPnP открывает сессии для игры.");
             }
 
             // TLS advice
             if (run.summary.tls == "SUSPECT")
             {
-                lines.Add("TLS: подозрение на блокировку TLS/SNI — TCP:443 открыт, но HTTPS-запросы не проходят.");
-                lines.Add("— Обход: ESNI/ECH (если доступно), прокси по HTTPS/HTTP2, VPN, зеркала по HTTP/80 (временно).");
+                var tlsSuspects = run.targets
+                    .Where(kv => kv.Value.tcp.Any(r => r.port == 443 && r.open) && !kv.Value.http.Any(h => h.success && h.status is >= 200 and < 400))
+                    .Select(FormatTarget)
+                    .ToList();
+                var suffix = tlsSuspects.Count > 0 ? $": {string.Join(", ", tlsSuspects)}" : string.Empty;
+                lines.Add($"TLS: подозрение на блокировку TLS/SNI{suffix} — TCP:443 открыт, но HTTPS не отвечает.");
+                lines.Add("— Попробуйте VPN, прокси по HTTPS/HTTP2, либо дождитесь разблокировки. Для лаунчера можно временно переключиться на альтернативную сеть.");
             }
 
             if (lines.Count == 0)
-                lines.Add("Явных проблем не выявлено. Все основные проверки пройдены.");
+            {
+                lines.Add("Явных проблем не выявлено. Все основные сервисы Star Citizen отвечают корректно.");
+            }
 
             return string.Join(Environment.NewLine, lines);
         }
@@ -180,7 +228,9 @@ namespace IspAudit.Output
             foreach (var kv in run.targets)
             {
                 var t = kv.Value;
-                W($"Target: {kv.Key}");
+                var serviceLabel = string.IsNullOrWhiteSpace(t.service) ? string.Empty : $" [{t.service}]";
+                W($"Target: {kv.Key}{serviceLabel}");
+                W($"  host: {t.host}");
                 W($"  system_dns: [{string.Join(", ", t.system_dns)}]");
                 W($"  doh:        [{string.Join(", ", t.doh)}]");
                 W($"  dns_status: {t.dns_status}");
@@ -206,11 +256,18 @@ namespace IspAudit.Output
                 W();
             }
 
-            if (run.udp_test != null)
+            if (run.udp_tests != null && run.udp_tests.Count > 0)
             {
-                var u = run.udp_test;
-                W($"UDP DNS to {u.target}: reply={(u.reply ? "yes" : "no")} rtt={u.rtt_ms?.ToString() ?? "-"}ms bytes={u.replyBytes}");
-                if (!string.IsNullOrEmpty(u.note)) W("  note: " + u.note);
+                W("UDP проверки:");
+                foreach (var u in run.udp_tests)
+                {
+                    var status = u.success ? (u.reply ? "ответ получен" : "пакет отправлен") : (u.note ?? "ошибка");
+                    var rttText = u.rtt_ms.HasValue ? $"{u.rtt_ms} мс" : "—";
+                    var expect = u.expect_reply ? "да" : "нет";
+                    W($"  {u.name} [{u.service}] {u.host}:{u.port} -> {status} (ожидался ответ: {expect}, RTT={rttText}, bytes={u.reply_bytes})");
+                    if (!string.IsNullOrWhiteSpace(u.description))
+                        W($"    описание: {u.description}");
+                }
                 W();
             }
 
