@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Linq;
 using System.Threading;
@@ -29,6 +30,7 @@ namespace IspAudit
         private readonly ListView lvSteps;
         private readonly TextBox txtName;
         private readonly TextBox txtHost;
+        private readonly ComboBox cmbService;
         private readonly Button btnAdd;
         private readonly Button btnRemove;
         private readonly TextBox txtLog;
@@ -352,12 +354,15 @@ namespace IspAudit
             var it = lvTargets.SelectedItems[0];
             txtName.Text = it.SubItems[0].Text;
             txtHost.Text = it.SubItems[1].Text;
+            cmbService.Text = it.SubItems.Count > 2 ? it.SubItems[2].Text : string.Empty;
         }
 
         private void BtnAdd_Click(object? sender, EventArgs e)
         {
             string name = txtName.Text.Trim();
             string host = txtHost.Text.Trim();
+            string service = cmbService.Text.Trim();
+            if (string.IsNullOrEmpty(service)) service = "Прочее";
             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(host)) return;
 
             for (int i = 0; i < lvTargets.Items.Count; i++)
@@ -366,10 +371,12 @@ namespace IspAudit
                     it.SubItems[0].Text.Equals(name, StringComparison.OrdinalIgnoreCase))
                 {
                     it.SubItems[1].Text = host;
+                    if (it.SubItems.Count < 3) it.SubItems.Add(service);
+                    else it.SubItems[2].Text = service;
                     return;
                 }
             }
-            lvTargets.Items.Add(new ListViewItem(new[] { name, host }));
+            lvTargets.Items.Add(new ListViewItem(new[] { name, host, service }));
         }
 
         private void BtnRemove_Click(object? sender, EventArgs e)
@@ -383,7 +390,7 @@ namespace IspAudit
             lvTargets.Items.Clear();
             foreach (var kv in Program.Targets)
             {
-                lvTargets.Items.Add(new ListViewItem(new[] { kv.Key, kv.Value }));
+                lvTargets.Items.Add(new ListViewItem(new[] { kv.Key, kv.Value.Host, kv.Value.Service }));
             }
         }
 
@@ -394,7 +401,15 @@ namespace IspAudit
             {
                 var name = it.SubItems[0].Text;
                 var host = it.SubItems[1].Text;
-                if (!Program.Targets.ContainsKey(name)) Program.Targets.Add(name, host);
+                var service = it.SubItems.Count > 2 ? it.SubItems[2].Text : string.Empty;
+                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(host)) continue;
+                var def = new TargetDefinition
+                {
+                    Name = name,
+                    Host = host,
+                    Service = string.IsNullOrWhiteSpace(service) ? "Прочее" : service
+                };
+                Program.Targets[name] = def;
             }
         }
 
@@ -423,7 +438,8 @@ namespace IspAudit
             try
             {
                 var cfg = Config.Default();
-                cfg.Targets = Program.Targets.Values.ToList();
+                cfg.TargetMap = Program.Targets.ToDictionary(kv => kv.Key, kv => kv.Value.Copy(), StringComparer.OrdinalIgnoreCase);
+                cfg.Targets = cfg.TargetMap.Values.Select(t => t.Host).ToList();
                 cfg.NoTrace = !chkTrace.Checked;
                 cfg.EnableDns = chkDns.Checked;
                 cfg.EnableTcp = chkTcp.Checked;
@@ -593,7 +609,7 @@ namespace IspAudit
                 bool httpOk = t.http.Exists(h => h.success && h.status is >= 200 and < 400);
                 sb.AppendLine($"— {kv.Key}: DNS {FormatStatus(t.dns_status)}, порты {(anyOpen ? "доступны" : "закрыты")}, HTTPS {(httpOk ? "отвечает" : "не отвечает")}");
             }
-            if (run.udp_test != null)
+            if (run.udp_tests != null && run.udp_tests.Count > 0)
             {
                 sb.AppendLine();
                 sb.AppendLine($"UDP DNS {run.udp_test.target}: {(run.udp_test.reply ? "есть ответ" : "нет ответа")}, задержка {run.udp_test.rtt_ms?.ToString() ?? "-"} мс");

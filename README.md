@@ -22,7 +22,7 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
   - Поле `Таймаут, с` — глобальный таймаут для сетевых операций (по умолчанию HTTP=12с, TCP/UDP=3с).
 - Справа сверху — таблица шагов с живыми статусами: ожидание → выполняется… → пройден (зелёный)/не пройден (красный). Отдельная строка состояния и прогресс‑бар.
 - Справа снизу — подробный лог (моноширинный шрифт Consolas). Для `Traceroute` хопы выводятся потоково в реальном времени; кодировка фикcирована (OEM866) — без «кракозябр».
-- Слева — список целей (редактируемый: Add/Update, Remove).
+- Слева — список целей (имя/домен/сервис), редактируемый: Add/Update, Remove.
 - Кнопка `Сохранить JSON` не блокирует форму: файл сохраняется в выбранный путь; ошибки отображаются диалогом.
 
 ## Использование (CLI)
@@ -41,13 +41,14 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
 - `--targets <file|list>` список через запятую или путь к JSON/CSV
 - `--report <path>` путь для JSON‑отчёта (по умолчанию `isp_report.json` в CWD)
 - `--timeout <s>` таймаут в секундах (HTTP=12с, TCP/UDP=3с по умолчанию)
-- `--ports <list>` список TCP‑портов (по умолчанию `80,443`)
+- `--ports <list>` список TCP‑портов (по умолчанию `80,443,8000-8020`)
 - `--no-trace` отключить вызов системного `tracert`
 - `--verbose` подробный лог в консоли
 - `--json` вывести короткий JSON‑сводку в stdout
 - `--help` показать справку
 
-Цели по умолчанию: `youtube.com, discord.com, google.com, example.com`.
+Цели по умолчанию: инфраструктура Star Citizen — портал и аккаунты (`*.robertsspaceindustries.com`), лаунчер, CDN и игровые шлюзы (`p4*-live.cloudimperiumgames.com`).
+Предустановки (домены, TCP и UDP проверки) описаны в файле `star_citizen_targets.json`, который копируется рядом с исполняемым файлом; при необходимости обновите его вручную.
 
 Примечание: при запуске с аргументами всегда используется CLI; без аргументов — открывается GUI.
 
@@ -55,36 +56,65 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
 
 Пример верхнего уровня:
 
-```
-{
-  "run_at": "2025-10-24T15:00:00Z",
-  "cli": "--targets youtube.com,discord.com --report report.json",
-  "ext_ip": "185.53.46.108",
-  "summary": {
-    "dns": "OK|WARN|DNS_FILTERED|DNS_BOGUS",
-    "tcp": "OK|FAIL|UNKNOWN",
-    "udp": "OK|FAIL|UNKNOWN",
-    "tls": "OK|SUSPECT|FAIL|UNKNOWN",
-    "rst_inject": "UNKNOWN"
-  },
-  "targets": {
-    "youtube.com": {
-      "system_dns": ["142.251.36.78"],
-      "doh": ["142.251.36.110"],
-      "dns_status": "WARN",
-      "tcp": [
-        {"ip":"142.251.36.78","port":80,"open":true,"elapsed_ms":45},
-        {"ip":"142.251.36.78","port":443,"open":true,"elapsed_ms":110}
-      ],
-      "http": [
-        {"url":"https://youtube.com","success":true,"status":200,"serverHeader":"...","cert_cn":"*.google.com"}
-      ],
-      "traceroute": {"hops":[{"hop":1,"ip":"10.0.0.1","status":"TtlExpired"}]}
-    }
-  },
-  "udp_test": {"target":"1.1.1.1","reply":false,"rtt_ms":null}
-}
-```
+``` 
+{ 
+  "run_at": "2025-10-24T15:00:00Z", 
+  "cli": "--report report.json", 
+  "ext_ip": "185.53.46.108", 
+  "summary": { 
+    "dns": "OK|WARN|DNS_FILTERED|DNS_BOGUS", 
+    "tcp": "OK|FAIL|UNKNOWN", 
+    "udp": "OK|FAIL|INFO|UNKNOWN", 
+    "tls": "OK|SUSPECT|FAIL|UNKNOWN", 
+    "rst_inject": "UNKNOWN" 
+  }, 
+  "targets": { 
+    "RSI Лаунчер": { 
+      "host": "launcher.robertsspaceindustries.com", 
+      "service": "Лаунчер", 
+      "system_dns": ["23.215.0.138"], 
+      "doh": ["23.215.0.140"], 
+      "dns_status": "OK", 
+      "tcp": [ 
+        {"ip":"23.215.0.138","port":80,"open":true,"elapsed_ms":45}, 
+        {"ip":"23.215.0.138","port":443,"open":true,"elapsed_ms":48} 
+      ], 
+      "http": [ 
+        {"url":"https://launcher.robertsspaceindustries.com","success":true,"status":200,"serverHeader":"", "cert_cn":"*.robertsspaceindustries.com"} 
+      ], 
+      "traceroute": {"hops":[{"hop":1,"ip":"10.0.0.1","status":"TtlExpired"}]} 
+    } 
+  }, 
+  "udp_tests": [ 
+    { 
+      "name": "Cloudflare DNS", 
+      "service": "Базовая сеть", 
+      "host": "1.1.1.1", 
+      "port": 53, 
+      "expect_reply": true, 
+      "success": true, 
+      "reply": true, 
+      "rtt_ms": 12, 
+      "reply_bytes": 128, 
+      "note": "ответ получен", 
+      "description": "Проверка UDP DNS" 
+    }, 
+    { 
+      "name": "Star Citizen EU шлюз", 
+      "service": "Игровые сервера", 
+      "host": "p4eu-live.cloudimperiumgames.com", 
+      "port": 64090, 
+      "expect_reply": false, 
+      "success": true, 
+      "reply": false, 
+      "rtt_ms": 1, 
+      "reply_bytes": 0, 
+      "note": "пакет отправлен", 
+      "description": "Отправка тестового пакета, ответ не ожидается" 
+    } 
+  ] 
+} 
+``` 
 
 ## Правила определения статусов
 
@@ -94,7 +124,7 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
   - `WARN` — множества системных и DoH‑адресов не пересекаются (возможно CDN/гео, но обратите внимание).
   - `OK` — остальные случаи.
 - TCP: `OK`, если где‑то порт открыт; иначе `FAIL`.
-- UDP: `OK`, если получен ответ от `1.1.1.1:53`; иначе `FAIL`.
+- UDP: `OK`, если все тесты с ожидаемым ответом успешны; `FAIL`, если хотя бы один ожидаемый ответ не пришёл; `INFO`, если выполнялись только тесты без ожидания ответа (например, UDP-зонд к игровому шлюзу).
 - TLS: `SUSPECT`, если 443 открыт, но HTTPS не проходит; `OK`, если есть 2xx/3xx; `FAIL`, если ни одного успеха.
 - RST: `UNKNOWN` — эвристика по таймингам без pcap.
 
