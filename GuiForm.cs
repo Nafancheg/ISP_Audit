@@ -115,25 +115,6 @@ namespace IspAudit
             var lblTimeout = new Label { AutoSize = true, Text = "Таймаут, с" };
             lblExtIp = new Label { AutoSize = true, Text = string.Empty };
 
-            var tips = new ToolTip();
-            tips.SetToolTip(btnRun, "Запустить быструю проверку");
-            tips.SetToolTip(btnCancel, "Остановить текущую проверку");
-            tips.SetToolTip(btnSaveJson, "Сохранить полный JSON отчёт");
-            tips.SetToolTip(btnExportReport, "Сохранить HTML или PDF отчёт");
-            tips.SetToolTip(btnShowReport, "Открыть подробные результаты");
-            tips.SetToolTip(btnCopySummary, "Скопировать краткий итог для поддержки");
-            tips.SetToolTip(btnCopyReport, "Скопировать подробный текстовый отчёт");
-            tips.SetToolTip(btnSaveProfile, "Сохранить цели, порты и включённые тесты в файл профиля");
-            tips.SetToolTip(btnLoadProfile, "Загрузить профиль проверки из файла");
-            tips.SetToolTip(chkDns, "Сравнить системный DNS и Cloudflare DoH");
-            tips.SetToolTip(chkTcp, "Попробовать подключиться к портам 80/443");
-            tips.SetToolTip(chkHttp, "Сделать HTTPS-запросы и проверить сертификаты");
-            tips.SetToolTip(chkTrace, "Выполнить трассировку до цели");
-            tips.SetToolTip(chkUdp, "Отправить UDP-запрос на 1.1.1.1:53");
-            tips.SetToolTip(chkRst, "Проверить подозрение на RST-блокировку");
-            tips.SetToolTip(txtTimeout, "Максимальное время ожидания сетевых операций, с");
-            tips.SetToolTip(txtPorts, "Список TCP-портов через запятую, поддерживаются диапазоны (например 8000-8020)");
-
             lvTargets = new ListView { View = View.Details, FullRowSelect = true, Dock = DockStyle.Fill };
             lvTargets.Columns.Add("Название", 160);
             lvTargets.Columns.Add("Адрес", 180);
@@ -166,6 +147,25 @@ namespace IspAudit
 
             txtPorts = new TextBox { Width = 160, Text = Output.ReportWriter.FormatPortList(Config.Default().Ports) };
             lblPorts = new Label { AutoSize = true, Text = "Порты" };
+
+            var tips = new ToolTip();
+            tips.SetToolTip(btnRun, "Запустить быструю проверку");
+            tips.SetToolTip(btnCancel, "Остановить текущую проверку");
+            tips.SetToolTip(btnSaveJson, "Сохранить полный JSON отчёт");
+            tips.SetToolTip(btnExportReport, "Сохранить HTML или PDF отчёт");
+            tips.SetToolTip(btnShowReport, "Открыть подробные результаты");
+            tips.SetToolTip(btnCopySummary, "Скопировать краткий итог для поддержки");
+            tips.SetToolTip(btnCopyReport, "Скопировать подробный текстовый отчёт");
+            tips.SetToolTip(btnSaveProfile, "Сохранить цели, порты и включённые тесты в файл профиля");
+            tips.SetToolTip(btnLoadProfile, "Загрузить профиль проверки из файла");
+            tips.SetToolTip(chkDns, "Сравнить системный DNS и Cloudflare DoH");
+            tips.SetToolTip(chkTcp, "Попробовать подключиться к портам 80/443");
+            tips.SetToolTip(chkHttp, "Сделать HTTPS-запросы и проверить сертификаты");
+            tips.SetToolTip(chkTrace, "Выполнить трассировку до цели");
+            tips.SetToolTip(chkUdp, "Отправить UDP-запрос на 1.1.1.1:53");
+            tips.SetToolTip(chkRst, "Проверить подозрение на RST-блокировку");
+            tips.SetToolTip(txtTimeout, "Максимальное время ожидания сетевых операций, с");
+            tips.SetToolTip(txtPorts, "Список TCP-портов через запятую, поддерживаются диапазоны (например 8000-8020)");
 
             lblSummaryStatus = new Label
             {
