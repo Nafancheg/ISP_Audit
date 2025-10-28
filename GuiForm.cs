@@ -136,9 +136,9 @@ namespace IspAudit
             btnLoadProfile.Click += BtnLoadProfile_Click;
 
             lvSteps = new ListView { View = View.Details, FullRowSelect = true, GridLines = true, Dock = DockStyle.Fill };
-            lvSteps.Columns.Add("Тест", 160);
+            lvSteps.Columns.Add("Сервис", 220);
             lvSteps.Columns.Add("Статус", 150);
-            lvSteps.Columns.Add("Комментарий", 320);
+            lvSteps.Columns.Add("Подробности", 300);
 
             pbOverall = new ProgressBar { Style = ProgressBarStyle.Blocks, Dock = DockStyle.Fill };
             lblStatus = new Label { AutoSize = true, Text = "Ожидание запуска" };
@@ -407,32 +407,47 @@ namespace IspAudit
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 3
+                RowCount = 2
             };
             resultsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            resultsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 200));
-            resultsLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
-            resultsLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
-            resultsLayout.Controls.Add(lvSteps, 0, 0);
-            resultsLayout.Controls.Add(txtLog, 0, 1);
-            resultsLayout.Controls.Add(txtAnalysis, 0, 2);
+            resultsLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+            resultsLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+            resultsLayout.Controls.Add(txtLog, 0, 0);
+            resultsLayout.Controls.Add(txtAnalysis, 0, 1);
 
             advancedLayout.Controls.Add(resultsLayout, 1, 0);
 
             advancedContainer.Controls.Add(advancedLayout, 0, 1);
             pnlAdvanced.Controls.Add(advancedContainer);
 
+            // Простая панель с таблицей сервисов (всегда видна)
+            var simplePanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(12)
+            };
+            var simpleLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 1
+            };
+            simpleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            simpleLayout.Controls.Add(lvSteps, 0, 0);
+            simplePanel.Controls.Add(simpleLayout);
+
             var rootLayout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 5
+                RowCount = 6
             };
             rootLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            rootLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
             pnlBypass = BuildBypassPanel();
 
@@ -440,7 +455,8 @@ namespace IspAudit
             rootLayout.Controls.Add(pnlBypass, 0, 1);
             rootLayout.Controls.Add(runPanel, 0, 2);
             rootLayout.Controls.Add(progressPanel, 0, 3);
-            rootLayout.Controls.Add(pnlAdvanced, 0, 4);
+            rootLayout.Controls.Add(simplePanel, 0, 4);
+            rootLayout.Controls.Add(pnlAdvanced, 0, 5);
 
             Controls.Add(rootLayout);
 
@@ -1210,55 +1226,80 @@ namespace IspAudit
         {
             if (InvokeRequired) { BeginInvoke(new Action(InitSteps)); return; }
             lvSteps.Items.Clear();
-            if (chkDns.Checked) AddStepRow("DNS", "в очереди");
-            if (chkTcp.Checked) AddStepRow("TCP", "в очереди");
-            if (chkHttp.Checked) AddStepRow("HTTP", "в очереди");
-            if (chkTrace.Checked) AddStepRow("Traceroute", "в очереди");
-            if (chkUdp.Checked) AddStepRow("UDP", "в очереди");
-            if (chkRst.Checked) AddStepRow("RST", "в очереди");
+
+            // Показываем шаги по сервисам Star Citizen, а не по протоколам
+            foreach (var target in Program.Targets.Values)
+            {
+                string displayName = string.IsNullOrWhiteSpace(target.Service)
+                    ? target.Name
+                    : $"{target.Name} ({target.Service})";
+                AddStepRow(target.Name, displayName, "ожидание", target);
+            }
+
+            // Добавляем UDP-тесты как отдельные шаги
+            if (chkUdp.Checked)
+            {
+                AddStepRow("UDP_BASE", "Базовая сеть (UDP)", "ожидание", null);
+            }
         }
 
-        private void AddStepRow(string name, string status)
+        private void AddStepRow(string key, string displayName, string status, TargetDefinition? target)
         {
-            var it = new ListViewItem(new[] { name, status, string.Empty });
+            var it = new ListViewItem(new[] { displayName, status, string.Empty });
+            it.Tag = new { Key = key, Target = target };
             lvSteps.Items.Add(it);
         }
 
         private void UpdateStepUI(IspAudit.Tests.TestProgress p)
         {
             if (InvokeRequired) { BeginInvoke(new Action<IspAudit.Tests.TestProgress>(UpdateStepUI), p); return; }
-            string name = p.Kind switch
+
+            // Извлекаем имя цели из сообщения прогресса (формат: "RSI Портал: старт")
+            string? targetName = ExtractTargetName(p.Status);
+
+            if (p.Kind == IspAudit.Tests.TestKind.UDP && targetName == null)
             {
-                IspAudit.Tests.TestKind.DNS => "DNS",
-                IspAudit.Tests.TestKind.TCP => "TCP",
-                IspAudit.Tests.TestKind.HTTP => "HTTP",
-                IspAudit.Tests.TestKind.TRACEROUTE => "Traceroute",
-                IspAudit.Tests.TestKind.UDP => "UDP",
-                IspAudit.Tests.TestKind.RST => "RST",
-                _ => p.Kind.ToString()
-            };
+                targetName = "UDP_BASE";
+            }
+
+            if (targetName == null) return;
+
             foreach (ListViewItem it in lvSteps.Items)
             {
-                if (it.SubItems[0].Text.Equals(name, StringComparison.OrdinalIgnoreCase))
+                if (it.Tag is not { } tag) continue;
+                var tagType = tag.GetType();
+                var keyProp = tagType.GetProperty("Key");
+                if (keyProp == null) continue;
+                string? key = keyProp.GetValue(tag) as string;
+
+                if (key != null && key.Equals(targetName, StringComparison.OrdinalIgnoreCase))
                 {
-                    bool skipped = !string.IsNullOrWhiteSpace(p.Message) && p.Message.StartsWith("пропущено", StringComparison.OrdinalIgnoreCase);
+                    string displayName = it.SubItems[0].Text;
+
+                    bool skipped = !string.IsNullOrWhiteSpace(p.Message) && p.Message.Contains("пропущено");
                     if (skipped)
                     {
                         it.SubItems[1].Text = "пропущено";
-                        it.SubItems[2].Text = p.Message ?? string.Empty;
+                        it.SubItems[2].Text = "";
                         it.ForeColor = System.Drawing.Color.DimGray;
-                        lblStatus.Text = $"{name}: пропущено";
+                        lblStatus.Text = $"{displayName}: пропущено";
                     }
-                    else
+                    else if (p.Status.Contains("старт"))
                     {
-                        it.SubItems[1].Text = p.Success == null ? "идёт проверка" : (p.Success.Value ? "успешно" : "ошибка");
-                        it.SubItems[2].Text = p.Message ?? string.Empty;
-                        it.ForeColor = p.Success == null ? System.Drawing.Color.DodgerBlue : (p.Success.Value ? System.Drawing.Color.ForestGreen : System.Drawing.Color.Crimson);
-                        if (p.Success == null)
-                            lblStatus.Text = $"{name}: {p.Status}";
-                        else
-                            lblStatus.Text = $"{name}: {(p.Success.Value ? "успешно" : "ошибка")}";
+                        it.SubItems[1].Text = "проверка...";
+                        it.SubItems[2].Text = GetTestDescription(p.Kind);
+                        it.ForeColor = System.Drawing.Color.DodgerBlue;
+                        lblStatus.Text = $"Проверяется: {displayName}";
                     }
+                    else if (p.Status.Contains("завершено"))
+                    {
+                        bool success = p.Success ?? true;
+                        it.SubItems[1].Text = success ? "✓ Работает" : "⚠ Проблемы";
+                        it.SubItems[2].Text = p.Message ?? "";
+                        it.ForeColor = success ? System.Drawing.Color.ForestGreen : System.Drawing.Color.Crimson;
+                        lblStatus.Text = $"{displayName}: {(success ? "работает" : "проблемы")}";
+                    }
+
                     if (p.Kind == IspAudit.Tests.TestKind.TRACEROUTE && !string.IsNullOrWhiteSpace(p.Message))
                     {
                         txtLog.AppendText(p.Message + Environment.NewLine);
@@ -1266,6 +1307,30 @@ namespace IspAudit
                     break;
                 }
             }
+        }
+
+        private static string? ExtractTargetName(string status)
+        {
+            if (string.IsNullOrWhiteSpace(status)) return null;
+            int colonIndex = status.IndexOf(':');
+            if (colonIndex > 0)
+            {
+                return status.Substring(0, colonIndex).Trim();
+            }
+            return null;
+        }
+
+        private static string GetTestDescription(IspAudit.Tests.TestKind kind)
+        {
+            return kind switch
+            {
+                IspAudit.Tests.TestKind.DNS => "проверка DNS",
+                IspAudit.Tests.TestKind.TCP => "проверка портов",
+                IspAudit.Tests.TestKind.HTTP => "проверка HTTPS",
+                IspAudit.Tests.TestKind.TRACEROUTE => "трассировка маршрута",
+                IspAudit.Tests.TestKind.UDP => "проверка UDP",
+                _ => "проверка"
+            };
         }
 
         private void ShowTextWindow(string title, string text)
