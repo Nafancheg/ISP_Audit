@@ -43,7 +43,7 @@ namespace IspAudit.Tests
                     string? cn = cert?.GetNameInfo(X509NameType.SimpleName, false);
                     r = new HttpResult(url, true, (int)resp.StatusCode, serverHeader, null, cn);
                 }
-                catch (TaskCanceledException ex)
+                catch (TaskCanceledException)
                 {
                     r = new HttpResult(url, false, null, null, "timeout", null);
                 }

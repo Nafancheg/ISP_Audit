@@ -943,7 +943,9 @@ namespace IspAudit
                     cfg.UdpTimeoutSeconds = Math.Min(10, t);
                 }
 
-                InitSteps();
+                var resolvedTargets = cfg.ResolveTargets();
+                var usage = ServiceTestMatrix.CalculateUsage(resolvedTargets, cfg);
+                InitSteps(cfg, usage);
                 var progress = new Progress<IspAudit.Tests.TestProgress>(UpdateStepUI);
                 _cts = new CancellationTokenSource();
                 var run = await AuditRunner.RunAsync(cfg, progress, _cts.Token).ConfigureAwait(false);
@@ -1161,17 +1163,30 @@ namespace IspAudit
         {
             var sb = new StringBuilder();
             sb.AppendLine("Общий итог:");
-            sb.AppendLine($"DNS: {FormatStatus(run.summary.dns)}");
-            sb.AppendLine($"TCP: {FormatStatus(run.summary.tcp)}");
+            bool dnsExecuted = run.targets.Values.Any(t => t.dns_executed);
+            bool tcpExecuted = run.targets.Values.Any(t => t.tcp_executed);
+            bool httpExecuted = run.targets.Values.Any(t => t.http_executed);
+            string dnsOverall = dnsExecuted ? FormatStatus(run.summary.dns) : "не проверялось";
+            string tcpOverall = tcpExecuted ? FormatStatus(run.summary.tcp) : "не проверялось";
+            string tlsOverall = httpExecuted ? FormatStatus(run.summary.tls) : "не проверялось";
+            sb.AppendLine($"DNS: {dnsOverall}");
+            sb.AppendLine($"TCP: {tcpOverall}");
             sb.AppendLine($"UDP: {FormatStatus(run.summary.udp)}");
-            sb.AppendLine($"TLS: {FormatStatus(run.summary.tls)}");
+            sb.AppendLine($"TLS: {tlsOverall}");
+            if (!string.Equals(run.summary.rst_inject, "UNKNOWN", StringComparison.OrdinalIgnoreCase))
+            {
+                sb.AppendLine($"RST: {FormatStatus(run.summary.rst_inject)}");
+            }
             sb.AppendLine();
             foreach (var kv in run.targets)
             {
                 var t = kv.Value;
                 bool anyOpen = t.tcp.Exists(r => r.open);
                 bool httpOk = t.http.Exists(h => h.success && h.status is >= 200 and < 400);
-                sb.AppendLine($"— {kv.Key}: DNS {FormatStatus(t.dns_status)}, порты {(anyOpen ? "доступны" : "закрыты")}, HTTPS {(httpOk ? "отвечает" : "не отвечает")}");
+                string dnsText = t.dns_executed ? FormatStatus(t.dns_status) : "не проверялось";
+                string tcpText = t.tcp_executed ? (anyOpen ? "доступны" : "закрыты") : "не проверялись";
+                string httpText = t.http_executed ? (httpOk ? "отвечает" : "не отвечает") : "не проверялся";
+                sb.AppendLine($"— {kv.Key}: DNS {dnsText}, порты {tcpText}, HTTPS {httpText}");
             }
             if (!string.Equals(run.summary.udp, "UNKNOWN", StringComparison.OrdinalIgnoreCase))
             {
@@ -1184,21 +1199,31 @@ namespace IspAudit
             return sb.ToString();
         }
 
-        private void InitSteps()
+        private void InitSteps(Config cfg, TestUsage usage)
         {
-            if (InvokeRequired) { BeginInvoke(new Action(InitSteps)); return; }
+            if (InvokeRequired) { BeginInvoke(new Action(() => InitSteps(cfg, usage))); return; }
             lvSteps.Items.Clear();
-            if (chkDns.Checked) AddStepRow("DNS", "в очереди");
-            if (chkTcp.Checked) AddStepRow("TCP", "в очереди");
-            if (chkHttp.Checked) AddStepRow("HTTP", "в очереди");
-            if (chkTrace.Checked) AddStepRow("Traceroute", "в очереди");
-            if (chkUdp.Checked) AddStepRow("UDP", "в очереди");
-            if (chkRst.Checked) AddStepRow("RST", "в очереди");
+            if (cfg.EnableDns)
+                AddStepRow("DNS", usage.Dns ? "в очереди" : "не требуется", usage.Dns);
+            if (cfg.EnableTcp)
+                AddStepRow("TCP", usage.Tcp ? "в очереди" : "не требуется", usage.Tcp);
+            if (cfg.EnableHttp)
+                AddStepRow("HTTP", usage.Http ? "в очереди" : "не требуется", usage.Http);
+            if (cfg.EnableTrace && !cfg.NoTrace)
+                AddStepRow("Traceroute", usage.Trace ? "в очереди" : "не требуется", usage.Trace);
+            if (cfg.EnableUdp && cfg.UdpProbes.Count > 0)
+                AddStepRow("UDP", usage.Udp ? "в очереди" : "не требуется", usage.Udp);
+            if (cfg.EnableRst)
+                AddStepRow("RST", usage.Rst ? "в очереди" : "не требуется", usage.Rst);
         }
 
-        private void AddStepRow(string name, string status)
+        private void AddStepRow(string name, string status, bool active)
         {
-            var it = new ListViewItem(new[] { name, status, string.Empty });
+            var it = new ListViewItem(new[] { name, status, string.Empty }) { Tag = active };
+            if (!active)
+            {
+                it.ForeColor = System.Drawing.Color.Gray;
+            }
             lvSteps.Items.Add(it);
         }
 
@@ -1219,6 +1244,21 @@ namespace IspAudit
             {
                 if (it.SubItems[0].Text.Equals(name, StringComparison.OrdinalIgnoreCase))
                 {
+                    if (it.Tag is bool active && !active)
+                    {
+                        if (!string.IsNullOrEmpty(p.Message))
+                        {
+                            it.SubItems[1].Text = p.Message;
+                            it.SubItems[2].Text = p.Message;
+                        }
+                        else if (p.Success.HasValue)
+                        {
+                            it.SubItems[1].Text = p.Success.Value ? "не требуется" : "ошибка";
+                        }
+                        lblStatus.Text = $"{name}: {p.Message ?? "не требуется"}";
+                        it.ForeColor = System.Drawing.Color.Gray;
+                        return;
+                    }
                     it.SubItems[1].Text = p.Success == null ? "идёт проверка" : (p.Success.Value ? "успешно" : "ошибка");
                     it.SubItems[2].Text = p.Message ?? string.Empty;
                     it.ForeColor = p.Success == null ? System.Drawing.Color.DodgerBlue : (p.Success.Value ? System.Drawing.Color.ForestGreen : System.Drawing.Color.Crimson);
@@ -1282,29 +1322,33 @@ namespace IspAudit
                 issues.Append(text);
             }
 
-            switch (run.summary.dns)
-            {
-                case "DNS_BOGUS":
-                    AddIssue("DNS возвращает недействительные ответы.");
-                    break;
-                case "DNS_FILTERED":
-                    AddIssue("Похоже на фильтрацию или подмену DNS.");
-                    break;
-                case "WARN":
-                    AddIssue("Ответы системного DNS и DoH не совпадают.");
-                    break;
-            }
+            var dnsBogus = run.targets.Where(kv => kv.Value.dns_executed && kv.Value.dns_status == nameof(Tests.DnsStatus.DNS_BOGUS)).Select(kv => kv.Key).ToList();
+            if (dnsBogus.Count > 0)
+                AddIssue($"DNS: недействительные ответы для {string.Join(", ", dnsBogus)}.");
 
-            if (run.summary.tcp == "FAIL")
-                AddIssue("Не получилось подключиться к проверенным TCP-портам.");
+            var dnsFiltered = run.targets.Where(kv => kv.Value.dns_executed && kv.Value.dns_status == nameof(Tests.DnsStatus.DNS_FILTERED)).Select(kv => kv.Key).ToList();
+            if (dnsFiltered.Count > 0)
+                AddIssue($"DNS: подозрение на фильтрацию ({string.Join(", ", dnsFiltered)}).");
+
+            var dnsWarn = run.targets.Where(kv => kv.Value.dns_executed && kv.Value.dns_status == nameof(Tests.DnsStatus.WARN)).Select(kv => kv.Key).ToList();
+            if (dnsWarn.Count > 0)
+                AddIssue($"DNS: системный и DoH ответы различаются ({string.Join(", ", dnsWarn)}).");
+
+            var tcpFails = run.targets.Where(kv => kv.Value.tcp_executed && !kv.Value.tcp.Any(r => r.open)).Select(kv => kv.Key).ToList();
+            if (tcpFails.Count > 0)
+                AddIssue($"TCP: порты не открылись для {string.Join(", ", tcpFails)}.");
 
             if (run.summary.udp == "FAIL")
-                AddIssue("Нет ответа на UDP-запрос к 1.1.1.1:53.");
+                AddIssue("UDP: нет ответа на запрос к 1.1.1.1:53.");
 
-            if (run.summary.tls == "FAIL")
-                AddIssue("HTTPS-сервисы не ответили на запросы.");
+            var tlsFails = run.targets.Where(kv => kv.Value.http_executed && !kv.Value.http.Any(h => h.success && h.status is >= 200 and < 400)).Select(kv => kv.Key).ToList();
+            if (tlsFails.Count > 0)
+                AddIssue($"HTTPS: нет ответа от {string.Join(", ", tlsFails)}.");
             else if (run.summary.tls == "SUSPECT")
-                AddIssue("Есть подозрение на блокировку HTTPS по SNI.");
+                AddIssue("HTTPS: есть подозрение на блокировку по SNI.");
+
+            if (!run.targets.Values.Any(t => t.http_executed))
+                AddIssue("HTTPS-проверка не выполнялась (для выбранных целей не требуется).");
 
             if (issues.Length == 0)
                 issues.Append("Явных проблем не найдено.");
