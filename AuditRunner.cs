@@ -40,10 +40,10 @@ namespace IspAudit
                         host = def.Host,
                         display_name = def.Name,
                         service = def.Service,
-                        dns_executed = plan.RunDns,
-                        tcp_executed = plan.RunTcp,
-                        http_executed = plan.RunHttp,
-                        trace_executed = plan.RunTrace,
+                        dns_enabled = plan.RunDns,
+                        tcp_enabled = plan.RunTcp,
+                        http_enabled = plan.RunHttp,
+                        trace_enabled = plan.RunTrace,
                         tcp_ports_checked = plan.RunTcp ? plan.TcpPorts.ToList() : new List<int>()
                     };
 
@@ -97,7 +97,7 @@ namespace IspAudit
                     bool fail = false; bool warn = false; bool any = false;
                     foreach (var t in run.targets.Values)
                     {
-                        if (!t.dns_executed) continue;
+                        if (!t.dns_enabled) continue;
                         any = true;
                         fail |= t.dns_status == nameof(Tests.DnsStatus.DNS_BOGUS) || t.dns_status == nameof(Tests.DnsStatus.DNS_FILTERED);
                         warn |= t.dns_status == nameof(Tests.DnsStatus.WARN);
@@ -111,7 +111,7 @@ namespace IspAudit
                     bool fail = false; bool any = false;
                     foreach (var t in run.targets.Values)
                     {
-                        if (!t.tcp_executed) continue;
+                        if (!t.tcp_enabled) continue;
                         any = true;
                         bool anyOpen = t.tcp.Exists(r => r.open);
                         if (!anyOpen) { fail = true; break; }
@@ -125,7 +125,7 @@ namespace IspAudit
                     bool fail = false; bool any = false;
                     foreach (var t in run.targets.Values)
                     {
-                        if (!t.http_executed) continue;
+                        if (!t.http_enabled) continue;
                         any = true;
                         bool httpOk = t.http.Exists(h => h.success && h.status is >= 200 and < 400);
                         if (!httpOk) { fail = true; break; }
@@ -139,7 +139,7 @@ namespace IspAudit
                     bool fail = false; bool any = false;
                     foreach (var t in run.targets.Values)
                     {
-                        if (!t.trace_executed) continue;
+                        if (!t.trace_enabled) continue;
                         any = true;
                         if (t.traceroute == null || t.traceroute.hops.Count == 0) { fail = true; break; }
                     }

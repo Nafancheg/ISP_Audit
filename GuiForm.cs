@@ -1163,9 +1163,9 @@ namespace IspAudit
         {
             var sb = new StringBuilder();
             sb.AppendLine("Общий итог:");
-            bool dnsExecuted = run.targets.Values.Any(t => t.dns_executed);
-            bool tcpExecuted = run.targets.Values.Any(t => t.tcp_executed);
-            bool httpExecuted = run.targets.Values.Any(t => t.http_executed);
+            bool dnsExecuted = run.targets.Values.Any(t => t.dns_enabled);
+            bool tcpExecuted = run.targets.Values.Any(t => t.tcp_enabled);
+            bool httpExecuted = run.targets.Values.Any(t => t.http_enabled);
             string dnsOverall = dnsExecuted ? FormatStatus(run.summary.dns) : "не проверялось";
             string tcpOverall = tcpExecuted ? FormatStatus(run.summary.tcp) : "не проверялось";
             string tlsOverall = httpExecuted ? FormatStatus(run.summary.tls) : "не проверялось";
@@ -1183,9 +1183,9 @@ namespace IspAudit
                 var t = kv.Value;
                 bool anyOpen = t.tcp.Exists(r => r.open);
                 bool httpOk = t.http.Exists(h => h.success && h.status is >= 200 and < 400);
-                string dnsText = t.dns_executed ? FormatStatus(t.dns_status) : "не проверялось";
-                string tcpText = t.tcp_executed ? (anyOpen ? "доступны" : "закрыты") : "не проверялись";
-                string httpText = t.http_executed ? (httpOk ? "отвечает" : "не отвечает") : "не проверялся";
+                string dnsText = t.dns_enabled ? FormatStatus(t.dns_status) : "не проверялось";
+                string tcpText = t.tcp_enabled ? (anyOpen ? "доступны" : "закрыты") : "не проверялись";
+                string httpText = t.http_enabled ? (httpOk ? "отвечает" : "не отвечает") : "не проверялся";
                 sb.AppendLine($"— {kv.Key}: DNS {dnsText}, порты {tcpText}, HTTPS {httpText}");
             }
             if (!string.Equals(run.summary.udp, "UNKNOWN", StringComparison.OrdinalIgnoreCase))
@@ -1322,32 +1322,32 @@ namespace IspAudit
                 issues.Append(text);
             }
 
-            var dnsBogus = run.targets.Where(kv => kv.Value.dns_executed && kv.Value.dns_status == nameof(Tests.DnsStatus.DNS_BOGUS)).Select(kv => kv.Key).ToList();
+            var dnsBogus = run.targets.Where(kv => kv.Value.dns_enabled && kv.Value.dns_status == nameof(Tests.DnsStatus.DNS_BOGUS)).Select(kv => kv.Key).ToList();
             if (dnsBogus.Count > 0)
                 AddIssue($"DNS: недействительные ответы для {string.Join(", ", dnsBogus)}.");
 
-            var dnsFiltered = run.targets.Where(kv => kv.Value.dns_executed && kv.Value.dns_status == nameof(Tests.DnsStatus.DNS_FILTERED)).Select(kv => kv.Key).ToList();
+            var dnsFiltered = run.targets.Where(kv => kv.Value.dns_enabled && kv.Value.dns_status == nameof(Tests.DnsStatus.DNS_FILTERED)).Select(kv => kv.Key).ToList();
             if (dnsFiltered.Count > 0)
                 AddIssue($"DNS: подозрение на фильтрацию ({string.Join(", ", dnsFiltered)}).");
 
-            var dnsWarn = run.targets.Where(kv => kv.Value.dns_executed && kv.Value.dns_status == nameof(Tests.DnsStatus.WARN)).Select(kv => kv.Key).ToList();
+            var dnsWarn = run.targets.Where(kv => kv.Value.dns_enabled && kv.Value.dns_status == nameof(Tests.DnsStatus.WARN)).Select(kv => kv.Key).ToList();
             if (dnsWarn.Count > 0)
                 AddIssue($"DNS: системный и DoH ответы различаются ({string.Join(", ", dnsWarn)}).");
 
-            var tcpFails = run.targets.Where(kv => kv.Value.tcp_executed && !kv.Value.tcp.Any(r => r.open)).Select(kv => kv.Key).ToList();
+            var tcpFails = run.targets.Where(kv => kv.Value.tcp_enabled && !kv.Value.tcp.Any(r => r.open)).Select(kv => kv.Key).ToList();
             if (tcpFails.Count > 0)
                 AddIssue($"TCP: порты не открылись для {string.Join(", ", tcpFails)}.");
 
             if (run.summary.udp == "FAIL")
                 AddIssue("UDP: нет ответа на запрос к 1.1.1.1:53.");
 
-            var tlsFails = run.targets.Where(kv => kv.Value.http_executed && !kv.Value.http.Any(h => h.success && h.status is >= 200 and < 400)).Select(kv => kv.Key).ToList();
+            var tlsFails = run.targets.Where(kv => kv.Value.http_enabled && !kv.Value.http.Any(h => h.success && h.status is >= 200 and < 400)).Select(kv => kv.Key).ToList();
             if (tlsFails.Count > 0)
                 AddIssue($"HTTPS: нет ответа от {string.Join(", ", tlsFails)}.");
             else if (run.summary.tls == "SUSPECT")
                 AddIssue("HTTPS: есть подозрение на блокировку по SNI.");
 
-            if (!run.targets.Values.Any(t => t.http_executed))
+            if (!run.targets.Values.Any(t => t.http_enabled))
                 AddIssue("HTTPS-проверка не выполнялась (для выбранных целей не требуется).");
 
             if (issues.Length == 0)
