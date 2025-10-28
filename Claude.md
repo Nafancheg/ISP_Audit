@@ -28,9 +28,10 @@ Workflow `.github/workflows/build.yml` автоматически собирае
 
 ### Точка входа и режимы работы
 - **Program.cs**: Основной entry point. Определяет режим работы:
-  - Без аргументов или `gui` → GUI-режим (WinForms)
+  - Без аргументов или `gui` → GUI-режим (WPF + Material Design)
   - С аргументами → CLI-режим
   - При GUI-запуске консоль скрывается через Win32 API
+  - В GUI-режиме запускается `App.xaml` (WPF Application)
 
 ### Основные компоненты
 
@@ -50,12 +51,16 @@ Workflow `.github/workflows/build.yml` автоматически собирае
 
 Поддерживает `IProgress<TestProgress>` для GUI и `CancellationToken` для отмены.
 
-**GuiForm.cs**: WinForms GUI (~1800 строк). Ключевые элементы:
-- `FlowLayoutPanel` для верхней панели с кнопками (AutoSize, DPI-friendly)
-- `ListView` для таблицы целей и статусов тестов
-- Прогресс-бар и строка состояния
-- Менеджер обхода блокировок (WinDivert)
-- Потоковый вывод traceroute в реальном времени
+**GUI (WPF + MaterialDesignInXaml)**:
+- **App.xaml**: Настройка Material Design темы (Light, PrimaryColor=Blue, SecondaryColor=Cyan)
+- **MainWindow.xaml**: Основное окно с Material Design компонентами:
+  - Карточки (materialDesign:Card) для предупреждений (красная) и успеха (зелёная)
+  - Большая кнопка "ПРОВЕРИТЬ" с тенью (MaterialDesignRaisedButton)
+  - Список сервисов (ItemsControl) с прогресс-индикаторами и иконками статусов
+  - Прогресс-бар внизу
+- **MainWindow.xaml.cs**: Code-behind с MVVM-паттерном
+- **Wpf/ServiceItemViewModel.cs**: ViewModel для элементов списка сервисов (INotifyPropertyChanged)
+- Старый WinForms GUI сохранён в `GuiForm.cs.old` для истории
 
 ### Структура тестов (Tests/)
 Каждый тест независимый и содержит свою логику:
@@ -130,10 +135,11 @@ process.StandardOutput.CurrentEncoding = Encoding.GetEncoding(866);
 
 ## Особенности Windows
 
-- **Single-file exe**: Приложение собирается в один .exe файл с embedded runtime
-- **WinForms**: GUI построен на WinForms (.NET 9)
-- **DPI Awareness**: FlowLayoutPanel с AutoSize для корректной работы с высоким DPI
+- **Single-file exe**: Приложение собирается в один .exe файл с embedded runtime (~164MB)
+- **WPF + MaterialDesignInXaml**: Современный GUI с Material Design (MaterialDesignThemes 5.1.0)
+- **Hybrid WPF+WinForms**: UseWPF=true + UseWindowsForms=true (WinForms нужен для TextRenderer в ReportWriter)
 - **Console hiding**: При GUI-запуске консоль скрывается через `ShowWindow(hWnd, 0)`
+- **Material Design Theme**: Light theme, Blue primary, Cyan secondary colors
 
 ## Безопасность
 
