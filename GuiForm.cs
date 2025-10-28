@@ -74,7 +74,7 @@ namespace IspAudit
         public GuiForm()
         {
             this.Font = new System.Drawing.Font("Segoe UI", 9F);
-            Text = "ISP Audit";
+            Text = "ISP Audit для Star Citizen";
             Width = 1100;
             Height = 720;
 
@@ -82,7 +82,7 @@ namespace IspAudit
             _bypassManager.StateChanged += BypassManager_StateChanged;
             _bypassActivationAllowed = false;
 
-            btnRun = new Button { Text = "Проверить", AutoSize = true };
+            btnRun = new Button { Text = "Проверить Star Citizen", AutoSize = true, Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold) };
             btnRun.Click += BtnRun_Click;
             btnCancel = new Button { Text = "Остановить", Enabled = false, AutoSize = true, Visible = false };
             btnCancel.Click += BtnCancel_Click;
@@ -170,33 +170,34 @@ namespace IspAudit
 
             lblSummaryStatus = new Label
             {
-                Text = "Проверка ещё не запускалась",
+                Text = "Нажмите 'Проверить Star Citizen' для начала диагностики",
                 AutoSize = false,
                 Dock = DockStyle.Fill,
                 Font = new System.Drawing.Font("Segoe UI", 14F, System.Drawing.FontStyle.Bold),
                 ForeColor = System.Drawing.Color.DimGray,
-                Margin = new Padding(0, 0, 12, 6)
+                Margin = new Padding(0, 0, 12, 6),
+                TextAlign = System.Drawing.ContentAlignment.MiddleLeft
             };
 
             lblSummaryIssues = new Label
             {
-                Text = "Проблемы будут показаны здесь после проверки.",
+                Text = "Здесь появится информация о проблемах с подключением к Star Citizen.",
                 AutoSize = true,
                 MaximumSize = new System.Drawing.Size(650, 0),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Margin = new Padding(0, 8, 12, 4),
-                Font = new System.Drawing.Font("Segoe UI", 9.5F),
+                Font = new System.Drawing.Font("Segoe UI", 10F),
                 ForeColor = System.Drawing.Color.Black
             };
 
             lblSummaryRecommendations = new Label
             {
-                Text = "Рекомендации появятся после анализа.",
+                Text = "Рекомендации по устранению проблем появятся здесь после диагностики.",
                 AutoSize = true,
                 MaximumSize = new System.Drawing.Size(650, 0),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Margin = new Padding(0, 4, 12, 4),
-                Font = new System.Drawing.Font("Segoe UI", 9F),
+                Margin = new Padding(0, 4, 12, 8),
+                Font = new System.Drawing.Font("Segoe UI", 10F),
                 ForeColor = System.Drawing.Color.Black
             };
 
@@ -1278,7 +1279,7 @@ namespace IspAudit
         private void UpdateSummaryBlock(Output.RunReport run, string advice)
         {
             bool hasIssues = HasIssues(run);
-            lblSummaryStatus.Text = hasIssues ? "Обнаружены проблемы со связью" : "Сеть готова для Star Citizen";
+            lblSummaryStatus.Text = hasIssues ? "⚠ Обнаружены проблемы с подключением" : "✓ Всё готово для Star Citizen";
             lblSummaryStatus.ForeColor = hasIssues ? System.Drawing.Color.Crimson : System.Drawing.Color.ForestGreen;
 
             lblSummaryIssues.Text = BuildIssuesText(run);

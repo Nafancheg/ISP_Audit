@@ -203,8 +203,8 @@ namespace IspAudit.Output
                 .ToList();
             if (udpRawErrors.Count > 0)
             {
-                lines.Add($"UDP: не удалось отправить пакеты к шлюзам Star Citizen: {string.Join(", ", udpRawErrors.Select(u => $"{u.name} ({u.host}:{u.port})"))}.");
-                lines.Add("— Убедитесь, что провайдер не блокирует исходящие UDP 64090+ и что NAT/UPnP открывает сессии для игры.");
+                lines.Add($"UDP: не удалось отправить пакеты к игровым серверам Star Citizen: {string.Join(", ", udpRawErrors.Select(u => $"{u.name}"))}.");
+                lines.Add("— Решение: проверьте настройки роутера (UPnP) и попробуйте VPN, если игра не запускается.");
             }
 
             if (run.summary.tls == "SUSPECT")
@@ -214,13 +214,15 @@ namespace IspAudit.Output
                 .Select(FormatTarget)
                 .ToList();
                 var suffix = tlsSuspects.Count > 0 ? $": {string.Join(", ", tlsSuspects)}" : string.Empty;
-                lines.Add($"TLS: подозрение на блокировку TLS/SNI{suffix} — TCP:443 открыт, но HTTPS не отвечает.");
-                lines.Add("— Попробуйте VPN, прокси по HTTPS/HTTP2, либо дождитесь разблокировки. Для лаунчера можно временно переключиться на альтернативную сеть.");
+                lines.Add($"HTTPS: блокировка защищённых соединений{suffix} — провайдер блокирует доступ к сайтам Star Citizen.");
+                lines.Add("— Решение: используйте VPN или попробуйте включить 'Обход блокировок' в этой программе.");
+                lines.Add("— Это поможет обойти блокировки провайдера и запустить лаунчер.");
             }
 
             if (lines.Count == 0)
             {
-                lines.Add("Явных проблем не выявлено. Все основные сервисы Star Citizen отвечают корректно.");
+                lines.Add("✓ Всё в порядке! Серверы Star Citizen доступны, игра должна работать без проблем.");
+                lines.Add("Если игра всё равно не запускается — проверьте обновления лаунчера и целостность файлов.");
             }
 
             return string.Join(Environment.NewLine, lines);
