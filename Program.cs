@@ -25,8 +25,11 @@ namespace IspAudit
             {
                 // Скрыть консоль при GUI-запуске
                 TryHideConsoleWindow();
-                ApplicationConfiguration.Initialize();
-                System.Windows.Forms.Application.Run(new GuiForm());
+
+                // Запуск WPF приложения
+                var app = new App();
+                app.InitializeComponent();
+                app.Run();
                 return 0;
             }
 
