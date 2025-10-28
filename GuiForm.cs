@@ -106,9 +106,9 @@ namespace IspAudit
             chkDns = new CheckBox { AutoSize = true, Text = "DNS", Checked = true };
             chkTcp = new CheckBox { AutoSize = true, Text = "TCP", Checked = true };
             chkHttp = new CheckBox { AutoSize = true, Text = "HTTP", Checked = true };
-            chkTrace = new CheckBox { AutoSize = true, Text = "Traceroute", Checked = true };
+            chkTrace = new CheckBox { AutoSize = true, Text = "Traceroute (медленно)", Checked = false };
             chkUdp = new CheckBox { AutoSize = true, Text = "UDP", Checked = true };
-            chkRst = new CheckBox { AutoSize = true, Text = "RST", Checked = true };
+            chkRst = new CheckBox { AutoSize = true, Text = "RST (для экспертов)", Checked = false };
             chkAdvanced = new CheckBox { AutoSize = true, Text = "Показать подробности" };
 
             txtTimeout = new TextBox { Width = 50, Text = "12" };
@@ -317,7 +317,8 @@ namespace IspAudit
                 Dock = DockStyle.Fill,
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                WrapContents = false,
+                WrapContents = true,
+                FlowDirection = FlowDirection.LeftToRight,
                 Padding = new Padding(8, 8, 8, 4)
             };
             foreach (var c in new Control[]

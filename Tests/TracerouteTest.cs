@@ -25,7 +25,7 @@ namespace IspAudit.Tests
                 var psi = new ProcessStartInfo
                 {
                     FileName = "tracert",
-                    Arguments = $"-d -h 30 {host}",
+                    Arguments = $"-d -h 15 -w 2000 {host}", // Уменьшили до 15 хопов и таймаут 2сек на хоп
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -51,7 +51,12 @@ namespace IspAudit.Tests
                 }
                 // drain stderr
                 var _ = p.StandardError.ReadToEnd();
-                p.WaitForExit(_cfg.TcpTimeoutSeconds * 1000 * 10);
+                // Таймаут: 15 хопов * 2сек + запас = макс 35 сек
+                if (!p.WaitForExit(35000))
+                {
+                    try { if (!p.HasExited) p.Kill(); } catch { }
+                    lines.Add("tracert: превышен таймаут ожидания");
+                }
             }
             catch (Exception ex)
             {

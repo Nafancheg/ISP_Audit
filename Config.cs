@@ -28,9 +28,9 @@ namespace IspAudit
         public bool EnableDns { get; set; } = true;
         public bool EnableTcp { get; set; } = true;
         public bool EnableHttp { get; set; } = true;
-        public bool EnableTrace { get; set; } = true;
+        public bool EnableTrace { get; set; } = false; // Отключено по умолчанию - медленный и редко полезный для пользователей
         public bool EnableUdp { get; set; } = true;
-        public bool EnableRst { get; set; } = true;
+        public bool EnableRst { get; set; } = false; // Отключено по умолчанию - сложная эвристика, мало информативна
 
         public static Config Default() => new Config();
 
