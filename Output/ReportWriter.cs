@@ -74,6 +74,7 @@ namespace IspAudit.Output
                 "FAIL" => "не работает",
                 "SUSPECT" => "подозрение на блокировку",
                 "MITM_SUSPECT" => "подозрение на MITM-атаку",
+                "BLOCK_PAGE" => "обнаружена страница блокировки",
                 "DNS_BOGUS" => "ошибочные DNS-ответы",
                 "DNS_FILTERED" => "провайдер подменяет DNS",
                 "INFO" => "информационный тест",
@@ -167,6 +168,7 @@ namespace IspAudit.Output
                 bool anyTlsOk = false;
                 bool suspect = false;
                 bool mitm = false; // Certificate CN mismatch - potential MITM attack
+                bool blockPage = false; // Block page detected
 
                 foreach (var t in httpTargets)
                 {
@@ -177,12 +179,18 @@ namespace IspAudit.Output
                     bool cnMismatch = t.http.Any(h => h.cert_cn != null && h.cert_cn_matches == false);
                     if (cnMismatch) mitm = true;
 
+                    // Check for block pages
+                    bool isBlockPage = t.http.Any(h => h.is_block_page == true);
+                    if (isBlockPage) blockPage = true;
+
                     if (httpOk) anyTlsOk = true;
                     if (tcp443Open && !httpOk) suspect = true;
                 }
 
-                // Priority: MITM > SUSPECT > FAIL > OK
-                if (mitm)
+                // Priority: BLOCK_PAGE > MITM > SUSPECT > FAIL > OK
+                if (blockPage)
+                    summary.tls = "BLOCK_PAGE";
+                else if (mitm)
                     summary.tls = "MITM_SUSPECT";
                 else if (suspect)
                     summary.tls = "SUSPECT";
@@ -271,8 +279,21 @@ namespace IspAudit.Output
                 lines.Add("— Решение: проверьте настройки роутера (UPnP) и попробуйте VPN, если игра не запускается.");
             }
 
+            // Block page detection
+            if (run.summary.tls == "BLOCK_PAGE")
+            {
+                var blockPageTargets = run.targets
+                    .Where(kv => kv.Value.http_enabled && kv.Value.http.Any(h => h.is_block_page == true))
+                    .Select(FormatTarget)
+                    .ToList();
+                var suffix = blockPageTargets.Count > 0 ? $": {string.Join(", ", blockPageTargets)}" : string.Empty;
+                lines.Add($"HTTPS: обнаружена страница блокировки провайдера{suffix}");
+                lines.Add("— Провайдер возвращает 200 OK, но вместо реального сайта показывает заглушку.");
+                lines.Add("— Это специальная страница от РКН, провайдера или сетевого оборудования.");
+                lines.Add("— Решение: используйте VPN или включите 'Обход блокировок' в этой программе.");
+            }
             // MITM detection - certificate CN mismatch
-            if (run.summary.tls == "MITM_SUSPECT")
+            else if (run.summary.tls == "MITM_SUSPECT")
             {
                 var mitmTargets = run.targets
                     .Where(kv => kv.Value.http_enabled && kv.Value.http.Any(h => h.cert_cn != null && h.cert_cn_matches == false))
@@ -857,6 +878,7 @@ namespace IspAudit.Output
                 "WARN" => "status-warn",
                 "FAIL" => "status-fail",
                 "SUSPECT" => "status-warn",
+                "BLOCK_PAGE" => "status-fail",
                 "DNS_BOGUS" => "status-fail",
                 "DNS_FILTERED" => "status-warn",
                 "SKIPPED" => "status-unknown",

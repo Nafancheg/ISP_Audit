@@ -100,7 +100,7 @@ public partial class MainWindow : Window
             config.EnableRst = false;
             config.HttpTimeoutSeconds = 6;
             config.TcpTimeoutSeconds = 5;
-            config.UdpTimeoutSeconds = 3;
+            config.UdpTimeoutSeconds = 2;
 
             // Progress callback
             var progress = new Progress<TestProgress>(p =>

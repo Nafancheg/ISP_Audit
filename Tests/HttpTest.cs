@@ -7,12 +7,36 @@ using System.Threading.Tasks;
 
 namespace IspAudit.Tests
 {
-    public record HttpResult(string url, bool success, int? status, string? serverHeader, string? error, string? cert_cn, bool? cert_cn_matches);
+    public record HttpResult(string url, bool success, int? status, string? serverHeader, string? error, string? cert_cn, bool? cert_cn_matches, bool? is_block_page);
 
     public class HttpTest
     {
         private readonly Config _cfg;
         public HttpTest(Config cfg) { _cfg = cfg; }
+
+        /// <summary>
+        /// Detects if the HTML response is likely a block page from RKN/ISP
+        /// by looking for common block page indicators.
+        /// </summary>
+        private static bool IsLikelyBlockPage(string html, string expectedHost)
+        {
+            if (string.IsNullOrEmpty(html) || html.Length > 50000) return false;
+
+            var lower = html.ToLowerInvariant();
+
+            // Типичные признаки заглушек РКН/ISP
+            var blockIndicators = new[] {
+                "доступ ограничен", "access denied", "blocked", "zapret",
+                "роскомнадзор", "rkn.gov.ru", "заблокирован",
+                "доступ к ресурсу ограничен", "the access to this site has been limited",
+                "ваш ip-адрес", "your ip address"
+            };
+
+            int matches = blockIndicators.Count(indicator => lower.Contains(indicator));
+
+            // Если 2+ совпадения или сайт НЕ содержит свой домен
+            return matches >= 2 || (matches >= 1 && !lower.Contains(expectedHost.ToLowerInvariant()));
+        }
 
         /// <summary>
         /// Validates if certificate CN matches the expected host.
@@ -81,15 +105,27 @@ namespace IspAudit.Tests
                         cnMatches = ValidateCertificateCN(cn, host);
                     }
 
-                    r = new HttpResult(url, true, (int)resp.StatusCode, serverHeader, null, cn, cnMatches);
+                    // Read response body and detect block page
+                    bool? isBlockPage = null;
+                    try
+                    {
+                        var content = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        isBlockPage = IsLikelyBlockPage(content, host);
+                    }
+                    catch
+                    {
+                        // If we can't read the body, we can't detect the block page
+                    }
+
+                    r = new HttpResult(url, true, (int)resp.StatusCode, serverHeader, null, cn, cnMatches, isBlockPage);
                 }
-                catch (TaskCanceledException ex)
+                catch (TaskCanceledException)
                 {
-                    r = new HttpResult(url, false, null, null, "timeout", null, null);
+                    r = new HttpResult(url, false, null, null, "timeout", null, null, null);
                 }
                 catch (Exception ex)
                 {
-                    r = new HttpResult(url, false, null, null, ex.Message, null, null);
+                    r = new HttpResult(url, false, null, null, ex.Message, null, null, null);
                 }
                 results.Add(r);
             }
