@@ -64,6 +64,23 @@ namespace IspAudit
                         progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, $"{def.Name}: пропущено", true, message));
                     }
 
+                    // Early-exit: если DNS полностью провалился (и System и DoH пусты), пропустить TCP/HTTP/Trace
+                    bool dnsCompleteFail = targetReport.dns_enabled &&
+                        targetReport.system_dns.Count == 0 &&
+                        targetReport.doh.Count == 0;
+
+                    if (dnsCompleteFail)
+                    {
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS,
+                            $"{def.Name}: DNS не вернул адресов, пропускаем TCP/HTTP/Trace",
+                            false,
+                            "домен не существует или недоступен"));
+
+                        targetReport.tcp_enabled = false;
+                        targetReport.http_enabled = false;
+                        targetReport.trace_enabled = false;
+                    }
+
                     if (targetReport.tcp_enabled)
                     {
                         ct.ThrowIfCancellationRequested();
@@ -216,7 +233,7 @@ namespace IspAudit
                 run.rst_heuristic = await rst.CheckAsync().ConfigureAwait(false);
                 progress?.Report(new Tests.TestProgress(Tests.TestKind.RST, "RST: завершено", true));
             }
-            run.summary = ReportWriter.BuildSummary(run);
+            run.summary = ReportWriter.BuildSummary(run, config);
             return run;
         }
     }

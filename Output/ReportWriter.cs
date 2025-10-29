@@ -87,9 +87,10 @@ namespace IspAudit.Output
 
         public static string FormatPortList(IEnumerable<int> ports) => PortsToRangeText(ports);
 
-        public static Summary BuildSummary(RunReport run)
+        public static Summary BuildSummary(RunReport run, Config? config = null)
         {
             var summary = new Summary();
+            bool isVpnProfile = config != null && string.Equals(config.Profile, "vpn", StringComparison.OrdinalIgnoreCase);
 
             string DnsRank(string s) => s switch
             {
@@ -209,7 +210,7 @@ namespace IspAudit.Output
                           || string.Equals(summary.tls, "BLOCK_PAGE", StringComparison.OrdinalIgnoreCase)
                           || string.Equals(summary.tls, "MITM_SUSPECT", StringComparison.OrdinalIgnoreCase);
             bool dnsBad = string.Equals(summary.dns, "DNS_BOGUS", StringComparison.OrdinalIgnoreCase)
-                          || string.Equals(summary.dns, "DNS_FILTERED", StringComparison.OrdinalIgnoreCase);
+                          || (!isVpnProfile && string.Equals(summary.dns, "DNS_FILTERED", StringComparison.OrdinalIgnoreCase));
             bool portalFail = string.Equals(summary.tcp_portal, "FAIL", StringComparison.OrdinalIgnoreCase);
 
             if (tlsBad || dnsBad || portalFail)
@@ -236,11 +237,11 @@ namespace IspAudit.Output
             return summary;
         }
 
-        public static string BuildAdviceText(RunReport run)
+        public static string BuildAdviceText(RunReport run, Config? config = null)
         {
             var lines = new List<string>();
             // Короткий вердикт сверху
-            var sum = BuildSummary(run);
+            var sum = BuildSummary(run, config);
             var verdict = (sum.playable ?? "UNKNOWN").ToUpperInvariant();
             if (verdict == "YES")
                 lines.Add("Вердикт: играть можно. Критичных блокировок не обнаружено.");
@@ -526,7 +527,7 @@ namespace IspAudit.Output
 
         public static string BuildHtmlReport(RunReport run, Config cfg)
         {
-            var advice = BuildAdviceText(run);
+            var advice = BuildAdviceText(run, cfg);
             var targetSummaries = BuildTargetSummaries(run);
             var udpSummaries = BuildUdpSummaries(run);
 
@@ -683,7 +684,7 @@ namespace IspAudit.Output
 
         public static async Task SavePdfReportAsync(RunReport run, Config cfg, string path)
         {
-            var advice = BuildAdviceText(run);
+            var advice = BuildAdviceText(run, cfg);
             var image = RenderReportToImage(run, cfg, advice);
             var pdf = BuildPdfFromImage(image.Data, image.Width, image.Height);
             var dir = Path.GetDirectoryName(path);

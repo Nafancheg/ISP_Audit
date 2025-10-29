@@ -47,6 +47,19 @@ namespace IspAudit
                 return 0;
             }
 
+            // Auto-detect VPN in CLI mode
+            if (NetUtils.LikelyVpnActive())
+            {
+                config.Profile = "vpn";
+                config.HttpTimeoutSeconds = 12;
+                config.TcpTimeoutSeconds = 8;
+                config.UdpTimeoutSeconds = 4;
+                if (config.Verbose)
+                {
+                    Console.WriteLine("VPN detected - using adaptive timeouts (HTTP: 12s, TCP: 8s, UDP: 4s)");
+                }
+            }
+
             // Build targets list
             var targetDefinitions = config.ResolveTargets();
             var targets = targetDefinitions.Select(t => t.Host).Distinct().ToList();

@@ -30,10 +30,13 @@ namespace IspAudit.Tests
 
             // Status logic
             var status = DnsStatus.OK;
+            bool isVpnProfile = string.Equals(_cfg.Profile, "vpn", StringComparison.OrdinalIgnoreCase);
+
             if (sysV4.Count == 0 && dohV4.Count > 0)
             {
-                // System DNS returns nothing, but DoH works → DNS filtered by ISP
-                status = DnsStatus.DNS_FILTERED;
+                // System DNS returns nothing, but DoH works
+                // В VPN-профиле это может быть нормально (VPN DNS не разрешает некоторые домены)
+                status = isVpnProfile ? DnsStatus.WARN : DnsStatus.DNS_FILTERED;
             }
             else if (sysV4.Any(ip => NetUtils.IsBogusIPv4(IPAddress.Parse(ip))))
             {
@@ -43,7 +46,7 @@ namespace IspAudit.Tests
             else if (sysV4.Count > 0 && sysV4.All(ip => NetUtils.IsPrivateIPv4(IPAddress.Parse(ip))) && dohV4.Count > 0)
             {
                 // System DNS returns ONLY private IPs (10.x, 172.16-31.x, 192.168.x), but DoH returns public IPs
-                // This is common in corporate networks with proxy/NAT
+                // This is common in corporate networks with proxy/NAT or VPN
                 status = DnsStatus.WARN;
             }
             else if (sysV4.Count > 0 && dohV4.Count > 0)
@@ -52,7 +55,11 @@ namespace IspAudit.Tests
                 var s1 = new HashSet<string>(sysV4);
                 var s2 = new HashSet<string>(dohV4);
                 var inter = s1.Intersect(s2).Any();
-                if (!inter) status = DnsStatus.WARN; // possible CDN/geo/hijack, flag warn
+                if (!inter)
+                {
+                    // При VPN несовпадение адресов допустимо (VPN может использовать свои резолверы)
+                    status = isVpnProfile ? DnsStatus.OK : DnsStatus.WARN;
+                }
             }
             return new DnsResult(sysV4, dohV4, status);
         }
