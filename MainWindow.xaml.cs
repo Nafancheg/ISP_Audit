@@ -71,7 +71,7 @@ public partial class MainWindow : Window
         try
         {
             RunButton.Content = "ОСТАНОВИТЬ";
-            RunButton.Background = new SolidColorBrush(Color.FromRgb(244, 67, 54)); // Red
+            RunButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(244, 67, 54)); // Red
 
             WarningCard.Visibility = Visibility.Collapsed;
             SuccessCard.Visibility = Visibility.Collapsed;
@@ -120,14 +120,14 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             StatusText.Text = $"Ошибка: {ex.Message}";
-            MessageBox.Show($"Внутренняя ошибка:\n{ex.Message}", "Ошибка",
+            System.Windows.MessageBox.Show($"Внутренняя ошибка:\n{ex.Message}", "Ошибка",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
             _isRunning = false;
             RunButton.Content = "ПРОВЕРИТЬ";
-            RunButton.Background = new SolidColorBrush(Color.FromRgb(33, 150, 243)); // Blue
+            RunButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(33, 150, 243)); // Blue
             ProgressBar.Value = 100;
         }
     }
@@ -289,7 +289,7 @@ public partial class MainWindow
         {
             if (_lastRun == null)
             {
-                MessageBox.Show("Нет данных для сохранения", "Сохранить отчёт", MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Windows.MessageBox.Show("Нет данных для сохранения", "Сохранить отчёт", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
             var dlg = new Microsoft.Win32.SaveFileDialog
@@ -301,12 +301,12 @@ public partial class MainWindow
             if (dlg.ShowDialog() == true)
             {
                 await ReportWriter.SaveJsonAsync(_lastRun, dlg.FileName);
-                MessageBox.Show($"Отчёт сохранён:\n{dlg.FileName}", "Сохранено", MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Windows.MessageBox.Show($"Отчёт сохранён:\n{dlg.FileName}", "Сохранено", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Ошибка сохранения:\n{ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            System.Windows.MessageBox.Show($"Ошибка сохранения:\n{ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
