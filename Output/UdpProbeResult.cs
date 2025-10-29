@@ -13,5 +13,12 @@ namespace IspAudit.Output
         public int reply_bytes { get; set; }
         public string? note { get; set; }
         public string? description { get; set; }
+
+        /// <summary>
+        /// Certainty level of the test result.
+        /// "high" = expect_reply=true, definitive result (DNS with reply)
+        /// "low" = expect_reply=false, no confirmation (raw probe without response)
+        /// </summary>
+        public string certainty { get; set; } = "high";
     }
 }

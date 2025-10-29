@@ -32,18 +32,27 @@ namespace IspAudit.Tests
             var status = DnsStatus.OK;
             if (sysV4.Count == 0 && dohV4.Count > 0)
             {
+                // System DNS returns nothing, but DoH works → DNS filtered by ISP
                 status = DnsStatus.DNS_FILTERED;
             }
             else if (sysV4.Any(ip => NetUtils.IsBogusIPv4(IPAddress.Parse(ip))))
             {
+                // System DNS returns truly bogus IPs (0.0.0.0, 127.x, 169.254.x, multicast, etc)
                 status = DnsStatus.DNS_BOGUS;
+            }
+            else if (sysV4.Count > 0 && sysV4.All(ip => NetUtils.IsPrivateIPv4(IPAddress.Parse(ip))) && dohV4.Count > 0)
+            {
+                // System DNS returns ONLY private IPs (10.x, 172.16-31.x, 192.168.x), but DoH returns public IPs
+                // This is common in corporate networks with proxy/NAT
+                status = DnsStatus.WARN;
             }
             else if (sysV4.Count > 0 && dohV4.Count > 0)
             {
+                // Both return IPs, check if they overlap
                 var s1 = new HashSet<string>(sysV4);
                 var s2 = new HashSet<string>(dohV4);
                 var inter = s1.Intersect(s2).Any();
-                if (!inter) status = DnsStatus.WARN; // possible CDN/geo, flag warn
+                if (!inter) status = DnsStatus.WARN; // possible CDN/geo/hijack, flag warn
             }
             return new DnsResult(sysV4, dohV4, status);
         }

@@ -30,6 +30,8 @@ namespace IspAudit.Output
     {
         public string dns { get; set; } = "UNKNOWN";
         public string tcp { get; set; } = "UNKNOWN";
+        public string tcp_portal { get; set; } = "UNKNOWN"; // Порты 80/443 для RSI Portal
+        public string tcp_launcher { get; set; } = "UNKNOWN"; // Порты 8000-8020 для Launcher
         public string udp { get; set; } = "UNKNOWN";
         public string tls { get; set; } = "UNKNOWN";
         public string rst_inject { get; set; } = "UNKNOWN";
@@ -71,6 +73,7 @@ namespace IspAudit.Output
                 "WARN" => "есть расхождения",
                 "FAIL" => "не работает",
                 "SUSPECT" => "подозрение на блокировку",
+                "MITM_SUSPECT" => "подозрение на MITM-атаку",
                 "DNS_BOGUS" => "ошибочные DNS-ответы",
                 "DNS_FILTERED" => "провайдер подменяет DNS",
                 "INFO" => "информационный тест",
@@ -103,6 +106,7 @@ namespace IspAudit.Output
                           dnsStatuses.Contains("WARN") ? "WARN" :
                           dnsStatuses.Count > 0 ? "OK" : "UNKNOWN";
 
+            // TCP - общий статус (legacy, для обратной совместимости)
             var tcpAll = run.targets.Values
                 .Where(t => t.tcp_enabled)
                 .SelectMany(t => t.tcp)
@@ -110,19 +114,47 @@ namespace IspAudit.Output
             if (tcpAll.Count == 0) summary.tcp = "UNKNOWN";
             else summary.tcp = tcpAll.Any(r => r.open) ? "OK" : "FAIL";
 
+            // TCP Portal (80/443) - доступ к RSI сайту
+            var tcpPortal = tcpAll.Where(r => r.port == 80 || r.port == 443).ToList();
+            if (tcpPortal.Count == 0)
+                summary.tcp_portal = "UNKNOWN";
+            else if (tcpPortal.All(r => r.open))
+                summary.tcp_portal = "OK";
+            else if (tcpPortal.Any(r => r.open))
+                summary.tcp_portal = "WARN"; // Частично доступен
+            else
+                summary.tcp_portal = "FAIL";
+
+            // TCP Launcher (8000-8020) - патчер/лаунчер Star Citizen
+            var tcpLauncher = tcpAll.Where(r => r.port >= 8000 && r.port <= 8020).ToList();
+            if (tcpLauncher.Count == 0)
+                summary.tcp_launcher = "UNKNOWN";
+            else if (tcpLauncher.All(r => r.open))
+                summary.tcp_launcher = "OK";
+            else if (tcpLauncher.Any(r => r.open))
+                summary.tcp_launcher = "WARN"; // Частично доступен
+            else
+                summary.tcp_launcher = "FAIL";
+
             if (run.udp_tests == null || run.udp_tests.Count == 0)
             {
                 summary.udp = "UNKNOWN";
             }
-            else if (run.udp_tests.Any(r => r.expect_reply))
-            {
-                bool fail = run.udp_tests.Any(r => r.expect_reply && !r.success);
-                bool ok = run.udp_tests.Any(r => r.expect_reply && r.success);
-                summary.udp = fail ? "FAIL" : (ok ? "OK" : "UNKNOWN");
-            }
             else
             {
-                summary.udp = "INFO";
+                // Check high-certainty tests (expect_reply=true) first
+                var highCertaintyTests = run.udp_tests.Where(r => r.certainty == "high" || r.expect_reply).ToList();
+                if (highCertaintyTests.Count > 0)
+                {
+                    bool fail = highCertaintyTests.Any(r => !r.success);
+                    bool ok = highCertaintyTests.Any(r => r.success);
+                    summary.udp = fail ? "FAIL" : (ok ? "OK" : "UNKNOWN");
+                }
+                else
+                {
+                    // Only low-certainty tests (raw probes without replies)
+                    summary.udp = "INFO"; // Informational only, can't confirm connectivity
+                }
             }
 
             var httpTargets = run.targets.Values.Where(t => t.http_enabled).ToList();
@@ -134,15 +166,30 @@ namespace IspAudit.Output
             {
                 bool anyTlsOk = false;
                 bool suspect = false;
+                bool mitm = false; // Certificate CN mismatch - potential MITM attack
+
                 foreach (var t in httpTargets)
                 {
                     bool tcp443Open = t.tcp_enabled && t.tcp.Any(r => r.port == 443 && r.open);
                     bool httpOk = t.http.Any(h => h.success && h.status is >= 200 and < 400);
+
+                    // Check for certificate CN mismatch (MITM detection)
+                    bool cnMismatch = t.http.Any(h => h.cert_cn != null && h.cert_cn_matches == false);
+                    if (cnMismatch) mitm = true;
+
                     if (httpOk) anyTlsOk = true;
                     if (tcp443Open && !httpOk) suspect = true;
                 }
 
-                summary.tls = suspect ? "SUSPECT" : (anyTlsOk ? "OK" : "FAIL");
+                // Priority: MITM > SUSPECT > FAIL > OK
+                if (mitm)
+                    summary.tls = "MITM_SUSPECT";
+                else if (suspect)
+                    summary.tls = "SUSPECT";
+                else if (anyTlsOk)
+                    summary.tls = "OK";
+                else
+                    summary.tls = "FAIL";
             }
 
             if (run.rst_heuristic == null) summary.rst_inject = "UNKNOWN";
@@ -176,18 +223,34 @@ namespace IspAudit.Output
                     .Select(FormatTarget)
                     .ToList();
                 var suffix = warnTargets.Count > 0 ? $" ({string.Join(", ", warnTargets)})" : string.Empty;
-                lines.Add($"DNS: предупреждение{suffix} — системный и DoH ответы не совпадают. Это может быть CDN, но проверьте гео/валидность IP.");
+                lines.Add($"DNS: предупреждение{suffix} — системный и DoH ответы не совпадают.");
+                lines.Add("— Это может быть нормально (CDN с геолокацией), или вы находитесь за корпоративным прокси/NAT.");
+                lines.Add("— Если игра работает — всё в порядке. Если нет — возможна подмена DNS провайдером.");
             }
 
-            var tcpFailures = run.targets
-                .Where(kv => kv.Value.tcp_enabled && kv.Value.tcp.Count > 0 && !kv.Value.tcp.Any(r => r.open))
-                .Select(FormatTarget)
-                .ToList();
-            if (tcpFailures.Count > 0)
+            // TCP Portal (80/443)
+            if (run.summary.tcp_portal == "FAIL")
             {
-                lines.Add($"TCP: порты закрыты для: {string.Join(", ", tcpFailures)}.");
-                lines.Add("— Проверьте, что порты 80/443 и диапазон 8000–8020 для лаунчера/патчера Star Citizen не блокируются файрволом или провайдером.");
-                lines.Add("— Обход: открыть порты на роутере, временно отключить фильтрацию, протестировать через VPN/другую сеть.");
+                lines.Add("TCP: порты RSI Portal (80/443) ЗАКРЫТЫ — сайт RSI недоступен.");
+                lines.Add("— Проверьте файрвол, корпоративную сеть или блокировку провайдером.");
+                lines.Add("— Без доступа к порталу невозможно скачать лаунчер или получить доступ к аккаунту.");
+            }
+            else if (run.summary.tcp_portal == "WARN")
+            {
+                lines.Add("TCP: порты RSI Portal (80/443) ЧАСТИЧНО доступны — возможны проблемы с сайтом.");
+            }
+
+            // TCP Launcher (8000-8020)
+            if (run.summary.tcp_launcher == "FAIL")
+            {
+                lines.Add("TCP: порты лаунчера (8000-8020) ЗАКРЫТЫ — лаунчер не сможет обновить игру.");
+                lines.Add("— Эти порты критически важны для патчера Star Citizen.");
+                lines.Add("— Проверьте настройки роутера, файрвола и ISP. Попробуйте VPN.");
+            }
+            else if (run.summary.tcp_launcher == "WARN")
+            {
+                lines.Add("TCP: порты лаунчера (8000-8020) ЧАСТИЧНО доступны — обновления могут быть медленными или зависать.");
+                lines.Add("— Лаунчеру нужны ВСЕ порты 8000-8020. Проверьте файрвол и роутер.");
             }
 
             var udpExpectedFails = udpTests
@@ -208,12 +271,30 @@ namespace IspAudit.Output
                 lines.Add("— Решение: проверьте настройки роутера (UPnP) и попробуйте VPN, если игра не запускается.");
             }
 
-            if (run.summary.tls == "SUSPECT")
+            // MITM detection - certificate CN mismatch
+            if (run.summary.tls == "MITM_SUSPECT")
             {
-            var tlsSuspects = run.targets
-                .Where(kv => kv.Value.http_enabled && kv.Value.tcp_enabled && kv.Value.tcp.Any(r => r.port == 443 && r.open) && !kv.Value.http.Any(h => h.success && h.status is >= 200 and < 400))
-                .Select(FormatTarget)
-                .ToList();
+                var mitmTargets = run.targets
+                    .Where(kv => kv.Value.http_enabled && kv.Value.http.Any(h => h.cert_cn != null && h.cert_cn_matches == false))
+                    .Select(kv =>
+                    {
+                        var badCert = kv.Value.http.First(h => h.cert_cn != null && h.cert_cn_matches == false);
+                        return $"{FormatTarget(kv)} (сертификат: {badCert.cert_cn})";
+                    })
+                    .ToList();
+                var suffix = mitmTargets.Count > 0 ? $": {string.Join(", ", mitmTargets)}" : string.Empty;
+                lines.Add($"⚠ КРИТИЧНО: Подозрение на MITM-атаку (Man-in-the-Middle){suffix}");
+                lines.Add("— Сертификаты серверов НЕ соответствуют ожидаемым доменам.");
+                lines.Add("— Возможно, трафик перехватывается корпоративным прокси, антивирусом или провайдером.");
+                lines.Add("— НЕ ВВОДИТЕ пароли и личные данные в игре до устранения проблемы!");
+                lines.Add("— Проверьте: отключите антивирус/прокси, попробуйте другую сеть.");
+            }
+            else if (run.summary.tls == "SUSPECT")
+            {
+                var tlsSuspects = run.targets
+                    .Where(kv => kv.Value.http_enabled && kv.Value.tcp_enabled && kv.Value.tcp.Any(r => r.port == 443 && r.open) && !kv.Value.http.Any(h => h.success && h.status is >= 200 and < 400))
+                    .Select(FormatTarget)
+                    .ToList();
                 var suffix = tlsSuspects.Count > 0 ? $": {string.Join(", ", tlsSuspects)}" : string.Empty;
                 lines.Add($"HTTPS: блокировка защищённых соединений{suffix} — провайдер блокирует доступ к сайтам Star Citizen.");
                 lines.Add("— Решение: используйте VPN или попробуйте включить 'Обход блокировок' в этой программе.");

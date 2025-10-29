@@ -213,6 +213,11 @@ public partial class MainWindow : Window
                           summary.dns == "DNS_FILTERED" ||
                           summary.dns == "DNS_BOGUS" ||
                           summary.tcp == "FAIL" ||
+                          summary.tcp_portal == "FAIL" ||
+                          summary.tcp_launcher == "FAIL" ||
+                          summary.tcp_portal == "WARN" ||
+                          summary.tcp_launcher == "WARN" ||
+                          summary.tls == "MITM_SUSPECT" ||
                           summary.tls == "SUSPECT" ||
                           summary.tls == "FAIL";
 
@@ -228,11 +233,27 @@ public partial class MainWindow : Window
             {
                 warnings.Add("• DNS провайдера возвращает неправильные адреса серверов");
             }
-            if (summary.tcp == "FAIL")
+            if (summary.tcp_portal == "FAIL")
             {
-                warnings.Add("• Не удаётся подключиться к серверам Star Citizen");
+                warnings.Add("• RSI Portal (80/443) недоступен — не удастся скачать лаунчер");
             }
-            if (summary.tls == "SUSPECT" || summary.tls == "FAIL")
+            else if (summary.tcp_portal == "WARN")
+            {
+                warnings.Add("• RSI Portal (80/443) частично доступен — возможны проблемы");
+            }
+            if (summary.tcp_launcher == "FAIL")
+            {
+                warnings.Add("• Лаунчер (8000-8020) заблокирован — игра не обновится");
+            }
+            else if (summary.tcp_launcher == "WARN")
+            {
+                warnings.Add("• Лаунчер (8000-8020) частично доступен — обновления могут зависать");
+            }
+            if (summary.tls == "MITM_SUSPECT")
+            {
+                warnings.Add("• ⚠ КРИТИЧНО: Обнаружена MITM-атака (подмена сертификатов)!");
+            }
+            else if (summary.tls == "SUSPECT" || summary.tls == "FAIL")
             {
                 warnings.Add("• HTTPS-соединения блокируются или изменяются");
             }

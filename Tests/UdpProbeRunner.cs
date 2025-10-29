@@ -120,11 +120,13 @@ namespace IspAudit.Tests
                 }
                 else
                 {
+                    // Raw probe without expecting reply - low certainty
                     sw.Stop();
                     result.success = true;
                     result.reply = false;
                     result.rtt_ms = null;
                     result.note = "пакет отправлен";
+                    result.certainty = "low"; // Can't confirm if packet reached destination
                 }
             }
             catch (SocketException ex)

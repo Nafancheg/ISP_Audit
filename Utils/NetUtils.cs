@@ -59,14 +59,35 @@ namespace IspAudit.Utils
             catch { return new List<IPAddress>(); }
         }
 
+        /// <summary>
+        /// Checks if IP is truly bogus (invalid/loopback/link-local/multicast/reserved).
+        /// Does NOT include RFC1918 private addresses (10.x, 172.16-31.x, 192.168.x).
+        /// </summary>
         public static bool IsBogusIPv4(IPAddress ip)
         {
             if (ip.AddressFamily != AddressFamily.InterNetwork) return false;
             var b = ip.GetAddressBytes();
-            // 0.0.0.0/8
+            // 0.0.0.0/8 - invalid
             if (b[0] == 0) return true;
-            // 127.0.0.0/8
+            // 127.0.0.0/8 - loopback
             if (b[0] == 127) return true;
+            // 169.254.0.0/16 - link-local
+            if (b[0] == 169 && b[1] == 254) return true;
+            // 224.0.0.0/4 - multicast (224-239)
+            if (b[0] >= 224 && b[0] <= 239) return true;
+            // 240.0.0.0/4 - reserved (240-255)
+            if (b[0] >= 240) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Checks if IP is RFC1918 private address (10.x, 172.16-31.x, 192.168.x).
+        /// These are valid in corporate networks behind NAT/proxy.
+        /// </summary>
+        public static bool IsPrivateIPv4(IPAddress ip)
+        {
+            if (ip.AddressFamily != AddressFamily.InterNetwork) return false;
+            var b = ip.GetAddressBytes();
             // 10.0.0.0/8
             if (b[0] == 10) return true;
             // 172.16.0.0/12 => 172.16-31
