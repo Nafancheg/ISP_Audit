@@ -14,6 +14,8 @@ namespace IspAudit
         public bool PrintJson { get; set; } = false;
         public bool NoTrace { get; set; } = false;
         public bool ShowHelp { get; set; } = false;
+        // Environment profile: normal|vpn (affects classification/thresholds)
+        public string Profile { get; set; } = "normal";
 
         // Timeouts in seconds
         public int HttpTimeoutSeconds { get; set; } = 6;
@@ -62,6 +64,11 @@ namespace IspAudit
                     case "--report":
                         if (i + 1 >= args.Length) { error = "--report requires a path"; break; }
                         cfg.ReportPath = args[++i];
+                        break;
+                    case "--profile":
+                        if (i + 1 >= args.Length) { error = "--profile requires a value (normal|vpn)"; break; }
+                        var prof = (args[++i] ?? string.Empty).Trim().ToLowerInvariant();
+                        if (prof == "normal" || prof == "vpn") cfg.Profile = prof; else error = "--profile must be 'normal' or 'vpn'";
                         break;
                     case "--targets":
                         if (i + 1 >= args.Length) { error = "--targets requires a value"; break; }

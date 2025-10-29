@@ -99,6 +99,8 @@ public partial class MainWindow : Window
             config.HttpTimeoutSeconds = 6;
             config.TcpTimeoutSeconds = 5;
             config.UdpTimeoutSeconds = 2;
+            // Авто-детект VPN профиля для снижения ложных срабатываний
+            try { config.Profile = IspAudit.Utils.NetUtils.LikelyVpnActive() ? "vpn" : "normal"; } catch { config.Profile = "normal"; }
 
             var progress = new Progress<TestProgress>(p =>
             {

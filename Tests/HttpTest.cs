@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
@@ -18,27 +18,31 @@ namespace IspAudit.Tests
         /// Detects if the HTML response is likely a block page from RKN/ISP
         /// by looking for common block page indicators.
         /// </summary>
-        private static bool IsLikelyBlockPage(string html, string expectedHost)
+                /// <summary>
+        /// Detect if the HTML looks like an ISP/RKN block page.
+        /// In VPN profile the heuristic is stricter to reduce false positives.
+        /// </summary>
+        private bool IsLikelyBlockPage(string html, string expectedHost, int statusCode)
         {
-            if (string.IsNullOrEmpty(html) || html.Length > 50000) return false;
-
+            if (string.IsNullOrEmpty(html) || html.Length > 500000) return false;
             var lower = html.ToLowerInvariant();
 
-            // Типичные признаки заглушек РКН/ISP
-            var blockIndicators = new[] {
-                "доступ ограничен", "access denied", "blocked", "zapret",
-                "роскомнадзор", "rkn.gov.ru", "заблокирован",
-                "доступ к ресурсу ограничен", "the access to this site has been limited",
-                "ваш ip-адрес", "your ip address"
+            var indicators = new[]
+            {
+                "access denied","blocked","zapret","rkn.gov.ru",
+                "your ip address","the access to this site has been limited",
+                "доступ запрещен","доступ ограничен"
             };
+            int m = 0; foreach (var ind in indicators) if (lower.Contains(ind)) m++;
 
-            int matches = blockIndicators.Count(indicator => lower.Contains(indicator));
+            bool hostMismatch = !lower.Contains((expectedHost ?? string.Empty).ToLowerInvariant());
+            bool strong = statusCode == 451 || statusCode == 403 || lower.Contains("rkn.gov.ru");
 
-            // Если 2+ совпадения или сайт НЕ содержит свой домен
-            return matches >= 2 || (matches >= 1 && !lower.Contains(expectedHost.ToLowerInvariant()));
-        }
+            if (string.Equals(_cfg.Profile, "vpn", StringComparison.OrdinalIgnoreCase))
+                return strong || (m >= 2 && hostMismatch);
 
-        /// <summary>
+            return strong || m >= 2 || (m >= 1 && hostMismatch);
+        }/// <summary>
         /// Validates if certificate CN matches the expected host.
         /// Supports wildcard certificates (*.example.com).
         /// </summary>
@@ -110,7 +114,7 @@ namespace IspAudit.Tests
                     try
                     {
                         var content = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
-                        isBlockPage = IsLikelyBlockPage(content, host);
+                        isBlockPage = IsLikelyBlockPage(content, host, (int)resp.StatusCode);
                     }
                     catch
                     {
@@ -134,4 +138,7 @@ namespace IspAudit.Tests
         }
     }
 }
+
+
+
 

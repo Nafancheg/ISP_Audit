@@ -11,6 +11,27 @@ namespace IspAudit.Utils
 {
     public static class NetUtils
     {
+        public static bool LikelyVpnActive()
+        {
+            try
+            {
+                foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                    var name = (ni.Name ?? string.Empty).ToLowerInvariant();
+                    var desc = (ni.Description ?? string.Empty).ToLowerInvariant();
+                    var type = ni.NetworkInterfaceType;
+                    bool looksVpn = type == NetworkInterfaceType.Tunnel
+                                    || name.Contains("vpn") || desc.Contains("vpn")
+                                    || desc.Contains("wintun") || desc.Contains("wireguard")
+                                    || desc.Contains("openvpn") || desc.Contains("tap-") || desc.Contains("tap ")
+                                    || desc.Contains("tun") || desc.Contains("ikev2");
+                    if (looksVpn) return true;
+                }
+            }
+            catch { }
+            return false;
+        }
         public static async Task<bool> PingAsync(string host, int timeoutMs)
         {
             try
@@ -117,4 +138,3 @@ namespace IspAudit.Utils
         }
     }
 }
-
