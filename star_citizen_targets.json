@@ -2,13 +2,9 @@
   "targets": [
     { "name": "RSI Портал", "host": "robertsspaceindustries.com", "service": "Портал" },
     { "name": "RSI Аккаунты", "host": "accounts.robertsspaceindustries.com", "service": "Портал" },
-    { "name": "RSI API", "host": "api.robertsspaceindustries.com", "service": "Портал" },
-    { "name": "RSI Лаунчер", "host": "launcher.robertsspaceindustries.com", "service": "Лаунчер" },
+    { "name": "RSI API", "host": "api.robertsspaceindustries.com", "service": "API" },
     { "name": "RSI CDN", "host": "cdn.robertsspaceindustries.com", "service": "CDN" },
-    { "name": "RSI Установщик", "host": "install.robertsspaceindustries.com", "service": "CDN" },
-    { "name": "Star Citizen EU", "host": "p4eu-live.cloudimperiumgames.com", "service": "Игровые сервера" },
-    { "name": "Star Citizen US", "host": "p4us-live.cloudimperiumgames.com", "service": "Игровые сервера" },
-    { "name": "Star Citizen AUS", "host": "p4aus-live.cloudimperiumgames.com", "service": "Игровые сервера" }
+    { "name": "RSI Установщик", "host": "install.robertsspaceindustries.com", "service": "CDN" }
   ],
   "tcpPorts": [80, 443, 8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8010, 8011, 8012, 8013, 8014, 8015, 8016, 8017, 8018, 8019, 8020],
   "udpProbes": [
@@ -20,33 +16,6 @@
       "kind": "Dns",
       "expectReply": true,
       "note": "Проверка UDP DNS"
-    },
-    {
-      "name": "Star Citizen EU шлюз",
-      "host": "p4eu-live.cloudimperiumgames.com",
-      "port": 64090,
-      "service": "Игровые сервера",
-      "kind": "Raw",
-      "expectReply": false,
-      "note": "Отправка тестового пакета, ответ не ожидается"
-    },
-    {
-      "name": "Star Citizen US шлюз",
-      "host": "p4us-live.cloudimperiumgames.com",
-      "port": 64090,
-      "service": "Игровые сервера",
-      "kind": "Raw",
-      "expectReply": false,
-      "note": "Отправка тестового пакета, ответ не ожидается"
-    },
-    {
-      "name": "Star Citizen AUS шлюз",
-      "host": "p4aus-live.cloudimperiumgames.com",
-      "port": 64090,
-      "service": "Игровые сервера",
-      "kind": "Raw",
-      "expectReply": false,
-      "note": "Отправка тестового пакета, ответ не ожидается"
     }
   ]
 }

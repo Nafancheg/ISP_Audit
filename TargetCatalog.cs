@@ -92,13 +92,9 @@ namespace IspAudit
             {
                 new() { Name = "RSI Портал", Host = "robertsspaceindustries.com", Service = "Портал" },
                 new() { Name = "RSI Аккаунты", Host = "accounts.robertsspaceindustries.com", Service = "Портал" },
-                new() { Name = "RSI API", Host = "api.robertsspaceindustries.com", Service = "Портал" },
-                new() { Name = "RSI Лаунчер", Host = "launcher.robertsspaceindustries.com", Service = "Лаунчер" },
+                new() { Name = "RSI API", Host = "api.robertsspaceindustries.com", Service = "API" },
                 new() { Name = "RSI CDN", Host = "cdn.robertsspaceindustries.com", Service = "CDN" },
-                new() { Name = "RSI Установщик", Host = "install.robertsspaceindustries.com", Service = "CDN" },
-                new() { Name = "Star Citizen EU", Host = "p4eu-live.cloudimperiumgames.com", Service = "Игровые сервера" },
-                new() { Name = "Star Citizen US", Host = "p4us-live.cloudimperiumgames.com", Service = "Игровые сервера" },
-                new() { Name = "Star Citizen AUS", Host = "p4aus-live.cloudimperiumgames.com", Service = "Игровые сервера" }
+                new() { Name = "RSI Установщик", Host = "install.robertsspaceindustries.com", Service = "CDN" }
             };
 
             var tcpPorts = new List<int> { 80, 443 };
@@ -111,24 +107,6 @@ namespace IspAudit
                     Name = "Cloudflare DNS", Host = "1.1.1.1", Port = 53,
                     Service = "Базовая сеть", Kind = UdpProbeKind.Dns, ExpectReply = true,
                     Note = "Проверка UDP DNS"
-                },
-                new()
-                {
-                    Name = "Star Citizen EU шлюз", Host = "p4eu-live.cloudimperiumgames.com", Port = 64090,
-                    Service = "Игровые сервера", Kind = UdpProbeKind.Raw, ExpectReply = false,
-                    Note = "Отправка тестового пакета, ответ не ожидается"
-                },
-                new()
-                {
-                    Name = "Star Citizen US шлюз", Host = "p4us-live.cloudimperiumgames.com", Port = 64090,
-                    Service = "Игровые сервера", Kind = UdpProbeKind.Raw, ExpectReply = false,
-                    Note = "Отправка тестового пакета, ответ не ожидается"
-                },
-                new()
-                {
-                    Name = "Star Citizen AUS шлюз", Host = "p4aus-live.cloudimperiumgames.com", Port = 64090,
-                    Service = "Игровые сервера", Kind = UdpProbeKind.Raw, ExpectReply = false,
-                    Note = "Отправка тестового пакета, ответ не ожидается"
                 }
             };
 
