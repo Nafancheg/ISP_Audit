@@ -195,8 +195,11 @@ namespace IspAudit
                     progress?.Report(new Tests.TestProgress(Tests.TestKind.UDP, $"{probe.Name}: старт"));
                     var res = await udpRunner.ProbeAsync(probe).ConfigureAwait(false);
                     udpResults.Add(res);
-                    var ok = res.success;
-                    var message = ok
+
+                    // For low-certainty tests (raw probes without reply), don't report as "success"
+                    // They are informational only and should be shown as neutral/info
+                    bool? ok = res.certainty == "low" ? null : res.success;
+                    var message = res.success
                         ? (res.reply ? $"ответ {res.rtt_ms?.ToString() ?? "?"}мс" : "пакет отправлен")
                         : (res.note ?? "ошибка");
                     progress?.Report(new Tests.TestProgress(Tests.TestKind.UDP, $"{probe.Name}: завершено", ok, message));

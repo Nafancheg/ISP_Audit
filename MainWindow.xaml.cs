@@ -184,8 +184,12 @@ public partial class MainWindow : Window
         else if (p.Status.Contains("завершено", StringComparison.OrdinalIgnoreCase) ||
                  p.Status.Contains("готово", StringComparison.OrdinalIgnoreCase))
         {
-            bool success = p.Success ?? true;
-            if (success)
+            if (p.Success == null)
+            {
+                // Informational test (e.g., low-certainty UDP probe) - show as neutral
+                service.SetRunning("ℹ Информация");
+            }
+            else if (p.Success == true)
             {
                 service.SetSuccess("✓ Работает");
             }
