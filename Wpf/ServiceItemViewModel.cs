@@ -28,6 +28,13 @@ public class ServiceItemViewModel : INotifyPropertyChanged
         set { _details = value; OnPropertyChanged(); }
     }
 
+    private string _detailedMessage = string.Empty;
+    public string DetailedMessage
+    {
+        get => _detailedMessage;
+        set { _detailedMessage = value; OnPropertyChanged(); }
+    }
+
     public bool IsRunning
     {
         get => _isRunning;

@@ -7,6 +7,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
+using System.Globalization;
+using System.Windows.Data;
 using IspAudit.Tests;
 using IspAudit.Wpf;
 using IspAudit.Output;
@@ -75,6 +77,7 @@ public partial class MainWindow : Window
 
             WarningCard.Visibility = Visibility.Collapsed;
             SuccessCard.Visibility = Visibility.Collapsed;
+            VpnInfoCard.Visibility = Visibility.Collapsed;
 
             foreach (var service in _services)
             {
@@ -100,7 +103,23 @@ public partial class MainWindow : Window
             config.TcpTimeoutSeconds = 5;
             config.UdpTimeoutSeconds = 2;
             // Авто-детект VPN профиля для снижения ложных срабатываний
-            try { config.Profile = IspAudit.Utils.NetUtils.LikelyVpnActive() ? "vpn" : "normal"; } catch { config.Profile = "normal"; }
+            bool vpnActive = false;
+            try
+            {
+                vpnActive = IspAudit.Utils.NetUtils.LikelyVpnActive();
+                config.Profile = vpnActive ? "vpn" : "normal";
+                if (vpnActive)
+                {
+                    // Адаптивные таймауты для VPN (туннелирование медленнее)
+                    config.HttpTimeoutSeconds = 12;
+                    config.TcpTimeoutSeconds = 8;
+                    config.UdpTimeoutSeconds = 4;
+                }
+            }
+            catch { config.Profile = "normal"; }
+
+            // Показать VPN-баннер если VPN активен
+            VpnInfoCard.Visibility = vpnActive ? Visibility.Visible : Visibility.Collapsed;
 
             var progress = new Progress<TestProgress>(p =>
             {
@@ -130,6 +149,60 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Преобразует технические статусы в понятные сообщения для пользователей
+    /// </summary>
+    private string GetUserFriendlyMessage(TestProgress progress)
+    {
+        var message = progress.Message?.ToUpperInvariant() ?? "";
+
+        if (progress.Kind == TestKind.DNS)
+        {
+            if (message.Contains("DNS_FILTERED"))
+                return "Системный DNS и защищённый DNS вернули разные адреса. Провайдер может подменять запросы.";
+            else if (message.Contains("DNS_BOGUS"))
+                return "DNS возвращает некорректные адреса (0.0.0.0 или локальные). Система блокирует доступ.";
+            else if (message.Contains("WARN"))
+                return "Адреса DNS не полностью совпадают. Это может быть нормально при VPN или кэшировании.";
+            else if (message.Contains("OK"))
+                return "DNS работает корректно. Сервисы доступны.";
+            else if (message.Contains("ПРОПУЩЕНО") || message.Contains("SKIPPED"))
+                return "DNS-проверка пропущена (сервис не требует проверки).";
+        }
+
+        if (progress.Kind == TestKind.TCP)
+        {
+            if (message.Contains("ЗАКРЫТО") || message.Contains("ВСЕ ЗАКРЫТО") || message.Contains("CLOSED"))
+                return "Все проверенные TCP-порты закрыты. Сервис недоступен — проверьте фаервол или блокировку провайдером.";
+            else if (message.Contains("НАЙДЕН") || message.Contains("ОТКРЫТЫ") || message.Contains("OPEN"))
+                return "Порты доступны. TCP-соединение устанавливается успешно.";
+            else if (message.Contains("ПРОПУЩЕНО") || message.Contains("SKIPPED"))
+                return "TCP-проверка пропущена (DNS не вернул адресов или проверка отключена).";
+        }
+
+        if (progress.Kind == TestKind.HTTP)
+        {
+            if (message.Contains("2XX") || message.Contains("3XX") || message.Contains("200") || message.Contains("301"))
+                return "HTTPS-соединение работает. Сервер отвечает корректно.";
+            else if (message.Contains("ТАЙМАУТ") || message.Contains("TIMEOUT"))
+                return "HTTPS-запрос истёк по времени. Сервер может быть перегружен или недоступен.";
+            else if (message.Contains("ОШИБКИ") || message.Contains("ERROR") || message.Contains("MITM") || message.Contains("BLOCK"))
+                return "HTTPS-запрос не прошёл. Возможен перехват или блокировка трафика.";
+            else if (message.Contains("ПРОПУЩЕНО") || message.Contains("SKIPPED"))
+                return "HTTPS-проверка пропущена (не требуется для этого сервиса).";
+        }
+
+        if (progress.Kind == TestKind.UDP)
+        {
+            if (progress.Success == true)
+                return "UDP-пакет доставлен успешно. Канал работает.";
+            else if (progress.Success == false)
+                return "UDP-проверка не прошла. Нет ответа или ошибка доставки.";
+        }
+
+        return progress.Message ?? string.Empty;
+    }
+
     private void UpdateProgress(TestProgress p)
     {
         StatusText.Text = "Запуск диагностики...";
@@ -146,11 +219,14 @@ public partial class MainWindow : Window
                     if (p.Status.Contains("Старт", StringComparison.OrdinalIgnoreCase) || p.Status.Contains("Запуск", StringComparison.OrdinalIgnoreCase) || p.Status.Contains("Start", StringComparison.OrdinalIgnoreCase))
                     {
                         udpService.SetRunning("Проверка UDP");
+                        udpService.DetailedMessage = string.Empty;
                     }
                     else if (p.Status.Contains("Завершено", StringComparison.OrdinalIgnoreCase) || p.Status.Contains("Complete", StringComparison.OrdinalIgnoreCase))
                     {
                         bool success = p.Success ?? true;
                         udpService.SetSuccess(success ? "✓ Успех" : "✗ Ошибка");
+                        // Установить подробное понятное сообщение для пользователя
+                        udpService.DetailedMessage = GetUserFriendlyMessage(p);
                     }
                 }
             }
@@ -172,6 +248,7 @@ public partial class MainWindow : Window
                 _ => "Проверка"
             };
             service.SetRunning(testDesc);
+            service.DetailedMessage = string.Empty;
         }
         else if (p.Status.Contains("Завершено", StringComparison.OrdinalIgnoreCase) ||
                  p.Status.Contains("Complete", StringComparison.OrdinalIgnoreCase))
@@ -188,6 +265,8 @@ public partial class MainWindow : Window
             {
                 service.SetError("✗ Ошибка");
             }
+            // Установить подробное понятное сообщение для пользователя
+            service.DetailedMessage = GetUserFriendlyMessage(p);
         }
     }
 
@@ -201,7 +280,7 @@ public partial class MainWindow : Window
 
     private void ShowResults(RunReport report)
     {
-        var summary = ReportWriter.BuildSummary(report);
+        var summary = ReportWriter.BuildSummary(report, _lastConfig);
 
         // Обновить отдельный вердикт
         try { PlayableText.Text = BuildPlayableLabel(summary.playable); } catch { }
@@ -313,4 +392,18 @@ public partial class MainWindow
     }
 }
 
+/// <summary>
+/// Конвертер для преобразования строки в видимость (пустая строка = Collapsed)
+/// </summary>
+public class StringToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return string.IsNullOrWhiteSpace(value as string) ? Visibility.Collapsed : Visibility.Visible;
+    }
 
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
