@@ -1,0 +1,20 @@
+            if (summary.tls == "MITM_SUSPECT")
+            {
+                warnings.Add("• ⚠ КРИТИЧНО: Обнаружена MITM-атака (подмена сертификатов)!");
+            }
+            else if (summary.tls == "SUSPECT" || summary.tls == "FAIL")
+            {
+                warnings.Add("• HTTPS-соединения блокируются или изменяются");
+            }
+
+            WarningText.Text = string.Join("\n", warnings) +
+                "\n\nРекомендация: используйте VPN или включите защищённый DNS (DoH).";
+        }
+        else
+        {
+            SuccessCard.Visibility = Visibility.Visible;
+            WarningCard.Visibility = Visibility.Collapsed;
+        }
+
+        StatusText.Text = hasProblems
+            ? "Проверка завершена — обнаружены проблемы"

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.IO;
+using Microsoft.Win32;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -16,6 +18,8 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<ServiceItemViewModel> _services = new();
     private CancellationTokenSource? _cts;
     private bool _isRunning;
+    private RunReport? _lastRun;
+    private Config? _lastConfig;
 
     public MainWindow()
     {
@@ -28,7 +32,6 @@ public partial class MainWindow : Window
     {
         _services.Clear();
 
-        // Добавляем сервисы из каталога
         foreach (var target in Program.Targets.Values)
         {
             string displayName = string.IsNullOrWhiteSpace(target.Service)
@@ -38,15 +41,14 @@ public partial class MainWindow : Window
             _services.Add(new ServiceItemViewModel
             {
                 ServiceName = displayName,
-                Details = "ожидание проверки"
+                Details = "Ожидание старта"
             });
         }
 
-        // Добавляем UDP проверку базовой сети
         _services.Add(new ServiceItemViewModel
         {
-            ServiceName = "Базовая сеть (UDP)",
-            Details = "ожидание проверки"
+            ServiceName = "Публичный DNS (UDP)",
+            Details = "Ожидание старта"
         });
     }
 
@@ -54,7 +56,6 @@ public partial class MainWindow : Window
     {
         if (_isRunning)
         {
-            // Отмена
             _cts?.Cancel();
             return;
         }
@@ -69,26 +70,23 @@ public partial class MainWindow : Window
 
         try
         {
-            // Меняем кнопку на "ОСТАНОВИТЬ"
             RunButton.Content = "ОСТАНОВИТЬ";
-            RunButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(244, 67, 54)); // Red
+            RunButton.Background = new SolidColorBrush(Color.FromRgb(244, 67, 54)); // Red
 
-            // Скрываем карточки статуса
             WarningCard.Visibility = Visibility.Collapsed;
             SuccessCard.Visibility = Visibility.Collapsed;
 
-            // Сброс статусов
             foreach (var service in _services)
             {
                 service.IsRunning = false;
                 service.IsCompleted = false;
-                service.Details = "ожидание проверки";
+                service.Details = "Ожидание старта";
             }
 
             ProgressBar.Value = 0;
+            if (SaveButton != null) SaveButton.IsEnabled = false;
             StatusText.Text = "Запуск диагностики...";
 
-            // Создаём конфигурацию
             var config = Config.Default();
             config.TargetMap = Program.Targets.ToDictionary(kv => kv.Key, kv => kv.Value.Copy(), StringComparer.OrdinalIgnoreCase);
             config.Targets = config.TargetMap.Values.Select(t => t.Host).Distinct().ToList();
@@ -102,100 +100,95 @@ public partial class MainWindow : Window
             config.TcpTimeoutSeconds = 5;
             config.UdpTimeoutSeconds = 2;
 
-            // Progress callback
             var progress = new Progress<TestProgress>(p =>
             {
                 UpdateProgress(p);
             });
 
-            // Запуск
             var report = await AuditRunner.RunAsync(config, progress, _cts.Token);
 
-            // Показываем результаты
+            _lastRun = report;
+            _lastConfig = config;
+            if (SaveButton != null) SaveButton.IsEnabled = true;
+
             ShowResults(report);
         }
         catch (OperationCanceledException)
         {
-            StatusText.Text = "Проверка отменена";
+            StatusText.Text = "Диагностика остановлена";
         }
         catch (Exception ex)
         {
             StatusText.Text = $"Ошибка: {ex.Message}";
-            System.Windows.MessageBox.Show($"Произошла ошибка:\n{ex.Message}", "Ошибка",
-                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            MessageBox.Show($"Внутренняя ошибка:\n{ex.Message}", "Ошибка",
+                MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
             _isRunning = false;
             RunButton.Content = "ПРОВЕРИТЬ";
-            RunButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(33, 150, 243)); // Blue
+            RunButton.Background = new SolidColorBrush(Color.FromRgb(33, 150, 243)); // Blue
             ProgressBar.Value = 100;
         }
     }
 
     private void UpdateProgress(TestProgress p)
     {
-        // Обновляем статус
         StatusText.Text = p.Status;
 
-        // Извлекаем имя цели из сообщения формата "RSI Портал: старт"
         string? targetName = ExtractTargetName(p.Status);
         if (targetName == null)
         {
-            // Обработка UDP проверки базовой сети
+            // Aggregate UDP progress line (no target name in status)
             if (p.Status.Contains("UDP", StringComparison.OrdinalIgnoreCase))
             {
-                var udpService = _services.FirstOrDefault(s => s.ServiceName.Contains("Базовая сеть"));
+                var udpService = _services.FirstOrDefault(s => s.ServiceName.Contains("DNS (UDP)") || s.ServiceName.Contains("Публичный DNS"));
                 if (udpService != null)
                 {
-                    if (p.Status.Contains("старт", StringComparison.OrdinalIgnoreCase))
+                    if (p.Status.Contains("Старт", StringComparison.OrdinalIgnoreCase) || p.Status.Contains("Запуск", StringComparison.OrdinalIgnoreCase) || p.Status.Contains("Start", StringComparison.OrdinalIgnoreCase))
                     {
-                        udpService.SetRunning("проверка UDP");
+                        udpService.SetRunning("Проверка UDP");
                     }
-                    else if (p.Status.Contains("завершено", StringComparison.OrdinalIgnoreCase))
+                    else if (p.Status.Contains("Завершено", StringComparison.OrdinalIgnoreCase) || p.Status.Contains("Complete", StringComparison.OrdinalIgnoreCase))
                     {
                         bool success = p.Success ?? true;
-                        udpService.SetSuccess(success ? "✓ Работает" : "⚠ Проблемы");
+                        udpService.SetSuccess(success ? "✓ Успех" : "✗ Ошибка");
                     }
                 }
             }
             return;
         }
 
-        // Ищем соответствующий сервис в списке
         var service = _services.FirstOrDefault(s =>
             s.ServiceName.Contains(targetName, StringComparison.OrdinalIgnoreCase));
-
         if (service == null) return;
 
-        // Обновляем статус сервиса
-        if (p.Status.Contains("старт", StringComparison.OrdinalIgnoreCase))
+        if (p.Status.Contains("Старт", StringComparison.OrdinalIgnoreCase) || p.Status.Contains("Запуск", StringComparison.OrdinalIgnoreCase) || p.Status.Contains("Start", StringComparison.OrdinalIgnoreCase))
         {
             string testDesc = p.Kind switch
             {
-                TestKind.DNS => "проверка DNS",
-                TestKind.TCP => "проверка портов",
-                TestKind.HTTP => "проверка HTTPS",
-                TestKind.UDP => "проверка UDP",
-                _ => "проверка"
+                TestKind.DNS => "Проверка DNS",
+                TestKind.TCP => "Проверка TCP",
+                TestKind.HTTP => "Проверка HTTPS",
+                TestKind.UDP => "Проверка UDP",
+                _ => "Проверка"
             };
             service.SetRunning(testDesc);
         }
-        else if (p.Status.Contains("завершено", StringComparison.OrdinalIgnoreCase) ||
-                 p.Status.Contains("готово", StringComparison.OrdinalIgnoreCase))
+        else if (p.Status.Contains("Завершено", StringComparison.OrdinalIgnoreCase) ||
+                 p.Status.Contains("Complete", StringComparison.OrdinalIgnoreCase))
         {
             if (p.Success == null)
             {
-                // Informational test (e.g., low-certainty UDP probe) - show as neutral
-                service.SetRunning("ℹ Информация");
+                service.SetRunning("ℹ Информационно");
             }
             else if (p.Success == true)
             {
-                service.SetSuccess("✓ Работает");
+                service.SetSuccess("✓ Успех");
             }
             else
             {
-                service.SetError("⚠ Проблемы");
+                service.SetError("✗ Ошибка");
             }
         }
     }
@@ -210,60 +203,46 @@ public partial class MainWindow : Window
 
     private void ShowResults(RunReport report)
     {
-        // Анализируем результаты
         var summary = ReportWriter.BuildSummary(report);
 
+        // Обновить отдельный вердикт
+        try { PlayableText.Text = BuildPlayableLabel(summary.playable); } catch { }
+
         bool hasProblems = summary.dns == "WARN" ||
-                          summary.dns == "DNS_FILTERED" ||
-                          summary.dns == "DNS_BOGUS" ||
-                          summary.tcp == "FAIL" ||
-                          summary.tcp_portal == "FAIL" ||
-                          summary.tcp_launcher == "FAIL" ||
-                          summary.tcp_portal == "WARN" ||
-                          summary.tcp_launcher == "WARN" ||
-                          summary.tls == "MITM_SUSPECT" ||
-                          summary.tls == "SUSPECT" ||
-                          summary.tls == "FAIL";
+                           summary.dns == "DNS_FILTERED" ||
+                           summary.dns == "DNS_BOGUS" ||
+                           summary.tcp == "FAIL" ||
+                           summary.tcp_portal == "FAIL" ||
+                           summary.tcp_launcher == "FAIL" ||
+                           summary.tcp_portal == "WARN" ||
+                           summary.tcp_launcher == "WARN" ||
+                           summary.tls == "MITM_SUSPECT" ||
+                           summary.tls == "SUSPECT" ||
+                           summary.tls == "FAIL";
 
         if (hasProblems)
         {
             WarningCard.Visibility = Visibility.Visible;
             SuccessCard.Visibility = Visibility.Collapsed;
 
-            // Формируем текст предупреждения
             var warnings = new System.Collections.Generic.List<string>();
 
             if (summary.dns == "DNS_FILTERED" || summary.dns == "DNS_BOGUS")
-            {
-                warnings.Add("• DNS провайдера возвращает неправильные адреса серверов");
-            }
+                warnings.Add("• Проблема DNS: системный резолвер возвращает некорректные ответы");
             if (summary.tcp_portal == "FAIL")
-            {
-                warnings.Add("• RSI Portal (80/443) недоступен — не удастся скачать лаунчер");
-            }
+                warnings.Add("• RSI Portal (80/443) недоступен — авторизация невозможна");
             else if (summary.tcp_portal == "WARN")
-            {
-                warnings.Add("• RSI Portal (80/443) частично доступен — возможны проблемы");
-            }
+                warnings.Add("• RSI Portal (80/443) частично доступен — возможны перебои");
             if (summary.tcp_launcher == "FAIL")
-            {
-                warnings.Add("• Лаунчер (8000-8020) заблокирован — игра не обновится");
-            }
+                warnings.Add("• Лаунчер (8000–8020) недоступен — возможны проблемы с обновлением");
             else if (summary.tcp_launcher == "WARN")
-            {
-                warnings.Add("• Лаунчер (8000-8020) частично доступен — обновления могут зависать");
-            }
+                warnings.Add("• Лаунчер (8000–8020) частично доступен — возможны проблемы");
             if (summary.tls == "MITM_SUSPECT")
-            {
-                warnings.Add("• ⚠ КРИТИЧНО: Обнаружена MITM-атака (подмена сертификатов)!");
-            }
+                warnings.Add("• Подозрение на перехват HTTPS (MITM) — проверьте антивирус/прокси");
             else if (summary.tls == "SUSPECT" || summary.tls == "FAIL")
-            {
-                warnings.Add("• HTTPS-соединения блокируются или изменяются");
-            }
+                warnings.Add("• Проблемы с HTTPS — проверьте фильтры/прокси");
 
-            WarningText.Text = string.Join("\n", warnings) +
-                "\n\nРекомендация: используйте VPN или включите защищённый DNS (DoH).";
+            WarningText.Text = string.Join("\n", warnings) + "\n\n" + BuildUiRecommendation(summary);
         }
         else
         {
@@ -273,6 +252,73 @@ public partial class MainWindow : Window
 
         StatusText.Text = hasProblems
             ? "Проверка завершена — обнаружены проблемы"
-            : "Проверка завершена — всё работает!";
+            : "Проверка завершена — всё в порядке!";
+    }
+
+    private static string BuildUiRecommendation(Summary s)
+    {
+        if (s.dns == "DNS_BOGUS" || s.dns == "DNS_FILTERED")
+            return "Рекомендация: включите защищённый DNS (DoH/DoT) или смените DNS‑резолвер (Cloudflare/Google/Quad9). VPN — только как обходной вариант.";
+
+        if (s.tcp_portal == "FAIL")
+            return "Рекомендация: проверьте доступность портов 80/443 (роутер/фаервол/провайдер). Убедитесь, что HTTPS не блокируется.";
+
+        if (s.tls == "BLOCK_PAGE")
+            return "Рекомендация: обнаружена блок‑страница — проверьте региональные ограничения/DPI или используйте альтернативный канал связи.";
+
+        if (s.tls == "MITM_SUSPECT")
+            return "Рекомендация: отключите HTTPS‑сканирование в антивирусе/прокси и повторите проверку.";
+
+        if (s.tls == "SUSPECT")
+            return "Рекомендация: перебои HTTPS — проверьте фильтры/прокси/фаервол и повторите позже.";
+
+        if (s.tcp_launcher == "FAIL" || s.tcp_launcher == "WARN")
+            return "Рекомендация: проверьте UPnP/NAT на роутере и ограничения провайдера для портов лаунчера (8000–8020).";
+
+        // По умолчанию — нейтральная рекомендация без навязывания VPN
+        return "Рекомендация: проверьте настройки сети и DNS, затем повторите проверку.";
+    }
+}
+
+// Сохранение отчёта и отображение вердикта
+public partial class MainWindow
+{
+    private async void SaveReport_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_lastRun == null)
+            {
+                MessageBox.Show("Нет данных для сохранения", "Сохранить отчёт", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Сохранить отчёт",
+                Filter = "JSON (*.json)|*.json|Все файлы (*.*)|*.*",
+                FileName = "isp_report.json"
+            };
+            if (dlg.ShowDialog() == true)
+            {
+                await ReportWriter.SaveJsonAsync(_lastRun, dlg.FileName);
+                MessageBox.Show($"Отчёт сохранён:\n{dlg.FileName}", "Сохранено", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка сохранения:\n{ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private static string BuildPlayableLabel(string? playable)
+    {
+        var v = (playable ?? "UNKNOWN").ToUpperInvariant();
+        return v switch
+        {
+            "YES" => "Играбельно: Да",
+            "NO" => "Играбельно: Нет",
+            "MAYBE" => "Играбельно: Погранично",
+            _ => "Играбельно: —"
+        };
     }
 }

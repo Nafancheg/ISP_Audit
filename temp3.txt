@@ -1,0 +1,140 @@
+            }
+
+            // TCP Portal (80/443)
+            if (run.summary.tcp_portal == "FAIL")
+            {
+                lines.Add("TCP: порты RSI Portal (80/443) ЗАКРЫТЫ — сайт RSI недоступен.");
+                lines.Add("— Проверьте файрвол, корпоративную сеть или блокировку провайдером.");
+                lines.Add("— Без доступа к порталу невозможно скачать лаунчер или получить доступ к аккаунту.");
+            }
+            else if (run.summary.tcp_portal == "WARN")
+            {
+                lines.Add("TCP: порты RSI Portal (80/443) ЧАСТИЧНО доступны — возможны проблемы с сайтом.");
+            }
+
+            // TCP Launcher (8000-8020)
+            if (run.summary.tcp_launcher == "FAIL")
+            {
+                lines.Add("TCP: порты лаунчера (8000-8020) ЗАКРЫТЫ — лаунчер не сможет обновить игру.");
+                lines.Add("— Эти порты критически важны для патчера Star Citizen.");
+                lines.Add("— Проверьте настройки роутера, файрвола и ISP. Попробуйте VPN.");
+            }
+            else if (run.summary.tcp_launcher == "WARN")
+            {
+                lines.Add("TCP: порты лаунчера (8000-8020) ЧАСТИЧНО доступны — обновления могут быть медленными или зависать.");
+                lines.Add("— Лаунчеру нужны ВСЕ порты 8000-8020. Проверьте файрвол и роутер.");
+            }
+
+            var udpExpectedFails = udpTests
+                .Where(u => u.expect_reply && !u.success)
+                .ToList();
+            if (udpExpectedFails.Count > 0)
+            {
+                lines.Add($"UDP: нет ответа от {string.Join(", ", udpExpectedFails.Select(u => $"{u.name} ({u.service})"))}.");
+                lines.Add("— Возможна блокировка UDP/QUIC на порту 53 или ограничение провайдера. Проверьте настройки роутера и брандмауэра.");
+            }
+
+            var udpRawErrors = udpTests
+                .Where(u => !u.expect_reply && !u.success)
+                .ToList();
+            if (udpRawErrors.Count > 0)
+            {
+                lines.Add($"UDP: не удалось отправить пакеты к игровым серверам Star Citizen: {string.Join(", ", udpRawErrors.Select(u => $"{u.name}"))}.");
+                lines.Add("— Решение: проверьте настройки роутера (UPnP) и попробуйте VPN, если игра не запускается.");
+            }
+
+            // Block page detection
+            if (run.summary.tls == "BLOCK_PAGE")
+            {
+                var blockPageTargets = run.targets
+                    .Where(kv => kv.Value.http_enabled && kv.Value.http.Any(h => h.is_block_page == true))
+                    .Select(FormatTarget)
+                    .ToList();
+                var suffix = blockPageTargets.Count > 0 ? $": {string.Join(", ", blockPageTargets)}" : string.Empty;
+                lines.Add($"HTTPS: обнаружена страница блокировки провайдера{suffix}");
+                lines.Add("— Провайдер возвращает 200 OK, но вместо реального сайта показывает заглушку.");
+                lines.Add("— Это специальная страница от РКН, провайдера или сетевого оборудования.");
+                lines.Add("— Решение: используйте VPN или включите 'Обход блокировок' в этой программе.");
+            }
+            // MITM detection - certificate CN mismatch
+            else if (run.summary.tls == "MITM_SUSPECT")
+            {
+                var mitmTargets = run.targets
+                    .Where(kv => kv.Value.http_enabled && kv.Value.http.Any(h => h.cert_cn != null && h.cert_cn_matches == false))
+                    .Select(kv =>
+                    {
+                        var badCert = kv.Value.http.First(h => h.cert_cn != null && h.cert_cn_matches == false);
+                        return $"{FormatTarget(kv)} (сертификат: {badCert.cert_cn})";
+                    })
+                    .ToList();
+                var suffix = mitmTargets.Count > 0 ? $": {string.Join(", ", mitmTargets)}" : string.Empty;
+                lines.Add($"⚠ КРИТИЧНО: Подозрение на MITM-атаку (Man-in-the-Middle){suffix}");
+                lines.Add("— Сертификаты серверов НЕ соответствуют ожидаемым доменам.");
+                lines.Add("— Возможно, трафик перехватывается корпоративным прокси, антивирусом или провайдером.");
+                lines.Add("— НЕ ВВОДИТЕ пароли и личные данные в игре до устранения проблемы!");
+                lines.Add("— Проверьте: отключите антивирус/прокси, попробуйте другую сеть.");
+            }
+            else if (run.summary.tls == "SUSPECT")
+            {
+                var tlsSuspects = run.targets
+                    .Where(kv => kv.Value.http_enabled && kv.Value.tcp_enabled && kv.Value.tcp.Any(r => r.port == 443 && r.open) && !kv.Value.http.Any(h => h.success && h.status is >= 200 and < 400))
+                    .Select(FormatTarget)
+                    .ToList();
+                var suffix = tlsSuspects.Count > 0 ? $": {string.Join(", ", tlsSuspects)}" : string.Empty;
+                lines.Add($"HTTPS: блокировка защищённых соединений{suffix} — провайдер блокирует доступ к сайтам Star Citizen.");
+                lines.Add("— Решение: используйте VPN или попробуйте включить 'Обход блокировок' в этой программе.");
+                lines.Add("— Это поможет обойти блокировки провайдера и запустить лаунчер.");
+            }
+
+            if (lines.Count == 0)
+            {
+                lines.Add("✓ Всё в порядке! Серверы Star Citizen доступны, игра должна работать без проблем.");
+                lines.Add("Если игра всё равно не запускается — проверьте обновления лаунчера и целостность файлов.");
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        public static async Task SaveJsonAsync(RunReport run, string path)
+        {
+            var json = JsonSerializer.Serialize(run, JsonOpts);
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            await File.WriteAllTextAsync(path, json);
+        }
+
+        public static string BuildShortSummaryJson(RunReport run)
+        {
+            var obj = new
+            {
+                run_at = run.run_at.ToString("o"),
+                ext_ip = run.ext_ip,
+                summary = run.summary,
+            };
+            return JsonSerializer.Serialize(obj, JsonOpts);
+        }
+
+        public static void PrintHuman(RunReport run, Config cfg)
+        {
+            Console.Write(BuildHumanText(run, cfg));
+        }
+
+        public static string BuildHumanText(RunReport run, Config cfg)
+        {
+            var sb = new StringBuilder();
+            void W(string s = "") { sb.AppendLine(s); }
+
+            W("Summary:");
+            W($"  DNS: {run.summary.dns}");
+            W($"  TCP: {run.summary.tcp}");
+            W($"  UDP: {run.summary.udp}");
+            W($"  TLS: {run.summary.tls}");
+            W($"  RST: {run.summary.rst_inject}");
+            W();
+
+            foreach (var kv in run.targets)
+            {
+                var t = kv.Value;
+                var serviceLabel = string.IsNullOrWhiteSpace(t.service) ? string.Empty : $" [{t.service}]";
+                W($"Target: {kv.Key}{serviceLabel}");
+                W($"  host: {t.host}");

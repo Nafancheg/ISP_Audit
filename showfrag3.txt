@@ -1,0 +1,120 @@
+            config.HttpTimeoutSeconds = 6;
+            config.TcpTimeoutSeconds = 5;
+            config.UdpTimeoutSeconds = 2;
+
+            // Progress callback
+            var progress = new Progress<TestProgress>(p =>
+            {
+                UpdateProgress(p);
+            });
+
+            // Запуск
+            var report = await AuditRunner.RunAsync(config, progress, _cts.Token);
+
+            // Показываем результаты
+            ShowResults(report);
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText.Text = "Проверка отменена";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Ошибка: {ex.Message}";
+            System.Windows.MessageBox.Show($"Произошла ошибка:\n{ex.Message}", "Ошибка",
+                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+        }
+        finally
+        {
+            _isRunning = false;
+            RunButton.Content = "ПРОВЕРИТЬ";
+            RunButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(33, 150, 243)); // Blue
+            ProgressBar.Value = 100;
+        }
+    }
+
+    private void UpdateProgress(TestProgress p)
+    {
+        // Обновляем статус
+        StatusText.Text = p.Status;
+
+        // Извлекаем имя цели из сообщения формата "RSI Портал: старт"
+        string? targetName = ExtractTargetName(p.Status);
+        if (targetName == null)
+        {
+            // Обработка UDP проверки базовой сети
+            if (p.Status.Contains("UDP", StringComparison.OrdinalIgnoreCase))
+            {
+                var udpService = _services.FirstOrDefault(s => s.ServiceName.Contains("Базовая сеть"));
+                if (udpService != null)
+                {
+                    if (p.Status.Contains("старт", StringComparison.OrdinalIgnoreCase))
+                    {
+                        udpService.SetRunning("проверка UDP");
+                    }
+                    else if (p.Status.Contains("завершено", StringComparison.OrdinalIgnoreCase))
+                    {
+                        bool success = p.Success ?? true;
+                        udpService.SetSuccess(success ? "✓ Работает" : "⚠ Проблемы");
+                    }
+                }
+            }
+            return;
+        }
+
+        // Ищем соответствующий сервис в списке
+        var service = _services.FirstOrDefault(s =>
+            s.ServiceName.Contains(targetName, StringComparison.OrdinalIgnoreCase));
+
+        if (service == null) return;
+
+        // Обновляем статус сервиса
+        if (p.Status.Contains("старт", StringComparison.OrdinalIgnoreCase))
+        {
+            string testDesc = p.Kind switch
+            {
+                TestKind.DNS => "проверка DNS",
+                TestKind.TCP => "проверка портов",
+                TestKind.HTTP => "проверка HTTPS",
+                TestKind.UDP => "проверка UDP",
+                _ => "проверка"
+            };
+            service.SetRunning(testDesc);
+        }
+        else if (p.Status.Contains("завершено", StringComparison.OrdinalIgnoreCase) ||
+                 p.Status.Contains("готово", StringComparison.OrdinalIgnoreCase))
+        {
+            if (p.Success == null)
+            {
+                // Informational test (e.g., low-certainty UDP probe) - show as neutral
+                service.SetRunning("ℹ Информация");
+            }
+            else if (p.Success == true)
+            {
+                service.SetSuccess("✓ Работает");
+            }
+            else
+            {
+                service.SetError("⚠ Проблемы");
+            }
+        }
+    }
+
+    private static string? ExtractTargetName(string status)
+    {
+        int colonIndex = status.IndexOf(':');
+        if (colonIndex > 0)
+            return status.Substring(0, colonIndex).Trim();
+        return null;
+    }
+
+    private void ShowResults(RunReport report)
+    {
+        // Анализируем результаты
+        var summary = ReportWriter.BuildSummary(report);
+
+        bool hasProblems = summary.dns == "WARN" ||
+                          summary.dns == "DNS_FILTERED" ||
+                          summary.dns == "DNS_BOGUS" ||
+                          summary.tcp == "FAIL" ||
+                          summary.tcp_portal == "FAIL" ||

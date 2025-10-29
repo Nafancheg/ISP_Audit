@@ -1,0 +1,120 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Drawing.Text;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using IspAudit.Tests;
+
+namespace IspAudit.Output
+{
+    public class RunReport
+    {
+        public DateTime run_at { get; set; }
+        public string cli { get; set; } = string.Empty;
+        public string ext_ip { get; set; } = string.Empty;
+        public Summary summary { get; set; } = new Summary();
+        public Dictionary<string, TargetReport> targets { get; set; } = new();
+        public List<UdpProbeResult> udp_tests { get; set; } = new();
+        public RstHeuristicResult? rst_heuristic { get; set; }
+    }
+
+    public class Summary
+    {
+        public string dns { get; set; } = "UNKNOWN";
+        public string tcp { get; set; } = "UNKNOWN";
+        public string tcp_portal { get; set; } = "UNKNOWN"; // Порты 80/443 для RSI Portal
+        public string tcp_launcher { get; set; } = "UNKNOWN"; // Порты 8000-8020 для Launcher
+        public string udp { get; set; } = "UNKNOWN";
+        public string tls { get; set; } = "UNKNOWN";
+        public string rst_inject { get; set; } = "UNKNOWN";
+    }
+
+    public class TargetReport
+    {
+        public string host { get; set; } = string.Empty;
+        public string display_name { get; set; } = string.Empty;
+        public string service { get; set; } = string.Empty;
+        public List<string> system_dns { get; set; } = new();
+        public List<string> doh { get; set; } = new();
+        public string dns_status { get; set; } = "UNKNOWN";
+        public List<TcpResult> tcp { get; set; } = new();
+        public List<HttpResult> http { get; set; } = new();
+        public TraceResult? traceroute { get; set; }
+        public bool dns_enabled { get; set; } = true;
+        public bool tcp_enabled { get; set; } = true;
+        public bool http_enabled { get; set; } = true;
+        public bool trace_enabled { get; set; } = true;
+        public List<int> tcp_ports_checked { get; set; } = new();
+    }
+
+    public static class ReportWriter
+    {
+        private static readonly JsonSerializerOptions JsonOpts = new()
+        {
+            WriteIndented = true,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
+
+        public static string GetReadableStatus(string status)
+        {
+            if (string.IsNullOrWhiteSpace(status)) return "нет данных";
+
+            return status.ToUpperInvariant() switch
+            {
+                "OK" => "всё работает",
+                "WARN" => "есть расхождения",
+                "FAIL" => "не работает",
+                "SUSPECT" => "подозрение на блокировку",
+                "MITM_SUSPECT" => "подозрение на MITM-атаку",
+                "BLOCK_PAGE" => "обнаружена страница блокировки",
+                "DNS_BOGUS" => "ошибочные DNS-ответы",
+                "DNS_FILTERED" => "провайдер подменяет DNS",
+                "INFO" => "информационный тест",
+                "UNKNOWN" => "нет данных",
+                "SKIPPED" => "не проверялось",
+                _ => status
+            };
+        }
+
+        public static string FormatPortList(IEnumerable<int> ports) => PortsToRangeText(ports);
+
+        public static Summary BuildSummary(RunReport run)
+        {
+            var summary = new Summary();
+
+            string DnsRank(string s) => s switch
+            {
+                nameof(DnsStatus.DNS_BOGUS) => "DNS_BOGUS",
+                nameof(DnsStatus.DNS_FILTERED) => "DNS_FILTERED",
+                nameof(DnsStatus.WARN) => "WARN",
+                nameof(DnsStatus.OK) => "OK",
+                _ => "UNKNOWN"
+            };
+            var dnsStatuses = run.targets.Values
+                .Where(t => t.dns_enabled)
+                .Select(t => DnsRank(t.dns_status))
+                .ToList();
+            summary.dns = dnsStatuses.Contains("DNS_BOGUS") ? "DNS_BOGUS" :
+                          dnsStatuses.Contains("DNS_FILTERED") ? "DNS_FILTERED" :
+                          dnsStatuses.Contains("WARN") ? "WARN" :
+                          dnsStatuses.Count > 0 ? "OK" : "UNKNOWN";
+
+            // TCP - общий статус (legacy, для обратной совместимости)
+            var tcpAll = run.targets.Values
+                .Where(t => t.tcp_enabled)
+                .SelectMany(t => t.tcp)
+                .ToList();
+            if (tcpAll.Count == 0) summary.tcp = "UNKNOWN";
+            else summary.tcp = tcpAll.Any(r => r.open) ? "OK" : "FAIL";
+
+            // TCP Portal (80/443) - доступ к RSI сайту
+            var tcpPortal = tcpAll.Where(r => r.port == 80 || r.port == 443).ToList();
+            if (tcpPortal.Count == 0)

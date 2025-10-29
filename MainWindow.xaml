@@ -17,6 +17,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
@@ -27,8 +28,15 @@
                        Style="{StaticResource MaterialDesignHeadline5TextBlock}"
                        Margin="0,0,0,12"/>
 
+            <!-- Вердикт под заголовком -->
+            <TextBlock Grid.Row="1"
+                       x:Name="PlayableText"
+                       Text="Играбельно: —"
+                       Style="{StaticResource MaterialDesignSubtitle1TextBlock}"
+                       Margin="0,0,0,8"/>
+
             <!-- Карточка с предупреждением (показывается при проблемах) -->
-            <materialDesign:Card Grid.Row="1"
+            <materialDesign:Card Grid.Row="2"
                                  Padding="12"
                                  Margin="0,0,0,12"
                                  x:Name="WarningCard"
@@ -55,7 +63,7 @@
             </materialDesign:Card>
 
             <!-- Карточка с успехом (показывается при успехе) -->
-            <materialDesign:Card Grid.Row="1"
+            <materialDesign:Card Grid.Row="2"
                                  Padding="12"
                                  Margin="0,0,0,12"
                                  x:Name="SuccessCard"
@@ -75,28 +83,43 @@
             </materialDesign:Card>
 
             <!-- Кнопка запуска проверки -->
-            <Button Grid.Row="2"
-                    x:Name="RunButton"
-                    Content="ПРОВЕРИТЬ"
-                    Style="{StaticResource MaterialDesignRaisedButton}"
-                    Height="42"
-                    FontSize="15"
-                    FontWeight="Bold"
-                    Margin="0,0,0,16"
-                    Click="RunButton_Click"
-                    materialDesign:ButtonAssist.CornerRadius="4"
-                    Background="#2196F3"
-                    Foreground="White">
-                <Button.Effect>
-                    <DropShadowEffect Color="#2196F3"
-                                     BlurRadius="8"
-                                     ShadowDepth="2"
-                                     Opacity="0.25"/>
-                </Button.Effect>
-            </Button>
+                        <Grid Grid.Row="3" Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0"
+                        x:Name="RunButton"
+                        Content="���������"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Height="42"
+                        FontSize="15"
+                        FontWeight="Bold"
+                        Click="RunButton_Click"
+                        materialDesign:ButtonAssist.CornerRadius="4"
+                        Background="#2196F3"
+                        Foreground="White"
+                        Margin="0,0,8,0">
+                    <Button.Effect>
+                        <DropShadowEffect Color="#2196F3"
+                                         BlurRadius="8"
+                                         ShadowDepth="2"
+                                         Opacity="0.25"/>
+                    </Button.Effect>
+                </Button>
+                <Button Grid.Column="1"
+                        x:Name="SaveButton"
+                        Content="СОХРАНИТЬ ОТЧЁТ"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Height="42"
+                        FontSize="13"
+                        Click="SaveReport_Click"
+                        IsEnabled="False"
+                        materialDesign:ButtonAssist.CornerRadius="4"/>
+            </Grid>
 
             <!-- Список сервисов -->
-            <materialDesign:Card Grid.Row="3" Padding="12">
+            <materialDesign:Card Grid.Row="4" Padding="12">
                 <DockPanel>
                     <TextBlock Text="Проверка сервисов Star Citizen"
                               Style="{StaticResource MaterialDesignSubtitle1TextBlock}"
@@ -153,7 +176,7 @@
             </materialDesign:Card>
 
             <!-- Прогресс-бар и статус -->
-            <StackPanel Grid.Row="4" Margin="0,12,0,0">
+            <StackPanel Grid.Row="5" Margin="0,12,0,0">
                 <ProgressBar x:Name="ProgressBar"
                             Height="4"
                             Minimum="0"
@@ -169,3 +192,4 @@
         </Grid>
     </materialDesign:DialogHost>
 </Window>
+

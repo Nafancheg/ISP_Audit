@@ -35,6 +35,7 @@ namespace IspAudit.Output
         public string udp { get; set; } = "UNKNOWN";
         public string tls { get; set; } = "UNKNOWN";
         public string rst_inject { get; set; } = "UNKNOWN";
+        public string playable { get; set; } = "UNKNOWN";
     }
 
     public class TargetReport
@@ -203,12 +204,53 @@ namespace IspAudit.Output
             if (run.rst_heuristic == null) summary.rst_inject = "UNKNOWN";
             else summary.rst_inject = "UNKNOWN";
 
+            // Итоговый вердикт играбельности
+            bool tlsBad = string.Equals(summary.tls, "FAIL", StringComparison.OrdinalIgnoreCase)
+                          || string.Equals(summary.tls, "BLOCK_PAGE", StringComparison.OrdinalIgnoreCase)
+                          || string.Equals(summary.tls, "MITM_SUSPECT", StringComparison.OrdinalIgnoreCase);
+            bool dnsBad = string.Equals(summary.dns, "DNS_BOGUS", StringComparison.OrdinalIgnoreCase)
+                          || string.Equals(summary.dns, "DNS_FILTERED", StringComparison.OrdinalIgnoreCase);
+            bool portalFail = string.Equals(summary.tcp_portal, "FAIL", StringComparison.OrdinalIgnoreCase);
+
+            if (tlsBad || dnsBad || portalFail)
+            {
+                summary.playable = "NO";
+            }
+            else if (string.Equals(summary.tls, "SUSPECT", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(summary.dns, "WARN", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(summary.tcp_portal, "WARN", StringComparison.OrdinalIgnoreCase))
+            {
+                summary.playable = "MAYBE";
+            }
+            else if (string.Equals(summary.tls, "OK", StringComparison.OrdinalIgnoreCase)
+                     && !string.Equals(summary.tcp_portal, "FAIL", StringComparison.OrdinalIgnoreCase)
+                     && !string.Equals(summary.dns, "UNKNOWN", StringComparison.OrdinalIgnoreCase))
+            {
+                summary.playable = "YES";
+            }
+            else
+            {
+                summary.playable = "UNKNOWN";
+            }
+
             return summary;
         }
 
         public static string BuildAdviceText(RunReport run)
         {
             var lines = new List<string>();
+            // Короткий вердикт сверху
+            var sum = BuildSummary(run);
+            var verdict = (sum.playable ?? "UNKNOWN").ToUpperInvariant();
+            if (verdict == "YES")
+                lines.Add("Вердикт: играть можно. Критичных блокировок не обнаружено.");
+            else if (verdict == "MAYBE")
+                lines.Add("Вердикт: скорее всего играть можно, но есть предупреждения — смотрите ниже.");
+            else if (verdict == "NO")
+                lines.Add("Вердикт: сейчас играть не получится — исправьте проблемы ниже.");
+            else
+                lines.Add("Вердикт: недостаточно данных для окончательного вывода.");
+            lines.Add(string.Empty);
             string FormatTarget(KeyValuePair<string, TargetReport> kv)
                 => string.IsNullOrWhiteSpace(kv.Value.service) ? kv.Key : $"{kv.Key} ({kv.Value.service})";
             var udpTests = run.udp_tests ?? new List<UdpProbeResult>();
@@ -366,6 +408,8 @@ namespace IspAudit.Output
             W($"  UDP: {run.summary.udp}");
             W($"  TLS: {run.summary.tls}");
             W($"  RST: {run.summary.rst_inject}");
+            if (!string.IsNullOrWhiteSpace(run.summary.playable))
+                W($"  PLAYABLE: {run.summary.playable}");
             W();
 
             foreach (var kv in run.targets)

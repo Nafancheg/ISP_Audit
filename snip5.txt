@@ -1,0 +1,10 @@
+        {
+            SuccessCard.Visibility = Visibility.Visible;
+            WarningCard.Visibility = Visibility.Collapsed;
+        }
+
+        StatusText.Text = hasProblems
+            ? "Проверка завершена — обнаружены проблемы"
+            : "Проверка завершена — всё работает!";
+    }
+}

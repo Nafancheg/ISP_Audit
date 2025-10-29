@@ -1,0 +1,120 @@
+using System;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Media;
+using IspAudit.Tests;
+using IspAudit.Wpf;
+using IspAudit.Output;
+
+namespace IspAudit;
+
+public partial class MainWindow : Window
+{
+    private readonly ObservableCollection<ServiceItemViewModel> _services = new();
+    private CancellationTokenSource? _cts;
+    private bool _isRunning;
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        InitializeServices();
+        ServicesPanel.ItemsSource = _services;
+    }
+
+    private void InitializeServices()
+    {
+        _services.Clear();
+
+        // Добавляем сервисы из каталога
+        foreach (var target in Program.Targets.Values)
+        {
+            string displayName = string.IsNullOrWhiteSpace(target.Service)
+                ? target.Name
+                : $"{target.Name} ({target.Service})";
+
+            _services.Add(new ServiceItemViewModel
+            {
+                ServiceName = displayName,
+                Details = "ожидание проверки"
+            });
+        }
+
+        // Добавляем UDP проверку базовой сети
+        _services.Add(new ServiceItemViewModel
+        {
+            ServiceName = "Базовая сеть (UDP)",
+            Details = "ожидание проверки"
+        });
+    }
+
+    private async void RunButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isRunning)
+        {
+            // Отмена
+            _cts?.Cancel();
+            return;
+        }
+
+        await RunAuditAsync();
+    }
+
+    private async Task RunAuditAsync()
+    {
+        _isRunning = true;
+        _cts = new CancellationTokenSource();
+
+        try
+        {
+            // Меняем кнопку на "ОСТАНОВИТЬ"
+            RunButton.Content = "ОСТАНОВИТЬ";
+            RunButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(244, 67, 54)); // Red
+
+            // Скрываем карточки статуса
+            WarningCard.Visibility = Visibility.Collapsed;
+            SuccessCard.Visibility = Visibility.Collapsed;
+
+            // Сброс статусов
+            foreach (var service in _services)
+            {
+                service.IsRunning = false;
+                service.IsCompleted = false;
+                service.Details = "ожидание проверки";
+            }
+
+            ProgressBar.Value = 0;
+            StatusText.Text = "Запуск диагностики...";
+
+            // Создаём конфигурацию
+            var config = Config.Default();
+            config.TargetMap = Program.Targets.ToDictionary(kv => kv.Key, kv => kv.Value.Copy(), StringComparer.OrdinalIgnoreCase);
+            config.Targets = config.TargetMap.Values.Select(t => t.Host).Distinct().ToList();
+            config.EnableDns = true;
+            config.EnableTcp = true;
+            config.EnableHttp = true;
+            config.EnableUdp = true;
+            config.EnableTrace = false;
+            config.EnableRst = false;
+            config.HttpTimeoutSeconds = 6;
+            config.TcpTimeoutSeconds = 5;
+            config.UdpTimeoutSeconds = 2;
+
+            // Progress callback
+            var progress = new Progress<TestProgress>(p =>
+            {
+                UpdateProgress(p);
+            });
+
+            // Запуск
+            var report = await AuditRunner.RunAsync(config, progress, _cts.Token);
+
+            // Показываем результаты
+            ShowResults(report);
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText.Text = "Проверка отменена";
+        }
