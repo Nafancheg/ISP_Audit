@@ -98,7 +98,7 @@ public partial class MainWindow : Window
             config.EnableUdp = true;
             config.EnableTrace = false;
             config.EnableRst = false;
-            config.HttpTimeoutSeconds = 10;
+            config.HttpTimeoutSeconds = 6;
             config.TcpTimeoutSeconds = 5;
             config.UdpTimeoutSeconds = 3;
 

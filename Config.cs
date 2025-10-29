@@ -16,7 +16,7 @@ namespace IspAudit
         public bool ShowHelp { get; set; } = false;
 
         // Timeouts in seconds
-        public int HttpTimeoutSeconds { get; set; } = 12;
+        public int HttpTimeoutSeconds { get; set; } = 6;
         public int TcpTimeoutSeconds { get; set; } = 3;
         public int UdpTimeoutSeconds { get; set; } = 3;
 

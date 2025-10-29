@@ -89,11 +89,19 @@ namespace IspAudit.Tests
                 }
                 catch (TaskCanceledException)
                 {
-                    return false;
+                    return false; // Timeout - retry
+                }
+                catch (HttpRequestException)
+                {
+                    return false; // Network error - retry
+                }
+                catch (System.Net.Sockets.SocketException)
+                {
+                    return false; // Socket error - retry
                 }
                 catch
                 {
-                    return true; // don't retry for non-timeouts
+                    return true; // Other errors (JSON parse, etc) - don't retry
                 }
             }
 

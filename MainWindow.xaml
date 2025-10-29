@@ -3,16 +3,16 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         Title="ISP Audit для Star Citizen"
-        Height="700" Width="900"
-        MinHeight="600" MinWidth="800"
+        Height="600" Width="800"
+        MinHeight="500" MinWidth="700"
         Background="{DynamicResource MaterialDesignPaper}"
         FontFamily="{materialDesign:MaterialDesignFont}"
         TextElement.FontWeight="Regular"
-        TextElement.FontSize="14"
+        TextElement.FontSize="13"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}">
 
     <materialDesign:DialogHost>
-        <Grid Margin="24">
+        <Grid Margin="16">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
@@ -24,52 +24,52 @@
             <!-- Заголовок -->
             <TextBlock Grid.Row="0"
                        Text="ISP Audit для Star Citizen"
-                       Style="{StaticResource MaterialDesignHeadline4TextBlock}"
-                       Margin="0,0,0,16"/>
+                       Style="{StaticResource MaterialDesignHeadline5TextBlock}"
+                       Margin="0,0,0,12"/>
 
             <!-- Карточка с предупреждением (показывается при проблемах) -->
             <materialDesign:Card Grid.Row="1"
-                                 Padding="16"
-                                 Margin="0,0,0,16"
+                                 Padding="12"
+                                 Margin="0,0,0,12"
                                  x:Name="WarningCard"
                                  Visibility="Collapsed"
                                  Background="#F44336">
                 <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                         <materialDesign:PackIcon Kind="AlertCircle"
                                                 Foreground="White"
-                                                Width="24" Height="24"
-                                                Margin="0,0,8,0"/>
+                                                Width="20" Height="20"
+                                                Margin="0,0,6,0"/>
                         <TextBlock Text="Обнаружены проблемы с подключением"
                                   Foreground="White"
                                   FontWeight="Bold"
-                                  FontSize="16"
+                                  FontSize="14"
                                   VerticalAlignment="Center"/>
                     </StackPanel>
                     <TextBlock x:Name="WarningText"
                               Text=""
                               Foreground="White"
                               TextWrapping="Wrap"
-                              FontSize="14"/>
+                              FontSize="13"/>
                 </StackPanel>
             </materialDesign:Card>
 
             <!-- Карточка с успехом (показывается при успехе) -->
             <materialDesign:Card Grid.Row="1"
-                                 Padding="16"
-                                 Margin="0,0,0,16"
+                                 Padding="12"
+                                 Margin="0,0,0,12"
                                  x:Name="SuccessCard"
                                  Visibility="Collapsed"
                                  Background="#4CAF50">
                 <StackPanel Orientation="Horizontal">
                     <materialDesign:PackIcon Kind="CheckCircle"
                                             Foreground="White"
-                                            Width="24" Height="24"
-                                            Margin="0,0,8,0"/>
+                                            Width="20" Height="20"
+                                            Margin="0,0,6,0"/>
                     <TextBlock Text="Всё работает! Star Citizen готов к запуску"
                               Foreground="White"
                               FontWeight="Bold"
-                              FontSize="16"
+                              FontSize="14"
                               VerticalAlignment="Center"/>
                 </StackPanel>
             </materialDesign:Card>
@@ -79,29 +79,29 @@
                     x:Name="RunButton"
                     Content="ПРОВЕРИТЬ"
                     Style="{StaticResource MaterialDesignRaisedButton}"
-                    Height="56"
-                    FontSize="18"
+                    Height="42"
+                    FontSize="15"
                     FontWeight="Bold"
-                    Margin="0,0,0,24"
+                    Margin="0,0,0,16"
                     Click="RunButton_Click"
-                    materialDesign:ButtonAssist.CornerRadius="8"
+                    materialDesign:ButtonAssist.CornerRadius="4"
                     Background="#2196F3"
                     Foreground="White">
                 <Button.Effect>
                     <DropShadowEffect Color="#2196F3"
-                                     BlurRadius="12"
+                                     BlurRadius="8"
                                      ShadowDepth="2"
-                                     Opacity="0.3"/>
+                                     Opacity="0.25"/>
                 </Button.Effect>
             </Button>
 
             <!-- Список сервисов -->
-            <materialDesign:Card Grid.Row="3" Padding="16">
+            <materialDesign:Card Grid.Row="3" Padding="12">
                 <DockPanel>
                     <TextBlock Text="Проверка сервисов Star Citizen"
-                              Style="{StaticResource MaterialDesignHeadline6TextBlock}"
+                              Style="{StaticResource MaterialDesignSubtitle1TextBlock}"
                               DockPanel.Dock="Top"
-                              Margin="0,0,0,16"/>
+                              Margin="0,0,0,12"/>
 
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <ItemsControl x:Name="ServicesPanel">
@@ -109,8 +109,8 @@
                                 <DataTemplate>
                                     <Border BorderBrush="{DynamicResource MaterialDesignDivider}"
                                            BorderThickness="0,0,0,1"
-                                           Padding="8"
-                                           Margin="0,4">
+                                           Padding="6"
+                                           Margin="0,2">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
@@ -119,29 +119,29 @@
 
                                             <StackPanel Grid.Column="0">
                                                 <TextBlock Text="{Binding ServiceName}"
-                                                          FontWeight="Bold"
-                                                          FontSize="15"/>
+                                                          FontWeight="SemiBold"
+                                                          FontSize="13"/>
                                                 <TextBlock Text="{Binding Details}"
                                                           Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                                          FontSize="13"
-                                                          Margin="0,4,0,0"/>
+                                                          FontSize="12"
+                                                          Margin="0,2,0,0"/>
                                             </StackPanel>
 
                                             <StackPanel Grid.Column="1"
                                                        Orientation="Horizontal"
                                                        VerticalAlignment="Center">
                                                 <!-- Прогресс-индикатор -->
-                                                <ProgressBar Width="24" Height="24"
-                                                            Margin="0,0,8,0"
+                                                <ProgressBar Width="20" Height="20"
+                                                            Margin="0,0,6,0"
                                                             IsIndeterminate="True"
                                                             Style="{StaticResource MaterialDesignCircularProgressBar}"
-                                                            Visibility="{Binding IsRunning}"/>
+                                                            Visibility="{Binding RunningVisibility}"/>
 
                                                 <!-- Иконка статуса -->
                                                 <materialDesign:PackIcon Kind="{Binding StatusIcon}"
-                                                                        Width="24" Height="24"
+                                                                        Width="20" Height="20"
                                                                         Foreground="{Binding StatusColor}"
-                                                                        Visibility="{Binding IsCompleted}"/>
+                                                                        Visibility="{Binding CompletedVisibility}"/>
                                             </StackPanel>
                                         </Grid>
                                     </Border>
@@ -153,16 +153,17 @@
             </materialDesign:Card>
 
             <!-- Прогресс-бар и статус -->
-            <StackPanel Grid.Row="4" Margin="0,16,0,0">
+            <StackPanel Grid.Row="4" Margin="0,12,0,0">
                 <ProgressBar x:Name="ProgressBar"
-                            Height="6"
+                            Height="4"
                             Minimum="0"
                             Maximum="100"
                             Value="0"
                             materialDesign:TransitionAssist.DisableTransitions="False"/>
                 <TextBlock x:Name="StatusText"
                           Text="Готов к проверке"
-                          Margin="0,8,0,0"
+                          Margin="0,6,0,0"
+                          FontSize="12"
                           Foreground="{DynamicResource MaterialDesignBodyLight}"/>
             </StackPanel>
         </Grid>

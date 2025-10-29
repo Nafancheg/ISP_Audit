@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Utils;
 
@@ -17,7 +18,6 @@ namespace IspAudit.Tests
 
         public async Task<List<TcpResult>> CheckAsync(string host, List<string> systemIps, IEnumerable<int>? portsOverride = null)
         {
-            var results = new List<TcpResult>();
             var ips = new List<IPAddress>();
             foreach (var s in systemIps)
             {
@@ -39,14 +39,31 @@ namespace IspAudit.Tests
                 ports = _cfg.Ports;
             }
 
+            using var semaphore = new SemaphoreSlim(10); // Max 10 concurrent connections
+            var tasks = new List<Task<TcpResult>>();
+            // No cancellation token in _cfg, use CancellationToken.None
+            var token = CancellationToken.None;
+
             foreach (var ip in ips)
             {
                 foreach (var port in ports)
                 {
-                    var open = await ProbeWithRetry(ip, port).ConfigureAwait(false);
-                    results.Add(open);
+                    tasks.Add(Task.Run(async () =>
+                    {
+                        await semaphore.WaitAsync(token).ConfigureAwait(false);
+                        try
+                        {
+                            return await ProbeWithRetry(ip, port).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            semaphore.Release();
+                        }
+                    }, token));
                 }
             }
+
+            var results = (await Task.WhenAll(tasks).ConfigureAwait(false)).ToList();
             return results;
         }
 

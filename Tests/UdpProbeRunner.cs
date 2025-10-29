@@ -40,7 +40,7 @@ namespace IspAudit.Tests
                 using var udp = new UdpClient();
                 udp.Client.ReceiveTimeout = _cfg.UdpTimeoutSeconds * 1000;
 
-                var query = BuildDnsQuery("example.com");
+                var query = BuildDnsQuery("example.com", out var queryId);
                 var sw = Stopwatch.StartNew();
                 await udp.SendAsync(query, query.Length, ep).ConfigureAwait(false);
 
@@ -50,12 +50,12 @@ namespace IspAudit.Tests
                 {
                     var res = receiveTask.Result;
                     sw.Stop();
-                    var ok = res.Buffer.Length >= 12;
+                    var (ok, error) = ParseDnsReplySimple(res.Buffer, queryId);
                     result.reply = ok;
                     result.success = ok;
                     result.rtt_ms = (int)sw.ElapsedMilliseconds;
                     result.reply_bytes = res.Buffer.Length;
-                    result.note = ok ? "ответ получен" : "ответ некорректный";
+                    result.note = ok ? "ответ получен" : (error ?? "ответ некорректный");
                 }
                 else
                 {
@@ -200,9 +200,29 @@ namespace IspAudit.Tests
             };
         }
 
-        private static byte[] BuildDnsQuery(string qname)
+        private static (bool, string?) ParseDnsReplySimple(byte[] reply, ushort queryId)
+        {
+            // Check minimum length
+            if (reply.Length < 12)
+                return (false, "минимальная длина ответа < 12");
+
+            // Check ID matches
+            ushort responseId = (ushort)((reply[0] << 8) | reply[1]);
+            if (responseId != queryId)
+                return (false, $"ID mismatch: {responseId} != {queryId}");
+
+            // Check RCODE
+            int rcode = reply[3] & 0x0F;
+            if (rcode != 0)
+                return (false, $"RCODE={rcode}");
+
+            return (true, null);
+        }
+
+        private static byte[] BuildDnsQuery(string qname, out ushort queryId)
         {
             var rnd = Random.Shared.Next(0, 0xFFFF);
+            queryId = (ushort)rnd;
             byte[] header = new byte[12];
             header[0] = (byte)((rnd >> 8) & 0xFF);
             header[1] = (byte)(rnd & 0xFF);
