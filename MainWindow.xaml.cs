@@ -115,13 +115,9 @@ public partial class MainWindow : Window
 
             ShowResults(report);
         }
-        catch (OperationCanceledException)
-        {
-            StatusText.Text = "Диагностика остановлена";
+        catch (OperationCanceledException){ StatusText.Text = "Диагностика остановлена";
         }
-        catch (Exception ex)
-        {
-            StatusText.Text = $"Ошибка: {ex.Message}";
+        catch (Exception ex){ StatusText.Text = $"Ошибка: {ex.Message}";
             System.Windows.MessageBox.Show($"Внутренняя ошибка:\n{ex.Message}", "Ошибка",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
@@ -136,7 +132,7 @@ public partial class MainWindow : Window
 
     private void UpdateProgress(TestProgress p)
     {
-        StatusText.Text = p.Status;
+        StatusText.Text = "Запуск диагностики...";
 
         string? targetName = ExtractTargetName(p.Status);
         if (targetName == null)
@@ -316,3 +312,5 @@ public partial class MainWindow
         };
     }
 }
+
+
