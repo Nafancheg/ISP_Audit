@@ -208,17 +208,9 @@ public partial class MainWindow : Window
         // Обновить отдельный вердикт
         try { PlayableText.Text = BuildPlayableLabel(summary.playable); } catch { }
 
-        bool hasProblems = summary.dns == "WARN" ||
-                           summary.dns == "DNS_FILTERED" ||
-                           summary.dns == "DNS_BOGUS" ||
-                           summary.tcp == "FAIL" ||
-                           summary.tcp_portal == "FAIL" ||
-                           summary.tcp_launcher == "FAIL" ||
-                           summary.tcp_portal == "WARN" ||
-                           summary.tcp_launcher == "WARN" ||
-                           summary.tls == "MITM_SUSPECT" ||
-                           summary.tls == "SUSPECT" ||
-                           summary.tls == "FAIL";
+        // Показываем зелёную карточку только при PLAYABLE=YES.
+        // Всё остальное (NO/MAYBE/UNKNOWN) считаем проблемным состоянием для баннера.
+        bool hasProblems = !string.Equals(summary.playable, "YES", StringComparison.OrdinalIgnoreCase);
 
         if (hasProblems)
         {
