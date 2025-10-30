@@ -28,6 +28,28 @@ namespace IspAudit
             var udpRunner = new Tests.UdpProbeRunner(config);
             var rst = new RstHeuristic(config);
 
+            // Новые диагностические тесты (выполняются перед тестами по целям)
+            progress?.Report(new Tests.TestProgress(Tests.TestKind.SOFTWARE, "Software: старт"));
+            run.software = await ISP_Audit.Tests.SoftwareTest.RunAsync().ConfigureAwait(false);
+            bool softwareOk = run.software.Status == "OK";
+            progress?.Report(new Tests.TestProgress(Tests.TestKind.SOFTWARE, "Software: завершено", softwareOk, run.software.Status));
+
+            progress?.Report(new Tests.TestProgress(Tests.TestKind.FIREWALL, "Firewall: старт"));
+            var firewallTest = new FirewallTest();
+            run.firewall = await firewallTest.RunAsync().ConfigureAwait(false);
+            bool firewallOk = run.firewall.Status == "OK";
+            progress?.Report(new Tests.TestProgress(Tests.TestKind.FIREWALL, "Firewall: завершено", firewallOk, run.firewall.Status));
+
+            progress?.Report(new Tests.TestProgress(Tests.TestKind.ROUTER, "Router: старт"));
+            run.router = await ISP_Audit.Tests.RouterTest.RunAsync().ConfigureAwait(false);
+            bool routerOk = run.router.Status == "OK";
+            progress?.Report(new Tests.TestProgress(Tests.TestKind.ROUTER, "Router: завершено", routerOk, run.router.Status));
+
+            progress?.Report(new Tests.TestProgress(Tests.TestKind.ISP, "ISP: старт"));
+            run.isp = await ISP_Audit.Tests.IspTest.RunAsync().ConfigureAwait(false);
+            bool ispOk = run.isp.Status == "OK";
+            progress?.Report(new Tests.TestProgress(Tests.TestKind.ISP, "ISP: завершено", ispOk, run.isp.Status));
+
             bool anyTargetTests = config.EnableDns || config.EnableTcp || config.EnableHttp || (config.EnableTrace && !config.NoTrace);
             if (anyTargetTests)
             {

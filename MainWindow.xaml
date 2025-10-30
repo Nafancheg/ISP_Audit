@@ -108,6 +108,114 @@
                 </StackPanel>
             </materialDesign:Card>
 
+            <!-- Карточка Firewall проблемы -->
+            <materialDesign:Card Grid.Row="3"
+                                 Padding="12"
+                                 Margin="0,0,0,12"
+                                 x:Name="FirewallCard"
+                                 Visibility="Collapsed"
+                                 Background="#FF9800">
+                <StackPanel Margin="12,4">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <materialDesign:PackIcon Kind="Shield"
+                                                Foreground="White"
+                                                Width="20" Height="20"
+                                                Margin="0,0,6,0"/>
+                        <TextBlock Text="Проблемы с Firewall"
+                                  Foreground="White"
+                                  FontWeight="Bold"
+                                  FontSize="14"
+                                  VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock x:Name="FirewallText"
+                              Text=""
+                              Foreground="White"
+                              TextWrapping="Wrap"
+                              FontSize="12"/>
+                </StackPanel>
+            </materialDesign:Card>
+
+            <!-- Карточка ISP проблемы -->
+            <materialDesign:Card Grid.Row="3"
+                                 Padding="12"
+                                 Margin="0,0,0,12"
+                                 x:Name="IspCard"
+                                 Visibility="Collapsed"
+                                 Background="#FF5722">
+                <StackPanel Margin="12,4">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <materialDesign:PackIcon Kind="Web"
+                                                Foreground="White"
+                                                Width="20" Height="20"
+                                                Margin="0,0,6,0"/>
+                        <TextBlock Text="Проблемы с провайдером (ISP)"
+                                  Foreground="White"
+                                  FontWeight="Bold"
+                                  FontSize="14"
+                                  VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock x:Name="IspText"
+                              Text=""
+                              Foreground="White"
+                              TextWrapping="Wrap"
+                              FontSize="12"/>
+                </StackPanel>
+            </materialDesign:Card>
+
+            <!-- Карточка Router проблемы -->
+            <materialDesign:Card Grid.Row="3"
+                                 Padding="12"
+                                 Margin="0,0,0,12"
+                                 x:Name="RouterCard"
+                                 Visibility="Collapsed"
+                                 Background="#FF9800">
+                <StackPanel Margin="12,4">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <materialDesign:PackIcon Kind="Router"
+                                                Foreground="White"
+                                                Width="20" Height="20"
+                                                Margin="0,0,6,0"/>
+                        <TextBlock Text="Проблемы с роутером"
+                                  Foreground="White"
+                                  FontWeight="Bold"
+                                  FontSize="14"
+                                  VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock x:Name="RouterText"
+                              Text=""
+                              Foreground="White"
+                              TextWrapping="Wrap"
+                              FontSize="12"/>
+                </StackPanel>
+            </materialDesign:Card>
+
+            <!-- Карточка Software проблемы -->
+            <materialDesign:Card Grid.Row="3"
+                                 Padding="12"
+                                 Margin="0,0,0,12"
+                                 x:Name="SoftwareCard"
+                                 Visibility="Collapsed"
+                                 Background="#9C27B0">
+                <StackPanel Margin="12,4">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <materialDesign:PackIcon Kind="Application"
+                                                Foreground="White"
+                                                Width="20" Height="20"
+                                                Margin="0,0,6,0"/>
+                        <TextBlock Text="Конфликты ПО"
+                                  Foreground="White"
+                                  FontWeight="Bold"
+                                  FontSize="14"
+                                  VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock x:Name="SoftwareText"
+                              Text=""
+                              Foreground="White"
+                              TextWrapping="Wrap"
+                              FontSize="12"/>
+                </StackPanel>
+            </materialDesign:Card>
+
             <!-- Кнопка запуска проверки -->
                         <Grid Grid.Row="4" Margin="0,0,0,16">
                 <Grid.ColumnDefinitions>

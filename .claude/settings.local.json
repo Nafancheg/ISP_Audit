@@ -22,7 +22,8 @@
       "Bash(mkdir:*)",
       "Bash(powershell:*)",
       "Bash(python:*)",
-      "Bash(dotnet run:*)"
+      "Bash(dotnet run:*)",
+      "Bash(nslookup:*)"
     ],
     "deny": [],
     "ask": []

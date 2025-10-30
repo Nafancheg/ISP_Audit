@@ -78,6 +78,10 @@ public partial class MainWindow : Window
             WarningCard.Visibility = Visibility.Collapsed;
             SuccessCard.Visibility = Visibility.Collapsed;
             VpnInfoCard.Visibility = Visibility.Collapsed;
+            FirewallCard.Visibility = Visibility.Collapsed;
+            IspCard.Visibility = Visibility.Collapsed;
+            RouterCard.Visibility = Visibility.Collapsed;
+            SoftwareCard.Visibility = Visibility.Collapsed;
 
             foreach (var service in _services)
             {
@@ -200,6 +204,38 @@ public partial class MainWindow : Window
                 return "UDP-проверка не прошла. Нет ответа или ошибка доставки.";
         }
 
+        if (progress.Kind == TestKind.FIREWALL)
+        {
+            if (message.Contains("BLOCKING"))
+                return "Windows Firewall блокирует игровые порты. Добавьте Star Citizen в исключения.";
+            else if (message.Contains("OK"))
+                return "Firewall не блокирует игровые порты.";
+        }
+
+        if (progress.Kind == TestKind.ISP)
+        {
+            if (message.Contains("DPI") || message.Contains("CGNAT") || message.Contains("FILTERED"))
+                return "Обнаружены проблемы провайдера (DPI/CGNAT/DNS фильтрация). Рекомендуется VPN.";
+            else if (message.Contains("OK"))
+                return "Провайдер не создаёт проблем для игры.";
+        }
+
+        if (progress.Kind == TestKind.ROUTER)
+        {
+            if (message.Contains("HIGH_PING") || message.Contains("PACKET_LOSS") || message.Contains("SIP_ALG"))
+                return "Обнаружены проблемы с роутером (высокий пинг, потеря пакетов, SIP ALG). Проверьте настройки.";
+            else if (message.Contains("OK"))
+                return "Роутер работает корректно.";
+        }
+
+        if (progress.Kind == TestKind.SOFTWARE)
+        {
+            if (message.Contains("CONFLICTS") || message.Contains("ANTIVIRUS") || message.Contains("HOSTS"))
+                return "Обнаружены конфликтующие программы (антивирус/VPN/hosts). Добавьте игру в исключения.";
+            else if (message.Contains("OK"))
+                return "Конфликтующее ПО не обнаружено.";
+        }
+
         return progress.Message ?? string.Empty;
     }
 
@@ -210,22 +246,29 @@ public partial class MainWindow : Window
         string? targetName = ExtractTargetName(p.Status);
         if (targetName == null)
         {
-            // Aggregate UDP progress line (no target name in status)
-            if (p.Status.Contains("UDP", StringComparison.OrdinalIgnoreCase))
+            // Aggregate UDP progress line - detect by Kind (status is "Cloudflare DNS: старт")
+            if (p.Kind == TestKind.UDP)
             {
                 var udpService = _services.FirstOrDefault(s => s.ServiceName.Contains("DNS (UDP)") || s.ServiceName.Contains("Публичный DNS"));
                 if (udpService != null)
                 {
-                    if (p.Status.Contains("Старт", StringComparison.OrdinalIgnoreCase) || p.Status.Contains("Запуск", StringComparison.OrdinalIgnoreCase) || p.Status.Contains("Start", StringComparison.OrdinalIgnoreCase))
+                    if (p.Status.Contains("старт", StringComparison.OrdinalIgnoreCase))
                     {
                         udpService.SetRunning("Проверка UDP");
                         udpService.DetailedMessage = string.Empty;
                     }
-                    else if (p.Status.Contains("Завершено", StringComparison.OrdinalIgnoreCase) || p.Status.Contains("Complete", StringComparison.OrdinalIgnoreCase))
+                    else if (p.Status.Contains("завершено", StringComparison.OrdinalIgnoreCase))
                     {
                         bool success = p.Success ?? true;
                         udpService.SetSuccess(success ? "✓ Успех" : "✗ Ошибка");
-                        // Установить подробное понятное сообщение для пользователя
+                        udpService.DetailedMessage = GetUserFriendlyMessage(p);
+                    }
+                    else if (p.Status.Contains("сводка", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Final UDP summary
+                        bool success = p.Success ?? true;
+                        udpService.SetSuccess(success ? "✓ Успех" : "✗ Ошибка");
+                        udpService.Details = p.Message ?? "Проверка завершена";
                         udpService.DetailedMessage = GetUserFriendlyMessage(p);
                     }
                 }
@@ -245,6 +288,10 @@ public partial class MainWindow : Window
                 TestKind.TCP => "Проверка TCP",
                 TestKind.HTTP => "Проверка HTTPS",
                 TestKind.UDP => "Проверка UDP",
+                TestKind.FIREWALL => "Проверка Firewall",
+                TestKind.ISP => "Проверка провайдера",
+                TestKind.ROUTER => "Проверка роутера",
+                TestKind.SOFTWARE => "Проверка ПО",
                 _ => "Проверка"
             };
             service.SetRunning(testDesc);
@@ -285,14 +332,130 @@ public partial class MainWindow : Window
         // Обновить отдельный вердикт
         try { PlayableText.Text = BuildPlayableLabel(summary.playable); } catch { }
 
-        // Показываем зелёную карточку только при PLAYABLE=YES.
-        // Всё остальное (NO/MAYBE/UNKNOWN) считаем проблемным состоянием для баннера.
-        bool hasProblems = !string.Equals(summary.playable, "YES", StringComparison.OrdinalIgnoreCase);
+        // Скрыть все карточки перед новым отображением
+        WarningCard.Visibility = Visibility.Collapsed;
+        SuccessCard.Visibility = Visibility.Collapsed;
+        FirewallCard.Visibility = Visibility.Collapsed;
+        IspCard.Visibility = Visibility.Collapsed;
+        RouterCard.Visibility = Visibility.Collapsed;
+        SoftwareCard.Visibility = Visibility.Collapsed;
 
-        if (hasProblems)
+        // Показать карточки для каждого типа проблем
+        bool hasProblems = false;
+
+        // Firewall проблемы
+        if (report.firewall != null && 
+            (report.firewall.WindowsFirewallEnabled && report.firewall.BlockedPorts.Count > 0 || 
+             report.firewall.BlockingRules.Count > 0))
+        {
+            hasProblems = true;
+            FirewallCard.Visibility = Visibility.Visible;
+            var firewallInfo = new System.Collections.Generic.List<string>();
+            
+            if (report.firewall.WindowsFirewallEnabled && report.firewall.BlockedPorts.Count > 0)
+                firewallInfo.Add($"• Windows Firewall блокирует порты: {string.Join(", ", report.firewall.BlockedPorts)}");
+            
+            if (report.firewall.BlockingRules.Count > 0)
+                firewallInfo.Add($"• Обнаружены блокирующие правила: {report.firewall.BlockingRules.Count} шт.");
+            
+            if (report.firewall.WindowsDefenderActive)
+                firewallInfo.Add("• Windows Defender активен (может блокировать игру)");
+            
+            firewallInfo.Add("\nРекомендация: добавьте Star Citizen в исключения Windows Firewall и Defender, либо создайте правило для портов 8000-8020, 80, 443.");
+            
+            FirewallText.Text = string.Join("\n", firewallInfo);
+        }
+
+        // ISP проблемы
+        if (report.isp != null && 
+            (report.isp.CgnatDetected || report.isp.DpiDetected || report.isp.DnsFiltered || 
+             report.isp.KnownProblematicISPs.Count > 0))
+        {
+            hasProblems = true;
+            IspCard.Visibility = Visibility.Visible;
+            var ispInfo = new System.Collections.Generic.List<string>();
+            
+            if (!string.IsNullOrEmpty(report.isp.Isp))
+                ispInfo.Add($"Провайдер: {report.isp.Isp} ({report.isp.Country})");
+            
+            if (report.isp.CgnatDetected)
+                ispInfo.Add("• CGNAT обнаружен — прямое подключение невозможно");
+            
+            if (report.isp.DpiDetected)
+                ispInfo.Add("• DPI (Deep Packet Inspection) обнаружен — трафик фильтруется");
+            
+            if (report.isp.DnsFiltered)
+                ispInfo.Add("• DNS фильтрация активна — запросы подменяются");
+            
+            if (report.isp.KnownProblematicISPs.Count > 0)
+                ispInfo.Add($"• Проблемный провайдер: {string.Join(", ", report.isp.KnownProblematicISPs)}");
+            
+            ispInfo.Add("\nРекомендация: смените DNS на Cloudflare/Google, используйте VPN для обхода DPI/CGNAT, или свяжитесь с провайдером для получения «белого» IP.");
+            
+            IspText.Text = string.Join("\n", ispInfo);
+        }
+
+        // Router проблемы
+        if (report.router != null && 
+            (!report.router.UpnpEnabled || report.router.SipAlgDetected || 
+             report.router.PacketLossPercent > 5 || report.router.AvgPingMs > 100))
+        {
+            hasProblems = true;
+            RouterCard.Visibility = Visibility.Visible;
+            var routerInfo = new System.Collections.Generic.List<string>();
+            
+            if (!string.IsNullOrEmpty(report.router.GatewayIp))
+                routerInfo.Add($"Шлюз: {report.router.GatewayIp}");
+            
+            if (!report.router.UpnpEnabled)
+                routerInfo.Add("• UPnP отключен — пробросы портов недоступны");
+            
+            if (report.router.SipAlgDetected)
+                routerInfo.Add("• SIP ALG обнаружен — может блокировать VoIP (Vivox)");
+            
+            if (report.router.PacketLossPercent > 5)
+                routerInfo.Add($"• Потеря пакетов: {report.router.PacketLossPercent}% (высокая)");
+            
+            if (report.router.AvgPingMs > 100)
+                routerInfo.Add($"• Высокий пинг до шлюза: {report.router.AvgPingMs:F1} мс");
+            
+            routerInfo.Add("\nРекомендация: включите UPnP в настройках роутера, отключите SIP ALG, проверьте качество кабеля/Wi-Fi соединения.");
+            
+            RouterText.Text = string.Join("\n", routerInfo);
+        }
+
+        // Software проблемы
+        if (report.software != null && 
+            (report.software.AntivirusDetected.Count > 0 || report.software.VpnClientsDetected.Count > 0 || 
+             report.software.ProxyEnabled || report.software.HostsFileIssues))
+        {
+            hasProblems = true;
+            SoftwareCard.Visibility = Visibility.Visible;
+            var softwareInfo = new System.Collections.Generic.List<string>();
+            
+            if (report.software.AntivirusDetected.Count > 0)
+                softwareInfo.Add($"• Антивирусы: {string.Join(", ", report.software.AntivirusDetected)}");
+            
+            if (report.software.VpnClientsDetected.Count > 0)
+                softwareInfo.Add($"• VPN клиенты: {string.Join(", ", report.software.VpnClientsDetected)}");
+            
+            if (report.software.ProxyEnabled)
+                softwareInfo.Add("• Системный прокси включен — может влиять на соединения");
+            
+            if (report.software.HostsFileIssues)
+                softwareInfo.Add($"• Проблемы в hosts файле ({report.software.HostsFileEntries.Count} записей)");
+            
+            softwareInfo.Add("\nРекомендация: добавьте Star Citizen в исключения антивируса, отключите VPN если он не нужен, проверьте настройки прокси и hosts файл.");
+            
+            SoftwareText.Text = string.Join("\n", softwareInfo);
+        }
+
+        // Общая карточка предупреждений (для старых проблем DNS/TCP/TLS)
+        bool hasLegacyProblems = !string.Equals(summary.playable, "YES", StringComparison.OrdinalIgnoreCase);
+        
+        if (hasLegacyProblems && !hasProblems)
         {
             WarningCard.Visibility = Visibility.Visible;
-            SuccessCard.Visibility = Visibility.Collapsed;
 
             var warnings = new System.Collections.Generic.List<string>();
 
@@ -313,13 +476,14 @@ public partial class MainWindow : Window
 
             WarningText.Text = string.Join("\n", warnings) + "\n\n" + BuildUiRecommendation(summary);
         }
-        else
+
+        // Показать успех только если нет проблем
+        if (!hasProblems && !hasLegacyProblems)
         {
             SuccessCard.Visibility = Visibility.Visible;
-            WarningCard.Visibility = Visibility.Collapsed;
         }
 
-        StatusText.Text = hasProblems
+        StatusText.Text = (hasProblems || hasLegacyProblems)
             ? "Проверка завершена — обнаружены проблемы"
             : "Проверка завершена — всё в порядке!";
     }

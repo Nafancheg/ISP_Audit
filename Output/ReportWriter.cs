@@ -24,6 +24,10 @@ namespace IspAudit.Output
         public Dictionary<string, TargetReport> targets { get; set; } = new();
         public List<UdpProbeResult> udp_tests { get; set; } = new();
         public RstHeuristicResult? rst_heuristic { get; set; }
+        public FirewallTestResult? firewall { get; set; }
+        public IspTestResult? isp { get; set; }
+        public RouterTestResult? router { get; set; }
+        public SoftwareTestResult? software { get; set; }
     }
 
     public class Summary
@@ -36,6 +40,10 @@ namespace IspAudit.Output
         public string tls { get; set; } = "UNKNOWN";
         public string rst_inject { get; set; } = "UNKNOWN";
         public string playable { get; set; } = "UNKNOWN";
+        public string firewall { get; set; } = "UNKNOWN";
+        public string isp_blocking { get; set; } = "UNKNOWN";
+        public string router_issues { get; set; } = "UNKNOWN";
+        public string software_conflicts { get; set; } = "UNKNOWN";
     }
 
     public class TargetReport
@@ -205,27 +213,99 @@ namespace IspAudit.Output
             if (run.rst_heuristic == null) summary.rst_inject = "UNKNOWN";
             else summary.rst_inject = "UNKNOWN";
 
-            // Итоговый вердикт играбельности
+            // Firewall статус
+            if (run.firewall != null)
+            {
+                summary.firewall = run.firewall.Status;
+            }
+
+            // ISP статус
+            if (run.isp != null)
+            {
+                summary.isp_blocking = run.isp.Status;
+            }
+
+            // Router статус
+            if (run.router != null)
+            {
+                summary.router_issues = run.router.Status;
+            }
+
+            // Software конфликты
+            if (run.software != null)
+            {
+                summary.software_conflicts = run.software.Status;
+            }
+
+            // Новая логика вердикта играбельности с учетом новых тестов
             bool tlsBad = string.Equals(summary.tls, "FAIL", StringComparison.OrdinalIgnoreCase)
                           || string.Equals(summary.tls, "BLOCK_PAGE", StringComparison.OrdinalIgnoreCase)
                           || string.Equals(summary.tls, "MITM_SUSPECT", StringComparison.OrdinalIgnoreCase);
             bool dnsBad = string.Equals(summary.dns, "DNS_BOGUS", StringComparison.OrdinalIgnoreCase)
                           || (!isVpnProfile && string.Equals(summary.dns, "DNS_FILTERED", StringComparison.OrdinalIgnoreCase));
             bool portalFail = string.Equals(summary.tcp_portal, "FAIL", StringComparison.OrdinalIgnoreCase);
+            bool launcherFail = string.Equals(summary.tcp_launcher, "FAIL", StringComparison.OrdinalIgnoreCase);
+            bool launcherWarn = string.Equals(summary.tcp_launcher, "WARN", StringComparison.OrdinalIgnoreCase);
 
-            if (tlsBad || dnsBad || portalFail)
+            // Firewall блокирует критичные порты (8000-8003)
+            bool firewallBlockingLauncher = run.firewall != null 
+                && run.firewall.BlockedPorts.Any(p => int.TryParse(p, out int port) && port >= 8000 && port <= 8003);
+
+            // ISP DPI активен
+            bool ispDpiActive = run.isp != null && run.isp.DpiDetected;
+
+            // Vivox недоступен (проверяем в targets)
+            bool vivoxUnavailable = run.targets.Any(kv => 
+                kv.Value.service?.Contains("Vivox", StringComparison.OrdinalIgnoreCase) == true
+                && kv.Value.tcp_enabled 
+                && !kv.Value.tcp.Any(r => r.open));
+
+            // AWS endpoints недоступны (проверяем в targets)
+            var awsTargets = run.targets.Where(kv => 
+                kv.Value.service?.Contains("AWS", StringComparison.OrdinalIgnoreCase) == true).ToList();
+            bool allAwsUnavailable = awsTargets.Count > 0 && awsTargets.All(kv =>
+                kv.Value.tcp_enabled && !kv.Value.tcp.Any(r => r.open));
+
+            // CGNAT детекция
+            bool cgnatDetected = run.isp != null && run.isp.CgnatDetected;
+
+            // UPnP недоступен
+            bool noUpnp = run.router != null && !run.router.UpnpEnabled;
+
+            // Антивирус обнаружен
+            bool antivirusDetected = run.software != null && run.software.AntivirusDetected.Count > 0;
+
+            // VPN активен (проверяем профиль и/или VPN клиенты)
+            bool vpnActive = isVpnProfile || (run.software != null && run.software.VpnClientsDetected.Count > 0);
+
+            // Firewall и ISP статус OK
+            bool firewallOk = run.firewall == null || string.Equals(run.firewall.Status, "OK", StringComparison.OrdinalIgnoreCase);
+            bool ispOk = run.isp == null || string.Equals(run.isp.Status, "OK", StringComparison.OrdinalIgnoreCase);
+
+            // Критические блокировки → NO
+            if (firewallBlockingLauncher || ispDpiActive || portalFail || launcherFail || (vivoxUnavailable && allAwsUnavailable))
             {
                 summary.playable = "NO";
             }
-            else if (string.Equals(summary.tls, "SUSPECT", StringComparison.OrdinalIgnoreCase)
+            // Предупреждения → MAYBE
+            else if (cgnatDetected || noUpnp || antivirusDetected || launcherWarn 
+                     || string.Equals(summary.tls, "SUSPECT", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(summary.dns, "WARN", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(summary.tcp_portal, "WARN", StringComparison.OrdinalIgnoreCase))
             {
                 summary.playable = "MAYBE";
             }
+            // VPN активен И всё работает → YES
+            else if (vpnActive && string.Equals(summary.tls, "OK", StringComparison.OrdinalIgnoreCase) 
+                     && firewallOk && ispOk && !portalFail)
+            {
+                summary.playable = "YES";
+            }
+            // Без VPN, но всё OK → YES
             else if (string.Equals(summary.tls, "OK", StringComparison.OrdinalIgnoreCase)
-                     && !string.Equals(summary.tcp_portal, "FAIL", StringComparison.OrdinalIgnoreCase)
-                     && !string.Equals(summary.dns, "UNKNOWN", StringComparison.OrdinalIgnoreCase))
+                     && !portalFail && !launcherFail
+                     && !dnsBad && !tlsBad
+                     && firewallOk && ispOk)
             {
                 summary.playable = "YES";
             }

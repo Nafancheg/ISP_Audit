@@ -55,6 +55,75 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
 
 Примечание: при запуске с аргументами всегда используется CLI; без аргументов — открывается GUI.
 
+## Новые диагностические возможности
+
+### Точная диагностика блокировок Star Citizen
+
+Начиная с версии 2025-10-30, ISP_Audit включает специализированные тесты для выявления реальных причин блокировки игры Star Citizen:
+
+**FirewallTest** - Windows блокировки:
+- Проверка правил Windows Firewall для игровых портов (8000-8003, 64090-64094)
+- Статус Windows Defender
+- Детекция блокирующих правил для Star Citizen
+
+**IspTest** - анализ провайдера:
+- Определение ISP через внешний IP (ip-api.com)
+- CGNAT детекция (диапазон 100.64.0.0/10)
+- DPI проверка (модификация HTTP заголовков)
+- DNS фильтрация провайдера
+
+**RouterTest** - проблемы сетевого оборудования:
+- UPnP доступность
+- SIP ALG детекция (влияет на Vivox voice chat)
+- Стабильность пинга до gateway
+- QoS политики
+
+**SoftwareTest** - конфликты ПО:
+- Детекция антивирусов (Kaspersky, Avast, ESET, Norton и др.)
+- Детекция VPN клиентов
+- Hosts файл проверка (блокировка RSI доменов)
+- Системный прокси проверка
+
+**Расширенные проверки**:
+- Vivox voice chat (viv.vivox.com:443)
+- AWS игровые серверы (eu-central-1, eu-west-1, us-east-1, us-west-2)
+- Игровые UDP порты (64090-64094)
+
+### Умный вердикт playable
+
+Программа оценивает играбельность Star Citizen на основе многофакторного анализа:
+
+**YES** (игра работает):
+- VPN активен И HTTPS работает
+- Windows Firewall OK
+- ISP OK (нет DPI/блокировок)
+- TCP Portal доступен
+- Хотя бы 1 AWS endpoint доступен
+
+**MAYBE** (могут быть проблемы):
+- CGNAT обнаружен
+- Нет UPnP на роутере
+- Антивирус обнаружен
+- TCP Launcher частично доступен
+
+**NO** (игра не запустится):
+- Firewall блокирует порты 8000-8003
+- ISP DPI активен
+- TCP Portal недоступен
+- Vivox недоступен
+- Все AWS endpoints недоступны
+
+### GUI индикаторы проблем
+
+При обнаружении проблем отображаются информационные карточки с конкретными рекомендациями:
+
+- **FirewallCard** - блокирующие правила Windows + как исправить
+- **IspCard** - CGNAT, DPI, DNS фильтрация + советы по обходу (VPN)
+- **RouterCard** - UPnP, SIP ALG, нестабильность + инструкции настройки
+- **SoftwareCard** - конфликтующие антивирусы, VPN, прокси + решения
+
+Карточки показываются только при реальных проблемах, чтобы не перегружать интерфейс.
+
 ## Формат отчёта (JSON)
 
 Пример верхнего уровня:
@@ -69,8 +138,46 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
     "tcp": "OK|FAIL|UNKNOWN", 
     "udp": "OK|FAIL|INFO|UNKNOWN", 
     "tls": "OK|SUSPECT|FAIL|UNKNOWN", 
-    "rst_inject": "UNKNOWN" 
+    "rst_inject": "UNKNOWN",
+    "firewall": "OK|BLOCKING|UNKNOWN",
+    "isp_blocking": "OK|CGNAT|DPI|DNS_FILTERED|UNKNOWN",
+    "router_issues": "OK|NO_UPNP|SIP_ALG|UNSTABLE|UNKNOWN",
+    "software_conflicts": "OK|ANTIVIRUS|VPN|PROXY|UNKNOWN"
   }, 
+  "firewall": {
+    "windows_firewall_enabled": true,
+    "blocked_ports": ["8000", "8001"],
+    "windows_defender_active": true,
+    "blocking_rules": ["Block Star Citizen"],
+    "status": "BLOCKING"
+  },
+  "isp": {
+    "isp": "Example ISP",
+    "country": "RU",
+    "city": "Moscow",
+    "cgnat_detected": false,
+    "dpi_detected": true,
+    "dns_filtered": false,
+    "known_problematic_isps": [],
+    "status": "DPI"
+  },
+  "router": {
+    "gateway_ip": "192.168.1.1",
+    "upnp_enabled": false,
+    "sip_alg_detected": false,
+    "avg_ping_ms": 2.5,
+    "max_ping_ms": 5.2,
+    "packet_loss_percent": 0,
+    "status": "NO_UPNP"
+  },
+  "software": {
+    "antivirus_detected": ["Windows Defender"],
+    "vpn_clients_detected": [],
+    "proxy_enabled": false,
+    "hosts_file_issues": false,
+    "hosts_file_entries": [],
+    "status": "OK"
+  },
   "targets": { 
     "RSI Лаунчер": { 
       "host": "launcher.robertsspaceindustries.com", 
@@ -100,7 +207,8 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
       "rtt_ms": 12, 
       "reply_bytes": 128, 
       "note": "ответ получен", 
-      "description": "Проверка UDP DNS" 
+      "description": "Проверка UDP DNS",
+      "certainty": "high"
     }, 
     { 
       "name": "Star Citizen EU шлюз", 
@@ -113,7 +221,8 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
       "rtt_ms": 1, 
       "reply_bytes": 0, 
       "note": "пакет отправлен", 
-      "description": "Отправка тестового пакета, ответ не ожидается" 
+      "description": "Отправка тестового пакета, ответ не ожидается",
+      "certainty": "low"
     } 
   ] 
 } 

@@ -2,7 +2,7 @@ using System;
 
 namespace IspAudit.Tests
 {
-    public enum TestKind { DNS, TCP, HTTP, TRACEROUTE, UDP, RST }
+    public enum TestKind { DNS, TCP, HTTP, TRACEROUTE, UDP, RST, FIREWALL, ISP, ROUTER, SOFTWARE }
 
     public record TestProgress(TestKind Kind, string Status, bool? Success = null, string? Message = null);
 }

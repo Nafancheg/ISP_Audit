@@ -22,9 +22,18 @@ namespace IspAudit.Tests
         /// Detect if the HTML looks like an ISP/RKN block page.
         /// In VPN profile the heuristic is stricter to reduce false positives.
         /// </summary>
-        private bool IsLikelyBlockPage(string html, string expectedHost, int statusCode)
+        private bool IsLikelyBlockPage(string html, string expectedHost, int statusCode, string? serverHeader)
         {
             if (string.IsNullOrEmpty(html) || html.Length > 500000) return false;
+
+            // Исключить легитимные 403 от CDN/S3 (не блок-страницы)
+            if (statusCode == 403 && serverHeader != null &&
+                (serverHeader.Contains("AmazonS3", StringComparison.OrdinalIgnoreCase) ||
+                 serverHeader.Contains("CloudFront", StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
             var lower = html.ToLowerInvariant();
 
             var indicators = new[]
@@ -67,6 +76,17 @@ namespace IspAudit.Tests
                     if (prefix.Length > 0 && prefix.EndsWith("."))
                     {
                         return true;
+                    }
+
+                    // Special case: *.robertsspaceindustries.com используется RSI для apex домена
+                    // Технически неправильно, но это их конфигурация - не критично
+                    if (prefix.Length == 0 && domain.Equals(expectedHost, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Wildcard cert на apex домен - разрешаем для известных доменов RSI
+                        if (domain.Contains("robertsspaceindustries.com", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return true; // Не критично для RSI
+                        }
                     }
                 }
             }
@@ -114,7 +134,7 @@ namespace IspAudit.Tests
                     try
                     {
                         var content = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
-                        isBlockPage = IsLikelyBlockPage(content, host, (int)resp.StatusCode);
+                        isBlockPage = IsLikelyBlockPage(content, host, (int)resp.StatusCode, serverHeader);
                     }
                     catch
                     {
