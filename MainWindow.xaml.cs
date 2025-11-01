@@ -9,6 +9,9 @@ using System.Windows;
 using System.Windows.Media;
 using System.Globalization;
 using System.Windows.Data;
+using System.Net.Http;
+using System.Net.NetworkInformation;
+using System.Diagnostics;
 using IspAudit.Tests;
 using IspAudit.Wpf;
 using IspAudit.Output;
@@ -22,12 +25,27 @@ public partial class MainWindow : Window
     private bool _isRunning;
     private RunReport? _lastRun;
     private Config? _lastConfig;
+    private bool _dnsFixed = false; // Флаг для отслеживания применения DNS Fix
+    private string? _selectedProfileName; // Выбранный профиль в ComboBox
 
     public MainWindow()
     {
         InitializeComponent();
         InitializeServices();
         ServicesPanel.ItemsSource = _services;
+        
+        // Загрузить доступные профили в ComboBox
+        LoadAvailableProfiles();
+        
+        // Установить название активного профиля
+        if (Config.ActiveProfile != null)
+        {
+            ProfileNameText.Text = $"Активный профиль: {Config.ActiveProfile.Name}";
+        }
+        else
+        {
+            ProfileNameText.Text = "Активный профиль: Не загружен";
+        }
     }
 
     private void InitializeServices()
@@ -75,6 +93,9 @@ public partial class MainWindow : Window
             RunButton.Content = "ОСТАНОВИТЬ";
             RunButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(244, 67, 54)); // Red
 
+            // Сбросить флаг DNS Fix при новой проверке
+            _dnsFixed = false;
+
             WarningCard.Visibility = Visibility.Collapsed;
             SuccessCard.Visibility = Visibility.Collapsed;
             VpnInfoCard.Visibility = Visibility.Collapsed;
@@ -82,6 +103,8 @@ public partial class MainWindow : Window
             IspCard.Visibility = Visibility.Collapsed;
             RouterCard.Visibility = Visibility.Collapsed;
             SoftwareCard.Visibility = Visibility.Collapsed;
+            FixDnsButton.Visibility = Visibility.Collapsed;
+            ResetDnsButton.Visibility = Visibility.Collapsed;
 
             foreach (var service in _services)
             {
@@ -95,7 +118,30 @@ public partial class MainWindow : Window
             StatusText.Text = "Запуск диагностики...";
 
             var config = Config.Default();
-            config.TargetMap = Program.Targets.ToDictionary(kv => kv.Key, kv => kv.Value.Copy(), StringComparer.OrdinalIgnoreCase);
+            
+            // Использовать цели из активного профиля (если загружен), иначе fallback на Program.Targets
+            if (Config.ActiveProfile != null && Config.ActiveProfile.Targets.Count > 0)
+            {
+                // Конвертируем цели профиля в TargetDefinition
+                config.TargetMap = Config.ActiveProfile.Targets.ToDictionary(
+                    t => t.Name,
+                    t => new TargetDefinition
+                    {
+                        Name = t.Name,
+                        Host = t.Host,
+                        Service = t.Service,
+                        Critical = t.Critical,
+                        FallbackIp = t.FallbackIp
+                    },
+                    StringComparer.OrdinalIgnoreCase
+                );
+            }
+            else
+            {
+                // Fallback: использовать старые цели из Program.Targets
+                config.TargetMap = Program.Targets.ToDictionary(kv => kv.Key, kv => kv.Value.Copy(), StringComparer.OrdinalIgnoreCase);
+            }
+            
             config.Targets = config.TargetMap.Values.Select(t => t.Host).Distinct().ToList();
             config.EnableDns = true;
             config.EnableTcp = true;
@@ -339,116 +385,77 @@ public partial class MainWindow : Window
         IspCard.Visibility = Visibility.Collapsed;
         RouterCard.Visibility = Visibility.Collapsed;
         SoftwareCard.Visibility = Visibility.Collapsed;
+        FixDnsButton.Visibility = Visibility.Collapsed;
+        ResetDnsButton.Visibility = Visibility.Collapsed;
+
+        // Определить DNS статус для управления видимостью кнопок
+        bool hasDnsProblems = summary.dns == "DNS_FILTERED" || summary.dns == "DNS_BOGUS";
+        
+        // Управление видимостью кнопок DNS
+        if (hasDnsProblems && !_dnsFixed)
+        {
+            // Показать кнопку "ИСПРАВИТЬ DNS" если есть проблемы и DNS ещё не исправлен
+            FixDnsButton.Visibility = Visibility.Visible;
+        }
+        else if (_dnsFixed)
+        {
+            // Показать кнопку "ВЕРНУТЬ DNS" если DNS был исправлен ранее
+            ResetDnsButton.Visibility = Visibility.Visible;
+        }
 
         // Показать карточки для каждого типа проблем
         bool hasProblems = false;
 
-        // Firewall проблемы
+        // Firewall проблемы — показывать если Status != "OK"
         if (report.firewall != null && 
-            (report.firewall.WindowsFirewallEnabled && report.firewall.BlockedPorts.Count > 0 || 
-             report.firewall.BlockingRules.Count > 0))
+            !string.Equals(report.firewall.Status, "OK", StringComparison.OrdinalIgnoreCase))
         {
             hasProblems = true;
             FirewallCard.Visibility = Visibility.Visible;
-            var firewallInfo = new System.Collections.Generic.List<string>();
-            
-            if (report.firewall.WindowsFirewallEnabled && report.firewall.BlockedPorts.Count > 0)
-                firewallInfo.Add($"• Windows Firewall блокирует порты: {string.Join(", ", report.firewall.BlockedPorts)}");
-            
-            if (report.firewall.BlockingRules.Count > 0)
-                firewallInfo.Add($"• Обнаружены блокирующие правила: {report.firewall.BlockingRules.Count} шт.");
-            
-            if (report.firewall.WindowsDefenderActive)
-                firewallInfo.Add("• Windows Defender активен (может блокировать игру)");
-            
-            firewallInfo.Add("\nРекомендация: добавьте Star Citizen в исключения Windows Firewall и Defender, либо создайте правило для портов 8000-8020, 80, 443.");
-            
-            FirewallText.Text = string.Join("\n", firewallInfo);
+            FirewallText.Text = BuildFirewallMessage(report.firewall);
         }
 
-        // ISP проблемы
+        // ISP проблемы — показывать если Status != "OK"
         if (report.isp != null && 
-            (report.isp.CgnatDetected || report.isp.DpiDetected || report.isp.DnsFiltered || 
-             report.isp.KnownProblematicISPs.Count > 0))
+            !string.Equals(report.isp.Status, "OK", StringComparison.OrdinalIgnoreCase))
         {
             hasProblems = true;
             IspCard.Visibility = Visibility.Visible;
-            var ispInfo = new System.Collections.Generic.List<string>();
-            
-            if (!string.IsNullOrEmpty(report.isp.Isp))
-                ispInfo.Add($"Провайдер: {report.isp.Isp} ({report.isp.Country})");
-            
-            if (report.isp.CgnatDetected)
-                ispInfo.Add("• CGNAT обнаружен — прямое подключение невозможно");
-            
-            if (report.isp.DpiDetected)
-                ispInfo.Add("• DPI (Deep Packet Inspection) обнаружен — трафик фильтруется");
-            
-            if (report.isp.DnsFiltered)
-                ispInfo.Add("• DNS фильтрация активна — запросы подменяются");
-            
-            if (report.isp.KnownProblematicISPs.Count > 0)
-                ispInfo.Add($"• Проблемный провайдер: {string.Join(", ", report.isp.KnownProblematicISPs)}");
-            
-            ispInfo.Add("\nРекомендация: смените DNS на Cloudflare/Google, используйте VPN для обхода DPI/CGNAT, или свяжитесь с провайдером для получения «белого» IP.");
-            
-            IspText.Text = string.Join("\n", ispInfo);
+            IspText.Text = BuildIspMessage(report.isp);
         }
 
-        // Router проблемы
+        // Router проблемы — показывать если Status != "OK"
         if (report.router != null && 
-            (!report.router.UpnpEnabled || report.router.SipAlgDetected || 
-             report.router.PacketLossPercent > 5 || report.router.AvgPingMs > 100))
+            !string.Equals(report.router.Status, "OK", StringComparison.OrdinalIgnoreCase))
         {
             hasProblems = true;
             RouterCard.Visibility = Visibility.Visible;
-            var routerInfo = new System.Collections.Generic.List<string>();
-            
-            if (!string.IsNullOrEmpty(report.router.GatewayIp))
-                routerInfo.Add($"Шлюз: {report.router.GatewayIp}");
-            
-            if (!report.router.UpnpEnabled)
-                routerInfo.Add("• UPnP отключен — пробросы портов недоступны");
-            
-            if (report.router.SipAlgDetected)
-                routerInfo.Add("• SIP ALG обнаружен — может блокировать VoIP (Vivox)");
-            
-            if (report.router.PacketLossPercent > 5)
-                routerInfo.Add($"• Потеря пакетов: {report.router.PacketLossPercent}% (высокая)");
-            
-            if (report.router.AvgPingMs > 100)
-                routerInfo.Add($"• Высокий пинг до шлюза: {report.router.AvgPingMs:F1} мс");
-            
-            routerInfo.Add("\nРекомендация: включите UPnP в настройках роутера, отключите SIP ALG, проверьте качество кабеля/Wi-Fi соединения.");
-            
-            RouterText.Text = string.Join("\n", routerInfo);
+            RouterText.Text = BuildRouterMessage(report.router);
         }
 
-        // Software проблемы
+        // Software проблемы — показывать если Status != "OK"
         if (report.software != null && 
-            (report.software.AntivirusDetected.Count > 0 || report.software.VpnClientsDetected.Count > 0 || 
-             report.software.ProxyEnabled || report.software.HostsFileIssues))
+            !string.Equals(report.software.Status, "OK", StringComparison.OrdinalIgnoreCase))
         {
             hasProblems = true;
             SoftwareCard.Visibility = Visibility.Visible;
-            var softwareInfo = new System.Collections.Generic.List<string>();
-            
-            if (report.software.AntivirusDetected.Count > 0)
-                softwareInfo.Add($"• Антивирусы: {string.Join(", ", report.software.AntivirusDetected)}");
-            
-            if (report.software.VpnClientsDetected.Count > 0)
-                softwareInfo.Add($"• VPN клиенты: {string.Join(", ", report.software.VpnClientsDetected)}");
-            
-            if (report.software.ProxyEnabled)
-                softwareInfo.Add("• Системный прокси включен — может влиять на соединения");
-            
-            if (report.software.HostsFileIssues)
-                softwareInfo.Add($"• Проблемы в hosts файле ({report.software.HostsFileEntries.Count} записей)");
-            
-            softwareInfo.Add("\nРекомендация: добавьте Star Citizen в исключения антивируса, отключите VPN если он не нужен, проверьте настройки прокси и hosts файл.");
-            
-            SoftwareText.Text = string.Join("\n", softwareInfo);
+            SoftwareText.Text = BuildSoftwareMessage(report.software);
         }
+
+        // Итоговый вердикт — ВСЕГДА показывать
+        VerdictCard.Visibility = Visibility.Visible;
+        string adviceText = ReportWriter.BuildAdviceText(report, _lastConfig);
+        VerdictText.Text = adviceText;
+
+        // Цвет карточки зависит от playable
+        if (summary.playable == "NO")
+            VerdictCard.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(244, 67, 54)); // Красный
+        else if (summary.playable == "MAYBE")
+            VerdictCard.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 152, 0)); // Оранжевый
+        else if (summary.playable == "YES")
+            VerdictCard.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(76, 175, 80)); // Зелёный
+        else
+            VerdictCard.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(33, 150, 243)); // Синий
 
         // Общая карточка предупреждений (для старых проблем DNS/TCP/TLS)
         bool hasLegacyProblems = !string.Equals(summary.playable, "YES", StringComparison.OrdinalIgnoreCase);
@@ -553,6 +560,545 @@ public partial class MainWindow
             "MAYBE" => "Играбельно: Погранично",
             _ => "Играбельно: —"
         };
+    }
+
+    /// <summary>
+    /// Проверяет доступность DoH провайдеров (Cloudflare, Google, Quad9)
+    /// </summary>
+    /// <returns>Tuple (IP, DoH URL) первого доступного провайдера или null если все недоступны</returns>
+    private async Task<(string Ip, string Url)?> CheckDohProviderAvailability()
+    {
+        var providers = new[]
+        {
+            (Ip: "1.1.1.1", Url: "https://cloudflare-dns.com/dns-query"),
+            (Ip: "8.8.8.8", Url: "https://dns.google/dns-query"),
+            (Ip: "9.9.9.9", Url: "https://dns.quad9.net/dns-query")
+        };
+
+        foreach (var provider in providers)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(5000); // 5 сек таймаут
+                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                
+                // Простая HEAD запрос к DoH endpoint для проверки доступности
+                var request = new HttpRequestMessage(HttpMethod.Head, provider.Url);
+                var response = await httpClient.SendAsync(request, cts.Token).ConfigureAwait(false);
+                
+                if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.MethodNotAllowed)
+                {
+                    // Провайдер доступен (успех или 405 Method Not Allowed - тоже признак работы)
+                    return provider;
+                }
+            }
+            catch
+            {
+                // Провайдер недоступен, пробуем следующий
+                continue;
+            }
+        }
+
+        return null; // Все провайдеры недоступны
+    }
+
+    /// <summary>
+    /// Обработчик кнопки "ИСПРАВИТЬ DNS"
+    /// </summary>
+    private async void FixDnsButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            StatusText.Text = "Проверка доступности DoH провайдеров...";
+            
+            var provider = await CheckDohProviderAvailability();
+            
+            if (provider == null)
+            {
+                System.Windows.MessageBox.Show(
+                    "Не удалось найти доступный DoH провайдер.\n\n" +
+                    "Возможно, ваше интернет-соединение полностью заблокировано или DoH сервисы недоступны.",
+                    "Ошибка",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                StatusText.Text = "DoH провайдеры недоступны";
+                return;
+            }
+
+            StatusText.Text = $"Применение DNS: {provider.Value.Ip}...";
+
+            // Определить имя активного сетевого адаптера
+            string? activeInterface = GetActiveNetworkInterface();
+            
+            if (activeInterface == null)
+            {
+                System.Windows.MessageBox.Show(
+                    "Не удалось определить активный сетевой адаптер.",
+                    "Ошибка",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                StatusText.Text = "Не удалось определить сетевой адаптер";
+                return;
+            }
+
+            // Команды netsh для установки DNS и включения DoH
+            var commands = new[]
+            {
+                $"netsh interface ipv4 set dns name=\"{activeInterface}\" static {provider.Value.Ip} primary",
+                $"netsh interface ipv4 add dns name=\"{activeInterface}\" {provider.Value.Ip} index=2", // Резервный
+                $"netsh dns add encryption server={provider.Value.Ip} dohtemplate={provider.Value.Url} autoupgrade=yes udpfallback=no"
+            };
+
+            // Создать батник для запуска с правами администратора
+            string tempBatch = Path.Combine(Path.GetTempPath(), "fix_dns_temp.bat");
+            await File.WriteAllTextAsync(tempBatch, string.Join("\r\n", commands)).ConfigureAwait(false);
+
+            // Запустить с UAC
+            var psi = new ProcessStartInfo
+            {
+                FileName = tempBatch,
+                UseShellExecute = true,
+                Verb = "runas", // Запрос UAC
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            };
+
+            var process = Process.Start(psi);
+            if (process != null)
+            {
+                await Task.Run(() => process.WaitForExit()).ConfigureAwait(false);
+                
+                // Удалить временный батник
+                try { File.Delete(tempBatch); } catch { }
+
+                Dispatcher.Invoke(() =>
+                {
+                    System.Windows.MessageBox.Show(
+                        $"DNS успешно изменён на {provider.Value.Ip}.\n\n" +
+                        "DoH (DNS-over-HTTPS) включен.\n\n" +
+                        "Для применения изменений может потребоваться перезапуск браузера/игры.",
+                        "Успех",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    StatusText.Text = "DNS изменён успешно";
+                    
+                    // Установить флаг и обновить видимость кнопок
+                    _dnsFixed = true;
+                    FixDnsButton.Visibility = Visibility.Collapsed;
+                    ResetDnsButton.Visibility = Visibility.Visible;
+                });
+            }
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // Пользователь отменил UAC
+            System.Windows.MessageBox.Show(
+                "Для изменения DNS требуются права администратора.",
+                "Отменено",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            StatusText.Text = "Изменение DNS отменено";
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                $"Ошибка при изменении DNS:\n{ex.Message}",
+                "Ошибка",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            StatusText.Text = "Ошибка при изменении DNS";
+        }
+    }
+
+    /// <summary>
+    /// Обработчик кнопки "ВЕРНУТЬ DNS"
+    /// </summary>
+    private async void ResetDnsButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            StatusText.Text = "Восстановление DHCP DNS...";
+
+            // Определить имя активного сетевого адаптера
+            string? activeInterface = GetActiveNetworkInterface();
+            
+            if (activeInterface == null)
+            {
+                System.Windows.MessageBox.Show(
+                    "Не удалось определить активный сетевой адаптер.",
+                    "Ошибка",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                StatusText.Text = "Не удалось определить сетевой адаптер";
+                return;
+            }
+
+            // Команды netsh для восстановления DHCP DNS и отключения DoH
+            var commands = new[]
+            {
+                $"netsh interface ipv4 set dns name=\"{activeInterface}\" dhcp",
+                $"netsh dns delete encryption server=1.1.1.1",
+                $"netsh dns delete encryption server=8.8.8.8",
+                $"netsh dns delete encryption server=9.9.9.9"
+            };
+
+            // Создать батник для запуска с правами администратора
+            string tempBatch = Path.Combine(Path.GetTempPath(), "reset_dns_temp.bat");
+            await File.WriteAllTextAsync(tempBatch, string.Join("\r\n", commands)).ConfigureAwait(false);
+
+            // Запустить с UAC
+            var psi = new ProcessStartInfo
+            {
+                FileName = tempBatch,
+                UseShellExecute = true,
+                Verb = "runas", // Запрос UAC
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            };
+
+            var process = Process.Start(psi);
+            if (process != null)
+            {
+                await Task.Run(() => process.WaitForExit()).ConfigureAwait(false);
+                
+                // Удалить временный батник
+                try { File.Delete(tempBatch); } catch { }
+
+                Dispatcher.Invoke(() =>
+                {
+                    System.Windows.MessageBox.Show(
+                        "DNS восстановлен на автоматические настройки (DHCP).\n\n" +
+                        "DoH отключен.\n\n" +
+                        "Для применения изменений может потребоваться перезапуск браузера/игры.",
+                        "Успех",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    StatusText.Text = "DNS восстановлен";
+                    
+                    // Сбросить флаг и обновить видимость кнопок
+                    _dnsFixed = false;
+                    ResetDnsButton.Visibility = Visibility.Collapsed;
+                    FixDnsButton.Visibility = Visibility.Collapsed; // Скрыть обе, пока не будет новой проверки
+                });
+            }
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // Пользователь отменил UAC
+            System.Windows.MessageBox.Show(
+                "Для восстановления DNS требуются права администратора.",
+                "Отменено",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            StatusText.Text = "Восстановление DNS отменено";
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                $"Ошибка при восстановлении DNS:\n{ex.Message}",
+                "Ошибка",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            StatusText.Text = "Ошибка при восстановлении DNS";
+        }
+    }
+
+    /// <summary>
+    /// Определяет имя активного сетевого адаптера (не VPN, не виртуальный)
+    /// </summary>
+    private static string? GetActiveNetworkInterface()
+    {
+        try
+        {
+            var interfaces = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(ni => ni.OperationalStatus == OperationalStatus.Up)
+                .Where(ni => ni.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                .Where(ni => ni.NetworkInterfaceType != NetworkInterfaceType.Tunnel)
+                .ToList();
+
+            // Фильтровать VPN адаптеры по названию/описанию
+            var physicalInterfaces = interfaces
+                .Where(ni =>
+                {
+                    var name = (ni.Name ?? string.Empty).ToLowerInvariant();
+                    var desc = (ni.Description ?? string.Empty).ToLowerInvariant();
+                    
+                    // Исключить VPN адаптеры
+                    bool isVpn = name.Contains("vpn") || desc.Contains("vpn") ||
+                                 desc.Contains("wintun") || desc.Contains("wireguard") ||
+                                 desc.Contains("openvpn") || desc.Contains("tap-") ||
+                                 desc.Contains("tun") || desc.Contains("ikev2");
+                    
+                    return !isVpn;
+                })
+                .ToList();
+
+            // Предпочесть Ethernet перед Wi-Fi
+            var ethernet = physicalInterfaces.FirstOrDefault(ni => 
+                ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet ||
+                ni.NetworkInterfaceType == NetworkInterfaceType.GigabitEthernet);
+            
+            if (ethernet != null)
+                return ethernet.Name;
+
+            // Если нет Ethernet, взять Wi-Fi
+            var wireless = physicalInterfaces.FirstOrDefault(ni =>
+                ni.NetworkInterfaceType == NetworkInterfaceType.Wireless80211);
+            
+            if (wireless != null)
+                return wireless.Name;
+
+            // Если ничего не найдено, взять первый доступный
+            return physicalInterfaces.FirstOrDefault()?.Name;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private string BuildFirewallMessage(FirewallTestResult firewall)
+    {
+        var lines = new List<string>();
+        
+        if (firewall.WindowsFirewallEnabled)
+            lines.Add("• Windows Firewall активен");
+        
+        if (firewall.BlockedPorts.Count > 0)
+            lines.Add($"• Заблокированы порты: {string.Join(", ", firewall.BlockedPorts)}");
+        
+        if (firewall.BlockingRules.Count > 0)
+            lines.Add($"• Блокирующие правила: {firewall.BlockingRules.Count} шт.");
+        
+        if (firewall.WindowsDefenderActive)
+            lines.Add("• Windows Defender активен (может блокировать игру)");
+        
+        lines.Add("\nРекомендация: добавьте Star Citizen в исключения Windows Firewall и Defender.");
+        lines.Add("Инструкция: Панель управления → Windows Defender Firewall → Дополнительные параметры → Правила для исходящих подключений → Создать правило (Разрешить TCP 8000-8020, 80, 443)");
+        
+        return string.Join("\n", lines);
+    }
+
+    private string BuildIspMessage(IspTestResult isp)
+    {
+        var lines = new List<string>();
+        
+        if (!string.IsNullOrEmpty(isp.Isp))
+            lines.Add($"Провайдер: {isp.Isp} ({isp.Country ?? "неизвестно"})");
+        
+        if (isp.DpiDetected)
+        {
+            lines.Add("• DPI (Deep Packet Inspection) обнаружен — провайдер фильтрует трафик");
+            lines.Add("  Это означает: провайдер модифицирует ваши HTTPS-запросы");
+        }
+        
+        if (isp.DnsFiltered)
+        {
+            lines.Add("• DNS фильтрация активна — запросы подменяются");
+            lines.Add("  Это означает: провайдер возвращает другие IP-адреса для заблокированных сайтов");
+        }
+        
+        if (isp.CgnatDetected)
+        {
+            lines.Add("• CGNAT обнаружен — прямое подключение невозможно");
+            lines.Add("  Это означает: ваш IP находится за общим NAT провайдера (100.64.0.0/10)");
+        }
+        
+        if (isp.KnownProblematicISPs.Count > 0)
+            lines.Add($"• Проблемный провайдер: {string.Join(", ", isp.KnownProblematicISPs)}");
+        
+        lines.Add("\nРекомендация:");
+        if (isp.DpiDetected || isp.DnsFiltered)
+            lines.Add("• Используйте VPN (NordVPN, ProtonVPN, ExpressVPN) для обхода DPI/фильтрации");
+        if (isp.CgnatDetected)
+            lines.Add("• Свяжитесь с провайдером для получения «белого» IP-адреса (может быть платно)");
+        if (isp.DnsFiltered)
+            lines.Add("• Смените DNS на Cloudflare (1.1.1.1) или Google (8.8.8.8)");
+        
+        return string.Join("\n", lines);
+    }
+
+    private string BuildRouterMessage(RouterTestResult router)
+    {
+        var lines = new List<string>();
+        
+        if (!router.UpnpEnabled)
+        {
+            lines.Add("• UPnP отключен — автоматическая проброска портов невозможна");
+            lines.Add("  Это означает: игра не сможет автоматически открыть порты для мультиплеера");
+        }
+        
+        if (router.SipAlgDetected)
+        {
+            lines.Add("• SIP ALG активен — может блокировать голосовой чат (Vivox)");
+            lines.Add("  Это означает: функция роутера, которая ломает VoIP-трафик");
+        }
+        
+        if (router.PacketLossPercent > 10)
+            lines.Add($"• Потеря пакетов: {router.PacketLossPercent:F1}% — плохое качество связи");
+        
+        if (router.AvgPingMs > 100)
+            lines.Add($"• Высокий пинг: {router.AvgPingMs:F0} мс — медленная связь");
+        
+        lines.Add("\nРекомендация:");
+        if (!router.UpnpEnabled)
+            lines.Add("• Включите UPnP в настройках роутера (обычно в разделе «Сеть» или «Дополнительно»)");
+        if (router.SipAlgDetected)
+            lines.Add("• Отключите SIP ALG в настройках роутера (обычно в разделе «NAT» или «Advanced»)");
+        if (router.PacketLossPercent > 10 || router.AvgPingMs > 100)
+            lines.Add("• Проверьте кабель Ethernet, перезагрузите роутер, свяжитесь с провайдером");
+        
+        return string.Join("\n", lines);
+    }
+
+    private string BuildSoftwareMessage(SoftwareTestResult software)
+    {
+        var lines = new List<string>();
+        
+        if (software.AntivirusDetected.Count > 0)
+        {
+            lines.Add($"• Обнаружены антивирусы: {string.Join(", ", software.AntivirusDetected)}");
+            lines.Add("  Антивирусы могут блокировать игровые порты и процессы");
+        }
+        
+        if (software.VpnClientsDetected.Count > 0)
+        {
+            lines.Add($"• Обнаружены VPN клиенты: {string.Join(", ", software.VpnClientsDetected)}");
+            lines.Add("  (Это НЕ проблема — VPN помогает обходить блокировки)");
+        }
+        
+        if (software.ProxyEnabled)
+        {
+            lines.Add("• Системный прокси активен");
+            lines.Add("  Может перенаправлять трафик и вызывать проблемы");
+        }
+        
+        if (software.HostsFileIssues)
+        {
+            lines.Add("• В hosts файле обнаружены записи для RSI доменов");
+            lines.Add($"  Записи: {string.Join(", ", software.HostsFileEntries)}");
+            lines.Add("  Это может БЛОКИРОВАТЬ доступ к сайту и лаунчеру");
+        }
+        
+        lines.Add("\nРекомендация:");
+        if (software.AntivirusDetected.Count > 0)
+            lines.Add("• Добавьте Star Citizen в исключения антивируса (обычно в настройках «Исключения» или «Exclusions»)");
+        if (software.HostsFileIssues)
+            lines.Add("• Откройте hosts файл (C:\\Windows\\System32\\drivers\\etc\\hosts) с правами администратора и удалите строки с RSI доменами");
+        if (software.ProxyEnabled)
+            lines.Add("• Отключите системный прокси: Настройки → Сеть и интернет → Прокси → Отключить");
+        
+        return string.Join("\n", lines);
+    }
+
+    private void LoadAvailableProfiles()
+    {
+        try
+        {
+            ProfileComboBox.Items.Clear();
+            
+            string profilesDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Profiles");
+            if (!Directory.Exists(profilesDir))
+            {
+                // Если папки нет, создать её
+                Directory.CreateDirectory(profilesDir);
+                return;
+            }
+            
+            var jsonFiles = Directory.GetFiles(profilesDir, "*.json");
+            foreach (var file in jsonFiles)
+            {
+                string profileName = System.IO.Path.GetFileNameWithoutExtension(file);
+                ProfileComboBox.Items.Add(profileName);
+            }
+            
+            // Выбрать активный профиль, если он установлен
+            if (Config.ActiveProfile != null)
+            {
+                ProfileComboBox.SelectedItem = Config.ActiveProfile.Name;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"Ошибка загрузки профилей: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void ProfileComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (ProfileComboBox.SelectedItem != null)
+        {
+            _selectedProfileName = ProfileComboBox.SelectedItem.ToString();
+            ApplyProfileButton.IsEnabled = true;
+        }
+        else
+        {
+            _selectedProfileName = null;
+            ApplyProfileButton.IsEnabled = false;
+        }
+    }
+
+    private void ApplyProfileButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_selectedProfileName))
+        {
+            System.Windows.MessageBox.Show("Выберите профиль из списка", "Применить профиль", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        
+        try
+        {
+            // Загрузить профиль
+            Config.SetActiveProfile(_selectedProfileName);
+            
+            // Обновить отображение
+            if (Config.ActiveProfile != null)
+            {
+                ProfileNameText.Text = $"Активный профиль: {Config.ActiveProfile.Name}";
+                
+                // Очистить результаты предыдущего теста
+                ClearResults();
+                
+                // Переинициализировать список сервисов под новый профиль
+                InitializeServices();
+                
+                System.Windows.MessageBox.Show($"Профиль '{_selectedProfileName}' применён", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"Ошибка применения профиля: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ClearResults()
+    {
+        // Скрыть все карточки
+        WarningCard.Visibility = Visibility.Collapsed;
+        SuccessCard.Visibility = Visibility.Collapsed;
+        FirewallCard.Visibility = Visibility.Collapsed;
+        IspCard.Visibility = Visibility.Collapsed;
+        RouterCard.Visibility = Visibility.Collapsed;
+        SoftwareCard.Visibility = Visibility.Collapsed;
+        VerdictCard.Visibility = Visibility.Collapsed;
+        VpnInfoCard.Visibility = Visibility.Collapsed;
+        FixDnsButton.Visibility = Visibility.Collapsed;
+        ResetDnsButton.Visibility = Visibility.Collapsed;
+        
+        // Очистить список сервисов
+        foreach (var service in _services)
+        {
+            service.Details = "Ожидание старта";
+            service.DetailedMessage = "";
+        }
+        
+        // Сбросить флаги
+        _lastRun = null;
+        _lastConfig = null;
+        _dnsFixed = false;
+        
+        // Обновить статус
+        try { PlayableText.Text = "Играбельно: —"; } catch { }
     }
 }
 

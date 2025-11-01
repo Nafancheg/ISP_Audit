@@ -237,7 +237,113 @@ namespace IspAudit.Output
                 summary.software_conflicts = run.software.Status;
             }
 
-            // Новая логика вердикта играбельности с учетом новых тестов
+            // Новая логика вердикта играбельности с учетом критичных целей из профиля
+            if (Config.ActiveProfile != null)
+            {
+                // Режим работы с профилем — используем Critical флаги
+                var criticalTargets = Config.ActiveProfile.Targets.Where(t => t.Critical).ToList();
+                
+                if (criticalTargets.Count > 0)
+                {
+                    // Проверяем статусы критичных целей
+                    bool anyCriticalFailed = false;
+                    
+                    foreach (var critical in criticalTargets)
+                    {
+                        if (!run.targets.TryGetValue(critical.Name, out var targetReport))
+                        {
+                            // Критичная цель не была протестирована - считаем недоступной
+                            anyCriticalFailed = true;
+                            continue;
+                        }
+                        
+                        // Критичная цель считается FAIL если:
+                        // - DNS не работает (BOGUS или FILTERED для non-VPN)
+                        // - TCP порты закрыты
+                        // - HTTPS не работает (если требуется)
+                        bool dnsFailed = targetReport.dns_enabled && 
+                            (targetReport.dns_status == nameof(DnsStatus.DNS_BOGUS) ||
+                             (!isVpnProfile && targetReport.dns_status == nameof(DnsStatus.DNS_FILTERED)));
+                        
+                        bool tcpFailed = targetReport.tcp_enabled && 
+                            targetReport.tcp.Count > 0 && 
+                            !targetReport.tcp.Any(r => r.open);
+                        
+                        bool httpFailed = targetReport.http_enabled && 
+                            targetReport.http.Count > 0 && 
+                            !targetReport.http.Any(h => h.success && h.status is >= 200 and < 400);
+                        
+                        if (dnsFailed || tcpFailed || httpFailed)
+                        {
+                            anyCriticalFailed = true;
+                        }
+                    }
+                    
+                    // Определяем вердикт на основе критичных целей
+                    if (anyCriticalFailed)
+                    {
+                        summary.playable = "NO";
+                    }
+                    else
+                    {
+                        // Все критичные цели доступны - проверяем некритичные и предупреждения
+                        bool hasNonCriticalIssues = false;
+                        
+                        // Проверяем некритичные цели
+                        var nonCriticalTargets = run.targets
+                            .Where(kv => !criticalTargets.Any(ct => ct.Name == kv.Key))
+                            .ToList();
+                        
+                        foreach (var target in nonCriticalTargets)
+                        {
+                            var t = target.Value;
+                            bool tcpFailed = t.tcp_enabled && t.tcp.Count > 0 && !t.tcp.Any(r => r.open);
+                            bool httpFailed = t.http_enabled && t.http.Count > 0 && !t.http.Any(h => h.success);
+                            if (tcpFailed || httpFailed)
+                            {
+                                hasNonCriticalIssues = true;
+                                break;
+                            }
+                        }
+                        
+                        // Проверяем системные предупреждения
+                        bool cgnatDetected = run.isp != null && run.isp.CgnatDetected;
+                        bool noUpnp = run.router != null && !run.router.UpnpEnabled;
+                        bool antivirusDetected = run.software != null && run.software.AntivirusDetected.Count > 0;
+                        bool firewallWarning = run.firewall != null && 
+                            !string.Equals(run.firewall.Status, "OK", StringComparison.OrdinalIgnoreCase);
+                        bool tlsSuspect = string.Equals(summary.tls, "SUSPECT", StringComparison.OrdinalIgnoreCase);
+                        bool dnsWarn = string.Equals(summary.dns, "WARN", StringComparison.OrdinalIgnoreCase);
+                        
+                        if (hasNonCriticalIssues || cgnatDetected || noUpnp || antivirusDetected || 
+                            firewallWarning || tlsSuspect || dnsWarn)
+                        {
+                            summary.playable = "MAYBE";
+                        }
+                        else
+                        {
+                            summary.playable = "YES";
+                        }
+                    }
+                }
+                else
+                {
+                    // Профиль загружен, но критичных целей нет — fallback на старую логику
+                    summary.playable = DeterminePlayableLegacy(run, summary, isVpnProfile);
+                }
+            }
+            else
+            {
+                // Старый режим без профиля — используем legacy логику
+                summary.playable = DeterminePlayableLegacy(run, summary, isVpnProfile);
+            }
+
+            return summary;
+        }
+
+        private static string DeterminePlayableLegacy(RunReport run, Summary summary, bool isVpnProfile)
+        {
+            // Старая логика вердикта играбельности (без профилей)
             bool tlsBad = string.Equals(summary.tls, "FAIL", StringComparison.OrdinalIgnoreCase)
                           || string.Equals(summary.tls, "BLOCK_PAGE", StringComparison.OrdinalIgnoreCase)
                           || string.Equals(summary.tls, "MITM_SUSPECT", StringComparison.OrdinalIgnoreCase);
@@ -282,39 +388,34 @@ namespace IspAudit.Output
             bool firewallOk = run.firewall == null || string.Equals(run.firewall.Status, "OK", StringComparison.OrdinalIgnoreCase);
             bool ispOk = run.isp == null || string.Equals(run.isp.Status, "OK", StringComparison.OrdinalIgnoreCase);
 
-            // Критические блокировки → NO
-            if (firewallBlockingLauncher || ispDpiActive || portalFail || launcherFail || (vivoxUnavailable && allAwsUnavailable))
+            // ПРИОРИТЕТ 1: VPN активен И HTTPS работает → YES (независимо от остального)
+            if (vpnActive && string.Equals(summary.tls, "OK", StringComparison.OrdinalIgnoreCase) && !portalFail)
             {
-                summary.playable = "NO";
+                return "YES";
             }
-            // Предупреждения → MAYBE
-            else if (cgnatDetected || noUpnp || antivirusDetected || launcherWarn 
+            // ПРИОРИТЕТ 2: Критические блокировки → NO
+            else if (firewallBlockingLauncher || ispDpiActive || portalFail || launcherFail)
+            {
+                return "NO";
+            }
+            // ПРИОРИТЕТ 3: Предупреждения → MAYBE
+            else if (cgnatDetected || noUpnp || launcherWarn 
                      || string.Equals(summary.tls, "SUSPECT", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(summary.dns, "WARN", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(summary.tcp_portal, "WARN", StringComparison.OrdinalIgnoreCase))
             {
-                summary.playable = "MAYBE";
+                return "MAYBE";
             }
-            // VPN активен И всё работает → YES
-            else if (vpnActive && string.Equals(summary.tls, "OK", StringComparison.OrdinalIgnoreCase) 
-                     && firewallOk && ispOk && !portalFail)
-            {
-                summary.playable = "YES";
-            }
-            // Без VPN, но всё OK → YES
+            // ПРИОРИТЕТ 4: Всё OK → YES
             else if (string.Equals(summary.tls, "OK", StringComparison.OrdinalIgnoreCase)
-                     && !portalFail && !launcherFail
-                     && !dnsBad && !tlsBad
-                     && firewallOk && ispOk)
+                     && !portalFail && !launcherFail && !dnsBad && !tlsBad)
             {
-                summary.playable = "YES";
+                return "YES";
             }
             else
             {
-                summary.playable = "UNKNOWN";
+                return "UNKNOWN";
             }
-
-            return summary;
         }
 
         public static string BuildAdviceText(RunReport run, Config? config = null)
@@ -323,15 +424,22 @@ namespace IspAudit.Output
             // Короткий вердикт сверху
             var sum = BuildSummary(run, config);
             var verdict = (sum.playable ?? "UNKNOWN").ToUpperInvariant();
+            
+            // Заголовок вердикта (краткий)
             if (verdict == "YES")
-                lines.Add("Вердикт: играть можно. Критичных блокировок не обнаружено.");
+                lines.Add("✅ Star Citizen: играть можно");
             else if (verdict == "MAYBE")
-                lines.Add("Вердикт: скорее всего играть можно, но есть предупреждения — смотрите ниже.");
+                lines.Add("⚠️ Star Citizen: возможны проблемы");
             else if (verdict == "NO")
-                lines.Add("Вердикт: сейчас играть не получится — исправьте проблемы ниже.");
+                lines.Add("❌ Star Citizen: играть не получится");
             else
-                lines.Add("Вердикт: недостаточно данных для окончательного вывода.");
+                lines.Add("❓ Star Citizen: недостаточно данных");
+            
             lines.Add(string.Empty);
+            
+            // Блок критичных проблем (только если есть)
+            var criticalProblems = new List<string>();
+            
             string FormatTarget(KeyValuePair<string, TargetReport> kv)
                 => string.IsNullOrWhiteSpace(kv.Value.service) ? kv.Key : $"{kv.Key} ({kv.Value.service})";
             var udpTests = run.udp_tests ?? new List<UdpProbeResult>();
@@ -342,116 +450,83 @@ namespace IspAudit.Output
                 .ToList();
             if (dnsBadTargets.Count > 0)
             {
-                lines.Add($"DNS: обнаружены проблемы у сервисов: {string.Join(", ", dnsBadTargets)}.");
-                lines.Add("— Системный DNS пуст или возвращает приватные/некорректные адреса. Возможна фильтрация провайдером или некорректный локальный DNS.");
-                lines.Add("— Сравните результаты с DoH (Cloudflare) и при необходимости переключите лаунчер/игру на DoH/DoT или альтернативный резолвер.");
-                lines.Add("— Обход: DoH/DoT, DNSCrypt, VPN, либо локальный резолвер (unbound) с TLS.");
-            }
-            else if (run.summary.dns == nameof(DnsStatus.WARN))
-            {
-                var warnTargets = run.targets
-                    .Where(kv => kv.Value.dns_enabled && kv.Value.dns_status == nameof(DnsStatus.WARN))
-                    .Select(FormatTarget)
-                    .ToList();
-                var suffix = warnTargets.Count > 0 ? $" ({string.Join(", ", warnTargets)})" : string.Empty;
-                lines.Add($"DNS: предупреждение{suffix} — системный и DoH ответы не совпадают.");
-                lines.Add("— Это может быть нормально (CDN с геолокацией), или вы находитесь за корпоративным прокси/NAT.");
-                lines.Add("— Если игра работает — всё в порядке. Если нет — возможна подмена DNS провайдером.");
+                criticalProblems.Add("🔴 DNS блокировка — системный DNS не работает");
             }
 
             // TCP Portal (80/443)
             if (run.summary.tcp_portal == "FAIL")
             {
-                lines.Add("TCP: порты RSI Portal (80/443) ЗАКРЫТЫ — сайт RSI недоступен.");
-                lines.Add("— Проверьте файрвол, корпоративную сеть или блокировку провайдером.");
-                lines.Add("— Без доступа к порталу невозможно скачать лаунчер или получить доступ к аккаунту.");
-            }
-            else if (run.summary.tcp_portal == "WARN")
-            {
-                lines.Add("TCP: порты RSI Portal (80/443) ЧАСТИЧНО доступны — возможны проблемы с сайтом.");
+                criticalProblems.Add("🔴 RSI Portal (сайт) недоступен");
             }
 
             // TCP Launcher (8000-8020)
             if (run.summary.tcp_launcher == "FAIL")
             {
-                lines.Add("TCP: порты лаунчера (8000-8020) ЗАКРЫТЫ — лаунчер не сможет обновить игру.");
-                lines.Add("— Эти порты критически важны для патчера Star Citizen.");
-                lines.Add("— Проверьте настройки роутера, файрвола и ISP. Попробуйте VPN.");
-            }
-            else if (run.summary.tcp_launcher == "WARN")
-            {
-                lines.Add("TCP: порты лаунчера (8000-8020) ЧАСТИЧНО доступны — обновления могут быть медленными или зависать.");
-                lines.Add("— Лаунчеру нужны ВСЕ порты 8000-8020. Проверьте файрвол и роутер.");
-            }
-
-            var udpExpectedFails = udpTests
-                .Where(u => u.expect_reply && !u.success)
-                .ToList();
-            if (udpExpectedFails.Count > 0)
-            {
-                lines.Add($"UDP: нет ответа от {string.Join(", ", udpExpectedFails.Select(u => $"{u.name} ({u.service})"))}.");
-                lines.Add("— Возможна блокировка UDP/QUIC на порту 53 или ограничение провайдера. Проверьте настройки роутера и брандмауэра.");
-            }
-
-            var udpRawErrors = udpTests
-                .Where(u => !u.expect_reply && !u.success)
-                .ToList();
-            if (udpRawErrors.Count > 0)
-            {
-                lines.Add($"UDP: не удалось отправить пакеты к игровым серверам Star Citizen: {string.Join(", ", udpRawErrors.Select(u => $"{u.name}"))}.");
-                lines.Add("— Решение: проверьте настройки роутера (UPnP) и попробуйте VPN, если игра не запускается.");
+                criticalProblems.Add("🔴 Лаунчер (порты 8000-8020) недоступен");
             }
 
             // Block page detection
             if (run.summary.tls == "BLOCK_PAGE")
             {
-                var blockPageTargets = run.targets
-                    .Where(kv => kv.Value.http_enabled && kv.Value.http.Any(h => h.is_block_page == true))
-                    .Select(FormatTarget)
-                    .ToList();
-                var suffix = blockPageTargets.Count > 0 ? $": {string.Join(", ", blockPageTargets)}" : string.Empty;
-                lines.Add($"HTTPS: обнаружена страница блокировки провайдера{suffix}");
-                lines.Add("— Провайдер возвращает 200 OK, но вместо реального сайта показывает заглушку.");
-                lines.Add("— Это специальная страница от РКН, провайдера или сетевого оборудования.");
-                lines.Add("— Решение: используйте VPN или включите 'Обход блокировок' в этой программе.");
+                criticalProblems.Add("🔴 Провайдер показывает страницу блокировки");
             }
-            // MITM detection - certificate CN mismatch
+            // MITM detection
             else if (run.summary.tls == "MITM_SUSPECT")
             {
-                var mitmTargets = run.targets
-                    .Where(kv => kv.Value.http_enabled && kv.Value.http.Any(h => h.cert_cn != null && h.cert_cn_matches == false))
-                    .Select(kv =>
-                    {
-                        var badCert = kv.Value.http.First(h => h.cert_cn != null && h.cert_cn_matches == false);
-                        return $"{FormatTarget(kv)} (сертификат: {badCert.cert_cn})";
-                    })
-                    .ToList();
-                var suffix = mitmTargets.Count > 0 ? $": {string.Join(", ", mitmTargets)}" : string.Empty;
-                lines.Add($"⚠ КРИТИЧНО: Подозрение на MITM-атаку (Man-in-the-Middle){suffix}");
-                lines.Add("— Сертификаты серверов НЕ соответствуют ожидаемым доменам.");
-                lines.Add("— Возможно, трафик перехватывается корпоративным прокси, антивирусом или провайдером.");
-                lines.Add("— НЕ ВВОДИТЕ пароли и личные данные в игре до устранения проблемы!");
-                lines.Add("— Проверьте: отключите антивирус/прокси, попробуйте другую сеть.");
+                criticalProblems.Add("⚠️ Подозрение на перехват HTTPS (MITM)");
             }
-            else if (run.summary.tls == "SUSPECT")
+            
+            // Firewall
+            if (run.firewall != null && run.firewall.Status == "BLOCKING")
             {
-                var tlsSuspects = run.targets
-                    .Where(kv => kv.Value.http_enabled && kv.Value.tcp_enabled && kv.Value.tcp.Any(r => r.port == 443 && r.open) && !kv.Value.http.Any(h => h.success && h.status is >= 200 and < 400))
-                    .Select(FormatTarget)
-                    .ToList();
-                var suffix = tlsSuspects.Count > 0 ? $": {string.Join(", ", tlsSuspects)}" : string.Empty;
-                lines.Add($"HTTPS: блокировка защищённых соединений{suffix} — провайдер блокирует доступ к сайтам Star Citizen.");
-                lines.Add("— Решение: используйте VPN или попробуйте включить 'Обход блокировок' в этой программе.");
-                lines.Add("— Это поможет обойти блокировки провайдера и запустить лаунчер.");
+                criticalProblems.Add("🔴 Windows Firewall блокирует игровые порты");
             }
-
-            if (lines.Count == 0)
+            
+            // ISP DPI
+            if (run.isp != null && run.isp.DpiDetected)
             {
-                lines.Add("✓ Всё в порядке! Серверы Star Citizen доступны, игра должна работать без проблем.");
-                lines.Add("Если игра всё равно не запускается — проверьте обновления лаунчера и целостность файлов.");
+                criticalProblems.Add("🔴 Провайдер использует DPI (фильтрация трафика)");
             }
-
-            return string.Join(Environment.NewLine, lines);
+            
+            // Вывод критичных проблем
+            if (criticalProblems.Count > 0)
+            {
+                lines.Add("КРИТИЧНЫЕ ПРОБЛЕМЫ:");
+                lines.AddRange(criticalProblems.Select(p => $"  {p}"));
+                lines.Add(string.Empty);
+                lines.Add("ЧТО ДЕЛАТЬ:");
+                
+                if (dnsBadTargets.Count > 0)
+                    lines.Add("  • DNS: нажмите кнопку 'ИСПРАВИТЬ DNS' выше");
+                if (run.firewall != null && run.firewall.Status == "BLOCKING")
+                    lines.Add("  • Firewall: добавьте Star Citizen в исключения");
+                if (run.isp != null && run.isp.DpiDetected)
+                    lines.Add("  • DPI: используйте VPN для обхода");
+                if (run.summary.tls == "BLOCK_PAGE")
+                    lines.Add("  • Блокировка: используйте VPN");
+            }
+            else if (verdict == "MAYBE")
+            {
+                // Предупреждения (некритичные)
+                lines.Add("ПРЕДУПРЕЖДЕНИЯ:");
+                
+                if (run.summary.dns == nameof(DnsStatus.WARN))
+                    lines.Add("  ⚠️ DNS: System DNS и DoH не совпадают (обычно это норма)");
+                if (run.summary.tcp_portal == "WARN")
+                    lines.Add("  ⚠️ RSI Portal: частично доступен");
+                if (run.summary.tcp_launcher == "WARN")
+                    lines.Add("  ⚠️ Лаунчер: частично доступен (порты 8000-8020)");
+                if (run.router != null && !run.router.UpnpEnabled)
+                    lines.Add("  ⚠️ Роутер: UPnP отключен (мультиплеер может не работать)");
+                if (run.firewall != null && run.firewall.WindowsDefenderActive)
+                    lines.Add("  ⚠️ Windows Defender: может блокировать игру");
+            }
+            else if (verdict == "YES")
+            {
+                lines.Add("Все критичные сервисы доступны. Можно играть.");
+            }
+            
+            return string.Join("\n", lines);
         }
 
         public static async Task SaveJsonAsync(RunReport run, string path)

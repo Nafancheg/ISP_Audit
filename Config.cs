@@ -11,6 +11,9 @@ namespace IspAudit
         public Dictionary<string, TargetDefinition> TargetMap { get; set; } = TargetCatalog.CreateDefaultTargetMap();
         public string ReportPath { get; set; } = string.Empty;
         public bool Verbose { get; set; } = false;
+        
+        // Game profile management
+        public static GameProfile? ActiveProfile { get; set; }
         public bool PrintJson { get; set; } = false;
         public bool NoTrace { get; set; } = false;
         public bool ShowHelp { get; set; } = false;
@@ -256,6 +259,61 @@ namespace IspAudit
             if (HttpTimeoutSeconds != 12) args.AddRange(new[] { "--timeout", HttpTimeoutSeconds.ToString() });
             if (!(Ports.Count == 2 && Ports.Contains(80) && Ports.Contains(443))) args.AddRange(new[] { "--ports", string.Join(',', Ports) });
             return args.ToArray();
+        }
+
+        public static void LoadGameProfile(string profileName)
+        {
+            try
+            {
+                string profilePath = Path.Combine("Profiles", $"{profileName}.json");
+                
+                if (!File.Exists(profilePath))
+                {
+                    throw new FileNotFoundException($"Профиль '{profileName}' не найден по пути: {profilePath}");
+                }
+
+                string json = File.ReadAllText(profilePath);
+                var profile = System.Text.Json.JsonSerializer.Deserialize<GameProfile>(json);
+                
+                if (profile == null)
+                {
+                    throw new InvalidOperationException($"Не удалось десериализовать профиль '{profileName}'");
+                }
+
+                ActiveProfile = profile;
+            }
+            catch (FileNotFoundException ex)
+            {
+                Console.WriteLine($"⚠️ Ошибка загрузки профиля: {ex.Message}");
+                ActiveProfile = null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ Ошибка при загрузке профиля '{profileName}': {ex.Message}");
+                ActiveProfile = null;
+            }
+        }
+
+        public static void SetActiveProfile(string profileName)
+        {
+            LoadGameProfile(profileName);
+            
+            // Обновить Program.Targets для совместимости с GUI
+            if (ActiveProfile != null && ActiveProfile.Targets.Count > 0)
+            {
+                Program.Targets = ActiveProfile.Targets.ToDictionary(
+                    t => t.Name,
+                    t => new TargetDefinition
+                    {
+                        Name = t.Name,
+                        Host = t.Host,
+                        Service = t.Service,
+                        Critical = t.Critical,
+                        FallbackIp = t.FallbackIp
+                    },
+                    StringComparer.OrdinalIgnoreCase
+                );
+            }
         }
     }
 }

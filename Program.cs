@@ -12,13 +12,16 @@ namespace IspAudit
     internal static class Program
     {
         // Retained for GUI compatibility: name -> target definition
-        public static Dictionary<string, TargetDefinition> Targets { get; private set; } = TargetCatalog.CreateDefaultTargetMap();
+        public static Dictionary<string, TargetDefinition> Targets { get; set; } = TargetCatalog.CreateDefaultTargetMap();
 
         [STAThread]
         private static async Task<int> Main(string[] args)
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             Console.Title = "ISP Audit - standalone exe";
+
+            // Load default profile
+            Config.SetActiveProfile("Default");
 
             // GUI mode: явный параметр или запуск без аргументов
             if (args.Length == 0 || (args.Length > 0 && args[0].Equals("gui", StringComparison.OrdinalIgnoreCase)))

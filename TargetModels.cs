@@ -10,6 +10,8 @@ namespace IspAudit
         public string Name { get; init; } = string.Empty;
         public string Host { get; init; } = string.Empty;
         public string Service { get; init; } = string.Empty;
+        public bool Critical { get; init; } = false;
+        public string? FallbackIp { get; init; } = null;
 
         public TargetDefinition Copy() => this with { };
     }
@@ -40,5 +42,13 @@ namespace IspAudit
         public List<TargetDefinition> Targets { get; set; } = new();
         public List<int> TcpPorts { get; set; } = new();
         public List<UdpProbeDefinition> UdpProbes { get; set; } = new();
+    }
+
+    public class GameProfile
+    {
+        public string Name { get; set; } = string.Empty;
+        public string TestMode { get; set; } = string.Empty;
+        public string ExePath { get; set; } = string.Empty;
+        public List<TargetDefinition> Targets { get; set; } = new();
     }
 }

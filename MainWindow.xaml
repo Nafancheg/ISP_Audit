@@ -24,13 +24,14 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- Заголовок -->
             <TextBlock Grid.Row="0"
-                       Text="ISP Audit для Star Citizen"
+                       Text="ISP Audit"
                        Style="{StaticResource MaterialDesignHeadline5TextBlock}"
                        Margin="0,0,0,12"/>
 
@@ -41,9 +42,62 @@
                        Style="{StaticResource MaterialDesignSubtitle1TextBlock}"
                        Margin="0,0,0,8"/>
 
+            <!-- Информация о профиле и смена профиля -->
+            <Grid Grid.Row="2" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <TextBlock Grid.Column="0"
+                           Text="Профиль:"
+                           Style="{StaticResource MaterialDesignBody2TextBlock}"
+                           VerticalAlignment="Center"
+                           Margin="0,0,8,0"/>
+                <ComboBox Grid.Column="1"
+                          x:Name="ProfileComboBox"
+                          Width="150"
+                          Margin="0,0,8,0"
+                          materialDesign:HintAssist.Hint="Выберите профиль"
+                          Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                          SelectionChanged="ProfileComboBox_SelectionChanged"/>
+                <Button Grid.Column="2"
+                        x:Name="ApplyProfileButton"
+                        Content="Применить"
+                        Style="{StaticResource MaterialDesignFlatButton}"
+                        Click="ApplyProfileButton_Click"
+                        IsEnabled="False"
+                        Margin="0,0,16,0"/>
+                <TextBlock Grid.Column="4"
+                           x:Name="ProfileNameText"
+                           Text="Активный профиль: Не загружен"
+                           Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                           Foreground="{DynamicResource MaterialDesignBodyLight}"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Right"/>
+            </Grid>
+
+            <!-- Поля профиля (временно отключены) -->
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,12">
+                <TextBox x:Name="TestHostTextBox"
+                         materialDesign:HintAssist.Hint="Тест хоста"
+                         IsEnabled="False"
+                         Width="200"
+                         Margin="0,0,8,0"
+                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                <TextBox x:Name="GameExeTextBox"
+                         materialDesign:HintAssist.Hint="EXE файл игры"
+                         IsEnabled="False"
+                         Width="300"
+                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+            </StackPanel>
+
             <!-- VPN Information Banner -->
             <materialDesign:Card x:Name="VpnInfoCard"
-                                 Grid.Row="2"
+                                 Grid.Row="4"
                                  Margin="0,0,0,12"
                                  Visibility="Collapsed"
                                  Background="#E3F2FD"
@@ -62,7 +116,7 @@
             </materialDesign:Card>
 
             <!-- Карточка с предупреждением (показывается при проблемах) -->
-            <materialDesign:Card Grid.Row="3"
+            <materialDesign:Card Grid.Row="5"
                                  Padding="12"
                                  Margin="0,0,0,12"
                                  x:Name="WarningCard"
@@ -89,7 +143,7 @@
             </materialDesign:Card>
 
             <!-- Карточка с успехом (показывается при успехе) -->
-            <materialDesign:Card Grid.Row="3"
+            <materialDesign:Card Grid.Row="5"
                                  Padding="12"
                                  Margin="0,0,0,12"
                                  x:Name="SuccessCard"
@@ -109,7 +163,7 @@
             </materialDesign:Card>
 
             <!-- Карточка Firewall проблемы -->
-            <materialDesign:Card Grid.Row="3"
+            <materialDesign:Card Grid.Row="5"
                                  Padding="12"
                                  Margin="0,0,0,12"
                                  x:Name="FirewallCard"
@@ -136,7 +190,7 @@
             </materialDesign:Card>
 
             <!-- Карточка ISP проблемы -->
-            <materialDesign:Card Grid.Row="3"
+            <materialDesign:Card Grid.Row="5"
                                  Padding="12"
                                  Margin="0,0,0,12"
                                  x:Name="IspCard"
@@ -163,7 +217,7 @@
             </materialDesign:Card>
 
             <!-- Карточка Router проблемы -->
-            <materialDesign:Card Grid.Row="3"
+            <materialDesign:Card Grid.Row="5"
                                  Padding="12"
                                  Margin="0,0,0,12"
                                  x:Name="RouterCard"
@@ -190,7 +244,7 @@
             </materialDesign:Card>
 
             <!-- Карточка Software проблемы -->
-            <materialDesign:Card Grid.Row="3"
+            <materialDesign:Card Grid.Row="5"
                                  Padding="12"
                                  Margin="0,0,0,12"
                                  x:Name="SoftwareCard"
@@ -216,8 +270,66 @@
                 </StackPanel>
             </materialDesign:Card>
 
+            <!-- Карточка Итоговый вердикт -->
+            <materialDesign:Card Grid.Row="5"
+                                 Padding="16"
+                                 Margin="0,0,0,12"
+                                 x:Name="VerdictCard"
+                                 Visibility="Collapsed"
+                                 Background="#2196F3">
+                <StackPanel Margin="12,4">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <materialDesign:PackIcon Kind="Information"
+                                                Foreground="White"
+                                                Width="24" Height="24"
+                                                Margin="0,0,8,0"/>
+                        <TextBlock Text="Итоговый вердикт"
+                                  Foreground="White"
+                                  FontWeight="Bold"
+                                  FontSize="16"
+                                  VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock x:Name="VerdictText"
+                              Text=""
+                              Foreground="White"
+                              TextWrapping="Wrap"
+                              FontSize="13"
+                              LineHeight="20"
+                              FontFamily="Segoe UI"/>
+                </StackPanel>
+            </materialDesign:Card>
+
+            <!-- Кнопки DNS Fix/Reset -->
+            <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,12,0,12" HorizontalAlignment="Left">
+                <Button x:Name="FixDnsButton"
+                        Content="🔧 ИСПРАВИТЬ DNS"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Height="40"
+                        FontSize="14"
+                        Padding="16,0"
+                        Click="FixDnsButton_Click"
+                        Visibility="Collapsed"
+                        materialDesign:ButtonAssist.CornerRadius="4"
+                        Background="#FF9800"
+                        Foreground="White"
+                        Margin="0,0,12,0"/>
+                <Button x:Name="ResetDnsButton"
+                        Content="↩️ ВЕРНУТЬ DNS"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Height="40"
+                        FontSize="14"
+                        Padding="16,0"
+                        Click="ResetDnsButton_Click"
+                        Visibility="Collapsed"
+                        materialDesign:ButtonAssist.CornerRadius="4"
+                        Background="#757575"
+                        Foreground="White"/>
+            </StackPanel>
+
+            <!-- Основная кнопка действия -->
+
             <!-- Кнопка запуска проверки -->
-                        <Grid Grid.Row="4" Margin="0,0,0,16">
+                        <Grid Grid.Row="5" Margin="0,0,0,16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
@@ -253,7 +365,7 @@
             </Grid>
 
             <!-- Список сервисов -->
-            <materialDesign:Card Grid.Row="5" Padding="12">
+            <materialDesign:Card Grid.Row="6" Padding="12">
                 <DockPanel>
                     <TextBlock Text="Проверка сервисов Star Citizen"
                               Style="{StaticResource MaterialDesignSubtitle1TextBlock}"
@@ -316,7 +428,7 @@
             </materialDesign:Card>
 
             <!-- Прогресс-бар и статус -->
-            <StackPanel Grid.Row="6" Margin="0,12,0,0">
+            <StackPanel Grid.Row="7" Margin="0,12,0,0">
                 <ProgressBar x:Name="ProgressBar"
                             Height="4"
                             Minimum="0"

@@ -93,14 +93,36 @@ namespace IspAudit
 
                     if (dnsCompleteFail)
                     {
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS,
-                            $"{def.Name}: DNS не вернул адресов, пропускаем TCP/HTTP/Trace",
-                            false,
-                            "домен не существует или недоступен"));
+                        // Проверяем, является ли цель критичной и имеет ли fallback IP
+                        var targetProfile = Config.ActiveProfile?.Targets.FirstOrDefault(t => t.Host == def.Host);
+                        bool isCritical = targetProfile?.Critical ?? false;
+                        string? fallbackIp = targetProfile?.FallbackIp;
 
-                        targetReport.tcp_enabled = false;
-                        targetReport.http_enabled = false;
-                        targetReport.trace_enabled = false;
+                        if (isCritical && !string.IsNullOrWhiteSpace(fallbackIp))
+                        {
+                            // Критичная цель с fallback IP → добавляем fallback IP и продолжаем тестирование
+                            targetReport.system_dns.Add(fallbackIp);
+                            progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS,
+                                $"{def.Name}: DNS не вернул адресов, используем fallback IP {fallbackIp}",
+                                null,
+                                $"fallback: {fallbackIp}"));
+                        }
+                        else
+                        {
+                            // Некритичная цель ИЛИ нет fallback IP → пропускаем тестирование
+                            string reason = !isCritical 
+                                ? "домен недоступен (некритичная цель)" 
+                                : "домен недоступен (нет fallback IP)";
+                            
+                            progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS,
+                                $"{def.Name}: DNS не вернул адресов, пропускаем TCP/HTTP/Trace",
+                                false,
+                                reason));
+
+                            targetReport.tcp_enabled = false;
+                            targetReport.http_enabled = false;
+                            targetReport.trace_enabled = false;
+                        }
                     }
 
                     if (targetReport.tcp_enabled)

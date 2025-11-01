@@ -30,51 +30,29 @@ namespace IspAudit.Tests
             var dohV4 = await ResolveDohAAsync(host).ConfigureAwait(false);
             var googleV4 = await QueryGoogleDnsAsync(host).ConfigureAwait(false);
 
-            // Status logic - comparing three sources: System DNS, DoH (Cloudflare), Google DNS
-            var status = DnsStatus.OK;
-            bool isVpnProfile = string.Equals(_cfg.Profile, "vpn", StringComparison.OrdinalIgnoreCase);
-
-            if (sysV4.Count == 0 && (dohV4.Count > 0 || googleV4.Count > 0))
-            {
-                // System DNS returns nothing, but DoH or Google DNS works
-                // В VPN-профиле это может быть нормально (VPN DNS не разрешает некоторые домены)
-                status = isVpnProfile ? DnsStatus.WARN : DnsStatus.DNS_FILTERED;
-            }
-            else if (sysV4.Any(ip => NetUtils.IsBogusIPv4(IPAddress.Parse(ip))))
-            {
-                // System DNS returns truly bogus IPs (0.0.0.0, 127.x, 169.254.x, multicast, etc)
-                status = DnsStatus.DNS_BOGUS;
-            }
-            else if (sysV4.Count > 0 && sysV4.All(ip => NetUtils.IsPrivateIPv4(IPAddress.Parse(ip))) && (dohV4.Count > 0 || googleV4.Count > 0))
-            {
-                // System DNS returns ONLY private IPs (10.x, 172.16-31.x, 192.168.x), but DoH/Google returns public IPs
-                // This is common in corporate networks with proxy/NAT or VPN
-                status = DnsStatus.WARN;
-            }
-            else if (sysV4.Count > 0 && (dohV4.Count > 0 || googleV4.Count > 0))
-            {
-                // Compare System DNS with DoH and Google DNS
-                var sysSet = new HashSet<string>(sysV4);
-                var dohSet = new HashSet<string>(dohV4);
-                var googleSet = new HashSet<string>(googleV4);
-
-                // Check if System DNS overlaps with DoH or Google DNS
-                bool overlapWithDoh = dohSet.Count > 0 && sysSet.Intersect(dohSet).Any();
-                bool overlapWithGoogle = googleSet.Count > 0 && sysSet.Intersect(googleSet).Any();
-
-                if (!overlapWithDoh && !overlapWithGoogle)
-                {
-                    // System DNS differs from BOTH DoH and Google DNS → DNS_FILTERED
-                    status = isVpnProfile ? DnsStatus.OK : DnsStatus.DNS_FILTERED;
-                }
-                else if (!overlapWithDoh || !overlapWithGoogle)
-                {
-                    // System DNS differs from one source but matches another → WARN
-                    status = isVpnProfile ? DnsStatus.OK : DnsStatus.WARN;
-                }
-            }
+            // Simplified status logic - ONLY System DNS determines status
+            // DoH and Google DNS are kept for informational purposes only
+            var status = DetermineDnsStatus(sysV4);
 
             return new DnsResult(sysV4, dohV4, googleV4, status);
+        }
+
+        private DnsStatus DetermineDnsStatus(List<string> systemV4)
+        {
+            // 1. System DNS returned no addresses → DNS_FILTERED
+            if (systemV4.Count == 0)
+            {
+                return DnsStatus.DNS_FILTERED;
+            }
+
+            // 2. System DNS returned bogus IPs (0.0.0.0, 127.x, etc) → DNS_BOGUS
+            if (systemV4.Any(ip => NetUtils.IsBogusIPv4(IPAddress.Parse(ip))))
+            {
+                return DnsStatus.DNS_BOGUS;
+            }
+
+            // 3. System DNS returned valid public addresses → OK
+            return DnsStatus.OK;
         }
 
         private async Task<List<string>> ResolveDohAAsync(string host)

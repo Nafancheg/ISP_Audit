@@ -1,0 +1,49 @@
+{
+  "Name": "Star Citizen",
+  "TestMode": "game",
+  "ExePath": "",
+  "Targets": [
+    {
+      "Name": "RSI Launcher",
+      "Host": "install.robertsspaceindustries.com",
+      "Service": "Launcher/Patcher (TCP 80, 443, 8000-8003)",
+      "Critical": true,
+      "FallbackIp": null
+    },
+    {
+      "Name": "AWS Game Server EU",
+      "Host": "ec2.eu-central-1.amazonaws.com",
+      "Service": "Game Server EU (TCP 8000-8003)",
+      "Critical": true,
+      "FallbackIp": "3.127.0.0"
+    },
+    {
+      "Name": "AWS Game Server US",
+      "Host": "ec2.us-east-1.amazonaws.com",
+      "Service": "Game Server US (TCP 8000-8003)",
+      "Critical": false,
+      "FallbackIp": "44.192.0.0"
+    },
+    {
+      "Name": "Vivox Voice Chat",
+      "Host": "viv.vivox.com",
+      "Service": "Voice (TCP 443, UDP 3478)",
+      "Critical": true,
+      "FallbackIp": null
+    },
+    {
+      "Name": "CDN S3 US-East",
+      "Host": "s3.us-east-1.amazonaws.com",
+      "Service": "CDN Content Delivery",
+      "Critical": false,
+      "FallbackIp": null
+    },
+    {
+      "Name": "CDN S3 EU-Central",
+      "Host": "s3.eu-central-1.amazonaws.com",
+      "Service": "CDN Content Delivery",
+      "Critical": false,
+      "FallbackIp": null
+    }
+  ]
+}
