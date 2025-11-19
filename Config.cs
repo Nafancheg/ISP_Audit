@@ -193,6 +193,34 @@ namespace IspAudit
 
         public List<TargetDefinition> ResolveTargets()
         {
+            // Если профиль загружен, используем цели из профиля напрямую
+            if (ActiveProfile?.Targets != null && ActiveProfile.Targets.Count > 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"ResolveTargets: Using ActiveProfile targets ({ActiveProfile.Targets.Count} targets)");
+                var result = new List<TargetDefinition>();
+                foreach (var profileTarget in ActiveProfile.Targets)
+                {
+                    // Проверяем есть ли этот хост в Config.Targets (если Targets указаны явно)
+                    if (Targets.Count > 0 && !Targets.Any(t => string.Equals(t, profileTarget.Host, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        continue; // Пропускаем цели не из списка
+                    }
+                    
+                    result.Add(new TargetDefinition
+                    {
+                        Name = profileTarget.Name,
+                        Host = profileTarget.Host,
+                        Service = profileTarget.Service ?? "Unknown",
+                        Critical = profileTarget.Critical,
+                        FallbackIp = profileTarget.FallbackIp
+                    });
+                    System.Diagnostics.Debug.WriteLine($"  Added from profile: {profileTarget.Name} -> {profileTarget.Host}");
+                }
+                return result;
+            }
+
+            // Fallback: старая логика с TargetCatalog
+            System.Diagnostics.Debug.WriteLine($"ResolveTargets: Using TargetCatalog fallback");
             var map = TargetMap.Count > 0
                 ? TargetMap
                 : TargetCatalog.CreateDefaultTargetMap();
@@ -202,31 +230,31 @@ namespace IspAudit
                 return map.Values.Select(t => t.Copy()).ToList();
             }
 
-            var result = new List<TargetDefinition>();
+            var fallbackResult = new List<TargetDefinition>();
             foreach (var host in Targets)
             {
                 var matched = map.Values.FirstOrDefault(t => string.Equals(t.Host, host, StringComparison.OrdinalIgnoreCase));
                 if (matched != null)
                 {
-                    result.Add(matched.Copy());
+                    fallbackResult.Add(matched.Copy());
                     continue;
                 }
 
                 var catalog = TargetCatalog.TryGetByHost(host);
                 if (catalog != null)
                 {
-                    result.Add(catalog);
+                    fallbackResult.Add(catalog);
                     continue;
                 }
 
-                result.Add(new TargetDefinition
+                fallbackResult.Add(new TargetDefinition
                 {
                     Name = host,
                     Host = host,
                     Service = "Пользовательский"
                 });
             }
-            return result;
+            return fallbackResult;
         }
 
         private static string BuildHelp()

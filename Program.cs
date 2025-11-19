@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using IspAudit.Output;
 using IspAudit.Tests;
 using IspAudit.Utils;
+using ISPAudit;
 
 namespace IspAudit
 {
@@ -15,26 +16,75 @@ namespace IspAudit
         public static Dictionary<string, TargetDefinition> Targets { get; set; } = TargetCatalog.CreateDefaultTargetMap();
 
         [STAThread]
-        private static async Task<int> Main(string[] args)
+        private static int Main(string[] args)
         {
-            Console.OutputEncoding = System.Text.Encoding.UTF8;
-            Console.Title = "ISP Audit - standalone exe";
+            // DEBUG: Логируем в файл
+            var logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "isp_audit_debug.txt");
+            File.WriteAllText(logPath, $"Program.Main STARTED at {DateTime.Now}\n");
+            File.AppendAllText(logPath, $"Args count: {args.Length}\n");
+            
+            try
+            {
+                File.AppendAllText(logPath, "Setting Console.OutputEncoding...\n");
+                Console.OutputEncoding = System.Text.Encoding.UTF8;
+                File.AppendAllText(logPath, "Console.OutputEncoding set\n");
+                
+                File.AppendAllText(logPath, "Setting Console.Title...\n");
+                Console.Title = "ISP Audit - standalone exe";
+                File.AppendAllText(logPath, "Console.Title set\n");
+            }
+            catch (Exception ex)
+            {
+                File.AppendAllText(logPath, $"Console setup failed: {ex.Message}\n");
+                // Ignore console errors in GUI mode
+            }
+
+            File.AppendAllText(logPath, "Console configured\n");
 
             // Load default profile
             Config.SetActiveProfile("Default");
+            
+            File.AppendAllText(logPath, "Profile loaded\n");
 
             // GUI mode: явный параметр или запуск без аргументов
             if (args.Length == 0 || (args.Length > 0 && args[0].Equals("gui", StringComparison.OrdinalIgnoreCase)))
             {
+                File.AppendAllText(logPath, "Entering GUI mode\n");
+                
                 // Скрыть консоль при GUI-запуске
                 TryHideConsoleWindow();
 
-                // Запуск WPF приложения
-                var app = new App();
-                app.InitializeComponent();
-                app.Run();
+                File.AppendAllText(logPath, "Console hidden\n");
+
+                try
+                {
+                    File.AppendAllText(logPath, "Creating App...\n");
+                    var app = new App();
+                    
+                    File.AppendAllText(logPath, "Calling app.InitializeComponent()...\n");
+                    // FIXME: InitializeComponent() not visible - namespace issue?
+                    // app.InitializeComponent();
+                    
+                    File.AppendAllText(logPath, "App initialized, calling Run()\n");
+                    app.Run();
+                    
+                    File.AppendAllText(logPath, "App.Run() returned\n");
+                }
+                catch (Exception ex)
+                {
+                    File.AppendAllText(logPath, $"EXCEPTION in GUI mode:\n{ex}\n");
+                    throw;
+                }
+                
                 return 0;
             }
+
+            // CLI mode - run async logic
+            return RunCliAsync(args).GetAwaiter().GetResult();
+        }
+
+        private static async Task<int> RunCliAsync(string[] args)
+        {
 
             // Parse CLI
             var (config, parseError, helpText) = Config.ParseArgs(args);
@@ -119,7 +169,7 @@ namespace IspAudit
             var config = Config.Default();
             config.TargetMap = Targets.ToDictionary(kv => kv.Key, kv => kv.Value.Copy(), StringComparer.OrdinalIgnoreCase);
             config.Targets = config.TargetMap.Values.Select(t => t.Host).Distinct().ToList();
-            await Main(config.ToArgsArray());
+            await RunCliAsync(config.ToArgsArray());
         }
 
         private static void PrettyHeader(string text)

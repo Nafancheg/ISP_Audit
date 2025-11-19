@@ -8,6 +8,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <StartupObject>IspAudit.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,8 +20,19 @@
     </None>
   </ItemGroup>
 
+  <!-- WinDivert native libraries (x64 only, Windows 10/11) -->
   <ItemGroup>
-    <PackageReference Include="MaterialDesignThemes" Version="5.1.0" />
+    <Content Include="native\WinDivert.dll" Condition="Exists('native\WinDivert.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>WinDivert.dll</Link>
+    </Content>
+    <Content Include="native\WinDivert64.sys" Condition="Exists('native\WinDivert64.sys')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>WinDivert64.sys</Link>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="System.Drawing.Common" Version="9.0.10" />
     <PackageReference Include="System.Management" Version="9.0.0" />
   </ItemGroup>

@@ -54,11 +54,10 @@ public static class SoftwareTest
             {
                 status = "BLOCKING"; // Hosts файл может реально блокировать доступ
             }
-            else if (antivirusDetected.Any(a => IsConflictingAntivirus(a)) || proxyEnabled)
+            else if (antivirusDetected.Count > 0 || vpnClientsDetected.Count > 0 || proxyEnabled)
             {
-                status = "WARN"; // РЕАЛЬНЫЕ конфликты
+                status = "WARN"; // Потенциальные проблемы
             }
-            // vpnClientsDetected НЕ влияет на статус
 
             return new SoftwareTestResult(
                 AntivirusDetected: antivirusDetected,
@@ -103,16 +102,9 @@ public static class SoftwareTest
                         string processName = process.ProcessName.ToLower();
                         foreach (var avProcess in AntivirusProcesses)
                         {
-                            // Точная проверка: Equals или StartsWith
-                            string avLower = avProcess.ToLower();
-                            if (processName.Equals(avLower) || processName.StartsWith(avLower + "."))
+                            if (processName.Contains(avProcess.ToLower()))
                             {
-                                string normalizedName = GetAntivirusName(avProcess);
-                                // Дедупликация через нормализацию
-                                if (!detected.Any(d => d.Equals(normalizedName, StringComparison.OrdinalIgnoreCase)))
-                                {
-                                    detected.Add(normalizedName);
-                                }
+                                detected.Add(GetAntivirusName(avProcess));
                                 break;
                             }
                         }
@@ -542,22 +534,6 @@ public static class SoftwareTest
         UnitTest_GetNames_CaseInsensitive();
         UnitTest_MultipleAntivirusDetection();
         Console.WriteLine("============================================");
-    }
-    
-    /// <summary>
-    /// Проверяет является ли антивирус конфликтующим
-    /// </summary>
-    private static bool IsConflictingAntivirus(string antivirusName)
-    {
-        var conflicting = new[] {
-            "Kaspersky",
-            "Avast",
-            "Norton",
-            "McAfee",
-            "ESET"
-        };
-        
-        return conflicting.Any(c => antivirusName.Contains(c, StringComparison.OrdinalIgnoreCase));
     }
     
     #endregion
