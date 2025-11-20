@@ -193,6 +193,7 @@ namespace ISPAudit.ViewModels
         private int _stage1HostsFound = 0;
         private int _stage2ProblemsFound = 0;
         private int _stage1Progress = 0;
+        private int _stage2Progress = 0;
         private bool _stage1Complete = false;
         private bool _stage2Complete = false;
         private bool _stage3Complete = false;
@@ -235,6 +236,12 @@ namespace ISPAudit.ViewModels
         {
             get => _stage1Progress;
             set { _stage1Progress = value; OnPropertyChanged(nameof(Stage1Progress)); }
+        }
+
+        public int Stage2Progress
+        {
+            get => _stage2Progress;
+            set { _stage2Progress = value; OnPropertyChanged(nameof(Stage2Progress)); }
         }
 
         public bool Stage1Complete
@@ -1292,6 +1299,7 @@ namespace ISPAudit.ViewModels
                 Stage2Status = "Запуск тестов...";
                 Stage2Complete = false;
                 Stage2ProblemsFound = 0;
+                Stage2Progress = 0;
 
                 if (_capturedProfile == null)
                 {
@@ -1349,7 +1357,21 @@ namespace ISPAudit.ViewModels
                 };
 
                 _cts = new CancellationTokenSource();
-                var progress = new Progress<TestProgress>(HandleTestProgress);
+                var progress = new Progress<TestProgress>(p =>
+                {
+                    System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        HandleTestProgress(p); // существующий код
+                        
+                        // Добавить подсчёт прогресса для Exe-scenario
+                        if (_capturedProfile != null)
+                        {
+                            var totalTargets = _capturedProfile.Targets.Count;
+                            var completedTargets = TestResults.Count(r => r.Status != TestStatus.Running && r.Status != TestStatus.Idle);
+                            Stage2Progress = totalTargets > 0 ? (completedTargets * 100 / totalTargets) : 0;
+                        }
+                    });
+                });
 
                 Stage2Status = "Запуск тестов диагностики...";
                 Log("[Stage2] Running audit with captured targets...");
@@ -1391,6 +1413,7 @@ namespace ISPAudit.ViewModels
                     );
 
                     Stage2Complete = true;
+                    Stage2Progress = 100;
                     Stage2Status = $"✓ Обнаружено проблем: {Stage2ProblemsFound}";
                     Log($"[Stage2] SUCCESS: {Stage2ProblemsFound} problems detected");
                     
@@ -1405,6 +1428,7 @@ namespace ISPAudit.ViewModels
                 {
                     Stage2Status = "✓ Проблем не обнаружено - все тесты успешны";
                     Stage2Complete = true;
+                    Stage2Progress = 100;
                     Log("[Stage2] No problems detected");
                     
                     await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
