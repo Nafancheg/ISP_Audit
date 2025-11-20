@@ -5,13 +5,13 @@
     { "name": "RSI API", "host": "api.robertsspaceindustries.com", "service": "API" },
     { "name": "RSI CDN", "host": "cdn.robertsspaceindustries.com", "service": "CDN" },
     { "name": "RSI Launcher", "host": "install.robertsspaceindustries.com", "service": "CDN" },
-    { "name": "Vivox Voice Chat", "host": "viv.vivox.com", "service": "Vivox" },
+    { "name": "Vivox Голосовой чат", "host": "viv.vivox.com", "service": "Vivox" },
     { "name": "CDN S3 EU-Central", "host": "s3.eu-central-1.amazonaws.com", "service": "AWS" },
     { "name": "AWS EU West", "host": "s3.eu-west-1.amazonaws.com", "service": "AWS" },
     { "name": "CDN S3 US-East", "host": "s3.us-east-1.amazonaws.com", "service": "AWS" },
     { "name": "AWS US West", "host": "s3.us-west-2.amazonaws.com", "service": "AWS" },
-    { "name": "AWS Game Server EU", "host": "ec2.eu-central-1.amazonaws.com", "service": "AWS" },
-    { "name": "AWS Game Server US", "host": "ec2.us-east-1.amazonaws.com", "service": "AWS" }
+    { "name": "AWS Игровой сервер EU", "host": "ec2.eu-central-1.amazonaws.com", "service": "AWS" },
+    { "name": "AWS Игровой сервер US", "host": "ec2.us-east-1.amazonaws.com", "service": "AWS" }
   ],
   "tcpPorts": [80, 443, 8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8010, 8011, 8012, 8013, 8014, 8015, 8016, 8017, 8018, 8019, 8020],
   "udpProbes": [
@@ -28,7 +28,7 @@
       "name": "Vivox STUN",
       "host": "viv.vivox.com",
       "port": 3478,
-      "service": "Voice",
+      "service": "Голосовой чат",
       "kind": "Raw",
       "expectReply": false,
       "note": "Vivox STUN порт для голосового чата"

@@ -6,14 +6,14 @@
     {
       "Name": "YouTube",
       "Host": "www.youtube.com",
-      "Service": "Video Streaming (TCP 80, 443)",
+      "Service": "Видео стриминг (TCP 80, 443)",
       "Critical": true,
       "FallbackIp": null
     },
     {
       "Name": "Google DNS",
       "Host": "dns.google",
-      "Service": "DNS over HTTPS (TCP 443)",
+      "Service": "DNS через HTTPS (TCP 443)",
       "Critical": true,
       "FallbackIp": "8.8.8.8"
     },
@@ -27,14 +27,14 @@
     {
       "Name": "Amazon AWS",
       "Host": "aws.amazon.com",
-      "Service": "Cloud Services (TCP 443)",
+      "Service": "Облачные сервисы (TCP 443)",
       "Critical": false,
       "FallbackIp": null
     },
     {
       "Name": "Discord",
       "Host": "discord.com",
-      "Service": "Gaming Chat (TCP 443, UDP 50000-65535)",
+      "Service": "Игровой чат (TCP 443, UDP 50000-65535)",
       "Critical": false,
       "FallbackIp": null
     }
