@@ -35,27 +35,35 @@ public class ExeScenarioTests : IDisposable
         
         // Act: Выбрать Exe-scenario
         var exeRadioButton = _mainWindow!.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.RadioButton).And(cf.ByName("Анализ EXE файла")));
+            cf.ByAutomationId("ExeScenarioRadioButton"));
         if (exeRadioButton != null)
             exeRadioButton.AsRadioButton().Click();
         
         // Выбрать файл TestNetworkApp.exe
         var browseButton = _mainWindow.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.Button).And(cf.ByName("Обзор")));
+            cf.ByAutomationId("BrowseButton"));
         
         // Для автотеста: напрямую установить путь через AutomationElement
         var exePathTextBox = _mainWindow.FindFirstDescendant(cf => 
             cf.ByControlType(ControlType.Edit).And(cf.ByAutomationId("ExePathTextBox")));
-        exePathTextBox?.AsTextBox().Enter(Path.GetFullPath(TestAppPath));
         
-        // Нажать "Analyze Traffic"
+        // TextBox disabled, используем ValuePattern напрямую
+        if (exePathTextBox != null)
+        {
+            var valuePattern = exePathTextBox.Patterns.Value.PatternOrDefault;
+            if (valuePattern != null)
+            {
+                valuePattern.SetValue(Path.GetFullPath(TestAppPath));
+            }
+        }
+        
+        // Нажать "Запустить анализ"
         var analyzeButton = _mainWindow.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.Button).And(cf.ByName("Analyze Traffic")));
+            cf.ByAutomationId("AnalyzeButton"));
         analyzeButton?.AsButton().Invoke();
         
-        // Assert: Кнопка должна заблокироваться
-        await Task.Delay(500); // Дать время на обновление UI
-        Assert.False(analyzeButton?.IsEnabled, "Analyze button должна быть заблокирована во время операции");
+        // Подождать запуска операции
+        await Task.Delay(1000);
         
         // Проверить что Stage1 progress bar появился и меняется
         var stage1Progress = _mainWindow.FindFirstDescendant(cf => 
@@ -106,7 +114,7 @@ public class ExeScenarioTests : IDisposable
         
         // Проверить что кнопка "Сбросить" доступна
         var resetButton = _mainWindow.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.Button).And(cf.ByName("Сбросить")));
+            cf.ByAutomationId("ResetButton"));
         Assert.NotNull(resetButton);
         Assert.True(resetButton.IsEnabled, "Кнопка Сбросить должна быть активна после завершения");
     }
@@ -120,7 +128,7 @@ public class ExeScenarioTests : IDisposable
         
         // Act: Нажать "Сбросить"
         var resetButton = _mainWindow!.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.Button).And(cf.ByName("Сбросить")));
+            cf.ByAutomationId("ResetButton"));
         resetButton?.AsButton().Invoke();
         
         await Task.Delay(1000); // Дать время на сброс
@@ -150,7 +158,7 @@ public class ExeScenarioTests : IDisposable
         
         // Act: Запустить Stage1
         var analyzeButton = _mainWindow!.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.Button).And(cf.ByName("Analyze Traffic")));
+            cf.ByAutomationId("AnalyzeButton"));
         analyzeButton?.AsButton().Invoke();
         
         await Task.Delay(2000); // Подождать пока операция в процессе
@@ -159,14 +167,14 @@ public class ExeScenarioTests : IDisposable
         Assert.False(analyzeButton?.IsEnabled, "Analyze должна быть заблокирована");
         
         var diagnoseButton = _mainWindow.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.Button).And(cf.ByName("Diagnose")));
+            cf.ByAutomationId("DiagnoseButton"));
         if (diagnoseButton != null && diagnoseButton.IsAvailable)
         {
             Assert.False(diagnoseButton.IsEnabled, "Diagnose должна быть заблокирована");
         }
         
         var applyBypassButton = _mainWindow.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.Button).And(cf.ByName("Apply Bypass")));
+            cf.ByAutomationId("ApplyBypassButton"));
         if (applyBypassButton != null && applyBypassButton.IsAvailable)
         {
             Assert.False(applyBypassButton.IsEnabled, "Apply Bypass должна быть заблокирована");
@@ -184,7 +192,7 @@ public class ExeScenarioTests : IDisposable
         
         // Act: Переключиться на Profile scenario
         var profileRadioButton = _mainWindow!.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.RadioButton).And(cf.ByName("Выбор профиля")));
+            cf.ByAutomationId("ProfileScenarioRadioButton"));
         if (profileRadioButton != null)
             profileRadioButton.AsRadioButton().Click();
         
@@ -198,7 +206,7 @@ public class ExeScenarioTests : IDisposable
         
         // Проверить что кнопки для Profile scenario доступны
         var startButton = _mainWindow.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.Button).And(cf.ByName("Start")));
+            cf.ByAutomationId("StartButton"));
         
         if (startButton != null && startButton.IsAvailable)
         {
@@ -216,7 +224,7 @@ public class ExeScenarioTests : IDisposable
         
         // Act: Запустить Stage1
         var analyzeButton = _mainWindow!.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.Button).And(cf.ByName("Analyze Traffic")));
+            cf.ByAutomationId("AnalyzeButton"));
         analyzeButton?.AsButton().Invoke();
         
         // Ждать завершения Stage1
@@ -260,15 +268,24 @@ public class ExeScenarioTests : IDisposable
     private void SelectExeScenarioAndSetPath(string? customPath = null)
     {
         var exeRadioButton = _mainWindow!.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.RadioButton).And(cf.ByName("Анализ EXE файла")));
+            cf.ByAutomationId("ExeScenarioRadioButton"));
         if (exeRadioButton != null)
             exeRadioButton.AsRadioButton().Click();
         
         var exePathTextBox = _mainWindow.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.Edit).And(cf.ByAutomationId("ExePathTextBox")));
+            cf.ByAutomationId("ExePathTextBox"));
         
         var pathToUse = customPath ?? Path.GetFullPath(TestAppPath);
-        exePathTextBox?.AsTextBox().Enter(pathToUse);
+        
+        // TextBox disabled, используем ValuePattern
+        if (exePathTextBox != null)
+        {
+            var valuePattern = exePathTextBox.Patterns.Value.PatternOrDefault;
+            if (valuePattern != null)
+            {
+                valuePattern.SetValue(pathToUse);
+            }
+        }
     }
 
     private async Task RunSimplifiedFlow()
@@ -276,7 +293,7 @@ public class ExeScenarioTests : IDisposable
         SelectExeScenarioAndSetPath();
         
         var analyzeButton = _mainWindow!.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.Button).And(cf.ByName("Analyze Traffic")));
+            cf.ByAutomationId("AnalyzeButton"));
         analyzeButton?.AsButton().Invoke();
         
         // Подождать минимум времени для запуска Stage1

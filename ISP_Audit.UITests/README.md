@@ -45,7 +45,9 @@
 
 ### Для запуска тестов:
 
-1. **ISP_Audit.exe** должен быть собран в Release:
+1. **Права администратора ОБЯЗАТЕЛЬНЫ!** ISP_Audit требует admin права для WinDivert (Stage1 перехват трафика)
+
+2. **ISP_Audit.exe** должен быть собран в Release:
    ```powershell
    dotnet build -c Release
    ```
@@ -62,8 +64,12 @@
 
 ## Запуск
 
+⚠️ **ВАЖНО: Запускать ТОЛЬКО от имени администратора!**
+
 ### Все тесты:
 ```powershell
+# Запустить PowerShell от имени администратора, затем:
+cd C:\Users\nafan\Documents\ISP_Audit\ISP_Audit
 dotnet test ISP_Audit.UITests/ISP_Audit.UITests.csproj
 ```
 
@@ -74,7 +80,7 @@ dotnet test ISP_Audit.UITests/ISP_Audit.UITests.csproj --filter "FullName~Test01
 
 ### С детальным выводом:
 ```powershell
-dotnet test ISP_Audit.UITests/ISP_Audit.UITests.csproj -v detailed
+dotnet test ISP_Audit.UITests/ISP_Audit.UITests.csproj -v normal
 ```
 
 ## Важные замечания

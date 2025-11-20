@@ -179,7 +179,7 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBox Grid.Column="0" Style="{StaticResource ModernTextBoxStyle}" 
-                                 Text="{Binding ExePath}" IsEnabled="False"
+                                 Text="{Binding ExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  AutomationProperties.AutomationId="ExePathTextBox"/>
                         <Button Grid.Column="1" Content="Обзор..." 
                                 Style="{StaticResource SecondaryButtonStyle}"
