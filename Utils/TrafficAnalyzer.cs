@@ -51,8 +51,9 @@ namespace IspAudit.Utils
             // 2. WinDivert фильтр
             // Исключаем loopback, но оставляем частные сети (VPN/NAT)
             var networkFilter = "outbound and !loopback and (tcp or udp)";
-            // Flow layer filter: упрощенный, так как сложные фильтры могут вызывать Error 87
-            var flowFilter = "tcp or udp";
+            // Flow layer filter: используем "true", так как макросы tcp/udp могут быть недоступны для Flow layer
+            // Фильтрация по протоколу будет выполнена в коде
+            var flowFilter = "true";
 
             // 3. Запуск задач мониторинга
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
