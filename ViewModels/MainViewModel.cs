@@ -422,7 +422,7 @@ namespace ISPAudit.ViewModels
         {
             var openFileDialog = new Microsoft.Win32.OpenFileDialog
             {
-                Filter = "Executable Files (*.exe)|*.exe|All Files (*.*)|*.*",
+                Filter = "Исполняемые файлы (*.exe)|*.exe|Все файлы (*.*)|*.*",
                 Title = "Выберите exe файл"
             };
 
@@ -492,7 +492,7 @@ namespace ISPAudit.ViewModels
                     {
                         Name = HostInput,
                         Host = HostInput,
-                        Service = "Custom Host",
+                        Service = "Произвольный хост",
                         Critical = true,
                         FallbackIp = ""
                     }
@@ -1040,7 +1040,7 @@ namespace ISPAudit.ViewModels
         {
             var openFileDialog = new Microsoft.Win32.OpenFileDialog
             {
-                Filter = "Executable Files (*.exe)|*.exe|All Files (*.*)|*.*",
+                Filter = "Исполняемые файлы (*.exe)|*.exe|Все файлы (*.*)|*.*",
                 Title = "Выберите exe файл приложения"
             };
 
