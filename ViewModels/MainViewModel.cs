@@ -1219,25 +1219,12 @@ namespace ISPAudit.ViewModels
                             await File.WriteAllTextAsync(profilePath, json);
                             Log($"[Stage1] Profile saved to: {profilePath}");
                             
-                            // Показываем успешное сообщение с опциями
-                            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                            // Автоматически запускаем Stage 2 если есть захваченные цели
+                            if (Stage1HostsFound > 0)
                             {
-                                var result = System.Windows.MessageBox.Show(
-                                    $"Захват успешно завершен!\n\n" +
-                                    $"Обнаружено целей: {Stage1HostsFound}\n" +
-                                    $"Профиль сохранен: {profilePath}\n\n" +
-                                    $"Перейти к Stage 2 (анализ проблем)?",
-                                    "Stage 1: Завершено",
-                                    System.Windows.MessageBoxButton.YesNo,
-                                    System.Windows.MessageBoxImage.Information
-                                );
-
-                                if (result == System.Windows.MessageBoxResult.Yes)
-                                {
-                                    // Автоматически запускаем Stage 2
-                                    _ = RunStage2DiagnoseAsync();
-                                }
-                            });
+                                Log($"[Stage1] Автоматический переход к Stage 2...");
+                                _ = RunStage2DiagnoseAsync();
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -1386,24 +1373,12 @@ namespace ISPAudit.ViewModels
                     Stage2Status = $"✓ Обнаружено проблем: {Stage2ProblemsFound}";
                     Log($"[Stage2] SUCCESS: {Stage2ProblemsFound} problems detected");
                     
-                    // Показываем результат с опцией перехода к Stage 3
-                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                    // Автоматически запускаем Stage 3 если есть проблемы
+                    if (_detectedProblems != null && _detectedProblems.Any())
                     {
-                        var result = System.Windows.MessageBox.Show(
-                            $"Диагностика завершена!\n\n" +
-                            $"Обнаружено проблем: {Stage2ProblemsFound}\n" +
-                            $"Стратегия обхода сформирована.\n\n" +
-                            $"Перейти к Stage 3 (применение исправлений)?",
-                            "Stage 2: Завершено",
-                            System.Windows.MessageBoxButton.YesNo,
-                            System.Windows.MessageBoxImage.Information
-                        );
-
-                        if (result == System.Windows.MessageBoxResult.Yes)
-                        {
-                            _ = RunStage3ApplyBypassAsync();
-                        }
-                    });
+                        Log($"[Stage2] Автоматический переход к Stage 3...");
+                        _ = RunStage3ApplyBypassAsync();
+                    }
                 }
                 else
                 {
