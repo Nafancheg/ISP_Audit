@@ -192,6 +192,7 @@ namespace ISPAudit.ViewModels
         private string _stage3Status = "";
         private int _stage1HostsFound = 0;
         private int _stage2ProblemsFound = 0;
+        private int _stage1Progress = 0;
         private bool _stage1Complete = false;
         private bool _stage2Complete = false;
         private bool _stage3Complete = false;
@@ -228,6 +229,12 @@ namespace ISPAudit.ViewModels
         {
             get => _stage2ProblemsFound;
             set { _stage2ProblemsFound = value; OnPropertyChanged(nameof(Stage2ProblemsFound)); }
+        }
+
+        public int Stage1Progress
+        {
+            get => _stage1Progress;
+            set { _stage1Progress = value; OnPropertyChanged(nameof(Stage1Progress)); }
         }
 
         public bool Stage1Complete
@@ -1086,6 +1093,7 @@ namespace ISPAudit.ViewModels
                 Stage1Status = "Проверка прав администратора...";
                 Stage1Complete = false;
                 Stage1HostsFound = 0;
+                Stage1Progress = 0;
 
                 // WinDivert SOCKET layer требует прав администратора
                 if (!IsAdministrator())
@@ -1150,6 +1158,18 @@ namespace ISPAudit.ViewModels
                     Log($"[Stage1] TIP: Check Output window for detailed capture logs");
                     Stage1Status = $"Захват трафика (PID={pid}, 30 сек)...";
 
+                    // Запускаем таймер прогресса (30 сек = 100%)
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    _ = Task.Run(async () =>
+                    {
+                        while (sw.Elapsed.TotalSeconds < 30 && _isExeScenarioRunning)
+                        {
+                            var pct = (int)(sw.Elapsed.TotalSeconds / 30.0 * 100);
+                            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => Stage1Progress = pct);
+                            await Task.Delay(1000);
+                        }
+                    });
+
                     // Анализируем трафик 30 секунд
                     var progress = new Progress<string>(msg =>
                     {
@@ -1166,6 +1186,7 @@ namespace ISPAudit.ViewModels
 
                     Stage1HostsFound = _capturedProfile?.Targets?.Count ?? 0;
                     Stage1Complete = true;
+                    Stage1Progress = 100;
 
                     if (Stage1HostsFound == 0)
                     {
