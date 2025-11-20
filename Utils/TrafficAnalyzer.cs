@@ -175,43 +175,40 @@ namespace IspAudit.Utils
                 int bufferSize = 0;
                 int result = NativeMethods.GetExtendedTcpTable(IntPtr.Zero, ref bufferSize, false, 2, 5, 0);
                 
-                if (bufferSize == 0)
+                if (bufferSize > 0)
                 {
-                    progress?.Report($"⚠️ GetExtendedTcpTable вернула bufferSize=0 (нет TCP соединений в системе?)");
-                    return;
-                }
-                
-                var buffer = Marshal.AllocHGlobal(bufferSize);
-                try
-                {
-                    result = NativeMethods.GetExtendedTcpTable(buffer, ref bufferSize, false, 2, 5, 0);
-                    if (result == 0)
+                    var buffer = Marshal.AllocHGlobal(bufferSize);
+                    try
                     {
-                        int entryCount = Marshal.ReadInt32(buffer);
-                        IntPtr rowPtr = buffer + 4;
-
-                        for (int i = 0; i < entryCount; i++)
+                        result = NativeMethods.GetExtendedTcpTable(buffer, ref bufferSize, false, 2, 5, 0);
+                        if (result == 0)
                         {
-                            var row = Marshal.PtrToStructure<NativeMethods.MIB_TCPROW_OWNER_PID>(rowPtr);
-                            
-                            if (row.OwningPid == targetPid)
-                            {
-                                ushort port = (ushort)IPAddress.NetworkToHostOrder((short)row.LocalPort);
-                                cache[port] = targetPid;
-                                tcpCount++;
-                            }
+                            int entryCount = Marshal.ReadInt32(buffer);
+                            IntPtr rowPtr = buffer + 4;
 
-                            rowPtr += Marshal.SizeOf<NativeMethods.MIB_TCPROW_OWNER_PID>();
+                            for (int i = 0; i < entryCount; i++)
+                            {
+                                var row = Marshal.PtrToStructure<NativeMethods.MIB_TCPROW_OWNER_PID>(rowPtr);
+                                
+                                if (row.OwningPid == targetPid)
+                                {
+                                    ushort port = (ushort)IPAddress.NetworkToHostOrder((short)row.LocalPort);
+                                    cache[port] = targetPid;
+                                    tcpCount++;
+                                }
+
+                                rowPtr += Marshal.SizeOf<NativeMethods.MIB_TCPROW_OWNER_PID>();
+                            }
+                        }
+                        else
+                        {
+                            progress?.Report($"⚠️ GetExtendedTcpTable failed with error {result}");
                         }
                     }
-                    else
+                    finally
                     {
-                        progress?.Report($"⚠️ GetExtendedTcpTable failed with error {result}");
+                        Marshal.FreeHGlobal(buffer);
                     }
-                }
-                finally
-                {
-                    Marshal.FreeHGlobal(buffer);
                 }
 
                 // UDP порты
@@ -220,14 +217,14 @@ namespace IspAudit.Utils
                 
                 if (bufferSize > 0)
                 {
-                    buffer = Marshal.AllocHGlobal(bufferSize);
+                    var udpBuffer = Marshal.AllocHGlobal(bufferSize);
                     try
                     {
-                        result = NativeMethods.GetExtendedUdpTable(buffer, ref bufferSize, false, 2, 1, 0);
+                        result = NativeMethods.GetExtendedUdpTable(udpBuffer, ref bufferSize, false, 2, 1, 0);
                         if (result == 0)
                         {
-                            int entryCount = Marshal.ReadInt32(buffer);
-                            IntPtr rowPtr = buffer + 4;
+                            int entryCount = Marshal.ReadInt32(udpBuffer);
+                            IntPtr rowPtr = udpBuffer + 4;
 
                             for (int i = 0; i < entryCount; i++)
                             {
@@ -246,7 +243,7 @@ namespace IspAudit.Utils
                     }
                     finally
                     {
-                        Marshal.FreeHGlobal(buffer);
+                        Marshal.FreeHGlobal(udpBuffer);
                     }
                 }
 

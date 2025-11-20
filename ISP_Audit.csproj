@@ -11,6 +11,12 @@
     <StartupObject>IspAudit.Program</StartupObject>
     <!-- Exclude UI test project from compilation -->
     <DefaultItemExcludes>$(DefaultItemExcludes);ISP_Audit.UITests/**</DefaultItemExcludes>
+    <!-- Disable WPF design-time build and Hot Reload -->
+    <ProvideCommandLineArgs>false</ProvideCommandLineArgs>
+    <EnableDefaultItems>true</EnableDefaultItems>
+    <DisableWpfTempProjectGeneration>true</DisableWpfTempProjectGeneration>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
   </PropertyGroup>
 
   <ItemGroup>
