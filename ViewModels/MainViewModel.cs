@@ -277,6 +277,7 @@ namespace ISPAudit.ViewModels
         public ICommand ApplyBypassCommand { get; }
         public ICommand ViewStage1ResultsCommand { get; }
         public ICommand BrowseExeCommand { get; }
+        public ICommand ResetExeScenarioCommand { get; }
 
         public MainViewModel()
         {
@@ -338,6 +339,8 @@ namespace ISPAudit.ViewModels
             ViewStage1ResultsCommand = new RelayCommand(_ => ViewStage1Results(), _ => _capturedProfile != null);
             DiagnoseCommand = new RelayCommand(async _ => await RunStage2DiagnoseAsync(), _ => CanRunStage2 && !IsRunning);
             ApplyBypassCommand = new RelayCommand(async _ => await RunStage3ApplyBypassAsync(), _ => CanRunStage3 && !IsRunning);
+            ResetExeScenarioCommand = new RelayCommand(_ => ResetExeScenario(), 
+                _ => (Stage1Complete || Stage2Complete || Stage3Complete) && !IsRunning);
             
             // Load Fix History on startup
             LoadFixHistory();
@@ -1091,6 +1094,49 @@ namespace ISPAudit.ViewModels
                 Owner = System.Windows.Application.Current.MainWindow
             };
             window.ShowDialog();
+        }
+
+        /// <summary>
+        /// Сбросить состояние Exe-сценария и начать заново
+        /// </summary>
+        private void ResetExeScenario()
+        {
+            Log("[ResetExeScenario] Сброс состояния Exe-сценария...");
+            
+            // Сбросить captured data
+            _capturedProfile = null;
+            _detectedProblems = null;
+            _plannedBypass = null;
+            
+            // Сбросить флаги
+            Stage1Complete = false;
+            Stage2Complete = false;
+            Stage3Complete = false;
+            
+            // Сбросить счётчики
+            Stage1HostsFound = 0;
+            Stage2ProblemsFound = 0;
+            
+            // Сбросить статусы
+            Stage1Status = "";
+            Stage2Status = "";
+            Stage3Status = "";
+            
+            // Сбросить прогресс
+            Stage1Progress = 0;
+            Stage2Progress = 0;
+            Stage3Progress = 0;
+            
+            // Очистить TestResults
+            TestResults.Clear();
+            
+            // НЕ сбрасываем ExePath - пользователь может захотеть оставить его
+            // ExePath = "";
+            
+            // Переоценить команды
+            CommandManager.InvalidateRequerySuggested();
+            
+            Log("[ResetExeScenario] Сброс завершён. Готов к новому анализу.");
         }
 
         /// <summary>
