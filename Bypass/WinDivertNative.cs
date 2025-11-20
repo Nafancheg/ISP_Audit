@@ -12,6 +12,10 @@ namespace IspAudit.Bypass
         public const int ErrorNoData = 232;
         public const int MaxPacketSize = 0xFFFF;
 
+        public const byte WINDIVERT_EVENT_NETWORK_PACKET = 0;
+        public const byte WINDIVERT_EVENT_FLOW_ESTABLISHED = 1;
+        public const byte WINDIVERT_EVENT_FLOW_TEARDOWN = 2;
+
         [Flags]
         public enum OpenFlags : ulong
         {
@@ -26,7 +30,7 @@ namespace IspAudit.Bypass
             Strict = 0x80
         }
 
-        public enum Layer : uint
+        public enum Layer
         {
             Network = 0,
             NetworkForward = 1,
@@ -42,58 +46,61 @@ namespace IspAudit.Bypass
             Both = 2
         }
 
-        [StructLayout(LayoutKind.Explicit, Size = 64)]
+        [StructLayout(LayoutKind.Explicit, Size = 80)]
         public struct Address
         {
-            [FieldOffset(0)] public ulong Timestamp;
-            [FieldOffset(8)] public Layer Layer;
-            [FieldOffset(12)] public byte Event;
-            [FieldOffset(13)] public byte Sniffed;
-            [FieldOffset(14)] public byte Outbound;
-            [FieldOffset(15)] public byte Loopback;
-            [FieldOffset(16)] public byte Impostor;
-            [FieldOffset(17)] public byte IPv6;
-            [FieldOffset(18)] public byte IPChecksum;
-            [FieldOffset(19)] public byte TCPChecksum;
-            [FieldOffset(20)] public byte UDPChecksum;
-            [FieldOffset(21)] public byte Reserved1;
-            [FieldOffset(22)] public ushort Reserved2;
-            [FieldOffset(24)] public uint IfIdx;
-            [FieldOffset(28)] public uint SubIfIdx;
-            [FieldOffset(32)] public uint Reserved3;
+            [FieldOffset(0)] public long Timestamp;
+            
+            // BitFields: Layer:8, Event:8, Sniffed:1, Outbound:1, Loopback:1, Impostor:1, IPv6:1, IPChecksum:1, TCPChecksum:1, UDPChecksum:1
+            [FieldOffset(8)] public ulong BitFields;
 
-            // SOCKET layer specific (union)
-            [FieldOffset(36)] public SocketInfo Socket;
+            [FieldOffset(16)] public NetworkData Network;
+            [FieldOffset(16)] public FlowData Flow;
+            [FieldOffset(16)] public SocketData Socket;
 
-            public bool IsOutbound => Outbound != 0;
-            public bool IsIPv6 => IPv6 != 0;
-            public bool IsLoopback => Loopback != 0;
+            public Layer Layer => (Layer)(BitFields & 0xFF);
+            public byte Event => (byte)((BitFields >> 8) & 0xFF);
+            public bool Sniffed => ((BitFields >> 16) & 1) != 0;
+            public bool Outbound => ((BitFields >> 17) & 1) != 0;
+            public bool Loopback => ((BitFields >> 18) & 1) != 0;
+            public bool Impostor => ((BitFields >> 19) & 1) != 0;
+            public bool IPv6 => ((BitFields >> 20) & 1) != 0;
+            public bool IPChecksum => ((BitFields >> 21) & 1) != 0;
+            public bool TCPChecksum => ((BitFields >> 22) & 1) != 0;
+            public bool UDPChecksum => ((BitFields >> 23) & 1) != 0;
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        public struct SocketInfo
+        public struct NetworkData
+        {
+            public uint IfIdx;
+            public uint SubIfIdx;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct FlowData
         {
             public ulong EndpointId;
             public ulong ParentEndpointId;
             public uint ProcessId;
-            public AddressV4 LocalAddr;
-            public AddressV4 RemoteAddr;
+            public uint LocalAddr1; public uint LocalAddr2; public uint LocalAddr3; public uint LocalAddr4;
+            public uint RemoteAddr1; public uint RemoteAddr2; public uint RemoteAddr3; public uint RemoteAddr4;
             public ushort LocalPort;
             public ushort RemotePort;
             public byte Protocol;
-            private byte _reserved1;
-            private ushort _reserved2;
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        public struct AddressV4
+        public struct SocketData
         {
-            public uint Data;
-
-            public override string ToString()
-            {
-                return $"{Data & 0xFF}.{(Data >> 8) & 0xFF}.{(Data >> 16) & 0xFF}.{(Data >> 24) & 0xFF}";
-            }
+            public ulong EndpointId;
+            public ulong ParentEndpointId;
+            public uint ProcessId;
+            public uint LocalAddr1; public uint LocalAddr2; public uint LocalAddr3; public uint LocalAddr4;
+            public uint RemoteAddr1; public uint RemoteAddr2; public uint RemoteAddr3; public uint RemoteAddr4;
+            public ushort LocalPort;
+            public ushort RemotePort;
+            public byte Protocol;
         }
 
         public sealed class SafeHandle : SafeHandleZeroOrMinusOneIsInvalid
