@@ -1,0 +1,77 @@
+<Window x:Class="IspAudit.Windows.CapturedTargetsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Stage 1: Захваченные цели" 
+        Height="600" Width="800"
+        WindowStartupLocation="CenterOwner"
+        Background="#FAFAFA"
+        FontSize="13">
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Заголовок -->
+        <TextBlock Grid.Row="0" 
+                   Text="Захваченные сетевые цели" 
+                   FontSize="20"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,10"/>
+
+        <!-- Статистика -->
+        <Border Grid.Row="1" 
+                Background="White"
+                CornerRadius="4"
+                Padding="15" 
+                Margin="0,0,0,15"
+                BorderBrush="#E0E0E0"
+                BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="5" ShadowDepth="2" Opacity="0.3"/>
+            </Border.Effect>
+            <StackPanel>
+                <TextBlock FontWeight="Bold">Статистика:</TextBlock>
+                <TextBlock x:Name="StatsText" Margin="0,5,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Список целей -->
+        <DataGrid Grid.Row="2" 
+                  x:Name="TargetsDataGrid"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  IsReadOnly="True"
+                  HeadersVisibility="Column"
+                  SelectionMode="Single"
+                  GridLinesVisibility="Horizontal">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Хост" Binding="{Binding Host}" Width="*"/>
+                <DataGridTextColumn Header="Сервис" Binding="{Binding Service}" Width="100"/>
+                <DataGridCheckBoxColumn Header="Критичный" Binding="{Binding Critical}" Width="100"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Кнопки -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
+            <Button Content="Сохранить в файл" 
+                    Click="SaveButton_Click"
+                    Padding="15,8"
+                    Margin="0,0,10,0"
+                    Background="White"
+                    BorderBrush="#2196F3"
+                    BorderThickness="1"/>
+            <Button Content="Закрыть" 
+                    IsDefault="True"
+                    Click="CloseButton_Click"
+                    Padding="15,8"
+                    Background="#2196F3"
+                    Foreground="White"
+                    BorderThickness="0"/>
+        </StackPanel>
+    </Grid>
+</Window>

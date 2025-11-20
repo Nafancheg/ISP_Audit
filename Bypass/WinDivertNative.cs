@@ -9,6 +9,7 @@ namespace IspAudit.Bypass
     internal static class WinDivertNative
     {
         public const int ErrorOperationAborted = 995;
+        public const int ErrorNoData = 232;
         public const int MaxPacketSize = 0xFFFF;
 
         [Flags]
@@ -41,21 +42,58 @@ namespace IspAudit.Bypass
             Both = 2
         }
 
-        [StructLayout(LayoutKind.Sequential)]
+        [StructLayout(LayoutKind.Explicit, Size = 64)]
         public struct Address
         {
-            public ulong Timestamp;
-            public Layer Layer;
-            public byte Event;
-            public byte Flags;
-            public short Priority;
-            public uint IfIdx;
-            public uint SubIfIdx;
-            public uint DirectionFlags;
-            public ulong Reserved1;
-            public ulong Reserved2;
+            [FieldOffset(0)] public ulong Timestamp;
+            [FieldOffset(8)] public Layer Layer;
+            [FieldOffset(12)] public byte Event;
+            [FieldOffset(13)] public byte Sniffed;
+            [FieldOffset(14)] public byte Outbound;
+            [FieldOffset(15)] public byte Loopback;
+            [FieldOffset(16)] public byte Impostor;
+            [FieldOffset(17)] public byte IPv6;
+            [FieldOffset(18)] public byte IPChecksum;
+            [FieldOffset(19)] public byte TCPChecksum;
+            [FieldOffset(20)] public byte UDPChecksum;
+            [FieldOffset(21)] public byte Reserved1;
+            [FieldOffset(22)] public ushort Reserved2;
+            [FieldOffset(24)] public uint IfIdx;
+            [FieldOffset(28)] public uint SubIfIdx;
+            [FieldOffset(32)] public uint Reserved3;
 
-            public bool IsOutbound => (DirectionFlags & 0x1) != 0;
+            // SOCKET layer specific (union)
+            [FieldOffset(36)] public SocketInfo Socket;
+
+            public bool IsOutbound => Outbound != 0;
+            public bool IsIPv6 => IPv6 != 0;
+            public bool IsLoopback => Loopback != 0;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct SocketInfo
+        {
+            public ulong EndpointId;
+            public ulong ParentEndpointId;
+            public uint ProcessId;
+            public AddressV4 LocalAddr;
+            public AddressV4 RemoteAddr;
+            public ushort LocalPort;
+            public ushort RemotePort;
+            public byte Protocol;
+            private byte _reserved1;
+            private ushort _reserved2;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct AddressV4
+        {
+            public uint Data;
+
+            public override string ToString()
+            {
+                return $"{Data & 0xFF}.{(Data >> 8) & 0xFF}.{(Data >> 16) & 0xFF}.{(Data >> 24) & 0xFF}";
+            }
         }
 
         public sealed class SafeHandle : SafeHandleZeroOrMinusOneIsInvalid

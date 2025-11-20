@@ -65,31 +65,31 @@ namespace IspAudit
                         cfg.NoTrace = true;
                         break;
                     case "--report":
-                        if (i + 1 >= args.Length) { error = "--report requires a path"; break; }
+                        if (i + 1 >= args.Length) { error = "--report требует указания пути к файлу"; break; }
                         cfg.ReportPath = args[++i];
                         break;
                     case "--profile":
-                        if (i + 1 >= args.Length) { error = "--profile requires a value (normal|vpn)"; break; }
+                        if (i + 1 >= args.Length) { error = "--profile требует значения (normal|vpn)"; break; }
                         var prof = (args[++i] ?? string.Empty).Trim().ToLowerInvariant();
-                        if (prof == "normal" || prof == "vpn") cfg.Profile = prof; else error = "--profile must be 'normal' or 'vpn'";
+                        if (prof == "normal" || prof == "vpn") cfg.Profile = prof; else error = "--profile должен быть 'normal' или 'vpn'";
                         break;
                     case "--targets":
-                        if (i + 1 >= args.Length) { error = "--targets requires a value"; break; }
+                        if (i + 1 >= args.Length) { error = "--targets требует указания значения"; break; }
                         var tval = args[++i];
                         LoadTargets(cfg, tval);
                         break;
                     case "--timeout":
-                        if (i + 1 >= args.Length) { error = "--timeout requires seconds"; break; }
+                        if (i + 1 >= args.Length) { error = "--timeout требует указания секунд"; break; }
                         if (int.TryParse(args[++i], out int sec) && sec > 0)
                         {
                             cfg.HttpTimeoutSeconds = Math.Max(1, sec);
                             cfg.TcpTimeoutSeconds = Math.Max(1, Math.Min(sec, 10));
                             cfg.UdpTimeoutSeconds = Math.Max(1, Math.Min(sec, 10));
                         }
-                        else { error = "--timeout must be a positive integer"; }
+                        else { error = "--timeout должен быть положительным целым числом"; }
                         break;
                     case "--ports":
-                        if (i + 1 >= args.Length) { error = "--ports requires a list"; break; }
+                        if (i + 1 >= args.Length) { error = "--ports требует указания списка"; break; }
                         var pval = args[++i];
                         try
                         {
@@ -99,7 +99,7 @@ namespace IspAudit
                                 .Distinct()
                                 .ToList();
                         }
-                        catch { error = "--ports must be comma-separated integers"; }
+                        catch { error = "--ports должен содержать целые числа через запятую"; }
                         break;
                     default:
                         // ignore unknown or positional
@@ -193,6 +193,34 @@ namespace IspAudit
 
         public List<TargetDefinition> ResolveTargets()
         {
+            // Если профиль загружен, используем цели из профиля напрямую
+            if (ActiveProfile?.Targets != null && ActiveProfile.Targets.Count > 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"ResolveTargets: Using ActiveProfile targets ({ActiveProfile.Targets.Count} targets)");
+                var result = new List<TargetDefinition>();
+                foreach (var profileTarget in ActiveProfile.Targets)
+                {
+                    // Проверяем есть ли этот хост в Config.Targets (если Targets указаны явно)
+                    if (Targets.Count > 0 && !Targets.Any(t => string.Equals(t, profileTarget.Host, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        continue; // Пропускаем цели не из списка
+                    }
+                    
+                    result.Add(new TargetDefinition
+                    {
+                        Name = profileTarget.Name,
+                        Host = profileTarget.Host,
+                        Service = profileTarget.Service ?? "Неизвестно",
+                        Critical = profileTarget.Critical,
+                        FallbackIp = profileTarget.FallbackIp
+                    });
+                    System.Diagnostics.Debug.WriteLine($"  Added from profile: {profileTarget.Name} -> {profileTarget.Host}");
+                }
+                return result;
+            }
+
+            // Fallback: старая логика с TargetCatalog
+            System.Diagnostics.Debug.WriteLine($"ResolveTargets: Using TargetCatalog fallback");
             var map = TargetMap.Count > 0
                 ? TargetMap
                 : TargetCatalog.CreateDefaultTargetMap();
@@ -202,49 +230,49 @@ namespace IspAudit
                 return map.Values.Select(t => t.Copy()).ToList();
             }
 
-            var result = new List<TargetDefinition>();
+            var fallbackResult = new List<TargetDefinition>();
             foreach (var host in Targets)
             {
                 var matched = map.Values.FirstOrDefault(t => string.Equals(t.Host, host, StringComparison.OrdinalIgnoreCase));
                 if (matched != null)
                 {
-                    result.Add(matched.Copy());
+                    fallbackResult.Add(matched.Copy());
                     continue;
                 }
 
                 var catalog = TargetCatalog.TryGetByHost(host);
                 if (catalog != null)
                 {
-                    result.Add(catalog);
+                    fallbackResult.Add(catalog);
                     continue;
                 }
 
-                result.Add(new TargetDefinition
+                fallbackResult.Add(new TargetDefinition
                 {
                     Name = host,
                     Host = host,
                     Service = "Пользовательский"
                 });
             }
-            return result;
+            return fallbackResult;
         }
 
         private static string BuildHelp()
         {
             return string.Join(Environment.NewLine, new[]
             {
-                "Usage:",
+                "Использование:",
                 "  ISP_Audit.exe --targets youtube.com,discord.com --report result.json --timeout 12 --verbose",
                 "",
-                "Options:",
-                "  --targets <file|list>   Comma-separated hosts or path to JSON/CSV",
-                "  --report <path>         Save JSON report (default isp_report.json)",
-                "  --timeout <s>           Global timeout hint (http=12s, tcp/udp=3s by default)",
-                "  --ports <list>          TCP ports to test (default 80,443,8000-8020)",
-                "  --no-trace              Disable system tracert wrapper",
-                "  --verbose               Verbose logging",
-                "  --json                  Also print a short JSON summary to stdout",
-                "  --help                  Show this help",
+                "Параметры:",
+                "  --targets <файл|список> Хосты через запятую или путь к JSON/CSV",
+                "  --report <путь>         Сохранить JSON отчёт (по умолчанию isp_report.json)",
+                "  --timeout <с>           Таймаут в секундах (по умолчанию http=12с, tcp/udp=3с)",
+                "  --ports <список>        TCP порты для проверки (по умолчанию 80,443,8000-8020)",
+                "  --no-trace              Отключить вызов системного tracert",
+                "  --verbose               Подробное логирование",
+                "  --json                  Вывести краткую JSON сводку в stdout",
+                "  --help                  Показать эту справку",
             });
         }
 
