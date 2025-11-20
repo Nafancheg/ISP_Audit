@@ -332,6 +332,12 @@
                                        Margin="0,0,0,8"
                                        Visibility="{Binding Stage1Status, Converter={StaticResource StringToVisibilityConverter}}"/>
 
+                            <ProgressBar 
+                                Value="{Binding Stage1Progress}" 
+                                Height="4" 
+                                Margin="0,8,0,8"
+                                Visibility="{Binding Stage1Complete, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+
                             <StackPanel Orientation="Horizontal"
                                        Visibility="{Binding Stage1Complete, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <TextBlock Text="{Binding Stage1HostsFound, StringFormat='Обнаружено целей: {0}'}" 
@@ -387,6 +393,12 @@
                                        Margin="0,0,0,8"
                                        Visibility="{Binding Stage2Status, Converter={StaticResource StringToVisibilityConverter}}"/>
 
+                            <ProgressBar 
+                                Value="{Binding Stage2Progress}" 
+                                Height="4" 
+                                Margin="0,8,0,8"
+                                Visibility="{Binding Stage2Complete, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+
                             <TextBlock Text="{Binding Stage2ProblemsFound, StringFormat='Обнаружено проблем: {0}'}" 
                                        Style="{StaticResource BodyStyle}"
                                        Foreground="{StaticResource FailBrush}"
@@ -400,7 +412,8 @@
                             BorderBrush="#E5E7EB" 
                             BorderThickness="1"
                             CornerRadius="8"
-                            Padding="20">
+                            Padding="20"
+                            Margin="0,0,0,16">
                         <StackPanel>
                             <Grid Margin="0,0,0,16">
                                 <Grid.ColumnDefinitions>
@@ -430,8 +443,22 @@
                                        Style="{StaticResource BodyStyle}" 
                                        TextWrapping="Wrap"
                                        Visibility="{Binding Stage3Status, Converter={StaticResource StringToVisibilityConverter}}"/>
+
+                            <ProgressBar 
+                                Value="{Binding Stage3Progress}" 
+                                Height="4" 
+                                Margin="0,8,0,0"
+                                Visibility="{Binding Stage3Complete, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
                         </StackPanel>
                     </Border>
+
+                    <!-- Reset Button -->
+                    <Button 
+                        Content="🔄 Сбросить и начать заново"
+                        Command="{Binding ResetExeScenarioCommand}"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Margin="0,0,0,0"
+                        HorizontalAlignment="Left"/>
                 </StackPanel>
             </ScrollViewer>
         </Border>
