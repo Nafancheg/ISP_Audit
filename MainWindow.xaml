@@ -110,17 +110,20 @@
                                      Style="{StaticResource ToggleRadioButtonStyle}"
                                      IsChecked="{Binding IsProfileScenario, Mode=TwoWay}"
                                      IsEnabled="{Binding IsStart}"
-                                     GroupName="Scenario"/>
+                                     GroupName="Scenario"
+                                     AutomationProperties.AutomationId="ProfileScenarioRadioButton"/>
                         <RadioButton Content="Хост" 
                                      Style="{StaticResource ToggleRadioButtonStyle}"
                                      IsChecked="{Binding IsHostScenario, Mode=TwoWay}"
                                      IsEnabled="{Binding IsStart}"
-                                     GroupName="Scenario"/>
+                                     GroupName="Scenario"
+                                     AutomationProperties.AutomationId="HostScenarioRadioButton"/>
                         <RadioButton Content="Приложение" 
                                      Style="{StaticResource ToggleRadioButtonStyle}"
                                      IsChecked="{Binding IsExeScenario, Mode=TwoWay}"
                                      IsEnabled="{Binding IsStart}"
-                                     GroupName="Scenario"/>
+                                     GroupName="Scenario"
+                                     AutomationProperties.AutomationId="ExeScenarioRadioButton"/>
                     </StackPanel>
                 </Border>
 
@@ -132,7 +135,8 @@
                               FontSize="14"
                               ItemsSource="{Binding AvailableProfiles}"
                               SelectedItem="{Binding SelectedProfile, Mode=TwoWay}"
-                              IsEnabled="{Binding IsStart}"/>
+                              IsEnabled="{Binding IsStart}"
+                              AutomationProperties.AutomationId="ProfileComboBox"/>
                 </StackPanel>
 
                 <!-- Host Scenario -->
@@ -152,12 +156,14 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBox Grid.Column="0" Style="{StaticResource ModernTextBoxStyle}" 
-                                 Text="{Binding ExePath}" IsEnabled="False"/>
+                                 Text="{Binding ExePath}" IsEnabled="False"
+                                 AutomationProperties.AutomationId="ExePathTextBox"/>
                         <Button Grid.Column="1" Content="Обзор..." 
                                 Style="{StaticResource SecondaryButtonStyle}"
                                 Command="{Binding BrowseExeCommand}"
                                 IsEnabled="{Binding IsStart}"
-                                Margin="8,0,0,0"/>
+                                Margin="8,0,0,0"
+                                AutomationProperties.AutomationId="BrowseButton"/>
                     </Grid>
                 </StackPanel>
 
@@ -323,7 +329,8 @@
                                         Foreground="White"
                                         BorderThickness="0"
                                         Padding="20,10"
-                                        Cursor="Hand"/>
+                                        Cursor="Hand"
+                                        AutomationProperties.AutomationId="AnalyzeButton"/>
                             </Grid>
 
                             <TextBlock Text="{Binding Stage1Status}" 
@@ -336,7 +343,8 @@
                                 Value="{Binding Stage1Progress}" 
                                 Height="4" 
                                 Margin="0,8,0,8"
-                                Visibility="{Binding Stage1Complete, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                Visibility="{Binding Stage1Complete, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Stage1ProgressBar"/>
 
                             <StackPanel Orientation="Horizontal"
                                        Visibility="{Binding Stage1Complete, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -384,7 +392,8 @@
                                         BorderThickness="0"
                                         Padding="20,10"
                                         Cursor="Hand"
-                                        IsEnabled="{Binding CanRunStage2}"/>
+                                        IsEnabled="{Binding CanRunStage2}"
+                                        AutomationProperties.AutomationId="DiagnoseButton"/>
                             </Grid>
 
                             <TextBlock Text="{Binding Stage2Status}" 
@@ -397,7 +406,8 @@
                                 Value="{Binding Stage2Progress}" 
                                 Height="4" 
                                 Margin="0,8,0,8"
-                                Visibility="{Binding Stage2Complete, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                Visibility="{Binding Stage2Complete, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Stage2ProgressBar"/>
 
                             <TextBlock Text="{Binding Stage2ProblemsFound, StringFormat='Обнаружено проблем: {0}'}" 
                                        Style="{StaticResource BodyStyle}"
@@ -436,7 +446,8 @@
                                         BorderThickness="0"
                                         Padding="20,10"
                                         Cursor="Hand"
-                                        IsEnabled="{Binding CanRunStage3}"/>
+                                        IsEnabled="{Binding CanRunStage3}"
+                                        AutomationProperties.AutomationId="ApplyBypassButton"/>
                             </Grid>
 
                             <TextBlock Text="{Binding Stage3Status}" 
@@ -448,7 +459,8 @@
                                 Value="{Binding Stage3Progress}" 
                                 Height="4" 
                                 Margin="0,8,0,0"
-                                Visibility="{Binding Stage3Complete, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                Visibility="{Binding Stage3Complete, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                                AutomationProperties.AutomationId="Stage3ProgressBar"/>
                         </StackPanel>
                     </Border>
 
@@ -458,6 +470,7 @@
                         Command="{Binding ResetExeScenarioCommand}"
                         Style="{StaticResource SecondaryButtonStyle}"
                         Margin="0,0,0,0"
+                        AutomationProperties.AutomationId="ResetButton"
                         HorizontalAlignment="Left"/>
                 </StackPanel>
             </ScrollViewer>

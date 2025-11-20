@@ -7,6 +7,8 @@ using Xunit;
 
 namespace ISP_Audit.UITests;
 
+using Application = FlaUI.Core.Application;
+
 /// <summary>
 /// Автоматизированные UI тесты для Exe-scenario workflow.
 /// Основаны на чеклисте docs/e2e_test_checklist.md
