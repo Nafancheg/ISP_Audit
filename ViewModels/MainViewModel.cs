@@ -325,7 +325,7 @@ namespace ISPAudit.ViewModels
                         await RunAuditAsync();
                     }
                 }
-            }, _ => IsStart || IsRunning);
+            }, _ => !IsRunning); // Кнопка активна только когда НЕ запущен тест
             CancelCommand = new RelayCommand(_ => CancelAudit(), _ => IsRunning && _cts != null);
             SetStateCommand = new RelayCommand(state => 
             {
