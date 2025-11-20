@@ -1,230 +1,184 @@
-# ISP_Audit — AI Coding Assistant Guide
+# ISP_Audit Copilot Instructions
 
-## Project Overview
+## Общие правила работы
 
-**ISP_Audit** — Windows-native .NET 9 WPF application for network diagnostics targeting ISP-level blocking (DNS filtering, TCP/UDP/TLS interference, DPI). Primary use case: diagnosing connectivity issues for **Star Citizen** game infrastructure (launcher, AWS game servers, Vivox voice chat).
+**Язык общения**: Только русский язык. Технические общепринятые термины (DNS, TCP, HTTP, WPF, GUI, CLI и т.д.) НЕ переводить.
 
-**Tech Stack**: .NET 9 (Windows-only), WPF + MaterialDesignInXaml 5.1.0, single-file executable (~164MB), async/await throughout, no external dependencies beyond .NET runtime.
+**Документация**: Используй MCP сервер Context7 для получения актуальной документации по библиотекам (.NET, WPF, MaterialDesign и т.д.).
 
-**Dual Mode**: GUI by default (no args), CLI when arguments provided. GUI hides console via Win32 API on startup.
+**Workflow**: После завершения итерации редактирования кода делать `git push`.
 
-## Architecture
+## Project Context
+Windows-native .NET 9 WPF application for diagnosing ISP-level network blocking (DNS filtering, DPI, TCP RST injection). Primary use case: Star Citizen connectivity issues. Ships as single-file executable (~164MB), dual GUI/CLI mode.
 
-### Entry Point & Mode Detection
-- **Program.cs**: Determines mode (GUI/CLI), loads default profile, routes to WPF app or CLI runner
-- **Config.cs**: CLI argument parsing, profile management (`GameProfile`), timeout configuration
-- **AuditRunner.cs**: Test orchestrator — executes tests sequentially with `IProgress<TestProgress>` for GUI updates
+**Tech**: .NET 9, WPF, MaterialDesignInXaml 5.1.0, WinDivert 2.2.0 (bypass module)
 
-### Test Infrastructure (Tests/)
-All tests are **independent, async**, return domain-specific result objects:
+## Architecture at a Glance
 
-- **DnsTest.cs**: System DNS + DoH (Cloudflare 1.1.1.1), detects bogus IPs (0.0.0.0, 127.x, 10.x, 192.168.x)
-- **TcpTest.cs**: TCP port probing with 1-2 retries
-- **HttpTest.cs**: HTTP(S) requests, SNI support, X.509 CN extraction
-- **TracerouteTest.cs**: Wraps system `tracert.exe`, parses stdout with **OEM866 encoding** (Russian Windows)
-- **UdpProbeRunner.cs**: UDP probes (DNS 53, game ports 64090-64094)
-- **FirewallTest.cs**: Windows Firewall rules, blocked ports, Defender status (requires admin via WMI)
-- **IspTest.cs**: ISP detection (ip-api.com), CGNAT (100.64.0.0/10), DPI heuristics
-- **RouterTest.cs**: Gateway ping stability, UPnP availability, SIP ALG detection
-- **SoftwareTest.cs**: Antivirus/VPN/proxy detection, hosts file analysis
-- **RstHeuristic.cs**: RST injection timing heuristic (no pcap)
+```
+Program.cs → [GUI: App.xaml + MainWindow] or [CLI: Config → AuditRunner → ReportWriter]
+                           ↓
+              AuditRunner orchestrates Tests/* (DNS/TCP/HTTP/Firewall/ISP/Router/Software)
+                           ↓
+              Results → ReportWriter (JSON + human output + verdict)
+```
 
-### Target Catalog & Profiles
-- **TargetCatalog.cs**: Loads `star_citizen_targets.json` (or fallback), provides default targets/ports/UDP probes
-- **TargetModels.cs**: `TargetDefinition` (Name, Host, Service), `UdpProbeDefinition`, `GameProfile` structure
-- **Profiles/**: Game-specific JSON profiles (e.g., `StarCitizen.json`) — defines critical targets, test modes
-- **TargetServiceProfiles.cs**: Per-service test customization (which tests to run, which ports)
+**Entry point**: `Program.Main()` detects mode (GUI if no args, CLI if args), hides console in GUI, loads default profile from `Profiles/`.
 
-### GUI (WPF + Material Design)
-- **App.xaml**: Material Design theme (Light, Blue primary, Cyan secondary)
-- **MainWindow.xaml**: Card-based UI (`materialDesign:Card` for warnings/success), service list with live status, progress bar
-- **MainWindow.xaml.cs**: MVVM pattern, async test execution with `CancellationToken`, result interpretation, card visibility logic
-- **ServiceItemViewModel.cs**: Observable model for service list items (`INotifyPropertyChanged`)
+**Test flow**: Independent async tests (`Tests/*.cs`) → return domain-specific result objects → `AuditRunner` coordinates sequential execution with `IProgress<TestProgress>` for GUI live updates.
 
-**GUI shows diagnostic cards ONLY when problems detected**:
-- `FirewallCard`: Blocked ports, Defender interference → fix instructions
-- `IspCard`: CGNAT, DPI, DNS filtering → VPN/DNS change recommendations
-- `RouterCard`: UPnP, SIP ALG, high ping → router config instructions
-- `SoftwareCard`: Antivirus/VPN conflicts → exclusion instructions
-- `WarningCard`: Legacy DNS/TCP/TLS issues
+**GUI**: MVVM pattern (`ViewModels/MainViewModel.cs`), Material Design cards shown ONLY when problems detected (Firewall/ISP/Router/Software cards).
 
-### Bypass Module (Bypass/)
-**WinDivert-based packet filtering** (admin required, Windows-only):
-- **WinDivertBypassManager.cs**: Drop TCP RST, fragment TLS ClientHello, optional redirect rules
-- **BypassProfile.cs**: JSON config (`bypass_profile.json`) for rule definitions
-- **WinDivertNative.cs**: P/Invoke for WinDivert.dll
+## Critical Code Patterns
 
-Activated **manually via GUI** only after problems detected (not by default).
-
-### Output & Reporting (Output/)
-- **ReportWriter.cs**: JSON report generation, human-readable console output, HTML/PDF export for support tickets
-- **Result Models**: `IspTestResult`, `FirewallTestResult`, `RouterTestResult`, `SoftwareTestResult`, `UdpProbeResult`
-- **Summary**: Aggregates test statuses into `playable` verdict (YES/NO/MAYBE) for Star Citizen
-
-## Critical Conventions
-
-### 1. Async Patterns
-- **Always** use `ConfigureAwait(false)` for library/test code
-- **Never** use `.Result` or `.Wait()` — use `await` exclusively
-- Pass `CancellationToken` to all long-running operations (HTTP, traceroute)
-
-### 2. Progress Reporting
-GUI relies on `IProgress<TestProgress>` for live updates:
+### 1. Async Rules (STRICT)
 ```csharp
+// ✅ ALWAYS use ConfigureAwait(false) in library/test code
+var result = await DoWorkAsync().ConfigureAwait(false);
+
+// ❌ NEVER block on async
+var result = DoWorkAsync().Result; // NO
+DoWorkAsync().Wait(); // NO
+
+// ✅ Pass CancellationToken to long operations
+await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+```
+
+### 2. Progress Reporting (GUI Contract)
+```csharp
+// Start test
 progress?.Report(new TestProgress(TestKind.DNS, $"{targetName}: старт"));
-// ... execute test ...
+
+// Complete test
 progress?.Report(new TestProgress(TestKind.DNS, $"{targetName}: завершено", success, status));
-```
-**Always** report: start → completion (with status). Summary reports after all targets.
 
-### 3. Traceroute Encoding
-**OEM866 (CP866)** for Russian Windows `tracert.exe` output:
+// Summary (after all targets)
+progress?.Report(new TestProgress(TestKind.DNS, "сводка", !hasFails, message));
+```
+
+### 3. Traceroute Encoding (CRITICAL for Russian Windows)
 ```csharp
+// System tracert.exe uses OEM866 (CP866) for Cyrillic output
 process.StandardOutput.CurrentEncoding = Encoding.GetEncoding(866);
+// Without this: русские хопы → ?????
 ```
-Without this: Cyrillic characters become garbled.
 
-### 4. DNS Status Logic
-**Simplified** (System DNS only, DoH for info):
-- `DNS_FILTERED`: System DNS empty, DoH returns addresses
-- `DNS_BOGUS`: System DNS returns 0.0.0.0, 127.x, 10.x, 192.168.x
-- `WARN`: System/DoH address sets don't overlap (CDN geo-balancing)
-- `OK`: Otherwise
-
-Do NOT use DoH results for decision logic — only for user information.
-
-### 5. Critical Targets
-**Profile-driven** (`Profiles/StarCitizen.json`):
-- Targets have `critical: true/false` flag
-- **Critical targets** (launcher, game servers, Vivox) → if DNS fails, use fallback IPs, never skip
-- **Non-critical** (portals, CDN mirrors) → can skip on DNS failure
-- AuditRunner **must not** early-exit for critical targets
-
-### 6. Material Design UI
-- Use `materialDesign:Card` for warnings/success messages
-- Buttons: `Style="{StaticResource MaterialDesignRaisedButton}"`
-- Colors: Blue primary (#2196F3), Red accent (#F44336)
-- **Cards visibility**: `Visibility.Collapsed` by default, show only when problems detected
-
-### 7. VPN Detection & Adaptive Timeouts
+### 4. DNS Logic (Simplified Decision Tree)
 ```csharp
-bool vpnActive = NetUtils.LikelyVpnActive(); // checks for TAP/TUN adapters
-if (vpnActive) {
-    config.HttpTimeoutSeconds = 12; // vs 6 for normal
-    config.TcpTimeoutSeconds = 8;   // vs 5
-    config.UdpTimeoutSeconds = 4;   // vs 2
+// ONLY System DNS determines status (DoH/Google for info only)
+if (systemDns.Count == 0) return DNS_FILTERED;
+if (systemDns.Any(IsBogusIPv4)) return DNS_BOGUS; // 0.0.0.0, 127.x, 10.x, 192.168.x
+return OK;
+```
+**Do NOT** use DoH results in decision logic — it may be blocked itself.
+
+### 5. Critical Targets (Profile-Driven)
+```csharp
+// Profiles/StarCitizen.json: {critical: true, fallbackIp: "1.2.3.4"}
+if (dnsFailure && target.Critical && !string.IsNullOrEmpty(target.FallbackIp)) {
+    // Use fallback IP, continue testing (NEVER skip)
+} else if (dnsFailure && !target.Critical) {
+    // Skip target, continue with others
 }
 ```
-Reduces false positives on VPN connections.
+AuditRunner must NOT early-exit for critical targets.
+
+### 6. Material Design UI (Cards)
+```xaml
+<!-- Default: collapsed -->
+<materialDesign:Card x:Name="FirewallCard" Visibility="Collapsed">
+  <TextBlock Text="• Problem 1&#x0a;• Problem 2&#x0a;&#x0a;Рекомендация: ..." />
+</materialDesign:Card>
+```
+Show cards ONLY when `result.Status != "OK"`.
+
+### 7. VPN Detection (Adaptive Timeouts)
+```csharp
+if (NetUtils.LikelyVpnActive()) { // checks TAP/TUN adapters
+    config.HttpTimeoutSeconds = 12; // normal: 6
+    config.TcpTimeoutSeconds = 8;   // normal: 3
+    config.UdpTimeoutSeconds = 4;   // normal: 2
+}
+```
 
 ## Key Workflows
 
 ### Build & Run
 ```powershell
-# Debug build
+# Debug
 dotnet build -c Debug
 
-# Single-file Release
+# Single-file release
 dotnet publish -c Release -r win-x64 /p:PublishSingleFile=true /p:SelfContained=true /p:PublishTrimmed=false -o ./publish
 
-# Run GUI
+# GUI (hides console)
 dotnet run
 
-# Run CLI
-dotnet run -- --targets youtube.com,discord.com --report result.json --verbose
+# CLI
+dotnet run -- --targets youtube.com --report result.json --verbose
 ```
 
-### Adding a New Test
-1. Create `Tests/MyTest.cs` with async `RunAsync()` method
-2. Return domain-specific result object (`Output/MyTestResult.cs`)
-3. Add test invocation in `AuditRunner.RunAsync()` with progress reports
-4. Update `ReportWriter.BuildSummary()` to include new test status
-5. Add GUI handling in `MainWindow.UpdateProgress()` for new `TestKind`
+### Add New Test
+1. `Tests/MyTest.cs`: async `RunAsync()` → return `MyTestResult`
+2. `AuditRunner.RunAsync()`: invoke with progress reports
+3. `ReportWriter.BuildSummary()`: aggregate status
+4. `MainWindow.UpdateProgress()`: GUI handling for new `TestKind`
 
-### Adding a New Target Profile
-1. Create `Profiles/MyGame.json` with structure:
-   ```json
-   {
-     "name": "MyGame",
-     "testMode": "host",
-     "exePath": "",
-     "targets": [
-       {"name": "Launcher", "host": "launcher.example.com", "critical": true, "ports": [80, 443]}
-     ]
-   }
-   ```
-2. Update `TargetCatalog.cs` or `Config.cs` to load new profile
-3. Test with `--profile MyGame` CLI flag (if implemented)
+### Modify GUI Cards
+```csharp
+// MainWindow.xaml.cs ShowResults()
+if (result.firewall.Status != "OK") {
+    FirewallCard.Visibility = Visibility.Visible;
+    FirewallText.Text = $"• {string.Join("\n• ", issues)}\n\nРекомендация: {fix}";
+}
+```
 
-### Modifying GUI Cards
-When adding/modifying diagnostic cards in `MainWindow.xaml.cs`:
-- **Only show cards when problems exist** (check result object properties)
-- Format text as bulleted list: `"• Problem description\n• Next item"`
-- Add `\n\nРекомендация: ...` section with actionable steps
-- Update `ShowResults()` method to set `Card.Visibility`
+## Agent Workflow (Multi-Context Development)
 
-## Agent-Based Development Workflow
+**IMPORTANT**: Agents run in separate contexts (new chat sessions). See `agents/README.md` for full workflow.
 
-**Project uses multi-agent methodology** (see `agents/README.md`):
-- **Task Owner** (purple): Defines tasks interactively → `current_task.md`
-- **Research Agent** (red): Deep code analysis → `findings.md`
-- **Planning Agent** (blue): Breaks into subtasks → `plan.md`
-- **Coding Agent** (green): Implements 1 subtask at a time (use lightweight models like Haiku)
-- **QA Agent** (yellow): Validates against acceptance criteria → `test_report.md`
-- **Delivery Agent** (cyan): Changelog + git commit
+1. **Task Owner** (purple): Interactive → `agents/task_owner/current_task.md`
+2. **Research** (red): Deep analysis → `agents/research_agent/findings.md`
+3. **Planning** (blue): Subtasks → `agents/planning_agent/plan.md`
+4. **Coding** (green): Implement ONE subtask at a time (use Haiku for cost efficiency)
+5. **QA** (yellow): Validate → `agents/qa_agent/test_report.md`
+6. **Delivery** (cyan): Commit + changelog
 
-**Each agent runs in separate context** (new chat session). Agents communicate via files only.
+**When coding**: Check `agents/task_owner/current_task.md` for context, use `agents/planning_agent/plan.md` as single source of truth, read ONLY files relevant to current subtask.
 
-When working on tasks:
-1. Check `agents/task_owner/current_task.md` for active task
-2. If multiple subtasks exist, work on ONE at a time
-3. Keep context minimal — read only files relevant to current subtask
-4. Use `agents/planning_agent/plan.md` as single source of truth for subtask scope
+## Common Mistakes
 
-## Common Pitfalls
+1. **OEM866 traceroute**: Forget encoding → Cyrillic becomes garbage
+2. **DoH in DNS logic**: Use DoH for decisions → false FILTERED warnings
+3. **Show all cards**: Show cards by default → cluttered UI
+4. **Blocking async**: `.Result`/`.Wait()` → deadlocks in GUI
+5. **Skip critical targets**: DNS fails → skip launcher → game unplayable
+6. **Hardcode Cloudflare**: Apply DNS fix → test ALL DoH providers first (1.1.1.1, 8.8.8.8, 9.9.9.9)
+7. **Registry DNS changes**: Requires reboot → use `netsh` (immediate effect, requires UAC)
 
-1. **Forgetting OEM866 for traceroute** → Cyrillic becomes `?????`
-2. **Using DoH in DNS status logic** → False FILTERED warnings (DoH itself may be blocked)
-3. **Showing all GUI cards by default** → Cluttered UI, users confused
-4. **Blocking calls in async code** → Use `await`, never `.Result`/`.Wait()`
-5. **Skipping critical targets on DNS fail** → Game unplayable even if servers reachable by IP
-6. **Hardcoding Cloudflare as only DNS option** → Check availability of multiple DoH providers (Cloudflare, Google, Quad9) before applying
-7. **Applying DNS changes without UAC** → Requires admin via `netsh`
-8. **Using Registry for DNS changes** → Requires reboot; prefer `netsh` for immediate effect
+## Test Scenarios (Manual Only)
 
-## Testing Notes
+- VPN: Enable VPN → verify adaptive timeouts, no false DNS_FILTERED
+- DNS block: Point DNS to 0.0.0.0 → verify FILTERED + Fix button appears
+- Firewall: Block ports 8000-8003 → FirewallCard appears with ports listed
+- No admin: Verify Firewall/ISP tests return UNKNOWN gracefully
 
-- **No unit tests** — manual GUI/CLI testing workflow
-- Test VPN scenarios: enable VPN → verify adaptive timeouts, no false DNS_FILTERED
-- Test DNS blocking: point DNS to unresponsive server → verify FILTERED detection + Fix button appears
-- Test firewall: block ports 8000-8003 → verify FirewallCard appears with correct ports listed
-- Test without admin: verify graceful degradation (Firewall/ISP tests return UNKNOWN)
+## Key Files
 
-## Files to Know
+**Entry**: `Program.cs` (mode detect), `AuditRunner.cs` (orchestrator), `Config.cs` (CLI parse)  
+**Tests**: `Tests/{DnsTest,TcpTest,HttpTest,TracerouteTest,FirewallTest,IspTest,RouterTest,SoftwareTest}.cs`  
+**GUI**: `ViewModels/MainViewModel.cs`, `MainWindow.xaml`, `Wpf/ServiceItemViewModel.cs`  
+**Output**: `Output/ReportWriter.cs`, `Output/{Firewall,Isp,Router,Software}TestResult.cs`  
+**Bypass**: `Bypass/WinDivertBypassManager.cs` (admin required)  
+**Data**: `star_citizen_targets.json`, `Profiles/StarCitizen.json`, `bypass_profile.json`
 
-**Core Logic**:
-- `Program.cs` — entry point
-- `AuditRunner.cs` — test orchestrator
-- `Config.cs` — configuration + CLI parsing
-- `TargetCatalog.cs` — target loading
+## Quick Reference
 
-**Tests** (Tests/): `DnsTest`, `TcpTest`, `HttpTest`, `TracerouteTest`, `UdpProbeRunner`, `FirewallTest`, `IspTest`, `RouterTest`, `SoftwareTest`
-
-**GUI** (Wpf/): `MainWindow.xaml`, `MainWindow.xaml.cs`, `ServiceItemViewModel.cs`
-
-**Output**: `ReportWriter.cs` (JSON, human-readable, HTML/PDF)
-
-**Bypass**: `WinDivertBypassManager.cs`, `BypassProfile.cs`
-
-**Data**: `star_citizen_targets.json`, `bypass_profile.json`, `Profiles/StarCitizen.json`
-
-## References
-
-- **README.md**: User-facing documentation (Russian)
-- **CLAUDE.md**: Architecture deep-dive for Claude Code
-- **agents/README.md**: Agent workflow methodology
-- **.github/workflows/build.yml**: CI/CD (builds single-file exe artifact)
+- **Detailed architecture**: `CLAUDE.md` (Russian, 500+ lines)
+- **User docs**: `README.md` (Russian, usage examples)
+- **Agent methodology**: `agents/README.md` (API cost optimization strategy)
+- **CI/CD**: `.github/workflows/build.yml` (single-file artifact)
 
 ---
 
-**When uncertain about project conventions**: Check `CLAUDE.md` first (detailed architecture), then `README.md` (user perspective), then code in `Tests/` or `Program.cs` for patterns.
+**When in doubt**: Check `CLAUDE.md` → `README.md` → code examples in `Tests/` or `AuditRunner.cs`.
