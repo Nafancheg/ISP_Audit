@@ -57,13 +57,13 @@ public class ExeScenarioTests : IDisposable
             }
         }
         
-        // Нажать "Запустить анализ"
-        var analyzeButton = _mainWindow.FindFirstDescendant(cf => 
-            cf.ByAutomationId("AnalyzeButton"));
-        analyzeButton?.AsButton().Invoke();
+        // Нажать "Начать проверку" (теперь автоматически запускает Stage1 для Exe-сценария)
+        var startButton = _mainWindow.FindFirstDescendant(cf => 
+            cf.ByAutomationId("StartButton"));
+        startButton?.AsButton().Invoke();
         
-        // Подождать запуска операции
-        await Task.Delay(1000);
+        // Подождать запуска операции (Stage1 начинается автоматически)
+        await Task.Delay(2000);
         
         // Проверить что Stage1 progress bar появился и меняется
         var stage1Progress = _mainWindow.FindFirstDescendant(cf => 
@@ -133,10 +133,10 @@ public class ExeScenarioTests : IDisposable
         
         await Task.Delay(1000); // Дать время на сброс
         
-        // Assert: Проверить что кнопка "Analyze" снова активна
-        var analyzeButton = _mainWindow.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.Button).And(cf.ByName("Analyze Traffic")));
-        Assert.True(analyzeButton?.IsEnabled, "Analyze button должна быть активна после сброса");
+        // Assert: Проверить что кнопка "Начать проверку" снова активна
+        var startButton = _mainWindow.FindFirstDescendant(cf => 
+            cf.ByAutomationId("StartButton"));
+        Assert.True(startButton?.IsEnabled, "Start button должна быть активна после сброса");
         
         // Проверить что progress bars сброшены (не отображаются или значение 0)
         var stage1Progress = _mainWindow.FindFirstDescendant(cf => 
@@ -156,14 +156,16 @@ public class ExeScenarioTests : IDisposable
         LaunchApp();
         SelectExeScenarioAndSetPath();
         
-        // Act: Запустить Stage1
-        var analyzeButton = _mainWindow!.FindFirstDescendant(cf => 
-            cf.ByAutomationId("AnalyzeButton"));
-        analyzeButton?.AsButton().Invoke();
+        // Act: Запустить Stage1 через "Начать проверку"
+        var startButton = _mainWindow!.FindFirstDescendant(cf => 
+            cf.ByAutomationId("StartButton"));
+        startButton?.AsButton().Invoke();
         
         await Task.Delay(2000); // Подождать пока операция в процессе
         
-        // Assert: Все основные кнопки заблокированы
+        // Assert: Проверить что кнопка "Запустить анализ" заблокирована
+        var analyzeButton = _mainWindow.FindFirstDescendant(cf => 
+            cf.ByAutomationId("AnalyzeButton"));
         Assert.False(analyzeButton?.IsEnabled, "Analyze должна быть заблокирована");
         
         var diagnoseButton = _mainWindow.FindFirstDescendant(cf => 
@@ -222,10 +224,10 @@ public class ExeScenarioTests : IDisposable
         LaunchApp();
         SelectExeScenarioAndSetPath(@"C:\Windows\notepad.exe");
         
-        // Act: Запустить Stage1
-        var analyzeButton = _mainWindow!.FindFirstDescendant(cf => 
-            cf.ByAutomationId("AnalyzeButton"));
-        analyzeButton?.AsButton().Invoke();
+        // Act: Запустить Stage1 через "Начать проверку"
+        var startButton = _mainWindow!.FindFirstDescendant(cf => 
+            cf.ByAutomationId("StartButton"));
+        startButton?.AsButton().Invoke();
         
         // Ждать завершения Stage1
         await Task.Delay(32000); // 30 сек захвата + буфер
@@ -296,9 +298,10 @@ public class ExeScenarioTests : IDisposable
     {
         SelectExeScenarioAndSetPath();
         
-        var analyzeButton = _mainWindow!.FindFirstDescendant(cf => 
-            cf.ByAutomationId("AnalyzeButton"));
-        analyzeButton?.AsButton().Invoke();
+        // Нажать "Начать проверку" (автоматически запускает Stage1 для Exe-сценария)
+        var startButton = _mainWindow!.FindFirstDescendant(cf => 
+            cf.ByAutomationId("StartButton"));
+        startButton?.AsButton().Invoke();
         
         // Подождать минимум времени для запуска Stage1
         await Task.Delay(35000); // 30 сек + буфер

@@ -9,6 +9,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <StartupObject>IspAudit.Program</StartupObject>
+    <!-- Exclude UI test project from compilation -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);ISP_Audit.UITests/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

@@ -304,7 +304,7 @@ namespace ISPAudit.ViewModels
                 Log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                 Log("ШАГ 2: НАЖАТИЕ 'НАЧАТЬ ПРОВЕРКУ'");
                 Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                Log($"IsRunning={IsRunning}, ScreenState={ScreenState}");
+                Log($"IsRunning={IsRunning}, ScreenState={ScreenState}, Scenario={SelectedScenario}");
                 
                 if (IsRunning)
                 {
@@ -313,8 +313,17 @@ namespace ISPAudit.ViewModels
                 }
                 else
                 {
-                    Log("→ Вызов RunAuditAsync()");
-                    await RunAuditAsync();
+                    // Для Exe-сценария сразу запускаем Stage1
+                    if (IsExeScenario)
+                    {
+                        Log("→ Exe сценарий: запуск Stage1 (RunStage1AnalyzeTrafficAsync)");
+                        await RunStage1AnalyzeTrafficAsync();
+                    }
+                    else
+                    {
+                        Log("→ Вызов RunAuditAsync()");
+                        await RunAuditAsync();
+                    }
                 }
             }, _ => IsStart || IsRunning);
             CancelCommand = new RelayCommand(_ => CancelAudit(), _ => IsRunning && _cts != null);
@@ -335,7 +344,7 @@ namespace ISPAudit.ViewModels
 
             // Exe Scenario Commands
             BrowseExeCommand = new RelayCommand(_ => BrowseExe(), _ => !IsRunning);
-            AnalyzeTrafficCommand = new RelayCommand(async _ => await RunStage1AnalyzeTrafficAsync(), _ => !string.IsNullOrEmpty(ExePath) && !IsRunning);
+            AnalyzeTrafficCommand = new RelayCommand(async _ => await RunStage1AnalyzeTrafficAsync(), _ => !string.IsNullOrEmpty(ExePath) && !IsRunning && !Stage1Complete);
             ViewStage1ResultsCommand = new RelayCommand(_ => ViewStage1Results(), _ => _capturedProfile != null);
             DiagnoseCommand = new RelayCommand(async _ => await RunStage2DiagnoseAsync(), _ => CanRunStage2 && !IsRunning);
             ApplyBypassCommand = new RelayCommand(async _ => await RunStage3ApplyBypassAsync(), _ => CanRunStage3 && !IsRunning);
