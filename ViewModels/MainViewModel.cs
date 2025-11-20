@@ -194,6 +194,7 @@ namespace ISPAudit.ViewModels
         private int _stage2ProblemsFound = 0;
         private int _stage1Progress = 0;
         private int _stage2Progress = 0;
+        private int _stage3Progress = 0;
         private bool _stage1Complete = false;
         private bool _stage2Complete = false;
         private bool _stage3Complete = false;
@@ -242,6 +243,12 @@ namespace ISPAudit.ViewModels
         {
             get => _stage2Progress;
             set { _stage2Progress = value; OnPropertyChanged(nameof(Stage2Progress)); }
+        }
+
+        public int Stage3Progress
+        {
+            get => _stage3Progress;
+            set { _stage3Progress = value; OnPropertyChanged(nameof(Stage3Progress)); }
         }
 
         public bool Stage1Complete
@@ -1471,6 +1478,7 @@ namespace ISPAudit.ViewModels
                 Log("[Stage3] Starting bypass application...");
                 Stage3Status = "Применение исправлений...";
                 Stage3Complete = false;
+                Stage3Progress = 0;
 
                 if (_detectedProblems == null || _plannedBypass == null)
                 {
@@ -1483,15 +1491,45 @@ namespace ISPAudit.ViewModels
                 OnPropertyChanged(nameof(IsRunning));
                 CommandManager.InvalidateRequerySuggested();
 
+                // Определяем, что нужно применить
+                bool needsDns = BypassStrategyPlanner.RequiresDnsChange(_detectedProblems);
+                bool needsWinDivert = BypassStrategyPlanner.CanBypassWithWinDivert(_detectedProblems);
+
                 var progress = new Progress<string>(msg =>
                 {
                     Stage3Status = msg;
                     Log($"[Stage3] {msg}");
+                    
+                    // Парсинг сообщений для определения прогресса DNS fix
+                    if (needsDns)
+                    {
+                        // Если DNS + WinDivert: DNS = 0-70%, WinDivert = 70-100%
+                        // Если только DNS: DNS = 0-100%
+                        int dnsMaxProgress = needsWinDivert ? 70 : 100;
+                        
+                        if (msg.Contains("Тестирование") || msg.Contains("1.1.1.1"))
+                        {
+                            Stage3Progress = dnsMaxProgress * 20 / 100;
+                        }
+                        else if (msg.Contains("8.8.8.8"))
+                        {
+                            Stage3Progress = dnsMaxProgress * 40 / 100;
+                        }
+                        else if (msg.Contains("9.9.9.9"))
+                        {
+                            Stage3Progress = dnsMaxProgress * 60 / 100;
+                        }
+                        else if (msg.Contains("успешно применен"))
+                        {
+                            Stage3Progress = dnsMaxProgress;
+                        }
+                    }
                 });
 
                 // Проверяем, нужна ли смена DNS
-                if (BypassStrategyPlanner.RequiresDnsChange(_detectedProblems))
+                if (needsDns)
                 {
+                    Stage3Progress = 10;
                     Stage3Status = "Применение DNS исправления...";
                     var dnsResult = await DnsFixApplicator.ApplyDnsFixAsync(progress, CancellationToken.None).ConfigureAwait(false);
 
@@ -1514,11 +1552,22 @@ namespace ISPAudit.ViewModels
                     }
 
                     Log($"[Stage3] DNS Fix SUCCESS: {dnsResult.AppliedProvider}");
+                    Stage3Progress = needsWinDivert ? 70 : 100;
                 }
 
                 // Применяем WinDivert bypass (если нужен)
-                if (BypassStrategyPlanner.CanBypassWithWinDivert(_detectedProblems))
+                if (needsWinDivert)
                 {
+                    // Если только WinDivert (без DNS) → устанавливаем 50%
+                    if (!needsDns)
+                    {
+                        Stage3Progress = 50;
+                    }
+                    else
+                    {
+                        Stage3Progress = 80;
+                    }
+                    
                     Stage3Status = "Применение WinDivert bypass...";
                     
                     // Сохраняем профиль в bypass_profile.json
@@ -1540,6 +1589,7 @@ namespace ISPAudit.ViewModels
                     Log("[Stage3] VPN required for complete bypass");
                 }
 
+                Stage3Progress = 100;
                 Stage3Complete = true;
                 Stage3Status = "Обход настроен успешно";
                 Log("[Stage3] SUCCESS: Bypass applied");
