@@ -123,7 +123,7 @@ namespace ISPAudit.ViewModels
         }
 
         public bool IsStart => ScreenState == "start";
-        public bool IsRunning => ScreenState == "running";
+        public bool IsRunning => ScreenState == "running" || _isExeScenarioRunning;
         public bool IsDone => ScreenState == "done";
         public bool ShowSummary => IsDone;
         public bool ShowReport => IsDone;
@@ -195,6 +195,7 @@ namespace ISPAudit.ViewModels
         private bool _stage1Complete = false;
         private bool _stage2Complete = false;
         private bool _stage3Complete = false;
+        private bool _isExeScenarioRunning = false;
         private GameProfile? _capturedProfile;
         private List<BlockageProblem>? _detectedProblems;
         private BypassProfile? _plannedBypass;
@@ -1076,6 +1077,9 @@ namespace ISPAudit.ViewModels
         /// </summary>
         private async Task RunStage1AnalyzeTrafficAsync()
         {
+            // Защита от race condition
+            if (_isExeScenarioRunning) return;
+            
             try
             {
                 Log("[Stage1] Starting traffic analysis...");
@@ -1098,6 +1102,11 @@ namespace ISPAudit.ViewModels
                     );
                     return;
                 }
+                
+                // Устанавливаем флаг блокировки ПОСЛЕ проверки admin прав
+                _isExeScenarioRunning = true;
+                OnPropertyChanged(nameof(IsRunning));
+                CommandManager.InvalidateRequerySuggested();
 
                 Stage1Status = "Запуск процесса...";
 
@@ -1252,6 +1261,13 @@ namespace ISPAudit.ViewModels
                 Log($"[Stage1] EXCEPTION: {ex.Message}");
                 Stage1Status = $"Ошибка: {ex.Message}";
             }
+            finally
+            {
+                // Гарантированный сброс флага даже при исключениях
+                _isExeScenarioRunning = false;
+                OnPropertyChanged(nameof(IsRunning));
+                CommandManager.InvalidateRequerySuggested();
+            }
         }
 
         /// <summary>
@@ -1259,6 +1275,9 @@ namespace ISPAudit.ViewModels
         /// </summary>
         private async Task RunStage2DiagnoseAsync()
         {
+            // Защита от race condition
+            if (_isExeScenarioRunning) return;
+            
             try
             {
                 Log("[Stage2] Starting diagnostics...");
@@ -1283,6 +1302,11 @@ namespace ISPAudit.ViewModels
                     });
                     return;
                 }
+                
+                // Устанавливаем флаг блокировки ПОСЛЕ всех проверок
+                _isExeScenarioRunning = true;
+                OnPropertyChanged(nameof(IsRunning));
+                CommandManager.InvalidateRequerySuggested();
 
                 Log($"[Stage2] Using captured profile with {_capturedProfile.Targets.Count} targets");
                 
@@ -1405,6 +1429,13 @@ namespace ISPAudit.ViewModels
                 Log($"[Stage2] EXCEPTION: {ex.Message}");
                 Stage2Status = $"Ошибка: {ex.Message}";
             }
+            finally
+            {
+                // Гарантированный сброс флага даже при исключениях
+                _isExeScenarioRunning = false;
+                OnPropertyChanged(nameof(IsRunning));
+                CommandManager.InvalidateRequerySuggested();
+            }
         }
 
         /// <summary>
@@ -1412,6 +1443,9 @@ namespace ISPAudit.ViewModels
         /// </summary>
         private async Task RunStage3ApplyBypassAsync()
         {
+            // Защита от race condition
+            if (_isExeScenarioRunning) return;
+            
             try
             {
                 Log("[Stage3] Starting bypass application...");
@@ -1423,6 +1457,11 @@ namespace ISPAudit.ViewModels
                     Stage3Status = "Ошибка: нет данных для применения";
                     return;
                 }
+                
+                // Устанавливаем флаг блокировки ПОСЛЕ всех проверок
+                _isExeScenarioRunning = true;
+                OnPropertyChanged(nameof(IsRunning));
+                CommandManager.InvalidateRequerySuggested();
 
                 var progress = new Progress<string>(msg =>
                 {
@@ -1489,6 +1528,13 @@ namespace ISPAudit.ViewModels
             {
                 Log($"[Stage3] EXCEPTION: {ex.Message}");
                 Stage3Status = $"Ошибка: {ex.Message}";
+            }
+            finally
+            {
+                // Гарантированный сброс флага даже при исключениях
+                _isExeScenarioRunning = false;
+                OnPropertyChanged(nameof(IsRunning));
+                CommandManager.InvalidateRequerySuggested();
             }
         }
 
