@@ -129,31 +129,45 @@ namespace IspAudit.Utils
                     UpdatePortToPidCache(portToPidCache, targetPid, progress);
                     lastCacheUpdate = DateTime.UtcNow;
                     
-                    if (portsBefore == 0 && portToPidCache.Count == 0)
+                    if (portToPidCache.Count == 0)
                     {
-                        progress?.Report($"⚠️ Кэш пуст: процесс PID={targetPid} не имеет активных TCP/UDP соединений");
+                        progress?.Report($"⚠️ Кэш пуст после обновления: процесс PID={targetPid} не имеет активных TCP/UDP соединений (было: {portsBefore})");
+                    }
+                    else if (portsBefore != portToPidCache.Count)
+                    {
+                        progress?.Report($"Кэш портов обновлен: {portsBefore} → {portToPidCache.Count} портов");
                     }
                 }
 
                 // Обрабатываем IP пакет
                 // 1. Парсим DNS ответы (UDP port 53) для hostname mapping
                 // 2. Парсим TCP/UDP для connection tracking
-                ProcessPacket(buffer, (int)readLen, addr, targetPid, portToPidCache, connections, dnsCache, ref matchedPackets);
+                ProcessPacket(buffer, (int)readLen, addr, targetPid, portToPidCache, connections, dnsCache, ref matchedPackets, progress);
 
                 // Периодический отчет
                 if (packetCount % 500 == 0)
                     progress?.Report($"Пакетов: {packetCount}, совпало PID: {matchedPackets}, соединений: {connections.Count}");
             }
 
-            progress?.Report($"Захват завершен: {packetCount} пакетов, {matchedPackets} от целевого процесса, {connections.Count} уникальных соединений");
+            progress?.Report($"Захват завершен: {packetCount} пакетов захвачено, {matchedPackets} от PID={targetPid}, {connections.Count} уникальных соединений");
             
             if (connections.Count == 0)
             {
-                progress?.Report("⚠️ ДИАГНОСТИКА: Соединения не обнаружены. Возможные причины:");
-                progress?.Report($"   1. Процесс PID={targetPid} не устанавливал сетевые соединения");
-                progress?.Report("   2. Соединения были установлены ДО запуска WinDivert (слишком быстро)");
-                progress?.Report("   3. Соединения уже закрылись (кратковременные)");
-                progress?.Report($"   4. Последний кэш содержал {portToPidCache.Count} портов");
+                progress?.Report("⚠️ ДИАГНОСТИКА: Соединения не обнаружены.");
+                progress?.Report($"   • Всего пакетов обработано: {packetCount}");
+                progress?.Report($"   • Пакетов от целевого PID: {matchedPackets}");
+                progress?.Report($"   • Портов в финальном кэше: {portToPidCache.Count}");
+                if (portToPidCache.Count > 0)
+                {
+                    var ports = string.Join(", ", portToPidCache.Keys.Take(10));
+                    progress?.Report($"   • Порты процесса: {ports}{(portToPidCache.Count > 10 ? "..." : "")}");
+                }
+                progress?.Report("");
+                progress?.Report("Возможные причины:");
+                progress?.Report("   1. Процесс не устанавливал новые соединения за 30 сек");
+                progress?.Report("   2. Соединения установлены ДО захвата (WinDivert запустился поздно)");
+                progress?.Report("   3. Процесс использует существующие keep-alive соединения");
+                progress?.Report("   4. Файрволл блокирует процесс");
             }
         }
 
@@ -273,7 +287,8 @@ namespace IspAudit.Utils
             ConcurrentDictionary<ushort, int> portToPidCache,
             ConcurrentDictionary<string, NetworkConnection> connections,
             ConcurrentDictionary<string, string> dnsCache,
-            ref int matchedPackets)
+            ref int matchedPackets,
+            IProgress<string>? progress)
         {
             if (addr.IsIPv6 || length < 20)
                 return; // IPv4 only, минимум IP header
@@ -335,6 +350,12 @@ namespace IspAudit.Utils
                 return; // Не наш процесс
 
             matchedPackets++;
+            
+            // Логируем первые 5 совпадений для диагностики
+            if (matchedPackets <= 5)
+            {
+                progress?.Report($"✓ Пакет #{matchedPackets}: {transportProto} localPort={localPort} → {remoteIp}:{remotePort}");
+            }
 
             // Добавляем соединение
             var key = $"{remoteIp}:{remotePort}:{transportProto}";
