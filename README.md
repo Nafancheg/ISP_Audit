@@ -1,8 +1,51 @@
 # ISP_Audit (русская версия)
 
-Автономный однофайловый инструмент для Windows (single‑file, self‑contained .NET), который выполняет быстрые сетевые проверки для диагностики поведения провайдера: DNS‑подмена/фильтрация, доступность TCP портов, доступность UDP/QUIC (через UDP‑DNS), HTTPS/TLS/SNI, трассировка (обёртка над `tracert`) и эвристика RST‑инжекции. Результаты выводятся в человекочитаемом виде и сохраняются в структурированный JSON‑отчёт.
+Автономный однофайловый инструмент для Windows (single‑file, self‑contained .NET 9), который выполняет быстрые сетевые проверки для диагностики поведения провайдера и локальной сети. Поддерживает два режима работы:
 
-По умолчанию запускается GUI. CLI доступен при запуске с аргументами.
+1. **Профильная диагностика** — автоматические тесты для известных приложений (Star Citizen, Default)
+2. **Exe-сценарий** — анализ трафика произвольного приложения через WinDivert, выявление проблем и автоматическое применение обхода
+
+По умолчанию запускается WPF GUI. CLI доступен при запуске с аргументами.
+
+## Возможности
+
+### Профильная диагностика
+- DNS‑подмена/фильтрация (System DNS vs DoH Cloudflare)
+- Доступность TCP портов с повторными попытками
+- Доступность UDP/QUIC (через UDP‑DNS на 1.1.1.1:53)
+- HTTPS/TLS/SNI проверка с X.509 CN extraction
+- Трассировка (обёртка над `tracert` с OEM866 кодировкой для русского вывода)
+- Эвристика RST‑инжекции (timing-based, без pcap)
+
+### Exe-сценарий (WinDivert-based)
+**Stage 1: Анализ трафика**
+- Захват TCP/UDP пакетов через WinDivert NETWORK layer
+- Port caching (GetExtendedTcpTable/UDP каждые 2 секунды)
+- DNS packet parsing (port 53 responses) для hostname resolution
+- TLS SNI extraction (port 443 ClientHello)
+- Гибридное определение hostname: DNS cache → SNI → Reverse DNS
+- Генерация профиля с захваченными целями
+
+**Stage 2: Классификация проблем**
+- ProblemClassifier: DNS filtering, DPI, firewall detection
+- BypassStrategyPlanner: автоматическая генерация bypass стратегий
+- Анализ Windows Firewall (заблокированные порты, Defender)
+- ISP анализ (CGNAT, DPI, известные блокирующие провайдеры)
+- Router проблемы (UPnP, SIP ALG, стабильность ping)
+- Software конфликты (антивирусы, VPN, proxy, hosts file)
+
+**Stage 3: Применение обхода**
+- DNS Fix Applicator с DoH provider testing (Cloudflare/Google/Quad9/AdGuard)
+- netsh integration для DNS changes (требует UAC)
+- WinDivert bypass activation (TCP RST drop, TLS fragmentation)
+- Реверт изменений одной кнопкой
+
+### Результаты и отчётность
+- Человекочитаемый вывод с цветовой индикацией
+- Структурированный JSON‑отчёт (`isp_report.json`)
+- HTML/PDF экспорт для поддержки
+- Умный вердикт playable (YES/NO/MAYBE) для Star Citizen
+- Информационные карточки с конкретными рекомендациями
 
 ## Сборка
 
@@ -15,18 +58,57 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
 
 ## Использование (GUI)
 
-- Запустите `ISP_Audit.exe` без аргументов — откроется окно.
-- Верхняя панель (авто‑размер, не обрезает текст, DPI‑дружелюбно):
-- Кнопки: `Запустить`, `Отмена`, `Сохранить JSON`, `Экспорт HTML/PDF`, `Показать отчёт` (немодально, основная форма не блокируется), а также `Сохранить профиль` / `Загрузить профиль` для обмена настройками.
-  - Чекбоксы включения тестов: `DNS`, `TCP`, `HTTP`, `Traceroute`, `UDP`, `RST`.
-- Поля `Порты` (список/диапазоны TCP для проверки) и `Таймаут, с` — глобальный таймаут для сетевых операций (по умолчанию HTTP=12с, TCP/UDP=3с).
-- Справа сверху — таблица шагов с живыми статусами: ожидание → выполняется… → пройден (зелёный)/не пройден (красный). Отдельная строка состояния и прогресс‑бар.
-- Справа снизу — подробный лог (моноширинный шрифт Consolas). Для `Traceroute` хопы выводятся потоково в реальном времени; кодировка фикcирована (OEM866) — без «кракозябр».
-- Слева — список целей (имя/домен/сервис), редактируемый: Add/Update, Remove.
-- Блок «Обход блокировок» отображает подсказку о необходимости прав администратора, текущий статус драйвера WinDivert и кнопку включения обхода. Кнопка становится активной только после обнаружения проблем в диагностике, чтобы избежать лишних манипуляций без показаний.
-- Кнопка `Сохранить JSON` не блокирует форму: файл сохраняется в выбранный путь; ошибки отображаются диалогом. Рядом расположена кнопка `Экспорт HTML/PDF`, которая собирает наглядный отчёт с версткой для вложения в тикет или письма.
-- В блоке итогов доступны кнопки `Скопировать итог` (компактный текст со статусами и рекомендациями) и `Скопировать отчёт`.
-- Профили диагностики (`*.iaprofile`) позволяют сохранить текущие цели, набор портов и включённые тесты и отправить файл другому пользователю для воспроизведения проверки.
+### Профильная диагностика
+
+- Запустите `ISP_Audit.exe` без аргументов — откроется окно
+- Выберите сценарий: **Профиль** (Star Citizen/Default) или **Хост** (один домен)
+- Верхняя панель:
+  - Кнопка `Начать проверку` — запуск тестов
+  - Выбор профиля: Star Citizen (launcher, game servers, Vivox) или Default
+  - Поле ввода хоста для режима "Хост"
+- Центральная область:
+  - Карточки результатов с цветовой индикацией (зелёный/красный/жёлтый)
+  - Прогресс-бар с текущим статусом
+  - Подробности по каждому тесту (DNS, TCP, HTTP, ISP, Router, Firewall)
+- Информационные карточки (показываются только при проблемах):
+  - **FirewallCard**: блокирующие правила Windows → как исправить
+  - **IspCard**: CGNAT, DPI, DNS фильтрация → советы по VPN
+  - **RouterCard**: UPnP, SIP ALG, нестабильность → инструкции настройки роутера
+  - **SoftwareCard**: конфликтующие антивирусы/VPN/прокси → решения
+- Кнопки действий:
+  - `Сохранить JSON` — экспорт отчёта
+  - `Экспорт HTML/PDF` — наглядный отчёт для поддержки
+  - `Скопировать итог` — компактный текст со статусами
+  - `Применить исправления` — автоматический DNS fix (появляется при проблемах)
+  - `Откатить исправления` — реверт изменений
+
+### Exe-сценарий (требует запуска от администратора)
+
+1. **Выберите "Exe-сценарий"** в главном окне
+2. **Обзор** → выберите .exe файл приложения
+3. **Stage 1: Анализ трафика**
+   - Нажмите "Запустить анализ"
+   - Приложение запустится автоматически
+   - WinDivert захватывает трафик 30 секунд
+   - Прогресс: кэш портов, DNS/SNI парсинг, hostname resolution
+   - Результат: профиль с захваченными целями
+   - Кнопка "Просмотр результатов" → таблица целей (хост, сервис, критичность)
+4. **Stage 2: Диагностика**
+   - MessageBox предложит перейти к Stage 2
+   - Запускаются полные тесты по захваченным целям
+   - Классификация проблем: DNS/Firewall/ISP/Router/Software
+   - Результат: список проблем и bypass стратегия
+5. **Stage 3: Применение обхода**
+   - MessageBox предложит перейти к Stage 3
+   - DNS Fix: тест DoH провайдеров → выбор лучшего → netsh apply
+   - WinDivert Bypass: активация фильтрации RST, TLS fragmentation
+   - Результат: приложение запускается с обходом блокировок
+
+**Калибровочное приложение TestNetworkApp.exe**:
+- Тестовый инструмент для проверки захвата трафика
+- 7 HTTPS целей: Google, YouTube, Discord, GitHub, Cloudflare, IP API, 1.1.1.1
+- 60-секундный цикл HTTP запросов с цветным выводом консоли
+- Расположение: `TestNetworkApp\bin\Publish\TestNetworkApp.exe`
 
 ## Использование (CLI)
 
@@ -54,6 +136,153 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
 Предустановки (домены, TCP и UDP проверки) описаны в файле `star_citizen_targets.json`, который копируется рядом с исполняемым файлом; при необходимости обновите его вручную.
 
 Примечание: при запуске с аргументами всегда используется CLI; без аргументов — открывается GUI.
+
+## Архитектура Exe-сценария
+
+### Компоненты
+
+**TrafficAnalyzer.cs** (WinDivert NETWORK layer):
+- Захват outbound TCP/UDP пакетов через WinDivert 2.2.0
+- Port → PID mapping через GetExtendedTcpTable/GetExtendedUdpTable (кэш обновляется каждые 2с)
+- DNS response parsing (UDP port 53) → IP→hostname маппинг
+- TLS SNI extraction (TCP port 443 ClientHello) → hostname из HTTPS
+- Reverse DNS fallback для IP без DNS/SNI данных
+- Генерация GameProfile с TargetDefinition списком
+
+**ProblemClassifier.cs**:
+- Анализ TestResult[] → BlockageType классификация
+- DNS_FILTERED, DNS_BOGUS, DPI, FIREWALL, ISP_BLOCK детекция
+- Критичность проблем (Critical/Medium/Low)
+
+**BypassStrategyPlanner.cs**:
+- Генерация BypassProfile на основе классифицированных проблем
+- DNS change recommendation (DoH providers)
+- WinDivert rules (RST drop, TLS fragmentation, redirect rules)
+
+**DnsFixApplicator.cs**:
+- Тестирование DoH провайдеров: Cloudflare (1.1.1.1), Google (8.8.8.8), Quad9 (9.9.9.9), AdGuard (94.140.14.14)
+- Применение DNS через netsh (требует UAC elevation)
+- Сохранение текущих настроек для реверта
+- Автоматический rollback через FixHistory.json
+
+**WinDivertBypassManager.cs**:
+- Активация/деактивация WinDivert фильтрации
+- TCP RST dropping (входящие/исходящие)
+- TLS ClientHello fragmentation (на байтах 2-3 после TLS record header)
+- Redirect rules из bypass_profile.json
+- Безопасное отключение при закрытии приложения
+
+### UI Components (WPF + MaterialDesignInXaml 5.1.0)
+
+**MainWindow.xaml**:
+- Сценарий выбор: RadioButton (Профиль/Хост/Exe-сценарий)
+- Exe-scenario секция: ExePath TextBox + Browse Button + 3 Stage GroupBoxes
+- Material Design Cards для проблем (Visibility.Collapsed по умолчанию)
+
+**MainViewModel.cs** (MVVM):
+- Observable properties: ExePath, Stage1/2/3Status, Stage1/2/3Complete
+- Commands: BrowseExeCommand, AnalyzeTrafficCommand, DiagnoseCommand, ApplyBypassCommand, ViewStage1ResultsCommand
+- Progress<TestProgress> для UI updates
+- CancellationToken support
+
+**CapturedTargetsWindow.xaml**:
+- DataGrid с колонками: Host, Service, Critical
+- Статистика: Total targets, Critical count, Test mode
+- Save to JSON button
+- Без MaterialDesign зависимостей (базовые WPF стили)
+
+**Controls/**:
+- ProgressStepper.xaml: пошаговый прогресс с номерами
+- StatusDot.xaml: цветная индикация статуса (зелёный/красный/жёлтый)
+- TestCard.xaml: карточка результата теста с Fix button
+
+### Файлы конфигурации
+
+**star_citizen_targets.json**:
+```json
+{
+  "default_targets": [
+    {"name": "RSI Portal", "host": "robertsspaceindustries.com", "service": "portal", "ports": [80, 443]},
+    {"name": "Game Launcher", "host": "launcher.robertsspaceindustries.com", "service": "launcher", "ports": [80, 443]}
+  ],
+  "udp_probes": [
+    {"name": "Vivox Voice", "host": "vdx5.vivox.com", "port": 443, "kind": "Raw", "expect_reply": false}
+  ]
+}
+```
+
+**Profiles/StarCitizen.json**:
+```json
+{
+  "name": "Star Citizen",
+  "testMode": "host",
+  "targets": [
+    {"name": "Portal", "host": "robertsspaceindustries.com", "critical": true, "service": "portal"},
+    {"name": "Launcher", "host": "launcher.robertsspaceindustries.com", "critical": true, "service": "launcher"}
+  ]
+}
+```
+
+**bypass_profile.json**:
+```json
+{
+  "dns_providers": [
+    {"name": "Cloudflare", "ip": "1.1.1.1", "priority": 1},
+    {"name": "Google", "ip": "8.8.8.8", "priority": 2}
+  ],
+  "windivert_rules": {
+    "drop_rst": true,
+    "fragment_tls": true,
+    "fragment_position": 2
+  },
+  "redirect_rules": []
+}
+```
+
+### Workflow
+
+1. **GUI Initialization**:
+   - MainWindow загружает AvailableProfiles
+   - Binding к MainViewModel properties
+   - Commands инициализируются в конструкторе
+
+2. **Stage 1 Execution**:
+   - User: Browse exe → ExePath property update
+   - User: Click "Запустить анализ" → RunStage1AnalyzeTrafficAsync()
+   - Check: IsAdministrator() → MessageBox if not admin
+   - Process.Start(ExePath) → get PID
+   - Task.Delay(8000) → wait for connection establishment
+   - TrafficAnalyzer.AnalyzeProcessTrafficAsync(pid, 30s)
+     - WinDivert.Open(NETWORK layer, Sniff)
+     - UpdatePortToPidCache() every 2s
+     - ProcessPacket() → DNS/SNI parsing → connections dictionary
+     - EnrichWithHostnamesAsync() → DNS cache → SNI → Reverse DNS
+     - BuildGameProfile() → group by hostname
+   - Save profile to `Profiles/{exeName}_captured.json`
+   - MessageBox: "Перейти к Stage 2?" → Yes → RunStage2DiagnoseAsync()
+
+3. **Stage 2 Execution**:
+   - Check: _capturedProfile != null → MessageBox if null
+   - Create Config from _capturedProfile.Targets
+   - Initialize TestResults from targets
+   - AuditRunner.RunAsync(config, progress, cancellationToken)
+   - ProblemClassifier.ClassifyProblems(testResults) → _detectedProblems
+   - BypassStrategyPlanner.PlanBypassStrategy(problems, profile) → _plannedBypass
+   - MessageBox: "Перейти к Stage 3?" → Yes → RunStage3ApplyBypassAsync()
+
+4. **Stage 3 Execution**:
+   - Check: _detectedProblems != null && _plannedBypass != null
+   - If RequiresDnsChange(): DnsFixApplicator.ApplyDnsFixAsync()
+     - Test DoH providers (1.1.1.1, 8.8.8.8, 9.9.9.9, 94.140.14.14)
+     - Select fastest working provider
+     - netsh interface ip set dns (requires UAC)
+     - Save original DNS to FixHistory.json
+   - If RequiresWinDivert(): WinDivertBypassManager.Enable()
+     - Load bypass_profile.json
+     - WinDivert.Open(NETWORK layer, no Sniff)
+     - Apply rules: drop RST, fragment TLS, redirects
+   - Process.Start(ExePath) with bypass active
+   - User can disable bypass via GUI button
 
 ## Новые диагностические возможности
 
@@ -267,6 +496,58 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
 
 ## Ограничения и безопасность
 
+- WinDivert требует прав администратора (kernel driver)
+- NETWORK layer используется вместо SOCKET (SOCKET + Sniff = ERROR_INVALID_PARAMETER 87)
+- Port caching уменьшает overhead GetExtendedTcpTable (вызов каждые 2с вместо per-packet)
+- DNS парсинг работает только для uncached queries (если DNS закэширован системой → не видим)
+- SNI extraction работает только для TLS 1.0-1.3 ClientHello (не для encrypted SNI/ECH)
+- Reverse DNS может возвращать технические CDN имена вместо оригинальных доменов
+- Системный `tracert` используется для трассировки (OEM866 кодировка для русских хопов)
+- По умолчанию ничего никуда не отправляется; отчёт хранится локально
+- WinDivert bypass безопасно отключается при закрытии программы
+- FixHistory.json хранит оригинальные DNS settings для rollback
+
+## Системные требования
+
+- **OS**: Windows 10/11 (x64)
+- **.NET**: .NET 9 Runtime (включён в single-file exe)
+- **Права**: Администратор требуется только для Exe-сценария и WinDivert bypass
+- **Зависимости**:
+  - WinDivert 2.2.0 (WinDivert.dll + WinDivert64.sys) — копируются в native/ и bin/Debug/
+  - MaterialDesignInXaml 5.1.0 (NuGet package)
+  - MaterialDesignColors 3.1.0 (NuGet package)
+  - System.Text.Json (встроено в .NET 9)
+
+## Известные проблемы
+
+1. **ERROR_INVALID_PARAMETER (87)** при запуске WinDivert
+   - Причина: SOCKET layer + Sniff flag несовместимы
+   - Решение: используется NETWORK layer ✅
+
+2. **"захвачено событий - 0"**
+   - Причина: GetExtendedTcpTable вызов per-packet слишком медленный
+   - Решение: port caching mechanism ✅
+
+3. **"обнаружено целей 0"** несмотря на трафик
+   - Причина: соединения установлены ДО запуска WinDivert (timing race)
+   - Решение: Task.Delay(8000) перед началом захвата ✅
+   - Альтернатива: увеличить delay до 15 секунд если приложение медленное
+
+4. **DNS cache пустой (0 from DNS cache)**
+   - Причина: DNS запросы закэшированы системой или уходят ДО WinDivert start
+   - Workaround: очистить DNS cache (`ipconfig /flushdns`) перед Stage 1
+   - Fallback: reverse DNS всё равно работает
+
+5. **StaticResource MaterialDesignShadowDepth1 ошибка**
+   - Причина: CapturedTargetsWindow использовала MaterialDesign ресурсы
+   - Решение: заменено на прямой DropShadowEffect ✅
+
+6. **Process блокирует сборку**
+   - Причина: ISP_Audit.exe запущен и блокирует перезапись
+   - Решение: `Stop-Process -Name "ISP_Audit" -Force` перед `dotnet build`
+
+## Ограничения и безопасность
+
 - Во время запуска не используются внешние бинарники, кроме системного `tracert` (если недоступен — шаг пропускается).
 - Raw‑сокеты, pcap и пр. не используются в основном билде (не требуются права администратора).
 - По умолчанию ничего никуда не отправляется; отчёт хранится локально. Внешняя загрузка отчётов — только по явному флагу (не реализовано) и с токеном.
@@ -274,16 +555,108 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
 
 ## Обход блокировок (WinDivert)
 
-- Возможности: отбрасывание входящих/исходящих TCP RST, фрагментация TLS ClientHello, выборочная переадресация трафика Star Citizen (правила задаются в `bypass_profile.json`).
-- Конфигурация `bypass_profile.json` копируется рядом с исполняемым файлом; правила можно включать/выключать и указывать альтернативные IP/порты.
-- Для запуска требуется WinDivert.dll (одной версии с драйвером) и права администратора. При отсутствии условий драйвер не активируется, а статус в интерфейсе подсвечивается предупреждением.
-- При обнаружении проблем в диагностике блок «Обход блокировок» позволяет включить WinDivert одним кликом, а повторное нажатие выключает фильтрацию.
+### Возможности
+- **TCP RST dropping**: отбрасывание входящих/исходящих RST пакетов
+- **TLS ClientHello fragmentation**: разбиение TLS handshake на фрагменты (обход DPI)
+- **Selective redirect**: переадресация трафика на альтернативные IP/порты
+- **Process-specific filtering**: применение правил только к целевому процессу
+
+### Конфигурация (bypass_profile.json)
+```json
+{
+  "dns_providers": [
+    {"name": "Cloudflare", "ip": "1.1.1.1", "priority": 1},
+    {"name": "Google", "ip": "8.8.8.8", "priority": 2},
+    {"name": "Quad9", "ip": "9.9.9.9", "priority": 3},
+    {"name": "AdGuard", "ip": "94.140.14.14", "priority": 4}
+  ],
+  "windivert_rules": {
+    "drop_rst_incoming": true,
+    "drop_rst_outgoing": true,
+    "fragment_tls": true,
+    "fragment_position": 2,
+    "fragment_delay_ms": 0
+  },
+  "redirect_rules": [
+    {
+      "original_ip": "blocked.example.com",
+      "original_port": 443,
+      "redirect_ip": "mirror.example.com",
+      "redirect_port": 443,
+      "enabled": false
+    }
+  ]
+}
+```
+
+### Требования
+- Права администратора (kernel driver WinDivert64.sys)
+- WinDivert.dll (47KB) и WinDivert64.sys (90KB) в native/ или bin/Debug/
+- WinDivert 2.2.0+ (более ранние версии несовместимы)
+
+### Активация
+1. **Автоматически** при Stage 3 (если обнаружены проблемы DPI/RST)
+2. **Вручную** через GUI кнопку "Включить обход" (появляется после диагностики)
+3. **CLI** через флаг `--enable-bypass` (планируется)
+
+### Безопасность
+- Bypass применяется ТОЛЬКО к целевому процессу (process PID filtering)
+- Автоматическое отключение при закрытии ISP_Audit
+- Не влияет на другие приложения/системный трафик
+- Driver unload при выходе (WinDivertClose)
+
+### Диагностика
+- Статус в GUI: "WinDivert не активен" / "WinDivert активен (PID: 12345)"
+- Лог активации: `[Bypass] WinDivert handle opened`, `[Bypass] Rules applied: RST drop, TLS fragment`
+- Ошибки: `[Bypass] ERROR_ACCESS_DENIED (5)` → запустите от администратора
 
 ## Частые вопросы
 
-- Кнопки «узкие»/обрезается текст?
-  - Верхняя панель авто‑размерная, элементы растягиваются под текст и DPI. Если всё же узко — укажите ваш масштаб/DPI и скриншот, подстроим отступы.
-- «Показать отчёт» зависает?
-  - Окно отчёта немодальное (`Show`), основная форма остаётся активной. Если видите зависание — укажите шаги воспроизведения.
-- Трассировка «висит»?
-  - Во время traceroute в лог идут строки хопов; в строке состояния видно текущий шаг. Можно прервать `Отмена`.
+**Q: Нужны ли права администратора?**  
+A: Только для Exe-сценария (WinDivert kernel driver). Профильная диагностика работает без админ прав.
+
+**Q: Почему Stage 1 захватывает 0 целей?**  
+A: 
+1. Приложение установило соединения ДО запуска WinDivert → увеличьте delay с 8 до 15 секунд
+2. Приложение не делает сетевых запросов → используйте TestNetworkApp.exe для калибровки
+3. GetExtendedTcpTable возвращает пустой список → проверьте что процесс запущен и активен
+
+**Q: DNS cache всегда пустой (0 from DNS cache)**  
+A: Системный DNS кэш может содержать записи → выполните `ipconfig /flushdns` перед Stage 1. Reverse DNS всё равно работает как fallback.
+
+**Q: Hostname показывает технические CDN имена вместо оригинальных доменов**  
+A: Это нормально для ISP диагностики. Технические имена (`prg03s12-in-f14.1e100.net`) показывают:
+- Реальную инфраструктуру (Google CDN Prague)
+- Конкретные серверы для диагностики блокировок
+- Георасположение endpoints
+
+**Q: ERROR_INVALID_PARAMETER (87) при запуске WinDivert**  
+A: Старая проблема SOCKET layer + Sniff. Решено переходом на NETWORK layer. Если возникает — обновите WinDivert до 2.2.0+.
+
+**Q: Кнопка "Просмотр результатов" выдаёт ошибку**  
+A: Была проблема с MaterialDesign ресурсами в CapturedTargetsWindow. Исправлено заменой на базовые WPF стили. Пересоберите проект.
+
+**Q: Process блокирует сборку (MSB3027)**  
+A: ISP_Audit.exe запущен. Выполните `Stop-Process -Name "ISP_Audit" -Force` перед `dotnet build`.
+
+**Q: Как проверить что WinDivert работает?**  
+A: 
+1. Запустите ISP_Audit от администратора
+2. Выберите Exe-сценарий → TestNetworkApp.exe
+3. Проверьте Output: должны быть сообщения `✓ Кэш обновлен: X TCP + Y UDP = Z портов`
+4. Если кэш пустой → приложение не установило соединения за 8 секунд
+
+**Q: Stage 2 говорит "профиль не найден"**  
+A: 
+1. Проверьте что Stage 1 завершился успешно (MessageBox "Захват завершён")
+2. Проверьте что файл `Profiles/{exeName}_captured.json` существует
+3. Если файл есть но Stage 2 не видит → баг в `_capturedProfile` assignment, сообщите issue
+
+**Q: Как откатить DNS изменения?**  
+A: 
+1. GUI: кнопка "Откатить исправления" (появляется после применения fix)
+2. Вручную: `netsh interface ip set dns "Ethernet" dhcp`
+3. FixHistory.json хранит оригинальные настройки
+
+**Q: Traceroute "висит"?**  
+A: Трассировка может занять 30-60 секунд (timeout per hop). Прогресс отображается в лог. Можно прервать кнопкой "Остановить тест".
