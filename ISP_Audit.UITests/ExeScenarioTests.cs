@@ -70,14 +70,14 @@ public class ExeScenarioTests : IDisposable
             cf.ByAutomationId("Stage1ProgressBar"));
         Assert.NotNull(stage1Progress);
         
-        // Ждать завершения Stage1 (30 секунд + буфер)
+        // Ждать завершения Stage1 (захват трафика ~60 секунд)
         var stage1Complete = await WaitForCondition(() =>
         {
             var progressValue = stage1Progress.AsProgressBar().Value;
             return progressValue >= 99.0;
-        }, TimeSpan.FromSeconds(35));
+        }, TimeSpan.FromSeconds(70));
         
-        Assert.True(stage1Complete, "Stage1 должен завершиться за 35 секунд");
+        Assert.True(stage1Complete, "Stage1 должен завершиться за 70 секунд");
         
         // Проверить что НЕТ MessageBox (автоматический переход)
         // Если MessageBox появился - тест провалится по таймауту
@@ -258,6 +258,10 @@ public class ExeScenarioTests : IDisposable
         }
 
         _app = Application.Launch(appFullPath);
+        
+        // ⏳ 10 секунд для нажатия UAC кнопки (admin права для WinDivert)
+        Thread.Sleep(10000);
+        
         _mainWindow = _app.GetMainWindow(_automation!);
         
         // Подождать пока окно загрузится
