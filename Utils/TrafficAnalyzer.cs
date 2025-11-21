@@ -176,8 +176,17 @@ namespace IspAudit.Utils
                     matchCount++;
 
                     // Извлекаем информацию о соединении
-                    // RemoteAddr1 содержит IPv4 адрес в host byte order
-                    var remoteIp = new IPAddress(addr.Data.Flow.RemoteAddr1);
+                    // RemoteAddr1 в WinDivert хранится в network byte order (big-endian)
+                    // Преобразуем в byte[] для IPAddress (тоже big-endian)
+                    uint remoteAddrRaw = addr.Data.Flow.RemoteAddr1;
+                    var remoteIpBytes = new byte[4]
+                    {
+                        (byte)((remoteAddrRaw >> 24) & 0xFF),
+                        (byte)((remoteAddrRaw >> 16) & 0xFF),
+                        (byte)((remoteAddrRaw >> 8) & 0xFF),
+                        (byte)(remoteAddrRaw & 0xFF)
+                    };
+                    var remoteIp = new IPAddress(remoteIpBytes);
                     var remotePort = addr.Data.Flow.RemotePort;
                     var protocol = addr.Data.Flow.Protocol; // 6=TCP, 17=UDP
 
