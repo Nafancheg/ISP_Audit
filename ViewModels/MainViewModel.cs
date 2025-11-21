@@ -232,6 +232,7 @@ namespace ISPAudit.ViewModels
         private bool _isAnalyzingTraffic;
         private bool _isStoppingCapture;
         private bool _isStage1ContinuousMode;
+        private bool _enableLiveTesting = true; // Live testing enabled by default
         private GameProfile? _capturedProfile;
         private List<BlockageProblem>? _detectedProblems;
         private BypassProfile? _plannedBypass;
@@ -258,6 +259,12 @@ namespace ISPAudit.ViewModels
         {
             get => _stage1HostsFound;
             set { _stage1HostsFound = value; OnPropertyChanged(nameof(Stage1HostsFound)); }
+        }
+
+        public bool EnableLiveTesting
+        {
+            get => _enableLiveTesting;
+            set { _enableLiveTesting = value; OnPropertyChanged(nameof(EnableLiveTesting)); }
         }
 
         public int Stage2ProblemsFound
@@ -1378,7 +1385,8 @@ namespace ISPAudit.ViewModels
                     targetPid,
                     captureDuration,
                     progress,
-                    _stage1Cts.Token
+                    _stage1Cts.Token,
+                    EnableLiveTesting
                 ).ConfigureAwait(false);
 
                 IsAnalyzingTraffic = false;

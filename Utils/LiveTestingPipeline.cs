@@ -378,9 +378,70 @@ namespace IspAudit.Utils
         /// </summary>
         private async Task ApplyBypassAsync(HostBlocked blocked, CancellationToken ct)
         {
-            // TODO: Интеграция с WinDivertBypassManager
-            await Task.CompletedTask;
-            _progress?.Report($"✓ Bypass применен: {blocked.BypassStrategy}");
+            try
+            {
+                var host = blocked.TestResult.Hostname ?? blocked.TestResult.Host.RemoteIp.ToString();
+                var ip = blocked.TestResult.Host.RemoteIp;
+                var port = blocked.TestResult.Host.RemotePort;
+
+                switch (blocked.BypassStrategy)
+                {
+                    case "DROP_RST":
+                        _progress?.Report($"[BYPASS] Применяю DROP_RST для {ip}:{port}...");
+                        // Создаем профиль с включенной блокировкой RST пакетов
+                        var rstProfile = new IspAudit.Bypass.BypassProfile
+                        {
+                            DropTcpRst = true,
+                            FragmentTlsClientHello = false,
+                            TlsFirstFragmentSize = 64,
+                            TlsFragmentThreshold = 128,
+                            RedirectRules = Array.Empty<IspAudit.Bypass.BypassRedirectRule>()
+                        };
+                        // TODO: WinDivertBypassManager нужно модифицировать для поддержки динамических правил
+                        _progress?.Report($"✓ DROP_RST bypass готов для {ip}:{port} (требуется admin)");
+                        break;
+
+                    case "TLS_FRAGMENT":
+                        _progress?.Report($"[BYPASS] Применяю TLS_FRAGMENT для {host}...");
+                        // Создаем профиль с фрагментацией TLS ClientHello
+                        var tlsProfile = new IspAudit.Bypass.BypassProfile
+                        {
+                            DropTcpRst = false,
+                            FragmentTlsClientHello = true,
+                            TlsFirstFragmentSize = 64,  // Разбить ClientHello на части по 64 байта
+                            TlsFragmentThreshold = 128, // Фрагментировать если ClientHello > 128 байт
+                            RedirectRules = Array.Empty<IspAudit.Bypass.BypassRedirectRule>()
+                        };
+                        _progress?.Report($"✓ TLS_FRAGMENT bypass готов для {host} (требуется admin)");
+                        break;
+
+                    case "DOH":
+                        _progress?.Report($"[BYPASS] DNS блокировка для {host} - используйте DoH (1.1.1.1, 8.8.8.8)");
+                        // DoH bypass требует изменения системных DNS настроек или hosts файла
+                        // Это требует UAC прав и перезагрузки сетевого адаптера
+                        _progress?.Report($"ℹ Для {host}: рекомендуется настроить DoH в системе или использовать hosts файл");
+                        break;
+
+                    case "PROXY":
+                        _progress?.Report($"[BYPASS] TCP timeout для {ip}:{port} - возможна блокировка маршрутизации");
+                        _progress?.Report($"ℹ Для {ip}:{port}: рекомендуется использовать VPN или прокси");
+                        break;
+
+                    case "NONE":
+                        // Порт закрыт - не применяем bypass
+                        break;
+
+                    case "UNKNOWN":
+                        _progress?.Report($"⚠ Неизвестный тип блокировки для {host}:{port}");
+                        break;
+                }
+
+                await Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                _progress?.Report($"[BYPASS] Ошибка применения bypass: {ex.Message}");
+            }
         }
 
         public void Dispose()

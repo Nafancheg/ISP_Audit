@@ -457,6 +457,12 @@
                                       Margin="0,0,0,8"
                                       VerticalAlignment="Center"/>
 
+                            <CheckBox Content="Включить живое тестирование (детекция блокировок в реальном времени)"
+                                      IsChecked="{Binding EnableLiveTesting}"
+                                      Margin="0,0,0,8"
+                                      VerticalAlignment="Center"
+                                      ToolTip="При включении каждый обнаруженный хост будет немедленно тестироваться (DNS/TCP/TLS) для выявления блокировок"/>
+
                             <StackPanel Orientation="Horizontal"
                                        Visibility="{Binding Stage1Complete, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <TextBlock Text="{Binding Stage1HostsFound, StringFormat='Обнаружено целей: {0}'}" 
