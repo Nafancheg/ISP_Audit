@@ -46,6 +46,19 @@ namespace IspAudit.Utils
             {
                 var secondsText = captureTimeout.HasValue ? $"на {captureTimeout.Value.TotalSeconds}с" : "(до ручной остановки)";
                 progress?.Report($"Старт Dual Layer захвата трафика PID={targetPid} {secondsText}");
+                
+                // Получаем имя процесса для фильтрации всех связанных процессов (включая дочерние)
+                string? processName = null;
+                try
+                {
+                    using var proc = System.Diagnostics.Process.GetProcessById(targetPid);
+                    processName = proc.ProcessName;
+                    progress?.Report($"Имя процесса: '{processName}' (будут захватываться все процессы с этим именем)");
+                }
+                catch (Exception ex)
+                {
+                    progress?.Report($"Не удалось получить имя процесса для PID {targetPid}: {ex.Message}");
+                }
 
                 // 1. Коллекции данных
                 var flowMap = new ConcurrentDictionary<FlowKey, int>(); // (Port, Proto) -> PID
@@ -132,7 +145,26 @@ namespace IspAudit.Utils
                     progress?.Report("WARNING: packetBuffer пуст — WinDivert не захватил ни одного пакета. Возможные причины: процесс не создал соединения, фильтр слишком строгий, или нет прав админа.");
                 }
 
-                // Фильтруем пакеты, принадлежащие целевому процессу
+                // Получаем список всех PID процессов с таким же именем (включая дочерние)
+                var targetPids = new HashSet<int> { targetPid };
+                if (!string.IsNullOrEmpty(processName))
+                {
+                    try
+                    {
+                        var allProcesses = System.Diagnostics.Process.GetProcessesByName(processName);
+                        foreach (var proc in allProcesses)
+                        {
+                            targetPids.Add(proc.Id);
+                        }
+                        progress?.Report($"Целевых процессов для фильтрации: {targetPids.Count} (PIDs: {string.Join(", ", targetPids.Take(10))})");
+                    }
+                    catch (Exception ex)
+                    {
+                        progress?.Report($"Ошибка получения списка процессов: {ex.Message}");
+                    }
+                }
+                
+                // Фильтруем пакеты, принадлежащие целевым процессам
                 var targetPackets = packetBuffer
                     .Where(p => 
                     {
@@ -140,7 +172,7 @@ namespace IspAudit.Utils
                         byte protoByte = p.Protocol == TransportProtocol.TCP ? (byte)6 : (byte)17;
                         
                         // Для outbound пакетов LocalPort (Source) должен совпадать с портом процесса
-                        bool matchLocal = flowMap.TryGetValue(new FlowKey(p.LocalPort, protoByte), out int pid) && pid == targetPid;
+                        bool matchLocal = flowMap.TryGetValue(new FlowKey(p.LocalPort, protoByte), out int pid) && targetPids.Contains(pid);
                         
                         return matchLocal;
                     })
@@ -158,7 +190,7 @@ namespace IspAudit.Utils
                     }
                 }
 
-                progress?.Report($"Найдено {targetPackets.Count} пакетов от PID={targetPid}");
+                progress?.Report($"Найдено {targetPackets.Count} пакетов от процесса '{processName}' ({targetPids.Count} PID)");
 
                 // 5. Сборка соединений
                 var connections = new ConcurrentDictionary<string, NetworkConnection>();
@@ -211,8 +243,26 @@ namespace IspAudit.Utils
             {
                 // Use Sniff | RecvOnly as per flowtrack.c example
                 progress?.Report($"[FLOW] Открытие WinDivert Flow layer...");
-                handle = WinDivertNative.Open(filter, WinDivertNative.Layer.Flow, 0, WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.RecvOnly);
-                progress?.Report($"[FLOW] ✓ WinDivert Flow layer открыт успешно");
+                try
+                {
+                    handle = WinDivertNative.Open(filter, WinDivertNative.Layer.Flow, 0, WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.RecvOnly);
+                    progress?.Report("[FLOW] ✓ WinDivert Flow layer открыт успешно");
+                }
+                catch (System.ComponentModel.Win32Exception wx)
+                {
+                    // Специальный случай: 1058 = ERROR_SERVICE_DISABLED (драйвер отключён/заблокирован)
+                    if (wx.NativeErrorCode == 1058)
+                    {
+                        progress?.Report("[FLOW] Ошибка WinDivertOpen: служба драйвера отключена или заблокирована (код 1058). Запустите ISP_Audit от имени администратора и проверьте антивирус.");
+                    }
+                    else
+                    {
+                        progress?.Report($"[FLOW] Ошибка WinDivertOpen: {wx.NativeErrorCode} - {wx.Message}");
+                    }
+
+                    progress?.Report("[FLOW] Flow монитор будет отключён, продолжаем только с Network layer.");
+                    return;
+                }
                 
                 // Flow layer does not use packet buffer, pass NULL/0
                 var addr = new WinDivertNative.Address();
