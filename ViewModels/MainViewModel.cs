@@ -18,7 +18,36 @@ namespace ISPAudit.ViewModels
 {
     public class MainViewModel : INotifyPropertyChanged
     {
-        private static readonly string LogFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "isp_audit_vm_log.txt");
+        private static readonly string LogsDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
+        private static readonly string LogFilePath = InitializeLogFilePath();
+
+        private static string InitializeLogFilePath()
+        {
+            try
+            {
+                Directory.CreateDirectory(LogsDirectory);
+
+                // Удаляем старые логи, если их больше 10
+                var existingLogs = Directory.GetFiles(LogsDirectory, "isp_audit_vm_*.log")
+                    .OrderBy(File.GetCreationTimeUtc)
+                    .ToList();
+
+                while (existingLogs.Count > 9)
+                {
+                    var toDelete = existingLogs[0];
+                    existingLogs.RemoveAt(0);
+                    try { File.Delete(toDelete); } catch { }
+                }
+
+                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                return Path.Combine(LogsDirectory, $"isp_audit_vm_{timestamp}.log");
+            }
+            catch
+            {
+                // Фолбэк: пишем рядом с exe без ротации, если что-то пошло не так
+                return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "isp_audit_vm_fallback.log");
+            }
+        }
         
         private static void Log(string message)
         {
@@ -254,6 +283,14 @@ namespace ISPAudit.ViewModels
             set { _stage3Progress = value; OnPropertyChanged(nameof(Stage3Progress)); }
         }
 
+        // Признак, что целевое приложение уже запущено (используется только в RunStage1)
+        private bool IsExeProcessRunning =>
+            !string.IsNullOrWhiteSpace(ExePath)
+            && File.Exists(ExePath)
+            && System.Diagnostics.Process
+                   .GetProcessesByName(Path.GetFileNameWithoutExtension(ExePath))
+                   .Length > 0;
+
         public bool Stage1Complete
         {
             get => _stage1Complete;
@@ -302,6 +339,7 @@ namespace ISPAudit.ViewModels
         public ICommand BrowseExeCommand { get; }
         public ICommand ResetExeScenarioCommand { get; }
         public ICommand CancelStage1Command { get; }
+        private CancellationTokenSource? _stage1Cts;
 
         public MainViewModel()
         {
@@ -368,13 +406,15 @@ namespace ISPAudit.ViewModels
 
             // Exe Scenario Commands
             BrowseExeCommand = new RelayCommand(_ => BrowseExe(), _ => !IsRunning);
-            AnalyzeTrafficCommand = new RelayCommand(async _ => await RunStage1AnalyzeTrafficAsync(), _ => !string.IsNullOrEmpty(ExePath) && !IsRunning && !Stage1Complete);
+            // Повторный запуск Stage 1 должен быть возможен после закрытия приложения,
+            // поэтому не блокируем по Stage1Complete, а только по IsRunning/ExePath.
+            AnalyzeTrafficCommand = new RelayCommand(async _ => await RunStage1AnalyzeTrafficAsync(), _ => !string.IsNullOrEmpty(ExePath) && !IsRunning);
             ViewStage1ResultsCommand = new RelayCommand(_ => ViewStage1Results(), _ => _capturedProfile != null);
             DiagnoseCommand = new RelayCommand(async _ => await RunStage2DiagnoseAsync(), _ => CanRunStage2 && !IsRunning);
             ApplyBypassCommand = new RelayCommand(async _ => await RunStage3ApplyBypassAsync(), _ => CanRunStage3 && !IsRunning);
             ResetExeScenarioCommand = new RelayCommand(_ => ResetExeScenario(), 
                 _ => (Stage1Complete || Stage2Complete || Stage3Complete) && !IsRunning);
-            CancelStage1Command = new RelayCommand(_ => _cts?.Cancel(), _ => IsAnalyzingTraffic);
+            CancelStage1Command = new RelayCommand(_ => _stage1Cts?.Cancel(), _ => IsAnalyzingTraffic);
             
             // Load Fix History on startup
             LoadFixHistory();
@@ -1113,8 +1153,11 @@ namespace ISPAudit.ViewModels
             {
                 ExePath = openFileDialog.FileName;
                 Log($"[BrowseExe] Selected: {ExePath}");
+                Stage1Status = "Готов к анализу. Вы можете запустить захват.";
             }
         }
+        
+        // Монитор Exe-сценария больше не нужен: IsExeProcessRunning вычисляется на лету
 
         /// <summary>
         /// Показать окно с результатами Stage 1 (захваченные цели)
@@ -1185,18 +1228,17 @@ namespace ISPAudit.ViewModels
         private async Task RunStage1AnalyzeTrafficAsync()
         {
             // Защита от race condition
-            if (_isExeScenarioRunning) return;
+            if (_isExeScenarioRunning)
+            {
+                Log("[Stage1] Already running, ignoring duplicate call");
+                return;
+            }
             
             try
             {
                 Log("[Stage1] Starting traffic analysis...");
-                IsAnalyzingTraffic = true;
-                Stage1Status = "Проверка прав администратора...";
-                Stage1Complete = false;
-                Stage1HostsFound = 0;
-                Stage1Progress = 0;
-
-                // WinDivert SOCKET layer требует прав администратора
+                
+                // Проверки БЕЗ изменения флагов до момента реального старта
                 if (!OperatingSystem.IsWindows() || !IsAdministrator())
                 {
                     Stage1Status = "Ошибка: требуются права администратора";
@@ -1211,147 +1253,160 @@ namespace ISPAudit.ViewModels
                     );
                     return;
                 }
-                
-                // Устанавливаем флаг блокировки ПОСЛЕ проверки admin прав
+
+                if (string.IsNullOrEmpty(ExePath) || !File.Exists(ExePath))
+                {
+                    Stage1Status = "Ошибка: файл exe не найден";
+                    Log("[Stage1] FAILED: exe file not found");
+                    return;
+                }
+
+                var exeName = Path.GetFileNameWithoutExtension(ExePath);
+                var alreadyRunning = System.Diagnostics.Process.GetProcessesByName(exeName);
+
+                if (alreadyRunning.Length > 0)
+                {
+                    // Приложение уже запущено → захват начинать нельзя
+                    var p = alreadyRunning[0];
+                    Stage1Status =
+                        $"Приложение уже запущено (PID={p.Id}).\n" +
+                        "Закройте игру/лаунчер и нажмите кнопку повторно.";
+                    Log($"[Stage1] Отмена: целевое приложение уже запущено (PID={p.Id})");
+                    return;
+                }
+
+                // ВСЕ проверки прошли → ТЕПЕРЬ начинаем реальный захват
                 _isExeScenarioRunning = true;
+                IsAnalyzingTraffic = true;
+                Stage1Complete = false;
+                Stage1HostsFound = 0;
+                Stage1Progress = 0;
+                Stage1Status = "Проверка прав администратора...";
+                
                 OnPropertyChanged(nameof(IsRunning));
                 CommandManager.InvalidateRequerySuggested();
 
-                Stage1Status = "Запуск процесса...";
+                _stage1Cts?.Dispose();
+                _stage1Cts = new CancellationTokenSource();
 
-                // Запускаем процесс (если exe путь указан)
-                System.Diagnostics.Process? process = null;
-                
-                if (!string.IsNullOrEmpty(ExePath) && File.Exists(ExePath))
+                Stage1Status = "Запуск захвата трафика и приложения...";
+                Log("[Stage1] Opening WinDivert and starting target process...");
+
+                using var process = new System.Diagnostics.Process
                 {
-                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
                     {
                         FileName = ExePath,
-                        UseShellExecute = true,
-                        WorkingDirectory = Path.GetDirectoryName(ExePath)
-                    };
+                        UseShellExecute = true
+                    },
+                    EnableRaisingEvents = false
+                };
 
-                    process = System.Diagnostics.Process.Start(startInfo);
-                    if (process == null)
-                    {
-                        Stage1Status = "Ошибка: не удалось запустить процесс";
-                        Log("[Stage1] Process.Start() returned null");
-                        return;
-                    }
+                if (!process.Start())
+                {
+                    Stage1Status = "Ошибка: не удалось запустить приложение";
+                    Log("[Stage1] FAILED: Process.Start() returned false");
+                    return;
+                }
 
-                    var pid = process.Id;
-                    Log($"[Stage1] Process started: EXE={Path.GetFileName(ExePath)}, PID={pid}");
+                var targetPid = process.Id;
+                Log($"[Stage1] Target process started: EXE={exeName}, PID={targetPid}");
 
-                    // Сразу запускаем захват, чтобы не пропустить handshake
-                    Stage1Status = $"Процесс запущен (PID={pid}), старт захвата...";
-                    Log($"[Stage1] Starting capture immediately...");
+                // Анализируем трафик: либо фиксированное окно, либо до ручной остановки
+                var progress = new Progress<string>(msg =>
+                {
+                    Stage1Status = msg;
+                    Log($"[Stage1] {msg}");
+                });
+
+                var captureDuration = IsStage1ContinuousMode
+                    ? (TimeSpan?)null
+                    : TimeSpan.FromSeconds(30);
+
+                _capturedProfile = await TrafficAnalyzer.AnalyzeProcessTrafficAsync(
+                    targetPid,
+                    captureDuration,
+                    progress,
+                    _stage1Cts.Token
+                ).ConfigureAwait(false);
+
+                IsAnalyzingTraffic = false;
+                Stage1HostsFound = _capturedProfile?.Targets?.Count ?? 0;
+                Stage1Complete = true;
+                Stage1Progress = 100;
+
+                // После завершения Stage1 пересчитываем CanExecute у команд, чтобы
+                // кнопка шага 2 (DiagnoseCommand) сразу разблокировалась без клика мышкой.
+                CommandManager.InvalidateRequerySuggested();
+
+                if (Stage1HostsFound == 0)
+                {
+                    Stage1Status = "Захват завершен: соединения не обнаружены";
+                    Log("[Stage1] WARNING: No network connections captured. Process may not have established connections or already exited.");
                     
-                    // Анализируем трафик: либо фиксированное окно, либо до ручной остановки
-                    var progress = new Progress<string>(msg =>
+                    // Показываем MessageBox с диагностикой
+                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                     {
-                        Stage1Status = msg;
-                        Log($"[Stage1] {msg}");
+                        System.Windows.MessageBox.Show(
+                            "Не удалось захватить сетевые соединения.\n\n" +
+                            "Возможные причины:\n" +
+                            "• Приложение не устанавливало соединения за 30 секунд\n" +
+                            "• Соединения были слишком кратковременными\n" +
+                            "• Файрволл блокирует приложение\n\n" +
+                            "Проверьте Output окно для деталей.",
+                            "Stage 1: Соединения не обнаружены",
+                            System.Windows.MessageBoxButton.OK,
+                            System.Windows.MessageBoxImage.Warning
+                        );
                     });
-
-                    var captureDuration = IsStage1ContinuousMode
-                        ? (TimeSpan?)null
-                        : TimeSpan.FromSeconds(30);
-
-                    _capturedProfile = await TrafficAnalyzer.AnalyzeProcessTrafficAsync(
-                        pid,
-                        captureDuration,
-                        progress,
-                        CancellationToken.None
-                    ).ConfigureAwait(false);
-
-                    Stage1HostsFound = _capturedProfile?.Targets?.Count ?? 0;
-                    Stage1Complete = true;
-                    Stage1Progress = 100;
-
-                    // После завершения Stage1 пересчитываем CanExecute у команд, чтобы
-                    // кнопка шага 2 (DiagnoseCommand) сразу разблокировалась без клика мышкой.
-                    CommandManager.InvalidateRequerySuggested();
-
-                    if (Stage1HostsFound == 0)
-                    {
-                        Stage1Status = "Захват завершен: соединения не обнаружены";
-                        Log("[Stage1] WARNING: No network connections captured. Process may not have established connections or already exited.");
-                        
-                        // Показываем MessageBox с диагностикой
-                        await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
-                        {
-                            System.Windows.MessageBox.Show(
-                                "Не удалось захватить сетевые соединения.\n\n" +
-                                "Возможные причины:\n" +
-                                "• Приложение не устанавливало соединения за 30 секунд\n" +
-                                "• Соединения были слишком кратковременными\n" +
-                                "• Файрволл блокирует приложение\n\n" +
-                                "Проверьте Output окно для деталей.",
-                                "Stage 1: Соединения не обнаружены",
-                                System.Windows.MessageBoxButton.OK,
-                                System.Windows.MessageBoxImage.Warning
-                            );
-                        });
-                    }
-                    else
-                    {
-                        Stage1Status = $"✓ Завершено: обнаружено {Stage1HostsFound} целей";
-                        Log($"[Stage1] SUCCESS: {Stage1HostsFound} unique hosts captured");
-
-                        // Явно обновляем связанные свойства и команды,
-                        // чтобы форма "проснулась" сразу после завершения Stage1.
-                        OnPropertyChanged(nameof(Stage1Complete));
-                        OnPropertyChanged(nameof(CanRunStage2));
-                        CommandManager.InvalidateRequerySuggested();
-                        
-                        // Логируем список захваченных целей
-                        if (_capturedProfile?.Targets != null)
-                        {
-                            Log($"[Stage1] Captured targets:");
-                            foreach (var target in _capturedProfile.Targets.Take(10))
-                            {
-                                Log($"[Stage1]   → {target.Host} ({target.Service})");
-                            }
-                            if (_capturedProfile.Targets.Count > 10)
-                                Log($"[Stage1]   ... и еще {_capturedProfile.Targets.Count - 10} целей");
-                        }
-
-                        // Сохраняем профиль в файл
-                        var exeName = Path.GetFileNameWithoutExtension(ExePath);
-                        var profilePath = Path.Combine("Profiles", $"{exeName}_captured.json");
-                        
-                        try
-                        {
-                            Directory.CreateDirectory("Profiles");
-                            var json = System.Text.Json.JsonSerializer.Serialize(_capturedProfile, new System.Text.Json.JsonSerializerOptions 
-                            { 
-                                WriteIndented = true 
-                            });
-                            await File.WriteAllTextAsync(profilePath, json);
-                            Log($"[Stage1] Profile saved to: {profilePath}");
-                            
-                            // Автоматически запускаем Stage 2 если есть захваченные цели
-                            if (Stage1HostsFound > 0)
-                            {
-                                Log($"[Stage1] Автоматический переход к Stage 2...");
-                                _ = RunStage2DiagnoseAsync();
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Log($"[Stage1] Failed to save profile: {ex.Message}");
-                        }
-                    }
-
-                    // Закрываем процесс
-                    if (!process.HasExited)
-                    {
-                        process.Kill();
-                    }
                 }
                 else
                 {
-                    Stage1Status = "Ошибка: файл exe не найден";
+                    Stage1Status = $"✓ Завершено: обнаружено {Stage1HostsFound} целей";
+                    Log($"[Stage1] SUCCESS: {Stage1HostsFound} unique hosts captured");
+
+                    // Явно обновляем связанные свойства и команды,
+                    // чтобы форма "проснулась" сразу после завершения Stage1.
+                    OnPropertyChanged(nameof(Stage1Complete));
+                    OnPropertyChanged(nameof(CanRunStage2));
+                    CommandManager.InvalidateRequerySuggested();
+                    
+                    // Логируем список захваченных целей
+                    if (_capturedProfile?.Targets != null)
+                    {
+                        Log($"[Stage1] Captured targets:");
+                        foreach (var target in _capturedProfile.Targets.Take(10))
+                        {
+                            Log($"[Stage1]   → {target.Host} ({target.Service})");
+                        }
+                        if (_capturedProfile.Targets.Count > 10)
+                            Log($"[Stage1]   ... и еще {_capturedProfile.Targets.Count - 10} целей");
+                    }
+
+                    // Сохраняем профиль в файл
+                    var profilePath = Path.Combine("Profiles", $"{exeName}_captured.json");
+                    
+                    try
+                    {
+                        Directory.CreateDirectory("Profiles");
+                        var json = System.Text.Json.JsonSerializer.Serialize(_capturedProfile, new System.Text.Json.JsonSerializerOptions 
+                        { 
+                            WriteIndented = true 
+                        });
+                        await File.WriteAllTextAsync(profilePath, json);
+                        Log($"[Stage1] Profile saved to: {profilePath}");
+                        
+                        // Автоматически запускаем Stage 2 если есть захваченные цели
+                        if (Stage1HostsFound > 0)
+                        {
+                            Log($"[Stage1] Автоматический переход к Stage 2...");
+                            _ = RunStage2DiagnoseAsync();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"[Stage1] Failed to save profile: {ex.Message}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -1365,6 +1420,9 @@ namespace ISPAudit.ViewModels
                 _isExeScenarioRunning = false;
                 OnPropertyChanged(nameof(IsRunning));
                 CommandManager.InvalidateRequerySuggested();
+                IsAnalyzingTraffic = false;
+                _stage1Cts?.Dispose();
+                _stage1Cts = null;
             }
         }
 
