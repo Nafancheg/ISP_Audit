@@ -54,7 +54,7 @@ namespace IspAudit.Utils
 
                 // Коллекция для хранения уникальных соединений: RemoteIP:RemotePort:Protocol
                 var connections = new ConcurrentDictionary<string, ConnectionInfo>();
-                var dnsCache = new ConcurrentDictionary<string, string>(); // IP -> Hostname (из DNS-запросов)
+                var dnsCache = new ConcurrentDictionary<string, string>(); // IP -> Hostname (из DNS-запросов процесса)
 
                 // Настройка таймаута
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -63,14 +63,20 @@ namespace IspAudit.Utils
                     cts.CancelAfter(captureTimeout.Value);
                 }
 
-                // Запуск Flow Monitor
+                // Запуск мониторинга
                 Task? flowTask = null;
+                Task? dnsTask = null;
                 try
                 {
-                    progress?.Report("Запуск Flow Monitor (только события соединений)");
+                    progress?.Report("Запуск Flow Monitor (события соединений) + DNS Sniffer (парсинг DNS-ответов)");
+                    
+                    // Flow Monitor: сбор соединений по PID
                     flowTask = Task.Run(() => RunFlowMonitor(targetPids, connections, progress, cts.Token), cts.Token);
                     
-                    await flowTask.ConfigureAwait(false);
+                    // DNS Sniffer: парсинг DNS-ответов для получения hostname
+                    dnsTask = Task.Run(() => RunDnsSniffer(dnsCache, progress, cts.Token), cts.Token);
+                    
+                    await Task.WhenAll(flowTask, dnsTask).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -90,8 +96,8 @@ namespace IspAudit.Utils
 
                 progress?.Report($"Обнаружено {connections.Count} уникальных соединений");
 
-                // Обогащение hostname через reverse DNS
-                await EnrichWithHostnamesAsync(connections, progress, cancellationToken).ConfigureAwait(false);
+                // Обогащение hostname: сначала из DNS-кеша, потом reverse DNS
+                await EnrichWithHostnamesAsync(connections, dnsCache, progress, cancellationToken).ConfigureAwait(false);
 
                 // Генерация профиля
                 var profile = BuildGameProfile(connections, processName, progress);
@@ -216,36 +222,231 @@ namespace IspAudit.Utils
         }
 
         /// <summary>
-        /// Обогащение соединений hostname через reverse DNS
+        /// Сниффер DNS-пакетов для построения кеша IP→hostname из DNS-ответов процесса
+        /// </summary>
+        private static void RunDnsSniffer(
+            ConcurrentDictionary<string, string> dnsCache,
+            IProgress<string>? progress,
+            CancellationToken token)
+        {
+            WinDivertNative.SafeHandle? handle = null;
+            int dnsPacketsCount = 0;
+            int parsedCount = 0;
+
+            try
+            {
+                progress?.Report("[DNS] Открытие WinDivert Network layer для DNS...");
+                
+                // Фильтр: только UDP port 53 (DNS)
+                var filter = "udp.DstPort == 53 or udp.SrcPort == 53";
+                
+                try
+                {
+                    handle = WinDivertNative.Open(filter, WinDivertNative.Layer.Network, 0, WinDivertNative.OpenFlags.Sniff);
+                    progress?.Report("[DNS] ✓ DNS sniffer запущен");
+                }
+                catch (System.ComponentModel.Win32Exception wx)
+                {
+                    progress?.Report($"[DNS] Ошибка открытия: {wx.NativeErrorCode} - {wx.Message}");
+                    return;
+                }
+
+                var buffer = new byte[1500]; // Достаточно для DNS
+                var addr = new WinDivertNative.Address();
+
+                while (!token.IsCancellationRequested)
+                {
+                    if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, out var readLen, out addr))
+                    {
+                        var error = Marshal.GetLastWin32Error();
+                        if (error == WinDivertNative.ErrorNoData || error == WinDivertNative.ErrorOperationAborted)
+                            break;
+                        
+                        Thread.Sleep(50);
+                        continue;
+                    }
+
+                    dnsPacketsCount++;
+
+                    // Парсим DNS-ответ (только входящие пакеты с SrcPort=53)
+                    if (!addr.Outbound && TryParseDnsResponse(buffer, (int)readLen, dnsCache))
+                    {
+                        parsedCount++;
+                    }
+                }
+
+                progress?.Report($"[DNS] Обработано DNS-пакетов: {dnsPacketsCount}, распарсено ответов: {parsedCount}, кеш: {dnsCache.Count} записей");
+            }
+            catch (Exception ex)
+            {
+                progress?.Report($"[DNS] ОШИБКА: {ex.GetType().Name}: {ex.Message}");
+            }
+            finally
+            {
+                progress?.Report("[DNS] Закрытие DNS sniffer");
+                handle?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Парсит DNS-ответ и извлекает A-записи в кеш
+        /// </summary>
+        private static bool TryParseDnsResponse(byte[] buffer, int length, ConcurrentDictionary<string, string> dnsCache)
+        {
+            try
+            {
+                // Расчёт смещения до DNS-данных
+                if (length < 20) return false;
+                
+                int ipHeaderLen = (buffer[0] & 0x0F) * 4;
+                int udpHeaderLen = 8;
+                int dnsOffset = ipHeaderLen + udpHeaderLen;
+                
+                if (length < dnsOffset + 12) return false;
+
+                // Проверка: это ответ (QR=1) и без ошибок (RCODE=0)
+                byte flags = buffer[dnsOffset + 2];
+                if ((flags & 0x80) == 0) return false; // Не ответ
+                if ((buffer[dnsOffset + 3] & 0x0F) != 0) return false; // Есть ошибка
+
+                int answersCount = (buffer[dnsOffset + 6] << 8) | buffer[dnsOffset + 7];
+                if (answersCount == 0) return false;
+
+                int questionsCount = (buffer[dnsOffset + 4] << 8) | buffer[dnsOffset + 5];
+                int pos = dnsOffset + 12;
+
+                // Пропускаем секцию вопросов
+                for (int i = 0; i < questionsCount; i++)
+                {
+                    string? qname = ReadDnsName(buffer, ref pos, length, dnsOffset);
+                    if (qname == null || pos + 4 > length) return false;
+                    pos += 4; // QTYPE + QCLASS
+                }
+
+                // Парсим секцию ответов
+                bool foundAny = false;
+                for (int i = 0; i < answersCount && pos < length; i++)
+                {
+                    string? name = ReadDnsName(buffer, ref pos, length, dnsOffset);
+                    if (name == null || pos + 10 > length) return false;
+
+                    int rrType = (buffer[pos] << 8) | buffer[pos + 1];
+                    pos += 8; // TYPE + CLASS + TTL
+
+                    int rdLength = (buffer[pos] << 8) | buffer[pos + 1];
+                    pos += 2;
+
+                    if (pos + rdLength > length) return false;
+
+                    // A-запись (IPv4)
+                    if (rrType == 1 && rdLength == 4)
+                    {
+                        var ip = new IPAddress(new byte[] { buffer[pos], buffer[pos + 1], buffer[pos + 2], buffer[pos + 3] });
+                        dnsCache[ip.ToString()] = name.ToLowerInvariant();
+                        foundAny = true;
+                    }
+
+                    pos += rdLength;
+                }
+
+                return foundAny;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Читает DNS-имя с поддержкой сжатия (compression pointers)
+        /// </summary>
+        private static string? ReadDnsName(byte[] buffer, ref int pos, int totalLength, int dnsOffset)
+        {
+            var labels = new List<string>();
+            int jumps = 0;
+            int originalPos = -1;
+
+            while (pos < totalLength && jumps < 10)
+            {
+                int len = buffer[pos];
+                if (len == 0)
+                {
+                    pos++;
+                    break;
+                }
+
+                // Compression pointer (первые 2 бита = 11)
+                if ((len & 0xC0) == 0xC0)
+                {
+                    if (pos + 1 >= totalLength) return null;
+                    if (originalPos == -1) originalPos = pos + 2;
+                    int offset = ((len & 0x3F) << 8) | buffer[pos + 1];
+                    pos = dnsOffset + offset;
+                    jumps++;
+                    continue;
+                }
+
+                // Обычная метка
+                if (pos + 1 + len > totalLength) return null;
+                string label = System.Text.Encoding.ASCII.GetString(buffer, pos + 1, len);
+                labels.Add(label);
+                pos += 1 + len;
+            }
+
+            if (originalPos != -1) pos = originalPos;
+            return labels.Count > 0 ? string.Join(".", labels) : null;
+        }
+
+        /// <summary>
+        /// Обогащение соединений hostname: сначала из DNS-кеша, потом через reverse DNS
         /// </summary>
         private static async Task EnrichWithHostnamesAsync(
             ConcurrentDictionary<string, ConnectionInfo> connections,
+            ConcurrentDictionary<string, string> dnsCache,
             IProgress<string>? progress,
             CancellationToken cancellationToken)
         {
-            progress?.Report($"Разрешение hostname для {connections.Count} соединений...");
-            int resolvedCount = 0;
+            progress?.Report($"Обогащение hostname для {connections.Count} соединений...");
+            int fromCache = 0;
+            int fromReverseDns = 0;
 
-            var tasks = connections.Values.Select(async conn =>
+            // Шаг 1: Заполняем из DNS-кеша (самые точные данные)
+            foreach (var conn in connections.Values)
             {
-                try
+                string ipStr = conn.RemoteIp.ToString();
+                if (dnsCache.TryGetValue(ipStr, out string? hostname))
                 {
-                    var entry = await Dns.GetHostEntryAsync(conn.RemoteIp.ToString(), AddressFamily.InterNetwork, cancellationToken)
-                        .ConfigureAwait(false);
-                    if (entry.HostName != null)
-                    {
-                        conn.Hostname = entry.HostName.ToLowerInvariant();
-                        Interlocked.Increment(ref resolvedCount);
-                    }
+                    conn.Hostname = hostname;
+                    fromCache++;
                 }
-                catch
-                {
-                    // Игнорируем ошибки reverse DNS
-                }
-            });
+            }
 
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-            progress?.Report($"✓ Hostname resolved: {resolvedCount}/{connections.Count}");
+            // Шаг 2: Для оставшихся пробуем reverse DNS (может дать технические имена провайдера)
+            var remainingConnections = connections.Values.Where(c => c.Hostname == null).ToList();
+            if (remainingConnections.Any())
+            {
+                var tasks = remainingConnections.Select(async conn =>
+                {
+                    try
+                    {
+                        var entry = await Dns.GetHostEntryAsync(conn.RemoteIp.ToString(), AddressFamily.InterNetwork, cancellationToken)
+                            .ConfigureAwait(false);
+                        if (entry.HostName != null)
+                        {
+                            conn.Hostname = entry.HostName.ToLowerInvariant();
+                            Interlocked.Increment(ref fromReverseDns);
+                        }
+                    }
+                    catch
+                    {
+                        // Игнорируем ошибки reverse DNS
+                    }
+                });
+
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+            }
+            
+            progress?.Report($"✓ Hostname resolved: {fromCache + fromReverseDns}/{connections.Count} (DNS-кеш: {fromCache}, reverse: {fromReverseDns})");
         }
 
         /// <summary>
