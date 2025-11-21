@@ -36,6 +36,72 @@ namespace IspAudit.Bypass
         private IReadOnlyList<RuntimeRedirectRule> _runtimeRedirectRules = Array.Empty<RuntimeRedirectRule>();
         private BypassProfile _profile = BypassProfile.CreateDefault();
 
+        // Диагностика WinDivert handles
+        private static void LogHandleState(string operation, string filter, int priority, WinDivertNative.OpenFlags flags)
+        {
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] {operation}: filter='{filter}', priority={priority}, flags={flags}");
+        }
+
+        private static void LogHandleError(string operation, string filter, int errorCode)
+        {
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ERROR {operation}: filter='{filter}', error={errorCode} ({GetErrorDescription(errorCode)})");
+        }
+
+        private static string GetErrorDescription(int errorCode)
+        {
+            return errorCode switch
+            {
+                2 => "ERROR_FILE_NOT_FOUND (driver not found)",
+                5 => "ERROR_ACCESS_DENIED (not administrator)",
+                87 => "ERROR_INVALID_PARAMETER (invalid filter/priority/flags)",
+                577 => "ERROR_INVALID_IMAGE_HASH (driver signature invalid)",
+                654 => "ERROR_DRIVER_FAILED_PRIOR_UNLOAD (incompatible driver version)",
+                1060 => "ERROR_SERVICE_DOES_NOT_EXIST (driver not installed)",
+                1275 => "ERROR_DRIVER_BLOCKED (blocked by security software)",
+                1753 => "EPT_S_NOT_REGISTERED (Base Filtering Engine disabled)",
+                _ => $"Unknown error code {errorCode}"
+            };
+        }
+
+        /// <summary>
+        /// Безопасное открытие WinDivert handle с диагностикой
+        /// </summary>
+        private bool TryOpenWinDivert(
+            string filter, 
+            WinDivertNative.Layer layer,
+            short priority, 
+            WinDivertNative.OpenFlags flags,
+            out WinDivertNative.SafeHandle? handle)
+        {
+            handle = null;
+            
+            LogHandleState("Opening", filter, priority, flags);
+            
+            try
+            {
+                handle = WinDivertNative.Open(filter, layer, priority, flags);
+                
+                if (handle.IsInvalid)
+                {
+                    var error = Marshal.GetLastWin32Error();
+                    LogHandleError("Open failed", filter, error);
+                    handle?.Dispose();
+                    handle = null;
+                    return false;
+                }
+                
+                ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Successfully opened handle for filter: {filter}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Exception opening handle: {ex.Message}");
+                handle?.Dispose();
+                handle = null;
+                return false;
+            }
+        }
+
         public event EventHandler? StateChanged;
 
         public static bool IsPlatformSupported => OperatingSystem.IsWindows();
@@ -342,29 +408,62 @@ namespace IspAudit.Bypass
             _runtimeRedirectRules = BuildRuntimeRedirects(profile);
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Initialize: DropTcpRst={profile.DropTcpRst}, FragmentTls={profile.FragmentTlsClientHello}, Redirects={_runtimeRedirectRules.Count}");
+
             if (profile.DropTcpRst)
             {
-                // RST blocker: sniff + drop режим (driver уже установлен TrafficAnalyzer)
-                _rstHandle = WinDivertNative.Open("outbound and tcp.Rst == 1", WinDivertNative.Layer.Network, 0,
-                    WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.Drop);
-                _rstTask = Task.Run(() => PumpPackets(_rstHandle!, _cts.Token), _cts.Token);
+                // RST blocker: sniff + drop режим, priority 0 (default)
+                if (TryOpenWinDivert(
+                    "outbound and tcp.Rst == 1", 
+                    WinDivertNative.Layer.Network, 
+                    priority: 0,
+                    WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.Drop,
+                    out _rstHandle))
+                {
+                    _rstTask = Task.Run(() => PumpPackets(_rstHandle!, _cts.Token), _cts.Token);
+                }
+                else
+                {
+                    throw new InvalidOperationException("Failed to open WinDivert handle for RST blocking");
+                }
             }
 
             if (profile.FragmentTlsClientHello)
             {
-                // TLS fragmenter: priority = -1 для перехвата ДО Flow layer (priority 0)
-                // Используем default mode (capture + reinject) без NoInstall
-                _tlsHandle = WinDivertNative.Open("outbound and tcp.DstPort == 443 and tcp.PayloadLength > 0",
-                    WinDivertNative.Layer.Network, -1, WinDivertNative.OpenFlags.None);
-                _tlsTask = Task.Run(() => RunTlsFragmenter(_tlsHandle!, _cts.Token, profile), _cts.Token);
+                // TLS fragmenter: priority = 1000 для перехвата РАНЬШЕ Flow layer (priority 0)
+                // ИСПРАВЛЕНО: было -1 (НИЖЕ приоритет), теперь 1000 (ВЫШЕ приоритет)
+                if (TryOpenWinDivert(
+                    "outbound and tcp.DstPort == 443 and tcp.PayloadLength > 0",
+                    WinDivertNative.Layer.Network,
+                    priority: 1000,  // ✅ ВЫШЕ Flow layer (0)
+                    WinDivertNative.OpenFlags.None,
+                    out _tlsHandle))
+                {
+                    _tlsTask = Task.Run(() => RunTlsFragmenter(_tlsHandle!, _cts.Token, profile), _cts.Token);
+                }
+                else
+                {
+                    throw new InvalidOperationException("Failed to open WinDivert handle for TLS fragmentation");
+                }
             }
 
             if (_runtimeRedirectRules.Count > 0)
             {
-                // Redirect: default mode (capture + reinject)
-                _redirectHandle = WinDivertNative.Open(BuildRedirectFilter(_runtimeRedirectRules), WinDivertNative.Layer.Network, 0,
-                    WinDivertNative.OpenFlags.None);
-                _redirectTask = Task.Run(() => RunRedirector(_redirectHandle!, _cts.Token, _runtimeRedirectRules), _cts.Token);
+                // Redirect: default mode (capture + reinject), priority 0
+                var redirectFilter = BuildRedirectFilter(_runtimeRedirectRules);
+                if (TryOpenWinDivert(
+                    redirectFilter,
+                    WinDivertNative.Layer.Network,
+                    priority: 0,
+                    WinDivertNative.OpenFlags.None,
+                    out _redirectHandle))
+                {
+                    _redirectTask = Task.Run(() => RunRedirector(_redirectHandle!, _cts.Token, _runtimeRedirectRules), _cts.Token);
+                }
+                else
+                {
+                    throw new InvalidOperationException("Failed to open WinDivert handle for redirects");
+                }
             }
         }
 
