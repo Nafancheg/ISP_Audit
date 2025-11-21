@@ -442,14 +442,18 @@ namespace IspAudit.Bypass
             if (profile.DropTcpRst)
             {
                 // RST blocker: sniff + drop режим, priority 0 (default)
+                // Ловим RST как во входящем, так и в исходящем направлении
                 // ⚠️ МОЖЕТ КОНФЛИКТОВАТЬ с TrafficAnalyzer Flow layer
+                const string rstFilter = "tcp.Rst == 1";
+
                 if (TryOpenWinDivert(
-                    "outbound and tcp.Rst == 1", 
-                    WinDivertNative.Layer.Network, 
+                    rstFilter,
+                    WinDivertNative.Layer.Network,
                     priority: 0,
                     WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.Drop,
                     out _rstHandle))
                 {
+                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] RST blocker started with filter: {rstFilter}");
                     _rstTask = Task.Run(() => PumpPackets(_rstHandle!, _cts.Token), _cts.Token);
                 }
                 else
@@ -574,6 +578,8 @@ namespace IspAudit.Bypass
         {
             var buffer = new byte[WinDivertNative.MaxPacketSize];
             var addr = new WinDivertNative.Address();
+            long rstPackets = 0;
+
             while (!token.IsCancellationRequested)
             {
                 if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, out var readLen, out addr))
@@ -581,9 +587,78 @@ namespace IspAudit.Bypass
                     var error = Marshal.GetLastWin32Error();
                     if (error == WinDivertNative.ErrorOperationAborted)
                     {
+                        ISPAudit.Utils.DebugLogger.Log("[WinDivert] RST blocker: operation aborted");
                         break;
                     }
+                    continue;
                 }
+
+                int length = (int)readLen;
+                if (length < 40)
+                {
+                    continue;
+                }
+
+                // Простейший парсер IP+TCP, чтобы вытащить флаги и адреса
+                int version = buffer[0] >> 4;
+                int ipHeaderLength;
+                int tcpHeaderOffset;
+
+                if (version == 4)
+                {
+                    ipHeaderLength = (buffer[0] & 0x0F) * 4;
+                    if (ipHeaderLength < 20 || length < ipHeaderLength + 20) continue;
+                    tcpHeaderOffset = ipHeaderLength;
+                }
+                else if (version == 6)
+                {
+                    ipHeaderLength = 40;
+                    if (length < ipHeaderLength + 20) continue;
+                    tcpHeaderOffset = ipHeaderLength;
+                }
+                else
+                {
+                    continue;
+                }
+
+                byte flags = buffer[tcpHeaderOffset + 13];
+                bool isRst = (flags & 0x04) != 0;
+                if (!isRst)
+                {
+                    continue;
+                }
+
+                rstPackets++;
+                if (rstPackets <= 10 || rstPackets % 50 == 0)
+                {
+                    try
+                    {
+                        IPAddress srcIp;
+                        IPAddress dstIp;
+
+                        if (version == 4)
+                        {
+                            srcIp = new IPAddress(BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(12, 4)));
+                            dstIp = new IPAddress(BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(16, 4)));
+                        }
+                        else
+                        {
+                            srcIp = new IPAddress(buffer.AsSpan(8, 16).ToArray());
+                            dstIp = new IPAddress(buffer.AsSpan(24, 16).ToArray());
+                        }
+
+                        ushort srcPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(tcpHeaderOffset, 2));
+                        ushort dstPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(tcpHeaderOffset + 2, 2));
+
+                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] RST DROPPED: {srcIp}:{srcPort} -> {dstIp}:{dstPort}, total={rstPackets}");
+                    }
+                    catch
+                    {
+                        // диагностический лог не должен ронять процесс
+                    }
+                }
+
+                // Пакет НЕ реинжектим: он просто дропнут (Drop-флаг у хэндла)
             }
         }
 
