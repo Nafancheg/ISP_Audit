@@ -370,10 +370,10 @@ namespace IspAudit.Utils
                         packetBuffer.Add(header);
                         capturedCount++;
 
-                        // Периодический отчёт о захвате без лога каждого пакета
-                        if (capturedCount % 1000 == 0)
+                        // Живое обновление счётчика каждые 10 пакетов для динамики
+                        if (capturedCount % 10 == 0)
                         {
-                            progress?.Report($"[NETWORK] Захвачено пакетов: {capturedCount}");
+                            progress?.Report($"Захват: {capturedCount} пакетов...");
                         }
 
                         // Opportunistic DNS parsing

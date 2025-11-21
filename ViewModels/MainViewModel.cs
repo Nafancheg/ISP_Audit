@@ -1345,6 +1345,7 @@ namespace ISPAudit.ViewModels
                 // Анализируем трафик: либо фиксированное окно, либо до ручной остановки
                 var progress = new Progress<string>(msg =>
                 {
+                    // Обновляем статус в UI (обрабатывается в UI потоке через Progress<T>)
                     Stage1Status = msg;
                     Log($"[Stage1] {msg}");
                 });

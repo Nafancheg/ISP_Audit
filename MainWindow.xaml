@@ -190,13 +190,14 @@
                     </Grid>
                 </StackPanel>
 
-                <!-- Start Button -->
+                <!-- Start Button (только для сценариев Профиль/Хост) -->
                 <Button Content="{Binding StartButtonText}" 
-                        Style="{StaticResource PrimaryButtonStyle}"
-                        Command="{Binding StartCommand}"
-                        HorizontalAlignment="Left"
-                        Margin="0,24,0,0"
-                        AutomationProperties.AutomationId="StartButton"/>
+                    Style="{StaticResource PrimaryButtonStyle}"
+                    Command="{Binding StartCommand}"
+                    HorizontalAlignment="Left"
+                    Margin="0,24,0,0"
+                    Visibility="{Binding IsExeScenario, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                    AutomationProperties.AutomationId="StartButton"/>
             </StackPanel>
         </Border>
 
@@ -413,11 +414,12 @@
 
                                     <Button Content="Остановить захват"
                                         Command="{Binding CancelStage1Command}"
-                                        Visibility="{Binding IsAnalyzingTraffic, Converter={StaticResource BoolToVisibilityConverter}}"
+                                        Visibility="{Binding IsStage1ContinuousMode, Converter={StaticResource BoolToVisibilityConverter}}"
                                         Background="{StaticResource FailBrush}"
                                         Foreground="White"
                                         BorderThickness="0"
                                         Padding="12,10"
+                                        Margin="8,0,0,0"
                                         Cursor="Hand"
                                         AutomationProperties.AutomationId="StopCaptureButton"/>
                                 </StackPanel>
