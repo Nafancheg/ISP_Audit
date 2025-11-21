@@ -199,7 +199,9 @@ namespace IspAudit.Utils
             try
             {
                 // Use Sniff | RecvOnly as per flowtrack.c example
+                progress?.Report($"[FLOW] Открытие WinDivert Flow layer...");
                 handle = WinDivertNative.Open(filter, WinDivertNative.Layer.Flow, 0, WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.RecvOnly);
+                progress?.Report($"[FLOW] ✓ WinDivert Flow layer открыт успешно");
                 
                 // Flow layer does not use packet buffer, pass NULL/0
                 var addr = new WinDivertNative.Address();
@@ -246,10 +248,12 @@ namespace IspAudit.Utils
             }
             catch (Exception ex)
             {
-                progress?.Report($"FlowMonitor Critical Error: {ex.Message}");
+                progress?.Report($"[FLOW] КРИТИЧЕСКАЯ ОШИБКА: {ex.GetType().Name}: {ex.Message}");
+                progress?.Report($"[FLOW] StackTrace: {ex.StackTrace}");
             }
             finally
             {
+                progress?.Report($"[FLOW] Закрытие Flow layer handle");
                 handle?.Dispose();
             }
         }
@@ -262,13 +266,15 @@ namespace IspAudit.Utils
             CancellationToken token)
         {
             WinDivertNative.SafeHandle? handle = null;
+            int capturedCount = 0;
             try
             {
+                progress?.Report($"[NETWORK] Открытие WinDivert Network layer с фильтром: '{filter}'");
                 handle = WinDivertNative.Open(filter, WinDivertNative.Layer.Network, 0, WinDivertNative.OpenFlags.Sniff);
+                progress?.Report($"[NETWORK] ✓ WinDivert Network layer открыт успешно");
                 var buffer = new byte[WinDivertNative.MaxPacketSize];
                 var addr = new WinDivertNative.Address();
                 uint readLen;
-                int capturedCount = 0;
                 const int MaxPackets = 100000; // Limit memory usage
 
                 while (!token.IsCancellationRequested)
@@ -319,10 +325,12 @@ namespace IspAudit.Utils
             }
             catch (Exception ex)
             {
-                progress?.Report($"PacketCapture Error: {ex.Message}");
+                progress?.Report($"[NETWORK] КРИТИЧЕСКАЯ ОШИБКА: {ex.GetType().Name}: {ex.Message}");
+                progress?.Report($"[NETWORK] StackTrace: {ex.StackTrace}");
             }
             finally
             {
+                progress?.Report($"[NETWORK] Закрытие Network layer handle, захвачено пакетов: {capturedCount}");
                 handle?.Dispose();
             }
         }
