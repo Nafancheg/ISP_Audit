@@ -277,16 +277,26 @@ namespace IspAudit.Utils
                     {
                         var error = Marshal.GetLastWin32Error();
                         if (error == WinDivertNative.ErrorNoData || error == WinDivertNative.ErrorOperationAborted) break;
+                        progress?.Report($"[ERROR] PacketCapture Recv Error: {error}");
                         continue;
                     }
 
-                    if (capturedCount >= MaxPackets) continue;
+                    if (capturedCount >= MaxPackets)
+                    {
+                        progress?.Report($"[LIMIT] Достигнут лимит пакетов {MaxPackets}, остановка захвата");
+                        continue;
+                    }
+
+                    progress?.Report($"[RECV] Получен пакет: длина={readLen}, Outbound={addr.Outbound}, Loopback={addr.Loopback}, IPv6={addr.IPv6}");
 
                     // Parse IP/TCP/UDP headers
                     if (TryParsePacket(buffer, (int)readLen, addr, out var header))
                     {
                         packetBuffer.Add(header);
                         capturedCount++;
+
+                        // Детальный лог каждого захваченного пакета
+                        progress?.Report($"[PACKET #{capturedCount}] {header.Protocol} {header.LocalPort} -> {header.RemoteIp}:{header.RemotePort} ({header.TotalSize} байт)");
 
                         // Периодический отчёт о захвате
                         if (capturedCount % 500 == 0)
@@ -299,6 +309,11 @@ namespace IspAudit.Utils
                         {
                             TryParseDns(buffer, (int)readLen, dnsCache);
                         }
+                    }
+                    else
+                    {
+                        // Лог пропущенных пакетов
+                        progress?.Report($"[SKIP] Не удалось распарсить пакет: IPv6={addr.IPv6}, длина={readLen}");
                     }
                 }
             }
@@ -345,7 +360,7 @@ namespace IspAudit.Utils
             }
             else
             {
-                return false;
+                return false; // Неподдерживаемый протокол
             }
 
             header = new PacketHeader
