@@ -21,8 +21,8 @@ namespace IspAudit
         public string Profile { get; set; } = "normal";
 
         // Timeouts in seconds
-        public int HttpTimeoutSeconds { get; set; } = 6;
-        public int TcpTimeoutSeconds { get; set; } = 3;
+        public int HttpTimeoutSeconds { get; set; } = 3;
+        public int TcpTimeoutSeconds { get; set; } = 2;
         public int UdpTimeoutSeconds { get; set; } = 2;
 
         // Ports list for TCP checks

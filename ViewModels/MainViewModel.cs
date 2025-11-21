@@ -605,23 +605,14 @@ namespace ISPAudit.ViewModels
 
         private bool LoadProfileAndUpdateTargets()
         {
-            Log($"\n>>> LoadProfileAndUpdateTargets() START");
-            Log($"    SelectedScenario: {SelectedScenario}");
-            
             Target[] targets;
 
             if (IsProfileScenario)
             {
-                Log($"    Mode: PROFILE");
-                Log($"    SelectedProfile: {SelectedProfile}");
-                
-                // Профиль: загружаем из JSON (по имени профиля, а не имени файла)
-                Log($"    Loading profile: {SelectedProfile}");
                 Config.LoadGameProfile(SelectedProfile);
                 
                 if (Config.ActiveProfile?.Targets != null)
                 {
-                    Log($"    Profile loaded. Targets count: {Config.ActiveProfile.Targets.Count}");
                     targets = Config.ActiveProfile.Targets.Select(t => new Target
                     {
                         Name = t.Name,
@@ -630,27 +621,16 @@ namespace ISPAudit.ViewModels
                         Critical = t.Critical,
                         FallbackIp = t.FallbackIp ?? ""
                     }).ToArray();
-                    
-                    foreach (var t in targets)
-                    {
-                        Log($"      - {t.Name}: {t.Host} ({t.Service})");
-                    }
                 }
                 else
                 {
-                    Log($"    !!! Profile is NULL or has no targets");
                     targets = Array.Empty<Target>();
                 }
             }
             else if (IsHostScenario)
             {
-                Log($"    Mode: HOST");
-                Log($"    HostInput: '{HostInput}'");
-                
-                // Хост: создаем одну цель из ввода пользователя
                 if (string.IsNullOrWhiteSpace(HostInput))
                 {
-                    Log($"    !!! HostInput is empty - showing error");
                     System.Windows.MessageBox.Show("Введите хост или IP-адрес", "Ошибка", 
                         System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                     return false;
@@ -667,17 +647,11 @@ namespace ISPAudit.ViewModels
                         FallbackIp = ""
                     }
                 };
-                Log($"    Created target: {HostInput}");
             }
             else if (IsExeScenario)
             {
-                Log($"    Mode: EXE");
-                Log($"    ExePath: '{ExePath}'");
-                
-                // Приложение: загрузка профиля по имени exe файла
                 if (string.IsNullOrWhiteSpace(ExePath))
                 {
-                    Log($"    !!! ExePath is empty - showing error");
                     System.Windows.MessageBox.Show("Выберите exe файл", "Ошибка", 
                         System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                     return false;
@@ -685,33 +659,23 @@ namespace ISPAudit.ViewModels
 
                 if (!System.IO.File.Exists(ExePath))
                 {
-                    Log($"    !!! File does not exist - showing error");
                     System.Windows.MessageBox.Show($"Файл не найден: {ExePath}", "Ошибка", 
                         System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                     return false;
                 }
 
-                // Получаем имя exe файла без расширения (например, StarCitizen.exe → StarCitizen)
                 var exeNameWithoutExtension = System.IO.Path.GetFileNameWithoutExtension(ExePath);
-                Log($"    Exe name (without extension): '{exeNameWithoutExtension}'");
-
-                // Ищем профиль с таким же именем
                 var profilesDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Profiles");
                 var profilePath = System.IO.Path.Combine(profilesDir, $"{exeNameWithoutExtension}.json");
-                
-                Log($"    Looking for profile: {profilePath}");
 
                 if (System.IO.File.Exists(profilePath))
                 {
-                    // Профиль найден → загружаем его
-                    Log($"    Profile found! Loading...");
                     try
                     {
                         Config.LoadGameProfile(exeNameWithoutExtension);
                         
                         if (Config.ActiveProfile?.Targets != null)
                         {
-                            Log($"    Profile loaded. Targets count: {Config.ActiveProfile.Targets.Count}");
                             targets = Config.ActiveProfile.Targets.Select(t => new Target
                             {
                                 Name = t.Name,
@@ -720,21 +684,15 @@ namespace ISPAudit.ViewModels
                                 Critical = t.Critical,
                                 FallbackIp = t.FallbackIp ?? ""
                             }).ToArray();
-                            
-                            foreach (var t in targets)
-                            {
-                                Log($"      - {t.Name}: {t.Host} ({t.Service})");
-                            }
                         }
                         else
                         {
-                            Log($"    !!! Profile loaded but has no targets");
                             targets = Array.Empty<Target>();
                         }
                     }
                     catch (Exception ex)
                     {
-                        Log($"    !!! Error loading profile: {ex.Message}");
+                        Log($"[ERROR] Failed to load profile: {ex.Message}");
                         System.Windows.MessageBox.Show($"Ошибка загрузки профиля: {ex.Message}", "Ошибка",
                             System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                         return false;
@@ -742,8 +700,6 @@ namespace ISPAudit.ViewModels
                 }
                 else
                 {
-                    // Профиль не найден → предлагаем ручной ввод хоста
-                    Log($"    !!! Profile not found: {profilePath}");
                     var result = System.Windows.MessageBox.Show(
                         $"Профиль для {exeNameWithoutExtension}.exe не найден.\n\n" +
                         $"Хотите ввести хост вручную для проверки?",
@@ -754,8 +710,6 @@ namespace ISPAudit.ViewModels
                     if (result == System.Windows.MessageBoxResult.No)
                         return false;
 
-                    // Переключаем на Host-сценарий и просим ввести хост
-                    Log($"    Switching to Host scenario");
                     SelectedScenario = "Host";
                     System.Windows.MessageBox.Show(
                         "Перейдите в режим \"По хосту\" и введите адрес вручную.",
@@ -767,30 +721,23 @@ namespace ISPAudit.ViewModels
             }
             else
             {
-                Log($"    !!! Unknown scenario");
                 targets = Array.Empty<Target>();
             }
 
             // Обновляем TestResults
-            Log($"    Updating TestResults. Targets count: {targets.Length}");
             TestResults.Clear();
             foreach (var target in targets)
             {
-                var testResult = new TestResult { Target = target, Status = TestStatus.Idle };
-                TestResults.Add(testResult);
-                Log($"      Added TestResult: {target.Name} -> Status={testResult.Status}");
+                TestResults.Add(new TestResult { Target = target, Status = TestStatus.Idle });
             }
 
             // Обновляем map
-            Log($"    Updating _testResultMap");
             _testResultMap.Clear();
             foreach (var result in TestResults)
             {
                 _testResultMap[result.Target.Name] = result;
-                Log($"      Map['{result.Target.Name}'] = TestResult");
             }
 
-            Log($">>> LoadProfileAndUpdateTargets() END. Success=TRUE\n");
             return true;
         }
 
@@ -800,6 +747,8 @@ namespace ISPAudit.ViewModels
             {
                 Targets = TestResults.Select(t => t.Target.Host).ToList(),
                 Ports = TargetCatalog.CreateDefaultTcpPorts(),
+                HttpTimeoutSeconds = 3,  // Снижено с 6 до 3 сек
+                TcpTimeoutSeconds = 2,   // Снижено с 3 до 2 сек
                 EnableDns = true,
                 EnableTcp = true,
                 EnableHttp = true,
@@ -820,26 +769,22 @@ namespace ISPAudit.ViewModels
                 // Парсинг имени цели из Status (формат: "TargetName: действие")
                 var targetName = ExtractTargetName(progress.Status);
                 
-                Log($"[HandleTestProgress] Kind={progress.Kind}, Status='{progress.Status}', ExtractedName='{targetName}', Success={progress.Success}");
-                
                 TestResult? testResult = null;
                 
                 // Для диагностических тестов используем Kind как ключ
                 if (string.IsNullOrEmpty(targetName))
                 {
                     // Системный тест (Software, Firewall, Router, ISP)
-                    var diagnosticKey = progress.Kind.ToString(); // "SOFTWARE" → ключ в map
+                    var diagnosticKey = progress.Kind.ToString();
                     
                     if (_testResultMap.TryGetValue(diagnosticKey, out var diagResult))
                     {
-                        Log($"[SYS] {progress.Kind}: найден TestResult для {diagnosticKey}");
-                        targetName = diagnosticKey; // Устанавливаем targetName для дальнейшей обработки
+                        targetName = diagnosticKey;
                         testResult = diagResult;
                     }
                     else
                     {
-                        Log($"[SYS] {progress.Kind}: {progress.Status} (Success={progress.Success}) — TestResult не найден");
-                        return;
+                        return; // Игнорируем неизвестные тесты
                     }
                 }
                 else
@@ -847,7 +792,7 @@ namespace ISPAudit.ViewModels
                     // Поиск TestResult по имени цели
                     if (!_testResultMap.TryGetValue(targetName, out testResult))
                     {
-                        Log($"[WARN] Target '{targetName}' not found in map (available: {string.Join(", ", _testResultMap.Keys.Take(5))})");
+                        Log($"[WARN] Target '{targetName}' not found");
                         return;
                     }
                 }
@@ -866,8 +811,6 @@ namespace ISPAudit.ViewModels
                     {
                         testResult.Details += $"{progress.Message}\n";
                     }
-                    Log($"  → 3.N: [{progress.Kind}] {targetName}: {oldStatus} → Running");
-                    Log($"      UI должен показать: синяя точка, текст 'Проверяем…'");
                 }
                 else if (progress.Status.Contains("завершено"))
                 {
@@ -883,8 +826,6 @@ namespace ISPAudit.ViewModels
                     if (progress.Success == true)
                     {
                         testResult.Status = TestStatus.Pass;
-                        Log($"  ✓ 3.N: [{progress.Kind}] {targetName}: {oldStatus} → Pass");
-                        Log($"      UI должен показать: зелёная точка, текст 'Успешно'");
                     }
                     else if (progress.Success == false)
                     {
@@ -896,24 +837,18 @@ namespace ISPAudit.ViewModels
                         testResult.FixType = fixInfo.fixType;
                         testResult.FixInstructions = fixInfo.instructions;
                         
-                        Log($"  ✗ 3.N: [{progress.Kind}] {targetName}: {oldStatus} → Fail (FixType={testResult.FixType})");
-                        Log($"      UI должен показать: красная точка, текст '{testResult.Error}'");
-                        Log($"      Кнопка 'Исправить': {(testResult.ShowFixButton ? "ВИДИМА" : "скрыта")}");
+                        Log($"[✗] {targetName} [{progress.Kind}]: {testResult.Error}");
                     }
                     else
                     {
                         testResult.Status = TestStatus.Warn;
                         testResult.Error = progress.Message ?? "Предупреждение";
-                        Log($"  ⚠ 3.N: [{progress.Kind}] {targetName}: {oldStatus} → Warn");
-                        Log($"      UI должен показать: жёлтая точка, текст '{testResult.Error}'");
+                        Log($"[⚠] {targetName} [{progress.Kind}]: {testResult.Error}");
                     }
-                    
-                    Log($"      СЧЁТЧИКИ: Pass={PassCount}, Fail={FailCount}, Warn={WarnCount}, Completed={CompletedTests}/{TotalTargets}");
                 }
                 else if (progress.Status.Contains("пропущено"))
                 {
                     // НЕ СБРАСЫВАЕМ статус в Idle - оставляем предыдущий результат
-                    Log($"  ○ 3.N: [{progress.Kind}] {targetName}: пропущено (статус={oldStatus})");
                 }
 
                 // Обновление счетчиков
@@ -1649,20 +1584,20 @@ namespace ISPAudit.ViewModels
                     }
                 });
 
-                // Создаем Config из захваченного профиля (используем те же настройки что и в обычных профилях)
+                // Создаем Config из захваченного профиля (быстрая диагностика: только DNS + TCP)
                 _config = new Config
                 {
                     Targets = _capturedProfile.Targets.Select(t => t.Host).ToList(),
-                    HttpTimeoutSeconds = 6,
-                    TcpTimeoutSeconds = 5,
+                    HttpTimeoutSeconds = 3,  // Снижено с 6 до 3 сек
+                    TcpTimeoutSeconds = 2,   // Снижено с 5 до 2 сек
                     UdpTimeoutSeconds = 2,
                     EnableDns = true,
                     EnableTcp = true,
-                    EnableHttp = true,
+                    EnableHttp = false,      // Отключено: медленный (3 сек/цель) и неинформативный (4xx/5xx не проблема)
                     EnableTrace = false,
                     NoTrace = true,
-                    EnableUdp = false,  // Отключаем UDP для захваченных профилей
-                    EnableRst = false   // Отключаем RST эвристику
+                    EnableUdp = false,       // Отключаем UDP для захваченных профилей
+                    EnableRst = false        // Отключаем RST эвристику
                 };
 
                 _cts = new CancellationTokenSource();
