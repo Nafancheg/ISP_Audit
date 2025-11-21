@@ -467,7 +467,7 @@ namespace IspAudit.Bypass
                 if (TryOpenWinDivert(
                     "outbound and tcp.DstPort == 443 and tcp.PayloadLength > 0",
                     WinDivertNative.Layer.Network,
-                    priority: 500,  // ✅ Умеренный приоритет (Flow layer = 0)
+                    priority: 200,  // ✅ Ниже чем 500, выше Flow=0
                     WinDivertNative.OpenFlags.None,
                     out _tlsHandle))
                 {
