@@ -13,8 +13,9 @@ namespace IspAudit
         public bool Critical { get; init; } = false;
         public string? FallbackIp { get; init; } = null;
         public List<int>? Ports { get; init; } = null; // Реальные порты из снифа (только для захваченных профилей)
+        public List<string>? Protocols { get; init; } = null; // Протоколы: TCP, UDP (только для захваченных профилей)
 
-        public TargetDefinition Copy() => this with { Ports = Ports?.ToList() };
+        public TargetDefinition Copy() => this with { Ports = Ports?.ToList(), Protocols = Protocols?.ToList() };
     }
 
     public enum UdpProbeKind

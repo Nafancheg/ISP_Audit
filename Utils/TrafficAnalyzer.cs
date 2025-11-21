@@ -551,10 +551,11 @@ namespace IspAudit.Utils
                 {
                     Name = hostname,
                     Host = hostname,
-                    Service = DetermineService(hostname, portsUsed),
+                    Service = DetermineService(hostname, portsUsed, protocols),
                     Critical = false,
-                    FallbackIp = fallbackIp,  // IP-адрес для прямого тестирования
-                    Ports = portsUsed.Select(p => (int)p).ToList()  // Преобразование ushort → int
+                    FallbackIp = fallbackIp,
+                    Ports = portsUsed.Select(p => (int)p).ToList(),
+                    Protocols = protocols.Select(p => p.ToString()).ToList()
                 };
                 
                 targets.Add(target);
@@ -573,12 +574,33 @@ namespace IspAudit.Utils
         /// <summary>
         /// Определяет тип сервиса по hostname и портам
         /// </summary>
-        private static string DetermineService(string hostname, List<ushort> ports)
+        private static string DetermineService(string hostname, List<ushort> ports, List<TransportProtocol> protocols)
         {
-            if (ports.Contains(443) || ports.Contains(80)) return "web";
-            if (ports.Any(p => p >= 27000 && p <= 28000)) return "game";
-            if (ports.Any(p => p >= 64000 && p <= 65000)) return "voice";
-            if (ports.Contains(53)) return "dns";
+            bool hasUdp = protocols.Contains(TransportProtocol.UDP);
+            bool hasTcp = protocols.Contains(TransportProtocol.TCP);
+            
+            // DNS всегда через UDP
+            if (ports.Contains(53) && hasUdp) return "dns";
+            
+            // Web-сервисы (HTTP/HTTPS) всегда TCP
+            if ((ports.Contains(443) || ports.Contains(80)) && hasTcp) return "web";
+            
+            // Игровые порты
+            if (ports.Any(p => p >= 27000 && p <= 28000))
+            {
+                return hasUdp ? "game-udp" : "game-tcp";
+            }
+            
+            // Голосовой чат обычно UDP
+            if (ports.Any(p => p >= 64000 && p <= 65000))
+            {
+                return hasUdp ? "voice-udp" : "voice-tcp";
+            }
+            
+            // По умолчанию определяем по протоколу
+            if (hasUdp && !hasTcp) return "unknown-udp";
+            if (hasTcp && !hasUdp) return "unknown-tcp";
+            
             return "unknown";
         }
 
