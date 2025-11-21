@@ -319,10 +319,10 @@ namespace IspAudit.Bypass
             // Запускаем ТОЛЬКО TLS fragmentation (БЕЗ RST blocker - он конфликтует с Flow layer)
             var profile = new BypassProfile
             {
-                DropTcpRst = false,  // ✅ НЕ включаем RST blocker (конфликт с TrafficAnalyzer Flow layer)
+                DropTcpRst = false,  // ⚠ НЕ включать RST blocker (конфликт с TrafficAnalyzer Flow layer)
                 FragmentTlsClientHello = true,
-                TlsFirstFragmentSize = 64,
-                TlsFragmentThreshold = 128,
+                TlsFirstFragmentSize = 8,  // ✅ ЭКСТРЕМАЛЬНАЯ фрагментация (8 байт)
+                TlsFragmentThreshold = 16,
                 RedirectRules = Array.Empty<BypassRedirectRule>()  // Очищаем redirects
             };
             await EnableAsync(profile).ConfigureAwait(false);
@@ -604,7 +604,7 @@ namespace IspAudit.Bypass
                     var error = Marshal.GetLastWin32Error();
                     if (error == WinDivertNative.ErrorOperationAborted)
                     {
-                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS fragmenter stopped. Stats: received={packetsReceived}, fragmented={clientHellosFragmented}");
+                        ISPAudit.Utils.DebugLogger.Log("[WinDivert] TLS fragmenter: operation aborted");
                         break;
                     }
                     continue;
@@ -613,10 +613,16 @@ namespace IspAudit.Bypass
                 packetsReceived++;
                 if (packetsReceived == 1)
                 {
-                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS fragmenter: first packet received (size={read} bytes)");
+                    ISPAudit.Utils.DebugLogger.Log("[WinDivert] ✓✓ TLS fragmenter: ПЕРВЫЙ ПАКЕТ ПЕРЕХВАЧЕН");
                 }
 
                 int length = (int)read;
+                
+                // ✅ Диагностика: логируем каждые 10 пакетов
+                if (packetsReceived % 10 == 0)
+                {
+                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Обработано пакетов: {packetsReceived}, ClientHello фрагментировано: {clientHellosFragmented}");
+                }
                 if (!TryParseTcpPacket(buffer, length, out var ipHeaderLength, out var tcpHeaderLength, out var payloadOffset, out var payloadLength, out bool isIpv4))
                 {
                     WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);

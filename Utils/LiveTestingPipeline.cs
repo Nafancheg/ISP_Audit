@@ -427,11 +427,21 @@ namespace IspAudit.Utils
                         if (_bypassManager != null)
                         {
                             await _bypassManager.ApplyBypassStrategyAsync("TLS_FRAGMENT", ip, port).ConfigureAwait(false);
-                            _progress?.Report($"✓ TLS_FRAGMENT bypass активен для {host} (фрагментация ClientHello)");
+                            _progress?.Report($"✓ TLS_FRAGMENT bypass активен для {host} (экстремальная фрагментация 8 байт)");
                             
-                            // Ретест: проверяем что bypass работает
+                            // ✅ Принудительно сбрасываем все TCP соединения к цели
+                            _progress?.Report($"[BYPASS] Сброс существующих TCP соединений к {ip}:{port}...");
+                            try
+                            {
+                                using var resetSocket = new System.Net.Sockets.TcpClient();
+                                await resetSocket.ConnectAsync(ip, port, ct).ConfigureAwait(false);
+                                resetSocket.Client.Close(); // Отправит FIN/RST
+                            }
+                            catch { /* Игнорируем ошибки сброса */ }
+                            
+                            // Ретест: проверяем что bypass работает (увеличена задержка до 3 сек)
                             _progress?.Report($"[BYPASS] Проверяю эффективность bypass для {host}...");
-                            await Task.Delay(500, ct).ConfigureAwait(false); // Даем время WinDivert инициализироваться
+                            await Task.Delay(3000, ct).ConfigureAwait(false); // ✅ 3 секунды для инициализации
                             
                             var retestResult = await TestHostAsync(blocked.TestResult.Host, ct).ConfigureAwait(false);
                             if (retestResult.TlsOk)
@@ -440,7 +450,30 @@ namespace IspAudit.Utils
                             }
                             else
                             {
-                                _progress?.Report($"⚠ Bypass применен, но {host} все еще заблокирован. Может потребоваться другая стратегия.");
+                                _progress?.Report($"⚠ TLS_FRAGMENT не помог. Пробуем RST blocking как fallback...");
+                                
+                                // ✅ FALLBACK: включаем RST blocker
+                                try
+                                {
+                                    await _bypassManager.ApplyBypassStrategyAsync("DROP_RST", ip, port).ConfigureAwait(false);
+                                    _progress?.Report($"✓ DROP_RST fallback активен для {ip}:{port}");
+                                    
+                                    await Task.Delay(2000, ct).ConfigureAwait(false);
+                                    var fallbackResult = await TestHostAsync(blocked.TestResult.Host, ct).ConfigureAwait(false);
+                                    
+                                    if (fallbackResult.TcpOk)
+                                    {
+                                        _progress?.Report($"✓✓ RST FALLBACK СРАБОТАЛ! {host} доступен");
+                                    }
+                                    else
+                                    {
+                                        _progress?.Report($"✗ Оба метода (TLS_FRAGMENT + DROP_RST) не помогли. Блокировка не обходится.");
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _progress?.Report($"⚠ Ошибка fallback: {ex.Message}");
+                                }
                             }
                         }
                         else
