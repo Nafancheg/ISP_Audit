@@ -426,13 +426,13 @@ namespace IspAudit.Utils
                         
                         if (_bypassManager != null)
                         {
-                            // ✅ СНАЧАЛА активируем DROP_RST (блокирует RST от DPI)
-                            await _bypassManager.ApplyBypassStrategyAsync("DROP_RST", ip, port).ConfigureAwait(false);
-                            _progress?.Report($"✓ DROP_RST активен (защита от RST injection)");
-                            
-                            // ✅ ЗАТЕМ активируем TLS_FRAGMENT (затрудняет DPI анализ)
+                            // ✅ СНАЧАЛА активируем TLS_FRAGMENT (настраивает профиль фрагментации)
                             await _bypassManager.ApplyBypassStrategyAsync("TLS_FRAGMENT", ip, port).ConfigureAwait(false);
                             _progress?.Report($"✓ TLS_FRAGMENT активен (ультра-фрагментация 2 байта)");
+                            
+                            // ✅ ЗАТЕМ активируем DROP_RST (добавляет RST blocking к текущему профилю)
+                            await _bypassManager.ApplyBypassStrategyAsync("DROP_RST", ip, port).ConfigureAwait(false);
+                            _progress?.Report($"✓ DROP_RST активен (защита от RST injection)");
                             
                             // ✅ Принудительно сбрасываем все TCP соединения к цели
                             _progress?.Report($"[BYPASS] Сброс существующих TCP соединений к {ip}:{port}...");
