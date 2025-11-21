@@ -65,6 +65,7 @@ namespace IspAudit.Utils
     {
         private readonly PipelineConfig _config;
         private readonly IProgress<string>? _progress;
+        private readonly IspAudit.Bypass.WinDivertBypassManager? _bypassManager;
         
         private readonly Channel<HostDiscovered> _snifferQueue;
         private readonly Channel<HostTested> _testerQueue;
@@ -77,6 +78,12 @@ namespace IspAudit.Utils
         {
             _config = config;
             _progress = progress;
+            
+            // Инициализируем bypass manager если auto-bypass включен
+            if (_config.EnableAutoBypass && IspAudit.Bypass.WinDivertBypassManager.HasAdministratorRights)
+            {
+                _bypassManager = new IspAudit.Bypass.WinDivertBypassManager();
+            }
             
             // Создаем unbounded каналы для передачи данных между воркерами
             _snifferQueue = Channel.CreateUnbounded<HostDiscovered>();
@@ -388,37 +395,34 @@ namespace IspAudit.Utils
                 {
                     case "DROP_RST":
                         _progress?.Report($"[BYPASS] Применяю DROP_RST для {ip}:{port}...");
-                        // Создаем профиль с включенной блокировкой RST пакетов
-                        var rstProfile = new IspAudit.Bypass.BypassProfile
+                        
+                        if (_bypassManager != null)
                         {
-                            DropTcpRst = true,
-                            FragmentTlsClientHello = false,
-                            TlsFirstFragmentSize = 64,
-                            TlsFragmentThreshold = 128,
-                            RedirectRules = Array.Empty<IspAudit.Bypass.BypassRedirectRule>()
-                        };
-                        // TODO: WinDivertBypassManager нужно модифицировать для поддержки динамических правил
-                        _progress?.Report($"✓ DROP_RST bypass готов для {ip}:{port} (требуется admin)");
+                            await _bypassManager.ApplyBypassStrategyAsync("DROP_RST", ip, port).ConfigureAwait(false);
+                            _progress?.Report($"✓ DROP_RST bypass активен для {ip}:{port}");
+                        }
+                        else
+                        {
+                            _progress?.Report($"⚠ DROP_RST bypass требует прав администратора (WinDivert)");
+                        }
                         break;
 
                     case "TLS_FRAGMENT":
                         _progress?.Report($"[BYPASS] Применяю TLS_FRAGMENT для {host}...");
-                        // Создаем профиль с фрагментацией TLS ClientHello
-                        var tlsProfile = new IspAudit.Bypass.BypassProfile
+                        
+                        if (_bypassManager != null)
                         {
-                            DropTcpRst = false,
-                            FragmentTlsClientHello = true,
-                            TlsFirstFragmentSize = 64,  // Разбить ClientHello на части по 64 байта
-                            TlsFragmentThreshold = 128, // Фрагментировать если ClientHello > 128 байт
-                            RedirectRules = Array.Empty<IspAudit.Bypass.BypassRedirectRule>()
-                        };
-                        _progress?.Report($"✓ TLS_FRAGMENT bypass готов для {host} (требуется admin)");
+                            await _bypassManager.ApplyBypassStrategyAsync("TLS_FRAGMENT", ip, port).ConfigureAwait(false);
+                            _progress?.Report($"✓ TLS_FRAGMENT bypass активен для {host} (фрагментация ClientHello)");
+                        }
+                        else
+                        {
+                            _progress?.Report($"⚠ TLS_FRAGMENT bypass требует прав администратора (WinDivert)");
+                        }
                         break;
 
                     case "DOH":
                         _progress?.Report($"[BYPASS] DNS блокировка для {host} - используйте DoH (1.1.1.1, 8.8.8.8)");
-                        // DoH bypass требует изменения системных DNS настроек или hosts файла
-                        // Это требует UAC прав и перезагрузки сетевого адаптера
                         _progress?.Report($"ℹ Для {host}: рекомендуется настроить DoH в системе или использовать hosts файл");
                         break;
 
@@ -453,6 +457,10 @@ namespace IspAudit.Utils
             
             Task.WhenAll(_workers).GetAwaiter().GetResult();
             _cts.Dispose();
+            
+            // Отключаем bypass manager если был создан
+            _bypassManager?.DisableAsync().GetAwaiter().GetResult();
+            _bypassManager?.Dispose();
         }
     }
 }

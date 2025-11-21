@@ -224,6 +224,98 @@ namespace IspAudit.Bypass
             }
         }
 
+        /// <summary>
+        /// Динамическое включение TLS fragmentation для конкретного хоста
+        /// </summary>
+        public async Task EnableTlsFragmentationAsync(System.Net.IPAddress targetIp, int targetPort = 443)
+        {
+            if (_state != BypassState.Enabled)
+            {
+                // Если bypass не активен - запускаем с минимальным профилем
+                var profile = new BypassProfile
+                {
+                    DropTcpRst = false,
+                    FragmentTlsClientHello = true,
+                    TlsFirstFragmentSize = 64,
+                    TlsFragmentThreshold = 128,
+                    RedirectRules = Array.Empty<BypassRedirectRule>()
+                };
+                await EnableAsync(profile).ConfigureAwait(false);
+            }
+            // TLS fragmentation уже работает для всех HTTPS соединений (tcp.DstPort == 443)
+            // Не требуется дополнительная логика для конкретного IP
+        }
+
+        /// <summary>
+        /// Динамическое включение блокировки TCP RST пакетов
+        /// </summary>
+        public async Task EnableRstBlockingAsync()
+        {
+            lock (_sync)
+            {
+                if (_state == BypassState.Enabled && _profile.DropTcpRst)
+                {
+                    // RST blocking уже активен
+                    return;
+                }
+            }
+
+            // Нужно перезапустить с новым профилем
+            var currentProfile = _profile;
+            await DisableAsync().ConfigureAwait(false);
+
+            var newProfile = new BypassProfile
+            {
+                DropTcpRst = true,
+                FragmentTlsClientHello = currentProfile.FragmentTlsClientHello,
+                TlsFirstFragmentSize = currentProfile.TlsFirstFragmentSize,
+                TlsFragmentThreshold = currentProfile.TlsFragmentThreshold,
+                RedirectRules = currentProfile.RedirectRules
+            };
+
+            await EnableAsync(newProfile).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Упрощенный метод для применения bypass стратегии по типу блокировки
+        /// </summary>
+        public async Task ApplyBypassStrategyAsync(string strategy, System.Net.IPAddress? targetIp = null, int targetPort = 443)
+        {
+            switch (strategy)
+            {
+                case "DROP_RST":
+                    await EnableRstBlockingAsync().ConfigureAwait(false);
+                    break;
+
+                case "TLS_FRAGMENT":
+                    if (targetIp != null)
+                    {
+                        await EnableTlsFragmentationAsync(targetIp, targetPort).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        // Общая TLS fragmentation для всех HTTPS
+                        var profile = new BypassProfile
+                        {
+                            DropTcpRst = false,
+                            FragmentTlsClientHello = true,
+                            TlsFirstFragmentSize = 64,
+                            TlsFragmentThreshold = 128,
+                            RedirectRules = Array.Empty<BypassRedirectRule>()
+                        };
+                        await EnableAsync(profile).ConfigureAwait(false);
+                    }
+                    break;
+
+                case "DOH":
+                case "PROXY":
+                case "NONE":
+                case "UNKNOWN":
+                    // Эти стратегии требуют внешнего вмешательства (системные настройки)
+                    break;
+            }
+        }
+
         private void Initialize(BypassProfile profile, CancellationToken cancellationToken)
         {
             if (!NativeLibrary.TryLoad("WinDivert.dll", out var libHandle))
