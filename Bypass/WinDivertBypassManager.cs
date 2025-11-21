@@ -351,8 +351,9 @@ namespace IspAudit.Bypass
 
             if (profile.FragmentTlsClientHello)
             {
+                // Priority = -1 чтобы перехватывать ДО Flow layer (который использует priority 0)
                 _tlsHandle = WinDivertNative.Open("outbound and tcp.DstPort == 443 and tcp.PayloadLength > 0",
-                    WinDivertNative.Layer.Network, 0, WinDivertNative.OpenFlags.NoInstall);
+                    WinDivertNative.Layer.Network, -1, WinDivertNative.OpenFlags.NoInstall);
                 _tlsTask = Task.Run(() => RunTlsFragmenter(_tlsHandle!, _cts.Token, profile), _cts.Token);
             }
 
