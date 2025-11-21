@@ -578,6 +578,10 @@ namespace IspAudit.Bypass
             var addr = new WinDivertNative.Address();
             var buffer = new byte[WinDivertNative.MaxPacketSize];
             var sessions = new ConcurrentDictionary<ConnectionKey, bool>();
+            int packetsReceived = 0;
+            int clientHellosFragmented = 0;
+
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS fragmenter started (FirstFragmentSize={profile.TlsFirstFragmentSize}, Threshold={profile.TlsFragmentThreshold})");
 
             while (!token.IsCancellationRequested)
             {
@@ -586,9 +590,16 @@ namespace IspAudit.Bypass
                     var error = Marshal.GetLastWin32Error();
                     if (error == WinDivertNative.ErrorOperationAborted)
                     {
+                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS fragmenter stopped. Stats: received={packetsReceived}, fragmented={clientHellosFragmented}");
                         break;
                     }
                     continue;
+                }
+
+                packetsReceived++;
+                if (packetsReceived == 1)
+                {
+                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS fragmenter: first packet received (size={read} bytes)");
                 }
 
                 int length = (int)read;
@@ -616,9 +627,17 @@ namespace IspAudit.Bypass
                     continue;
                 }
 
+                // ✅ ClientHello обнаружен!
                 var key = CreateConnectionKey(buffer, ipHeaderLength, tcpHeaderLength, isIpv4);
+                var srcIp = new IPAddress(BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(12, 4)));
+                var dstIp = new IPAddress(BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(16, 4)));
+                var dstPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(ipHeaderLength + 2, 2));
+                
+                ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ClientHello detected: {srcIp} → {dstIp}:{dstPort}, payloadSize={payloadLength}");
+
                 if (!sessions.TryAdd(key, true))
                 {
+                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ClientHello already fragmented for this connection, skipping");
                     WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
                     continue;
                 }
@@ -627,9 +646,13 @@ namespace IspAudit.Bypass
                 int secondLen = payloadLength - firstLen;
                 if (firstLen <= 0 || secondLen <= 0)
                 {
+                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Invalid fragment sizes: first={firstLen}, second={secondLen}, skipping fragmentation");
                     WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
                     continue;
                 }
+
+                // ✅ Фрагментируем ClientHello
+                ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Fragmenting ClientHello: payload={payloadLength} → first={firstLen}, second={secondLen}");
 
                 var firstPacket = new byte[ipHeaderLength + tcpHeaderLength + firstLen];
                 Buffer.BlockCopy(buffer, 0, firstPacket, 0, ipHeaderLength + tcpHeaderLength + firstLen);
@@ -644,6 +667,9 @@ namespace IspAudit.Bypass
                 AdjustPacketLengths(secondPacket, ipHeaderLength, tcpHeaderLength, secondLen, isIpv4);
                 WinDivertNative.WinDivertHelperCalcChecksums(secondPacket, (uint)secondPacket.Length, ref addr, 0);
                 WinDivertNative.WinDivertSend(handle, secondPacket, (uint)secondPacket.Length, out _, in addr);
+
+                clientHellosFragmented++;
+                ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ✓ ClientHello fragmented successfully (total fragmented: {clientHellosFragmented})");
             }
         }
 
