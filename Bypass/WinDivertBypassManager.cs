@@ -591,7 +591,6 @@ namespace IspAudit.Bypass
         {
             var addr = new WinDivertNative.Address();
             var buffer = new byte[WinDivertNative.MaxPacketSize];
-            var sessions = new ConcurrentDictionary<ConnectionKey, bool>();
             int packetsReceived = 0;
             int clientHellosFragmented = 0;
 
@@ -648,19 +647,11 @@ namespace IspAudit.Bypass
                 }
 
                 // ✅ ClientHello обнаружен!
-                var key = CreateConnectionKey(buffer, ipHeaderLength, tcpHeaderLength, isIpv4);
                 var srcIp = new IPAddress(BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(12, 4)));
                 var dstIp = new IPAddress(BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(16, 4)));
                 var dstPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(ipHeaderLength + 2, 2));
                 
                 ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ClientHello detected: {srcIp} → {dstIp}:{dstPort}, payloadSize={payloadLength}");
-
-                if (!sessions.TryAdd(key, true))
-                {
-                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ClientHello already fragmented for this connection, skipping");
-                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
-                    continue;
-                }
 
                 int firstLen = Math.Min(profile.TlsFirstFragmentSize, payloadLength - 1);
                 int secondLen = payloadLength - firstLen;
