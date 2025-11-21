@@ -230,6 +230,7 @@ namespace ISPAudit.ViewModels
         private bool _stage3Complete = false;
         private bool _isExeScenarioRunning = false;
         private bool _isAnalyzingTraffic;
+        private bool _isStoppingCapture;
         private bool _isStage1ContinuousMode;
         private GameProfile? _capturedProfile;
         private List<BlockageProblem>? _detectedProblems;
@@ -316,6 +317,16 @@ namespace ISPAudit.ViewModels
             {
                 _isAnalyzingTraffic = value;
                 OnPropertyChanged(nameof(IsAnalyzingTraffic));
+            }
+        }
+
+        public bool IsStoppingCapture
+        {
+            get => _isStoppingCapture;
+            set
+            {
+                _isStoppingCapture = value;
+                OnPropertyChanged(nameof(IsStoppingCapture));
             }
         }
 
@@ -414,7 +425,11 @@ namespace ISPAudit.ViewModels
             ApplyBypassCommand = new RelayCommand(async _ => await RunStage3ApplyBypassAsync(), _ => CanRunStage3 && !IsRunning);
             ResetExeScenarioCommand = new RelayCommand(_ => ResetExeScenario(), 
                 _ => (Stage1Complete || Stage2Complete || Stage3Complete) && !IsRunning);
-            CancelStage1Command = new RelayCommand(_ => _stage1Cts?.Cancel(), _ => IsAnalyzingTraffic);
+            CancelStage1Command = new RelayCommand(_ => 
+            {
+                IsStoppingCapture = true;
+                _stage1Cts?.Cancel();
+            }, _ => IsAnalyzingTraffic && !IsStoppingCapture);
             
             // Load Fix History on startup
             LoadFixHistory();
@@ -1452,6 +1467,7 @@ namespace ISPAudit.ViewModels
                 OnPropertyChanged(nameof(IsRunning));
                 CommandManager.InvalidateRequerySuggested();
                 IsAnalyzingTraffic = false;
+                IsStoppingCapture = false;
                 _stage1Cts?.Dispose();
                 _stage1Cts = null;
             }

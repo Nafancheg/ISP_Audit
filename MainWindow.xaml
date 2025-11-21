@@ -378,11 +378,20 @@
                                          AutomationProperties.AutomationId="Stage1Spinner">
                                     <Grid>
                                         <Ellipse Width="18" Height="18"
-                                                 Stroke="{StaticResource RunningBrush}"
                                                  StrokeThickness="2"
                                                  StrokeDashArray="14 7"
                                                  StrokeStartLineCap="Round"
                                                  StrokeEndLineCap="Round">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Setter Property="Stroke" Value="{StaticResource RunningBrush}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsStoppingCapture}" Value="True">
+                                                            <Setter Property="Stroke" Value="{StaticResource WarnBrush}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
                                             <Ellipse.RenderTransform>
                                                 <RotateTransform x:Name="SpinnerRotate" CenterX="9" CenterY="9"/>
                                             </Ellipse.RenderTransform>
@@ -412,8 +421,7 @@
                                         Cursor="Hand"
                                         AutomationProperties.AutomationId="AnalyzeButton"/>
 
-                                    <Button Content="Остановить захват"
-                                        Command="{Binding CancelStage1Command}"
+                                    <Button Command="{Binding CancelStage1Command}"
                                         Visibility="{Binding IsStage1ContinuousMode, Converter={StaticResource BoolToVisibilityConverter}}"
                                         Background="{StaticResource FailBrush}"
                                         Foreground="White"
@@ -421,7 +429,19 @@
                                         Padding="12,10"
                                         Margin="8,0,0,0"
                                         Cursor="Hand"
-                                        AutomationProperties.AutomationId="StopCaptureButton"/>
+                                        AutomationProperties.AutomationId="StopCaptureButton">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                                <Setter Property="Content" Value="Остановить захват"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsStoppingCapture}" Value="True">
+                                                        <Setter Property="Content" Value="Остановка..."/>
+                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
                                 </StackPanel>
                             </Grid>
 
