@@ -37,14 +37,15 @@ namespace IspAudit.Utils
         /// </summary>
         public static async Task<GameProfile> AnalyzeProcessTrafficAsync(
             int targetPid,
-            TimeSpan captureTimeout,
+            TimeSpan? captureTimeout,
             IProgress<string>? progress = null,
             CancellationToken cancellationToken = default)
         {
             // Выполняем всё в фоновом потоке, чтобы не блокировать UI при инициализации
             return await Task.Run(async () =>
             {
-                progress?.Report($"Старт Dual Layer захвата трафика PID={targetPid} на {captureTimeout.TotalSeconds}с");
+                var secondsText = captureTimeout.HasValue ? $"на {captureTimeout.Value.TotalSeconds}с" : "(до ручной остановки)";
+                progress?.Report($"Старт Dual Layer захвата трафика PID={targetPid} {secondsText}");
 
                 // 1. Коллекции данных
                 var flowMap = new ConcurrentDictionary<FlowKey, int>(); // (Port, Proto) -> PID
@@ -60,7 +61,10 @@ namespace IspAudit.Utils
 
                 // 3. Запуск задач мониторинга
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                cts.CancelAfter(captureTimeout);
+                if (captureTimeout.HasValue)
+                {
+                    cts.CancelAfter(captureTimeout.Value);
+                }
 
                 // 3.1 Снапшот существующих соединений (для тех, что открыты ДО запуска)
                 try 
@@ -105,7 +109,14 @@ namespace IspAudit.Utils
                 }
                 catch (OperationCanceledException)
                 {
-                    progress?.Report($"Захват завершен (таймаут {captureTimeout.TotalSeconds}с)");
+                    if (captureTimeout.HasValue)
+                    {
+                        progress?.Report($"Захват завершен (таймаут {captureTimeout.Value.TotalSeconds}с)");
+                    }
+                    else
+                    {
+                        progress?.Report("Захват остановлен пользователем");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -209,7 +220,7 @@ namespace IspAudit.Utils
 
                 while (!token.IsCancellationRequested)
                 {
-                    if (!WinDivertNative.WinDivertRecv(handle, IntPtr.Zero, 0, ref addr, IntPtr.Zero))
+                    if (!WinDivertNative.WinDivertRecv(handle, IntPtr.Zero, 0, out var _, out addr))
                     {
                         var error = Marshal.GetLastWin32Error();
                         if (error == WinDivertNative.ErrorNoData || error == WinDivertNative.ErrorOperationAborted) break;
@@ -229,13 +240,14 @@ namespace IspAudit.Utils
                     if (addr.Event == WinDivertNative.WINDIVERT_EVENT_FLOW_ESTABLISHED)
                     {
                         // Manual filtering for Flow layer
-                        if (!addr.Outbound || addr.Loopback)
+                        // FIX: Убрали !addr.Outbound, чтобы видеть входящие соединения (как в flowtrack.c)
+                        if (addr.Loopback)
                             continue;
 
                         // WinDivert сообщает PID процесса!
-                        var pid = (int)addr.Flow.ProcessId;
-                        var localPort = addr.Flow.LocalPort;
-                        var protocol = addr.Flow.Protocol;
+                        var pid = (int)addr.Data.Flow.ProcessId;
+                        var localPort = addr.Data.Flow.LocalPort;
+                        var protocol = addr.Data.Flow.Protocol;
 
                         flowMap.TryAdd(new FlowKey(localPort, protocol), pid);
                         
@@ -243,6 +255,12 @@ namespace IspAudit.Utils
                         {
                             progress?.Report($"✓ FLOW MATCH: PID={pid} LocalPort={localPort} Proto={protocol}");
                         }
+                    }
+                    else if (addr.Event == WinDivertNative.WINDIVERT_EVENT_FLOW_DELETED)
+                    {
+                        // FIX: Обработка удаления потока (как в flowtrack.c)
+                        if (addr.Loopback) continue;
+                        flowMap.TryRemove(new FlowKey(addr.Data.Flow.LocalPort, addr.Data.Flow.Protocol), out _);
                     }
                 }
             }
@@ -274,12 +292,11 @@ namespace IspAudit.Utils
                 progress?.Report($"[NETWORK] ✓ WinDivert Network layer открыт успешно");
                 var buffer = new byte[WinDivertNative.MaxPacketSize];
                 var addr = new WinDivertNative.Address();
-                uint readLen;
                 const int MaxPackets = 100000; // Limit memory usage
 
                 while (!token.IsCancellationRequested)
                 {
-                    if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, ref addr, out readLen))
+                    if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, out var readLen, out addr))
                     {
                         var error = Marshal.GetLastWin32Error();
                         if (error == WinDivertNative.ErrorNoData || error == WinDivertNative.ErrorOperationAborted) break;
@@ -289,11 +306,13 @@ namespace IspAudit.Utils
 
                     if (capturedCount >= MaxPackets)
                     {
-                        progress?.Report($"[LIMIT] Достигнут лимит пакетов {MaxPackets}, остановка захвата");
+                        // Достижение лимита пакетов логируем один раз, без спама по каждому пакету
+                        if (capturedCount == MaxPackets)
+                        {
+                            progress?.Report($"[LIMIT] Достигнут лимит пакетов {MaxPackets}, дальнейшие пакеты игнорируются");
+                        }
                         continue;
                     }
-
-                    progress?.Report($"[RECV] Получен пакет: длина={readLen}, Outbound={addr.Outbound}, Loopback={addr.Loopback}, IPv6={addr.IPv6}");
 
                     // Parse IP/TCP/UDP headers
                     if (TryParsePacket(buffer, (int)readLen, addr, out var header))
@@ -301,13 +320,10 @@ namespace IspAudit.Utils
                         packetBuffer.Add(header);
                         capturedCount++;
 
-                        // Детальный лог каждого захваченного пакета
-                        progress?.Report($"[PACKET #{capturedCount}] {header.Protocol} {header.LocalPort} -> {header.RemoteIp}:{header.RemotePort} ({header.TotalSize} байт)");
-
-                        // Периодический отчёт о захвате
-                        if (capturedCount % 500 == 0)
+                        // Периодический отчёт о захвате без лога каждого пакета
+                        if (capturedCount % 1000 == 0)
                         {
-                            progress?.Report($"PacketCapture: захвачено {capturedCount} пакетов");
+                            progress?.Report($"[NETWORK] Захвачено пакетов: {capturedCount}");
                         }
 
                         // Opportunistic DNS parsing
@@ -316,11 +332,8 @@ namespace IspAudit.Utils
                             TryParseDns(buffer, (int)readLen, dnsCache);
                         }
                     }
-                    else
-                    {
-                        // Лог пропущенных пакетов
-                        progress?.Report($"[SKIP] Не удалось распарсить пакет: IPv6={addr.IPv6}, длина={readLen}");
-                    }
+                    // Пакеты, которые не удалось распарсить, просто пропускаем без лога,
+                    // чтобы не засорять вывод при большом потоке трафика.
                 }
             }
             catch (Exception ex)

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Threading.Tasks;
 using IspAudit.Output;
 
@@ -38,7 +39,7 @@ public class RouterTest
             var pingResults = await PingGatewayAsync(gatewayIp, 20);
 
             // 3. Проверить UPnP через COM Interop
-            bool upnpEnabled = await CheckUpnpAsync();
+            bool upnpEnabled = !OperatingSystem.IsWindows() ? false : await CheckUpnpAsync();
 
             // 4. Проверить SIP ALG (эвристика на основе типа шлюза)
             bool sipAlgDetected = CheckSipAlg(gatewayIp);
@@ -139,6 +140,7 @@ public class RouterTest
     /// <summary>
     /// Проверяет UPnP через COM Interop (UPnP.UPnPDeviceFinder)
     /// </summary>
+    [SupportedOSPlatform("windows")]
     private static async Task<bool> CheckUpnpAsync()
     {
         return await Task.Run(() =>

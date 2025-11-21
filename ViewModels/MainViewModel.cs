@@ -12,6 +12,7 @@ using IspAudit;
 using IspAudit.Tests;
 using IspAudit.Bypass;
 using IspAudit.Utils;
+using System.Runtime.Versioning;
 
 namespace ISPAudit.ViewModels
 {
@@ -39,7 +40,7 @@ namespace ISPAudit.ViewModels
         private string _selectedProfile = "Star Citizen";
         private string _currentAction = "";
 
-        public ObservableCollection<TestResult> TestResults { get; set; }
+        public ObservableCollection<TestResult> TestResults { get; set; } = new();
         public ObservableCollection<string> AvailableProfiles { get; set; }
 
         public string CurrentAction
@@ -199,6 +200,8 @@ namespace ISPAudit.ViewModels
         private bool _stage2Complete = false;
         private bool _stage3Complete = false;
         private bool _isExeScenarioRunning = false;
+        private bool _isAnalyzingTraffic;
+        private bool _isStage1ContinuousMode;
         private GameProfile? _capturedProfile;
         private List<BlockageProblem>? _detectedProblems;
         private BypassProfile? _plannedBypass;
@@ -269,6 +272,26 @@ namespace ISPAudit.ViewModels
             set { _stage3Complete = value; OnPropertyChanged(nameof(Stage3Complete)); }
         }
 
+        public bool IsAnalyzingTraffic
+        {
+            get => _isAnalyzingTraffic;
+            set
+            {
+                _isAnalyzingTraffic = value;
+                OnPropertyChanged(nameof(IsAnalyzingTraffic));
+            }
+        }
+
+        public bool IsStage1ContinuousMode
+        {
+            get => _isStage1ContinuousMode;
+            set
+            {
+                _isStage1ContinuousMode = value;
+                OnPropertyChanged(nameof(IsStage1ContinuousMode));
+            }
+        }
+
         public bool CanRunStage2 => Stage1Complete && _capturedProfile != null;
         public bool CanRunStage3 => Stage2Complete && _detectedProblems != null && _detectedProblems.Any();
 
@@ -278,6 +301,7 @@ namespace ISPAudit.ViewModels
         public ICommand ViewStage1ResultsCommand { get; }
         public ICommand BrowseExeCommand { get; }
         public ICommand ResetExeScenarioCommand { get; }
+        public ICommand CancelStage1Command { get; }
 
         public MainViewModel()
         {
@@ -329,7 +353,7 @@ namespace ISPAudit.ViewModels
             CancelCommand = new RelayCommand(_ => CancelAudit(), _ => IsRunning && _cts != null);
             SetStateCommand = new RelayCommand(state => 
             {
-                ScreenState = state.ToString();
+                ScreenState = state?.ToString() ?? string.Empty;
                 // Обновляем CanExecute для команд
                 System.Windows.Input.CommandManager.InvalidateRequerySuggested();
             });
@@ -350,6 +374,7 @@ namespace ISPAudit.ViewModels
             ApplyBypassCommand = new RelayCommand(async _ => await RunStage3ApplyBypassAsync(), _ => CanRunStage3 && !IsRunning);
             ResetExeScenarioCommand = new RelayCommand(_ => ResetExeScenario(), 
                 _ => (Stage1Complete || Stage2Complete || Stage3Complete) && !IsRunning);
+            CancelStage1Command = new RelayCommand(_ => _cts?.Cancel(), _ => IsAnalyzingTraffic);
             
             // Load Fix History on startup
             LoadFixHistory();
@@ -419,18 +444,20 @@ namespace ISPAudit.ViewModels
                 Log("ШАГ 4: ЗАВЕРШЕНИЕ ТЕСТОВ");
                 Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                 
-                System.Windows.Application.Current?.Dispatcher.Invoke(() => 
-                {
-                    ScreenState = "done";
-                });
+                var app = System.Windows.Application.Current;
+                    if (app != null)
+                    {
+                        app.Dispatcher.Invoke(() => ScreenState = "done");
+                    }
             }
             catch (OperationCanceledException)
             {
                 Log("[INFO] Тесты отменены пользователем");
-                System.Windows.Application.Current?.Dispatcher.Invoke(() => 
+                var app = System.Windows.Application.Current;
+                if (app != null)
                 {
-                    ScreenState = "done";
-                });
+                    app.Dispatcher.Invoke(() => ScreenState = "done");
+                }
             }
             catch (Exception ex)
             {
@@ -438,7 +465,11 @@ namespace ISPAudit.ViewModels
                 Log($"  Message: {ex.Message}");
                 Log($"  StackTrace:\n{ex.StackTrace}");
                 
-                System.Windows.Application.Current?.Dispatcher.Invoke(() => ScreenState = "done");
+                var app = System.Windows.Application.Current;
+                if (app != null)
+                {
+                    app.Dispatcher.Invoke(() => ScreenState = "done");
+                }
             }
             finally
             {
@@ -1159,13 +1190,14 @@ namespace ISPAudit.ViewModels
             try
             {
                 Log("[Stage1] Starting traffic analysis...");
+                IsAnalyzingTraffic = true;
                 Stage1Status = "Проверка прав администратора...";
                 Stage1Complete = false;
                 Stage1HostsFound = 0;
                 Stage1Progress = 0;
 
                 // WinDivert SOCKET layer требует прав администратора
-                if (!IsAdministrator())
+                if (!OperatingSystem.IsWindows() || !IsAdministrator())
                 {
                     Stage1Status = "Ошибка: требуются права администратора";
                     Log("[Stage1] FAILED: Administrator rights required for WinDivert");
@@ -1214,16 +1246,20 @@ namespace ISPAudit.ViewModels
                     Stage1Status = $"Процесс запущен (PID={pid}), старт захвата...";
                     Log($"[Stage1] Starting capture immediately...");
                     
-                    // Анализируем трафик 30 секунд
+                    // Анализируем трафик: либо фиксированное окно, либо до ручной остановки
                     var progress = new Progress<string>(msg =>
                     {
                         Stage1Status = msg;
                         Log($"[Stage1] {msg}");
                     });
 
+                    var captureDuration = IsStage1ContinuousMode
+                        ? (TimeSpan?)null
+                        : TimeSpan.FromSeconds(30);
+
                     _capturedProfile = await TrafficAnalyzer.AnalyzeProcessTrafficAsync(
                         pid,
-                        TimeSpan.FromSeconds(30),
+                        captureDuration,
                         progress,
                         CancellationToken.None
                     ).ConfigureAwait(false);
@@ -1231,6 +1267,10 @@ namespace ISPAudit.ViewModels
                     Stage1HostsFound = _capturedProfile?.Targets?.Count ?? 0;
                     Stage1Complete = true;
                     Stage1Progress = 100;
+
+                    // После завершения Stage1 пересчитываем CanExecute у команд, чтобы
+                    // кнопка шага 2 (DiagnoseCommand) сразу разблокировалась без клика мышкой.
+                    CommandManager.InvalidateRequerySuggested();
 
                     if (Stage1HostsFound == 0)
                     {
@@ -1257,6 +1297,12 @@ namespace ISPAudit.ViewModels
                     {
                         Stage1Status = $"✓ Завершено: обнаружено {Stage1HostsFound} целей";
                         Log($"[Stage1] SUCCESS: {Stage1HostsFound} unique hosts captured");
+
+                        // Явно обновляем связанные свойства и команды,
+                        // чтобы форма "проснулась" сразу после завершения Stage1.
+                        OnPropertyChanged(nameof(Stage1Complete));
+                        OnPropertyChanged(nameof(CanRunStage2));
+                        CommandManager.InvalidateRequerySuggested();
                         
                         // Логируем список захваченных целей
                         if (_capturedProfile?.Targets != null)
@@ -1334,6 +1380,7 @@ namespace ISPAudit.ViewModels
             {
                 Log("[Stage2] Starting diagnostics...");
                 Stage2Status = "Запуск тестов...";
+                IsAnalyzingTraffic = false;
                 Stage2Complete = false;
                 Stage2ProblemsFound = 0;
                 Stage2Progress = 0;
@@ -1429,7 +1476,10 @@ namespace ISPAudit.ViewModels
                 Stage2Status = "Анализ результатов...";
 
                 // Классифицируем проблемы
-                var testResults = await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => TestResults.ToList());
+                var app = System.Windows.Application.Current;
+                var testResults = app != null
+                    ? await app.Dispatcher.InvokeAsync(() => TestResults.ToList())
+                    : TestResults.ToList();
                 _detectedProblems = ProblemClassifier.ClassifyProblems(testResults);
 
                 Stage2ProblemsFound = _detectedProblems.Count;
@@ -1468,9 +1518,12 @@ namespace ISPAudit.ViewModels
                     Stage2Progress = 100;
                     Log("[Stage2] No problems detected");
                     
-                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                    var app2 = System.Windows.Application.Current;
+                    if (app2 != null)
                     {
-                        System.Windows.MessageBox.Show(
+                        await app2.Dispatcher.InvokeAsync(() =>
+                        {
+                            System.Windows.MessageBox.Show(
                             "Диагностика завершена успешно!\n\n" +
                             "Проблем с подключением не обнаружено.\n" +
                             "Применение обхода не требуется.",
@@ -1478,7 +1531,8 @@ namespace ISPAudit.ViewModels
                             System.Windows.MessageBoxButton.OK,
                             System.Windows.MessageBoxImage.Information
                         );
-                    });
+                        });
+                    }
                 }
             }
             catch (Exception ex)
@@ -1645,6 +1699,7 @@ namespace ISPAudit.ViewModels
         /// <summary>
         /// Проверяет, запущено ли приложение с правами администратора
         /// </summary>
+        [SupportedOSPlatform("windows")] 
         private static bool IsAdministrator()
         {
             try
@@ -1662,7 +1717,7 @@ namespace ISPAudit.ViewModels
         #endregion
 
 
-        public event PropertyChangedEventHandler PropertyChanged;
+        public event PropertyChangedEventHandler? PropertyChanged;
 
         protected virtual void OnPropertyChanged(string propertyName)
         {
@@ -1672,18 +1727,18 @@ namespace ISPAudit.ViewModels
 
     public class RelayCommand : ICommand
     {
-        private readonly System.Action<object> _execute;
-        private readonly System.Func<object, bool> _canExecute;
+        private readonly System.Action<object?> _execute;
+        private readonly System.Func<object?, bool>? _canExecute;
 
-        public RelayCommand(System.Action<object> execute, System.Func<object, bool> canExecute = null)
+        public RelayCommand(System.Action<object?> execute, System.Func<object?, bool>? canExecute = null)
         {
             _execute = execute;
             _canExecute = canExecute;
         }
 
-        public bool CanExecute(object parameter) => _canExecute?.Invoke(parameter) ?? true;
-        public void Execute(object parameter) => _execute(parameter);
-        public event System.EventHandler CanExecuteChanged
+        public bool CanExecute(object? parameter) => _canExecute?.Invoke(parameter) ?? true;
+        public void Execute(object? parameter) => _execute(parameter);
+        public event System.EventHandler? CanExecuteChanged
         {
             add => CommandManager.RequerySuggested += value;
             remove => CommandManager.RequerySuggested -= value;

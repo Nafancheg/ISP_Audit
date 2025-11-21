@@ -4,6 +4,7 @@
     <OutputType>Exe</OutputType>
     <!-- Use the windows-specific TF to enable WPF on Windows -->
     <TargetFramework>net9.0-windows</TargetFramework>
+    <SupportedOSPlatformVersion>6.1</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>

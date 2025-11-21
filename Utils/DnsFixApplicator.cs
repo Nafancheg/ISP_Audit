@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Security.Principal;
+using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -64,7 +65,7 @@ namespace IspAudit.Utils
         {
             progress?.Report("Проверка прав администратора...");
 
-            if (!IsAdministrator())
+            if (!OperatingSystem.IsWindows() || !IsAdministrator())
             {
                 return new DnsFixResult
                 {
@@ -133,7 +134,7 @@ namespace IspAudit.Utils
         {
             progress?.Report("Откат DNS на автоматический (DHCP)...");
 
-            if (!IsAdministrator())
+            if (!OperatingSystem.IsWindows() || !IsAdministrator())
             {
                 progress?.Report("Требуются права администратора");
                 return false;
@@ -406,6 +407,7 @@ namespace IspAudit.Utils
         /// <summary>
         /// Проверяет, запущено ли приложение с правами администратора
         /// </summary>
+        [SupportedOSPlatform("windows")]
         private static bool IsAdministrator()
         {
             try

@@ -321,7 +321,7 @@ namespace IspAudit.Bypass
             var addr = new WinDivertNative.Address();
             while (!token.IsCancellationRequested)
             {
-                if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, ref addr, out _))
+                if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, out var readLen, out addr))
                 {
                     var error = Marshal.GetLastWin32Error();
                     if (error == WinDivertNative.ErrorOperationAborted)
@@ -340,7 +340,7 @@ namespace IspAudit.Bypass
 
             while (!token.IsCancellationRequested)
             {
-                if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, ref addr, out var read))
+                if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, out var read, out addr))
                 {
                     var error = Marshal.GetLastWin32Error();
                     if (error == WinDivertNative.ErrorOperationAborted)
@@ -353,32 +353,32 @@ namespace IspAudit.Bypass
                 int length = (int)read;
                 if (!TryParseTcpPacket(buffer, length, out var ipHeaderLength, out var tcpHeaderLength, out var payloadOffset, out var payloadLength, out bool isIpv4))
                 {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, ref addr, out _);
+                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
                     continue;
                 }
 
                 if (!isIpv4)
                 {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, ref addr, out _);
+                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
                     continue;
                 }
 
                 if (payloadLength < profile.TlsFragmentThreshold)
                 {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, ref addr, out _);
+                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
                     continue;
                 }
 
                 if (!IsClientHello(buffer.AsSpan(payloadOffset, payloadLength)))
                 {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, ref addr, out _);
+                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
                     continue;
                 }
 
                 var key = CreateConnectionKey(buffer, ipHeaderLength, tcpHeaderLength, isIpv4);
                 if (!sessions.TryAdd(key, true))
                 {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, ref addr, out _);
+                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
                     continue;
                 }
 
@@ -386,7 +386,7 @@ namespace IspAudit.Bypass
                 int secondLen = payloadLength - firstLen;
                 if (firstLen <= 0 || secondLen <= 0)
                 {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, ref addr, out _);
+                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
                     continue;
                 }
 
@@ -394,7 +394,7 @@ namespace IspAudit.Bypass
                 Buffer.BlockCopy(buffer, 0, firstPacket, 0, ipHeaderLength + tcpHeaderLength + firstLen);
                 AdjustPacketLengths(firstPacket, ipHeaderLength, tcpHeaderLength, firstLen, isIpv4);
                 WinDivertNative.WinDivertHelperCalcChecksums(firstPacket, (uint)firstPacket.Length, ref addr, 0);
-                WinDivertNative.WinDivertSend(handle, firstPacket, (uint)firstPacket.Length, ref addr, out _);
+                WinDivertNative.WinDivertSend(handle, firstPacket, (uint)firstPacket.Length, out _, in addr);
 
                 var secondPacket = new byte[ipHeaderLength + tcpHeaderLength + secondLen];
                 Buffer.BlockCopy(buffer, 0, secondPacket, 0, ipHeaderLength + tcpHeaderLength);
@@ -402,7 +402,7 @@ namespace IspAudit.Bypass
                 IncrementTcpSequence(secondPacket, ipHeaderLength, (uint)firstLen);
                 AdjustPacketLengths(secondPacket, ipHeaderLength, tcpHeaderLength, secondLen, isIpv4);
                 WinDivertNative.WinDivertHelperCalcChecksums(secondPacket, (uint)secondPacket.Length, ref addr, 0);
-                WinDivertNative.WinDivertSend(handle, secondPacket, (uint)secondPacket.Length, ref addr, out _);
+                WinDivertNative.WinDivertSend(handle, secondPacket, (uint)secondPacket.Length, out _, in addr);
             }
         }
 
@@ -413,7 +413,7 @@ namespace IspAudit.Bypass
 
             while (!token.IsCancellationRequested)
             {
-                if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, ref addr, out var read))
+                if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, out var read, out addr))
                 {
                     var error = Marshal.GetLastWin32Error();
                     if (error == WinDivertNative.ErrorOperationAborted)
@@ -426,7 +426,7 @@ namespace IspAudit.Bypass
                 int length = (int)read;
                 if (!TryParsePacket(buffer, length, out var protocol, out var ipHeaderLength, out var transportOffset, out var isIpv4))
                 {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, ref addr, out _);
+                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
                     continue;
                 }
 
@@ -434,7 +434,7 @@ namespace IspAudit.Bypass
                 var rule = rules.FirstOrDefault(r => r.Rule.Protocol == protocol && r.Rule.Port == dstPort);
                 if (rule == null)
                 {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, ref addr, out _);
+                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
                     continue;
                 }
 
@@ -444,13 +444,13 @@ namespace IspAudit.Bypass
 
                 if (rule.AllowedDestinations.Count > 0 && !rule.AllowedDestinations.Contains(destination))
                 {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, ref addr, out _);
+                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
                     continue;
                 }
 
                 if (destination.AddressFamily != rule.RedirectAddress.AddressFamily)
                 {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, ref addr, out _);
+                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
                     continue;
                 }
 
@@ -468,7 +468,7 @@ namespace IspAudit.Bypass
                 BinaryPrimitives.WriteUInt16BigEndian(buffer.AsSpan(transportOffset + 2, 2), rule.Rule.RedirectPort);
 
                 WinDivertNative.WinDivertHelperCalcChecksums(buffer, (uint)length, ref addr, 0);
-                WinDivertNative.WinDivertSend(handle, buffer, (uint)length, ref addr, out _);
+                WinDivertNative.WinDivertSend(handle, buffer, (uint)length, out _, in addr);
             }
         }
 

@@ -14,10 +14,10 @@ namespace ISPAudit.Models
     public class TestResult : INotifyPropertyChanged
     {
         private TestStatus _status;
-        private string _error;
+        private string _error = string.Empty;
         private string? _details;
 
-        public Target Target { get; set; }
+        public Target Target { get; set; } = null!;
 
         public TestStatus Status
         {
@@ -85,7 +85,7 @@ namespace ISPAudit.Models
                                          Status == TestStatus.Pass || 
                                          Status == TestStatus.Warn;
 
-        public event PropertyChangedEventHandler PropertyChanged;
+        public event PropertyChangedEventHandler? PropertyChanged;
 
         protected virtual void OnPropertyChanged(string propertyName)
         {

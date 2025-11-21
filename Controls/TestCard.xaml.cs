@@ -19,8 +19,7 @@ namespace ISPAudit.Controls
             set => SetValue(TestResultProperty, value);
         }
 
-        public event RoutedEventHandler FixClicked;
-        public event RoutedEventHandler DetailsClicked;
+        public event RoutedEventHandler? FixClicked;
 
         public TestCard()
         {
@@ -41,7 +40,7 @@ namespace ISPAudit.Controls
             }
         }
 
-        private void TestResult_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        private void TestResult_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             Dispatcher.Invoke(() => UpdateCard());
         }

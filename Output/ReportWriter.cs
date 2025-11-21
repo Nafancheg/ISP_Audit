@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Runtime.Versioning;
 using IspAudit.Tests;
 
 namespace IspAudit.Output
@@ -837,6 +838,7 @@ namespace IspAudit.Output
             await File.WriteAllTextAsync(path, html, Encoding.UTF8);
         }
 
+        [SupportedOSPlatform("windows6.1")]
         public static async Task SavePdfReportAsync(RunReport run, Config cfg, string path)
         {
             var advice = BuildAdviceText(run, cfg);
@@ -850,6 +852,7 @@ namespace IspAudit.Output
             await File.WriteAllBytesAsync(path, pdf);
         }
 
+        [SupportedOSPlatform("windows6.1")]
         private static (byte[] Data, int Width, int Height) RenderReportToImage(RunReport run, Config cfg, string advice)
         {
             int width = 1654;
@@ -925,6 +928,7 @@ namespace IspAudit.Output
             return (msImage.ToArray(), width, height);
         }
 
+        [SupportedOSPlatform("windows6.1")]
         private static Font CreateFont(string familyName, float size, FontStyle style)
         {
             try
@@ -938,6 +942,7 @@ namespace IspAudit.Output
             }
         }
 
+        [SupportedOSPlatform("windows6.1")]
         private static float DrawParagraph(Graphics g, string text, Font font, int x, float y, int width, Color color, float spacing)
         {
             var flags = TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.Left;
@@ -947,6 +952,7 @@ namespace IspAudit.Output
             return y + size.Height + spacing;
         }
 
+        [SupportedOSPlatform("windows6.1")]
         private static byte[] BuildPdfFromImage(byte[] imageData, int width, int height)
         {
             using var ms = new MemoryStream();

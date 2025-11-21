@@ -46,28 +46,40 @@ namespace IspAudit.Bypass
             Both = 2
         }
 
-        [StructLayout(LayoutKind.Explicit, Size = 80)]
+        [StructLayout(LayoutKind.Sequential)]
         public struct Address
         {
-            [FieldOffset(0)] public long Timestamp;
-            
-            // BitFields: Layer:8, Event:8, Sniffed:1, Outbound:1, Loopback:1, Impostor:1, IPv6:1, IPChecksum:1, TCPChecksum:1, UDPChecksum:1
-            [FieldOffset(8)] public ulong BitFields;
+            public long Timestamp;
 
-            [FieldOffset(16)] public NetworkData Network;
-            [FieldOffset(16)] public FlowData Flow;
-            [FieldOffset(16)] public SocketData Socket;
+            // Объединённое поле для Layer/Event/флагов/Reserved1 (соответствует UINT32 битовым полям)
+            public uint LayerEventFlags;
 
-            public Layer Layer => (Layer)(BitFields & 0xFF);
-            public byte Event => (byte)((BitFields >> 8) & 0xFF);
-            public bool Sniffed => ((BitFields >> 16) & 1) != 0;
-            public bool Outbound => ((BitFields >> 17) & 1) != 0;
-            public bool Loopback => ((BitFields >> 18) & 1) != 0;
-            public bool Impostor => ((BitFields >> 19) & 1) != 0;
-            public bool IPv6 => ((BitFields >> 20) & 1) != 0;
-            public bool IPChecksum => ((BitFields >> 21) & 1) != 0;
-            public bool TCPChecksum => ((BitFields >> 22) & 1) != 0;
-            public bool UDPChecksum => ((BitFields >> 23) & 1) != 0;
+            // Reserved2
+            public uint Reserved2;
+
+            // Union данных слоя размером 64 байта
+            public AddressData Data;
+
+            public Layer Layer => (Layer)(LayerEventFlags & 0xFF);
+            public byte Event => (byte)((LayerEventFlags >> 8) & 0xFF);
+            public bool Sniffed => ((LayerEventFlags >> 16) & 1) != 0;
+            public bool Outbound => ((LayerEventFlags >> 17) & 1) != 0;
+            public bool Loopback => ((LayerEventFlags >> 18) & 1) != 0;
+            public bool Impostor => ((LayerEventFlags >> 19) & 1) != 0;
+            public bool IPv6 => ((LayerEventFlags >> 20) & 1) != 0;
+            public bool IPChecksum => ((LayerEventFlags >> 21) & 1) != 0;
+            public bool TCPChecksum => ((LayerEventFlags >> 22) & 1) != 0;
+            public bool UDPChecksum => ((LayerEventFlags >> 23) & 1) != 0;
+        }
+
+        // Union для Network/Flow/Socket/Reflect, ровно 64 байта как в WINDIVERT_ADDRESS
+        [StructLayout(LayoutKind.Explicit, Size = 64)]
+        public struct AddressData
+        {
+            [FieldOffset(0)] public NetworkData Network;
+            [FieldOffset(0)] public FlowData Flow;
+            [FieldOffset(0)] public SocketData Socket;
+            [FieldOffset(0)] public ReflectData Reflect;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -88,6 +100,8 @@ namespace IspAudit.Bypass
             public ushort LocalPort;
             public ushort RemotePort;
             public byte Protocol;
+            private byte _padding1;
+            private ushort _padding2;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -101,6 +115,21 @@ namespace IspAudit.Bypass
             public ushort LocalPort;
             public ushort RemotePort;
             public byte Protocol;
+            private byte _padding1;
+            private ushort _padding2;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ReflectData
+        {
+            public long Timestamp;
+            public uint ProcessId;
+            public Layer Layer;
+            public ulong Flags;
+            public short Priority;
+            private short _padding;
+            private uint _reserved1;
+            private uint _reserved2;
         }
 
         public sealed class SafeHandle : SafeHandleZeroOrMinusOneIsInvalid
@@ -132,15 +161,15 @@ namespace IspAudit.Bypass
 
         [DllImport("WinDivert.dll", CallingConvention = CallingConvention.Winapi, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool WinDivertRecv(SafeHandle handle, IntPtr pPacket, uint packetLen, ref Address address, IntPtr pReadLen);
+        public static extern bool WinDivertRecv(SafeHandle handle, byte[] packet, uint packetLen, out uint recvLen, out Address addr);
 
         [DllImport("WinDivert.dll", CallingConvention = CallingConvention.Winapi, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool WinDivertRecv(SafeHandle handle, byte[] packet, uint packetLen, ref Address address, out uint readLen);
+        public static extern bool WinDivertRecv(SafeHandle handle, IntPtr packet, uint packetLen, out uint recvLen, out Address addr);
 
         [DllImport("WinDivert.dll", CallingConvention = CallingConvention.Winapi, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool WinDivertSend(SafeHandle handle, byte[] packet, uint packetLen, ref Address address, out uint sendLen);
+        public static extern bool WinDivertSend(SafeHandle handle, byte[] packet, uint packetLen, out uint sendLen, in Address addr);
 
         [DllImport("WinDivert.dll", CallingConvention = CallingConvention.Winapi, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]

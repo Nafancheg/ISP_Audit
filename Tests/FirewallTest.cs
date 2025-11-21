@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Management;
+using System.Runtime.Versioning;
 using System.Threading.Tasks;
 using IspAudit.Output;
 
@@ -26,10 +27,10 @@ namespace IspAudit.Tests
         {
             try
             {
-                bool firewallEnabled = await CheckFirewallEnabledAsync().ConfigureAwait(false);
-                List<string> blockedPorts = await GetBlockedPortsAsync().ConfigureAwait(false);
-                bool defenderActive = await CheckDefenderActiveAsync().ConfigureAwait(false);
-                List<string> blockingRules = await GetBlockingRulesAsync().ConfigureAwait(false);
+                bool firewallEnabled = !OperatingSystem.IsWindows() ? false : await CheckFirewallEnabledAsync().ConfigureAwait(false);
+                List<string> blockedPorts = !OperatingSystem.IsWindows() ? new List<string>() : await GetBlockedPortsAsync().ConfigureAwait(false);
+                bool defenderActive = !OperatingSystem.IsWindows() ? false : await CheckDefenderActiveAsync().ConfigureAwait(false);
+                List<string> blockingRules = !OperatingSystem.IsWindows() ? new List<string>() : await GetBlockingRulesAsync().ConfigureAwait(false);
 
                 string status = DetermineStatus(firewallEnabled, blockedPorts, defenderActive, blockingRules);
 
@@ -69,6 +70,7 @@ namespace IspAudit.Tests
         /// Проверяет включен ли Windows Firewall через WMI.
         /// Fallback на netsh advfirewall.
         /// </summary>
+        [SupportedOSPlatform("windows")]
         private async Task<bool> CheckFirewallEnabledAsync()
         {
             return await Task.Run(() =>
@@ -123,6 +125,7 @@ namespace IspAudit.Tests
         /// Получает список заблокированных портов для игровых портов.
         /// Проверяет правила через WMI MSFT_NetFirewallRule.
         /// </summary>
+        [SupportedOSPlatform("windows")]
         private async Task<List<string>> GetBlockedPortsAsync()
         {
             return await Task.Run(() =>
@@ -170,6 +173,7 @@ namespace IspAudit.Tests
         /// <summary>
         /// Проверяет активен ли Windows Defender.
         /// </summary>
+        [SupportedOSPlatform("windows")]
         private async Task<bool> CheckDefenderActiveAsync()
         {
             return await Task.Run(() =>
@@ -201,6 +205,7 @@ namespace IspAudit.Tests
         /// Получает список блокирующих правил для Star Citizen.
         /// Проверяет есть ли правила, которые блокируют SC процессы или порты.
         /// </summary>
+        [SupportedOSPlatform("windows")]
         private async Task<List<string>> GetBlockingRulesAsync()
         {
             return await Task.Run(() =>
