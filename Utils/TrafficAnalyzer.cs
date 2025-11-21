@@ -330,23 +330,17 @@ namespace IspAudit.Utils
             if (protocol == 6) // TCP
             {
                 if (length < ipHeaderLen + 20) return false;
-
-                // Порты в сетевом пакете в сетевом порядке байт, приводим к host order,
-                // чтобы они совпадали с тем, что приходит из Flow layer и IP Helper API.
-                ushort srcPortNetwork = (ushort)((buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1]);
-                ushort dstPortNetwork = (ushort)((buffer[ipHeaderLen + 2] << 8) | buffer[ipHeaderLen + 3]);
-
-                localPort = (ushort)IPAddress.NetworkToHostOrder((short)srcPortNetwork);
-                remotePort = (ushort)IPAddress.NetworkToHostOrder((short)dstPortNetwork);
+                
+                // Прямое чтение портов из network order (big-endian)
+                // (buffer << 8) | buffer уже даёт правильное значение для сравнения с Flow layer
+                localPort = (ushort)((buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1]);
+                remotePort = (ushort)((buffer[ipHeaderLen + 2] << 8) | buffer[ipHeaderLen + 3]);
                 transportProto = TransportProtocol.TCP;
             }
             else if (protocol == 17) // UDP
             {
-                ushort srcPortNetwork = (ushort)((buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1]);
-                ushort dstPortNetwork = (ushort)((buffer[ipHeaderLen + 2] << 8) | buffer[ipHeaderLen + 3]);
-
-                localPort = (ushort)IPAddress.NetworkToHostOrder((short)srcPortNetwork);
-                remotePort = (ushort)IPAddress.NetworkToHostOrder((short)dstPortNetwork);
+                localPort = (ushort)((buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1]);
+                remotePort = (ushort)((buffer[ipHeaderLen + 2] << 8) | buffer[ipHeaderLen + 3]);
                 transportProto = TransportProtocol.UDP;
             }
             else
