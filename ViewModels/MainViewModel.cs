@@ -1262,17 +1262,47 @@ namespace ISPAudit.ViewModels
                 }
 
                 var exeName = Path.GetFileNameWithoutExtension(ExePath);
+                Log($"[Stage1] Поиск процессов по имени: '{exeName}'");
                 var alreadyRunning = System.Diagnostics.Process.GetProcessesByName(exeName);
+                Log($"[Stage1] Найдено процессов: {alreadyRunning.Length}");
 
                 if (alreadyRunning.Length > 0)
                 {
-                    // Приложение уже запущено → захват начинать нельзя
-                    var p = alreadyRunning[0];
-                    Stage1Status =
-                        $"Приложение уже запущено (PID={p.Id}).\n" +
-                        "Закройте игру/лаунчер и нажмите кнопку повторно.";
-                    Log($"[Stage1] Отмена: целевое приложение уже запущено (PID={p.Id})");
-                    return;
+                    // Фильтруем только процессы с главным окном (UI процесс)
+                    var mainProcesses = alreadyRunning
+                        .Where(p => 
+                        {
+                            try
+                            {
+                                // Проверяем: процесс жив, имеет главное окно, окно видимо
+                                bool isAlive = !p.HasExited;
+                                bool hasMainWindow = p.MainWindowHandle != IntPtr.Zero;
+                                
+                                Log($"[Stage1]   - PID={p.Id}, HasExited={p.HasExited}, MainWindowHandle={p.MainWindowHandle}, MainWindowTitle='{p.MainWindowTitle}'");
+                                
+                                return isAlive && hasMainWindow;
+                            }
+                            catch (Exception ex)
+                            {
+                                Log($"[Stage1]   - PID={p.Id}, (ошибка проверки: {ex.Message})");
+                                return false;
+                            }
+                        })
+                        .ToArray();
+                    
+                    Log($"[Stage1] Процессов с главным окном: {mainProcesses.Length}");
+                    
+                    if (mainProcesses.Length > 0)
+                    {
+                        var p = mainProcesses[0];
+                        Stage1Status =
+                            $"Приложение уже запущено (PID={p.Id}).\n" +
+                            "Закройте игру/лаунчер и нажмите кнопку повторно.";
+                        Log($"[Stage1] Отмена: целевое приложение уже запущено (PID={p.Id}, окно: '{p.MainWindowTitle}')");
+                        return;
+                    }
+                    
+                    Log($"[Stage1] Найденные процессы не имеют главного окна (фоновые/дочерние), продолжаем запуск");
                 }
 
                 // ВСЕ проверки прошли → ТЕПЕРЬ начинаем реальный захват
