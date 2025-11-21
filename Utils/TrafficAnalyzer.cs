@@ -26,7 +26,8 @@ namespace IspAudit.Utils
             int targetPid,
             TimeSpan? captureTimeout,
             IProgress<string>? progress = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            bool enableLiveTesting = false)
         {
             return await Task.Run(async () =>
             {
@@ -76,6 +77,21 @@ namespace IspAudit.Utils
                 var connections = new ConcurrentDictionary<string, ConnectionInfo>();
                 var dnsCache = new ConcurrentDictionary<string, string>(); // IP -> Hostname (из DNS-запросов процесса)
 
+                // Инициализация live-testing pipeline (если включен)
+                LiveTestingPipeline? pipeline = null;
+                if (enableLiveTesting)
+                {
+                    var pipelineConfig = new PipelineConfig
+                    {
+                        EnableLiveTesting = true,
+                        EnableAutoBypass = false, // Пока не включаем auto-bypass
+                        MaxConcurrentTests = 5,
+                        TestTimeout = TimeSpan.FromSeconds(3)
+                    };
+                    pipeline = new LiveTestingPipeline(pipelineConfig, progress);
+                    progress?.Report("✓ Live-testing pipeline активен");
+                }
+
                 // Настройка таймаута
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 if (captureTimeout.HasValue)
@@ -96,7 +112,7 @@ namespace IspAudit.Utils
                     pidUpdaterTask = Task.Run(() => UpdateTargetPidsAsync(processName, targetPids, progress, cts.Token), cts.Token);
                     
                     // Flow Monitor: сбор соединений по PID
-                    flowTask = Task.Run(() => RunFlowMonitor(targetPids, connections, isContinuous, progress, cts.Token), cts.Token);
+                    flowTask = Task.Run(() => RunFlowMonitor(targetPids, connections, isContinuous, pipeline, progress, cts.Token), cts.Token);
                     
                     // DNS Sniffer: парсинг DNS-ответов для получения hostname
                     dnsTask = Task.Run(() => RunDnsSniffer(dnsCache, progress, cts.Token), cts.Token);
@@ -283,6 +299,7 @@ namespace IspAudit.Utils
             HashSet<int> targetPids,
             ConcurrentDictionary<string, ConnectionInfo> connections,
             bool isContinuous,
+            LiveTestingPipeline? pipeline,
             IProgress<string>? progress,
             CancellationToken token)
         {
@@ -378,6 +395,19 @@ namespace IspAudit.Utils
                         if (connections.Count % 5 == 0 || connections.Count <= 10)
                         {
                             progress?.Report($"Обнаружено соединений: {connections.Count}");
+                        }
+
+                        // LIVE TESTING: отправляем хост в pipeline на тестирование
+                        if (pipeline != null)
+                        {
+                            var discovered = new HostDiscovered(
+                                key,
+                                remoteIp,
+                                remotePort,
+                                protocol == 6 ? TransportProtocol.TCP : TransportProtocol.UDP,
+                                DateTime.UtcNow
+                            );
+                            _ = pipeline.EnqueueHostAsync(discovered); // Fire and forget
                         }
 
                         // Достигли лимита — завершаем (только для фиксированного режима)
