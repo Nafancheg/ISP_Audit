@@ -57,36 +57,20 @@ namespace IspAudit
     {
         private static readonly ServiceTestProfile DefaultProfile = new(
             "default",
-            "Общий сервис",
+            "Сервис",
             runDns: true,
             runTcp: true,
             runHttp: true,
             runTrace: true,
-            preferredTcpPorts: TargetCatalog.DefaultTcpPorts);
+            preferredTcpPorts: null); // Порты теперь в JSON
 
         private static readonly Dictionary<string, ServiceTestProfile> Profiles = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["Портал"] = new ServiceTestProfile(
-                "portal",
-                "Веб-порталы RSI",
-                preferredTcpPorts: new List<int> { 80, 443 }),
-            ["Лаунчер"] = new ServiceTestProfile(
-                "launcher",
-                "Лаунчер Star Citizen",
-                preferredTcpPorts: Enumerable.Range(8000, 21).Prepend(443).ToList()),
-            ["CDN"] = new ServiceTestProfile(
-                "cdn",
-                "CDN и загрузчик",
-                preferredTcpPorts: new List<int> { 80, 443 }),
-            ["Игровые сервера"] = new ServiceTestProfile(
-                "game",
-                "Игровые сервера Star Citizen",
-                runHttp: false,
-                preferredTcpPorts: Enumerable.Range(8000, 21).ToList()),
-            ["Базовая сеть"] = new ServiceTestProfile(
-                "base_network",
-                "Базовая сеть",
-                preferredTcpPorts: TargetCatalog.DefaultTcpPorts)
+            ["web"] = new ServiceTestProfile("web", "Web-сервис", runDns: true, runTcp: true, runHttp: true, runTrace: false),
+            ["game"] = new ServiceTestProfile("game", "Игровой сервер", runDns: true, runTcp: true, runHttp: false, runTrace: false),
+            ["voice"] = new ServiceTestProfile("voice", "Голосовой чат", runDns: true, runTcp: true, runHttp: false, runTrace: false),
+            ["dns"] = new ServiceTestProfile("dns", "DNS", runDns: true, runTcp: false, runHttp: false, runTrace: false),
+            ["unknown"] = new ServiceTestProfile("unknown", "Неизвестный", runDns: true, runTcp: true, runHttp: false, runTrace: false),
         };
 
         public static ServiceTestProfile Resolve(string? service)
@@ -101,26 +85,7 @@ namespace IspAudit
                 return profile;
             }
 
-            if (service.Contains("игров", StringComparison.OrdinalIgnoreCase))
-            {
-                return Profiles["Игровые сервера"];
-            }
-
-            if (service.Contains("лаунч", StringComparison.OrdinalIgnoreCase))
-            {
-                return Profiles["Лаунчер"];
-            }
-
-            if (service.Contains("cdn", StringComparison.OrdinalIgnoreCase))
-            {
-                return Profiles["CDN"];
-            }
-
-            if (service.Contains("портал", StringComparison.OrdinalIgnoreCase) || service.Contains("rsi", StringComparison.OrdinalIgnoreCase))
-            {
-                return Profiles["Портал"];
-            }
-
+            // Для всех остальных случаев - полный набор тестов
             return DefaultProfile;
         }
     }
