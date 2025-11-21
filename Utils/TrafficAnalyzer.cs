@@ -125,10 +125,12 @@ namespace IspAudit.Utils
 
             try
             {
-                int updateCount = 0;
+                int newPidCount = 0;
+                int iterationCount = 0;
                 while (!token.IsCancellationRequested)
                 {
                     await Task.Delay(2000, token).ConfigureAwait(false);
+                    iterationCount++;
 
                     // Получаем текущий список процессов
                     var currentProcesses = System.Diagnostics.Process.GetProcessesByName(processName);
@@ -142,14 +144,14 @@ namespace IspAudit.Utils
                         {
                             targetPids.Add(pid);
                         }
-                        updateCount++;
+                        newPidCount++;
                         progress?.Report($"[PID] Обнаружены новые процессы '{processName}': {string.Join(", ", newPids)} (всего: {targetPids.Count})");
-                    }
-
-                    // Логируем только первые 3 обновления для отладки
-                    if (updateCount > 0 && updateCount <= 3)
-                    {
-                        progress?.Report($"[PID] Отслеживается {targetPids.Count} процессов: {string.Join(", ", targetPids.Take(10))}");
+                        
+                        // Логируем состояние после обнаружения новых PID
+                        if (newPidCount <= 2)
+                        {
+                            progress?.Report($"[PID] Отслеживается {targetPids.Count} процессов: {string.Join(", ", targetPids.Take(10))}");
+                        }
                     }
                 }
             }
