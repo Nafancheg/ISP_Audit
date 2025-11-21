@@ -8,14 +8,17 @@
 Sniffer (TrafficAnalyzer) → Channel → Tester → Channel → Classifier → Channel → UI/Bypass
                               ↓                    ↓                      ↓
                         HostDiscovered        HostTested            HostBlocked
+                                                                        ↓
+                                                              WinDivertBypassManager
 ```
 
 ### Компоненты
 
-#### 1. LiveTestingPipeline.cs (398 строк)
+#### 1. LiveTestingPipeline.cs (470+ строк)
 - **Каналы**: `Channel<HostDiscovered>`, `Channel<HostTested>`, `Channel<HostBlocked>`
 - **3 независимых worker'а**: TesterWorker, ClassifierWorker, UiWorker
 - **Fire-and-forget**: Не блокирует sniffer при тестировании
+- **WinDivert интеграция**: Автоматическое применение bypass (если admin права)
 
 #### 2. TestHostAsync() - Быстрое тестирование
 ```csharp
@@ -56,41 +59,44 @@ Sniffer (TrafficAnalyzer) → Channel → Tester → Channel → Classifier → 
 ### Сборка
 ✅ `dotnet build` успешна, все тесты компилируются
 
-## ⏳ В Разработке
+### 5. ApplyBypassAsync() - ✅ ПОЛНОСТЬЮ РЕАЛИЗОВАНО
+**Статус**: Интегрировано с WinDivertBypassManager
 
-### 1. ApplyBypassAsync() - Автоматическое применение bypass
-**Статус**: Заглушка, требует реализации
-
-**План**:
+**Реализация**:
 ```csharp
 private async Task ApplyBypassAsync(HostBlocked blocked, CancellationToken ct)
 {
     switch (blocked.BypassStrategy)
     {
         case "DROP_RST":
-            // WinDivert: drop TCP RST packets для host.RemoteIp:RemotePort
-            // Фильтр: tcp.Rst and ip.DstAddr == X.X.X.X and tcp.DstPort == YYYY
+            await _bypassManager.ApplyBypassStrategyAsync("DROP_RST", ip, port);
+            // WinDivert filter: outbound and tcp.Rst == 1
             break;
             
         case "TLS_FRAGMENT":
-            // WinDivert: фрагментация TLS ClientHello
-            // Параметры из docs/bypass_strategy_todo.md:
-            // --dpi-desync-split-pos=1-3 --dpi-desync=multisplit
-            break;
-            
-        case "DOH":
-            // Перенаправление DNS запросов на DoH (1.1.1.1, 8.8.8.8)
-            // Может потребовать netsh (UAC) или hosts файл
+            await _bypassManager.ApplyBypassStrategyAsync("TLS_FRAGMENT", ip, port);
+            // WinDivert filter: outbound and tcp.DstPort == 443 and tcp.PayloadLength > 0
+            // Параметры: FirstFragmentSize=64, Threshold=128
             break;
     }
 }
 ```
 
-**Зависимости**:
-- `WinDivertBypassManager` - существует, но API нужно адаптировать для динамических правил
-- `BypassProfile` - текущая структура статична (из JSON), нужна динамическая генерация
+**WinDivertBypassManager API (новые методы)**:
+- `EnableTlsFragmentationAsync(ip, port)` - TLS fragmentation для HTTPS
+- `EnableRstBlockingAsync()` - блокировка TCP RST пакетов
+- `ApplyBypassStrategyAsync(strategy, ip, port)` - универсальный метод
 
-### 2. DNS Resolution в TestHostAsync
+**Особенности**:
+- `EnableAutoBypass=true` по умолчанию (автоматическое применение)
+- Проверка admin прав (WinDivert требует администратора)
+- Bypass активен пока LiveTestingPipeline жив
+- Graceful degradation: без admin - только логи рекомендаций
+- Автоматическое отключение при `Dispose()`
+
+## ⏳ В Разработке
+
+### 1. DNS Resolution в TestHostAsync
 **Статус**: Только reverse DNS, прямой резолв не реализован
 
 **План**:
@@ -99,7 +105,7 @@ private async Task ApplyBypassAsync(HostBlocked blocked, CancellationToken ct)
 - Если System DNS → bypass IP (198.18.x.x) → `DNS_BYPASS`
 - Если System DNS → bogus IP (0.0.0.0, 127.x) → `DNS_BOGUS`
 
-### 3. GUI Интеграция
+### 2. GUI Интеграция
 **Статус**: Только console `IProgress<string>`
 
 **План**:
@@ -108,7 +114,7 @@ private async Task ApplyBypassAsync(HostBlocked blocked, CancellationToken ct)
 - Кнопка "Применить bypass" для выбранных хостов
 - Статистика: успешные/заблокированные/bypassed
 
-### 4. Тестирование с FsHud
+### 3. Тестирование с FsHud
 **План**:
 1. Удалить все правила из Podkop роутера
 2. Запустить FsHud → приложение не загрузится (CloudFront CDN заблокирован)
@@ -168,10 +174,11 @@ private async Task ApplyBypassAsync(HostBlocked blocked, CancellationToken ct)
 
 ## 📊 Метрики
 
-- **Строк кода**: LiveTestingPipeline.cs (398), TrafficAnalyzer.cs изменения (~50)
-- **Коммиты**: 2 (architecture + implementation)
+- **Строк кода**: LiveTestingPipeline.cs (470+), WinDivertBypassManager.cs (+100 новых методов), TrafficAnalyzer.cs (~50)
+- **Коммитов**: 7 (architecture + implementation + WinDivert integration + auto-bypass + docs)
 - **Типов блокировок**: 5 (TCP_RST, TLS_DPI, TCP_TIMEOUT, TLS_TIMEOUT, PORT_CLOSED)
 - **Bypass стратегий**: 4 + 2 (DOH, DROP_RST, TLS_FRAGMENT, PROXY + NONE, UNKNOWN)
+- **WinDivert API методы**: 3 новых (EnableTlsFragmentationAsync, EnableRstBlockingAsync, ApplyBypassStrategyAsync)
 - **Время тестирования**: ~3с на хост (TCP timeout + TLS timeout)
 
 ## 🐛 Известные Проблемы
