@@ -301,7 +301,8 @@ namespace IspAudit.Utils
 
                         flowMap.TryAdd(new FlowKey(localPort, protocol), pid);
                         
-                        if (pid == targetPid)
+                        // Логируем только первые несколько match'ей для целевого PID
+                        if (pid == targetPid && flowCount <= 10)
                         {
                             progress?.Report($"✓ FLOW MATCH: PID={pid} LocalPort={localPort} Proto={protocol}");
                         }
@@ -335,6 +336,11 @@ namespace IspAudit.Utils
         {
             WinDivertNative.SafeHandle? handle = null;
             int capturedCount = 0;
+            var seenRemoteIps = new System.Collections.Concurrent.ConcurrentDictionary<string, byte>(); // Уникальные IP
+            const int MaxUniqueIps = 50; // Остановить захват после обнаружения 50 уникальных IP
+            const int MaxPacketsPerIp = 10; // Максимум 10 пакетов на один IP
+            var packetsPerIp = new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
+            
             try
             {
                 progress?.Report($"[NETWORK] Открытие WinDivert Network layer с фильтром: '{filter}'");
@@ -342,7 +348,6 @@ namespace IspAudit.Utils
                 progress?.Report($"[NETWORK] ✓ WinDivert Network layer открыт успешно");
                 var buffer = new byte[WinDivertNative.MaxPacketSize];
                 var addr = new WinDivertNative.Address();
-                const int MaxPackets = 100000; // Limit memory usage
 
                 while (!token.IsCancellationRequested)
                 {
@@ -354,26 +359,35 @@ namespace IspAudit.Utils
                         continue;
                     }
 
-                    if (capturedCount >= MaxPackets)
-                    {
-                        // Достижение лимита пакетов логируем один раз, без спама по каждому пакету
-                        if (capturedCount == MaxPackets)
-                        {
-                            progress?.Report($"[LIMIT] Достигнут лимит пакетов {MaxPackets}, дальнейшие пакеты игнорируются");
-                        }
-                        continue;
-                    }
-
                     // Parse IP/TCP/UDP headers
                     if (TryParsePacket(buffer, (int)readLen, addr, out var header))
                     {
+                        var remoteIpKey = header.RemoteIp.ToString();
+                        
+                        // Проверяем: достигли ли лимита уникальных IP
+                        if (seenRemoteIps.Count >= MaxUniqueIps && !seenRemoteIps.ContainsKey(remoteIpKey))
+                        {
+                            // Новый IP, но лимит уже достигнут — завершаем захват
+                            progress?.Report($"Достигнут лимит уникальных IP ({MaxUniqueIps}), завершение захвата");
+                            break;
+                        }
+                        
+                        // Проверяем лимит пакетов для этого IP
+                        var currentCount = packetsPerIp.AddOrUpdate(remoteIpKey, 1, (k, v) => v + 1);
+                        if (currentCount > MaxPacketsPerIp)
+                        {
+                            // Для этого IP уже достаточно пакетов, пропускаем
+                            continue;
+                        }
+                        
+                        seenRemoteIps.TryAdd(remoteIpKey, 0);
                         packetBuffer.Add(header);
                         capturedCount++;
 
                         // Живое обновление счётчика каждые 10 пакетов для динамики
                         if (capturedCount % 10 == 0)
                         {
-                            progress?.Report($"Захват: {capturedCount} пакетов...");
+                            progress?.Report($"Захват: {capturedCount} пакетов, {seenRemoteIps.Count} уникальных IP");
                         }
 
                         // Opportunistic DNS parsing
@@ -382,8 +396,6 @@ namespace IspAudit.Utils
                             TryParseDns(buffer, (int)readLen, dnsCache);
                         }
                     }
-                    // Пакеты, которые не удалось распарсить, просто пропускаем без лога,
-                    // чтобы не засорять вывод при большом потоке трафика.
                 }
             }
             catch (Exception ex)
@@ -393,7 +405,7 @@ namespace IspAudit.Utils
             }
             finally
             {
-                progress?.Report($"[NETWORK] Закрытие Network layer handle, захвачено пакетов: {capturedCount}");
+                progress?.Report($"[NETWORK] Закрытие Network layer handle, захвачено пакетов: {capturedCount}, уникальных IP: {seenRemoteIps.Count}");
                 handle?.Dispose();
             }
         }
