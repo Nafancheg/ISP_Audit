@@ -1525,7 +1525,7 @@ namespace ISPAudit.ViewModels
                         {
                             Target = new Target 
                             { 
-                                Name = target.Service,
+                                Name = target.Host, // Используем Host как ключ (hostname или IP)
                                 Host = target.Host,
                                 Service = target.Service,
                                 Critical = target.Critical,
@@ -1533,6 +1533,14 @@ namespace ISPAudit.ViewModels
                             },
                             Status = TestStatus.Idle
                         });
+                    }
+                    
+                    // Пересоздаём _testResultMap для захваченного профиля
+                    _testResultMap.Clear();
+                    foreach (var result in TestResults)
+                    {
+                        _testResultMap[result.Target.Host] = result; // Ключ = Host
+                        Log($"[Stage2] Map['{result.Target.Host}'] = TestResult (Service: {result.Target.Service})");
                     }
                 });
 
