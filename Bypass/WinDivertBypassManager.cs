@@ -229,21 +229,35 @@ namespace IspAudit.Bypass
         /// </summary>
         public async Task EnableTlsFragmentationAsync(System.Net.IPAddress targetIp, int targetPort = 443)
         {
-            if (_state != BypassState.Enabled)
+            lock (_sync)
             {
-                // Если bypass не активен - запускаем с минимальным профилем
-                var profile = new BypassProfile
+                // Проверяем: уже включен и TLS fragmenter активен?
+                if (_state == BypassState.Enabled && _profile.FragmentTlsClientHello && _tlsHandle != null)
                 {
-                    DropTcpRst = false,
-                    FragmentTlsClientHello = true,
-                    TlsFirstFragmentSize = 64,
-                    TlsFragmentThreshold = 128,
-                    RedirectRules = Array.Empty<BypassRedirectRule>()
-                };
-                await EnableAsync(profile).ConfigureAwait(false);
+                    // TLS fragmentation уже работает
+                    return;
+                }
             }
-            // TLS fragmentation уже работает для всех HTTPS соединений (tcp.DstPort == 443)
-            // Не требуется дополнительная логика для конкретного IP
+
+            // Нужно включить TLS fragmentation
+            var currentProfile = _profile;
+            
+            // Если уже что-то запущено без TLS fragmenter - перезапускаем
+            if (_state == BypassState.Enabled)
+            {
+                await DisableAsync().ConfigureAwait(false);
+            }
+
+            // Запускаем с TLS fragmentation
+            var profile = new BypassProfile
+            {
+                DropTcpRst = currentProfile.DropTcpRst,
+                FragmentTlsClientHello = true,
+                TlsFirstFragmentSize = 64,
+                TlsFragmentThreshold = 128,
+                RedirectRules = currentProfile.RedirectRules
+            };
+            await EnableAsync(profile).ConfigureAwait(false);
         }
 
         /// <summary>
