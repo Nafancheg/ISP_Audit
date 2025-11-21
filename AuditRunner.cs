@@ -58,9 +58,10 @@ namespace IspAudit
                     ct.ThrowIfCancellationRequested();
                     var profile = TargetServiceProfiles.Resolve(def.Service);
                     
-                    // Используем порты цели если есть (захваченный профиль), иначе Config.Ports
-                    var basePorts = def.Ports?.Any() == true ? def.Ports : config.Ports;
-                    var portsToUse = profile.ResolveTcpPorts(basePorts);
+                    // Приоритет портов:
+                    // 1. def.Ports (из профиля JSON или снифа) — всегда первый приоритет
+                    // 2. config.Ports (глобальный фоллбэк если Ports не указаны)
+                    var portsToUse = def.Ports?.Any() == true ? def.Ports : config.Ports;
                     
                     var targetReport = new TargetReport
                     {

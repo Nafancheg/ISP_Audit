@@ -6,37 +6,42 @@
     {
       "Name": "YouTube",
       "Host": "www.youtube.com",
-      "Service": "Видео стриминг (TCP 80, 443)",
+      "Service": "Видео стриминг",
       "Critical": true,
-      "FallbackIp": null
+      "FallbackIp": null,
+      "Ports": [80, 443]
     },
     {
       "Name": "Google DNS",
       "Host": "dns.google",
-      "Service": "DNS через HTTPS (TCP 443)",
+      "Service": "DNS через HTTPS",
       "Critical": true,
-      "FallbackIp": "8.8.8.8"
+      "FallbackIp": "8.8.8.8",
+      "Ports": [443]
     },
     {
       "Name": "Cloudflare",
       "Host": "cloudflare.com",
-      "Service": "CDN/DNS (TCP 80, 443)",
+      "Service": "CDN/DNS",
       "Critical": false,
-      "FallbackIp": null
+      "FallbackIp": null,
+      "Ports": [80, 443]
     },
     {
       "Name": "Amazon AWS",
       "Host": "aws.amazon.com",
-      "Service": "Облачные сервисы (TCP 443)",
+      "Service": "Облачные сервисы",
       "Critical": false,
-      "FallbackIp": null
+      "FallbackIp": null,
+      "Ports": [443]
     },
     {
       "Name": "Discord",
       "Host": "discord.com",
-      "Service": "Игровой чат (TCP 443, UDP 50000-65535)",
+      "Service": "Игровой чат",
       "Critical": false,
-      "FallbackIp": null
+      "FallbackIp": null,
+      "Ports": [443]
     }
   ]
 }
