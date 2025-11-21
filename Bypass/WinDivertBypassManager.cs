@@ -298,9 +298,10 @@ namespace IspAudit.Bypass
             lock (_sync)
             {
                 // Проверяем: уже включен и TLS fragmenter активен?
-                if (_state == BypassState.Enabled && _profile.FragmentTlsClientHello && _tlsHandle != null)
+                if (_state == BypassState.Enabled && _profile.FragmentTlsClientHello && _tlsHandle != null && !_tlsHandle.IsInvalid)
                 {
                     // TLS fragmentation уже работает
+                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS fragmentation already active for {targetIp}:{targetPort}");
                     return;
                 }
             }
@@ -308,20 +309,21 @@ namespace IspAudit.Bypass
             // Нужно включить TLS fragmentation
             var currentProfile = _profile;
             
-            // Если уже что-то запущено без TLS fragmenter - перезапускаем
+            // Если уже что-то запущено - перезапускаем ТОЛЬКО с TLS fragmenter
             if (_state == BypassState.Enabled)
             {
+                ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Restarting bypass with TLS fragmentation for {targetIp}:{targetPort}");
                 await DisableAsync().ConfigureAwait(false);
             }
 
-            // Запускаем с TLS fragmentation
+            // Запускаем ТОЛЬКО TLS fragmentation (БЕЗ RST blocker - он конфликтует с Flow layer)
             var profile = new BypassProfile
             {
-                DropTcpRst = currentProfile.DropTcpRst,
+                DropTcpRst = false,  // ✅ НЕ включаем RST blocker (конфликт с TrafficAnalyzer Flow layer)
                 FragmentTlsClientHello = true,
                 TlsFirstFragmentSize = 64,
                 TlsFragmentThreshold = 128,
-                RedirectRules = currentProfile.RedirectRules
+                RedirectRules = Array.Empty<BypassRedirectRule>()  // Очищаем redirects
             };
             await EnableAsync(profile).ConfigureAwait(false);
         }
@@ -333,12 +335,17 @@ namespace IspAudit.Bypass
         {
             lock (_sync)
             {
-                if (_state == BypassState.Enabled && _profile.DropTcpRst)
+                if (_state == BypassState.Enabled && _profile.DropTcpRst && _rstHandle != null && !_rstHandle.IsInvalid)
                 {
                     // RST blocking уже активен
+                    ISPAudit.Utils.DebugLogger.Log("[WinDivert] RST blocking already active");
                     return;
                 }
             }
+
+            // ⚠️ ВНИМАНИЕ: RST blocker конфликтует с TrafficAnalyzer Flow layer
+            // Если Flow layer активен (TrafficAnalyzer), RST blocker может не открыться
+            ISPAudit.Utils.DebugLogger.Log("[WinDivert] WARNING: RST blocking may conflict with active Flow layer");
 
             // Нужно перезапустить с новым профилем
             var currentProfile = _profile;
@@ -361,9 +368,13 @@ namespace IspAudit.Bypass
         /// </summary>
         public async Task ApplyBypassStrategyAsync(string strategy, System.Net.IPAddress? targetIp = null, int targetPort = 443)
         {
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ApplyBypassStrategyAsync: strategy={strategy}, target={targetIp}:{targetPort}");
+
             switch (strategy)
             {
                 case "DROP_RST":
+                    // ⚠️ RST blocker может конфликтовать с TrafficAnalyzer Flow layer
+                    ISPAudit.Utils.DebugLogger.Log("[WinDivert] DROP_RST strategy requested - may conflict with Flow layer");
                     await EnableRstBlockingAsync().ConfigureAwait(false);
                     break;
 
@@ -374,10 +385,27 @@ namespace IspAudit.Bypass
                     }
                     else
                     {
-                        // Общая TLS fragmentation для всех HTTPS
+                        // Общая TLS fragmentation для всех HTTPS (БЕЗ RST blocker)
+                        ISPAudit.Utils.DebugLogger.Log("[WinDivert] Enabling global TLS fragmentation");
+                        
+                        // Если уже активен - не перезапускаем
+                        lock (_sync)
+                        {
+                            if (_state == BypassState.Enabled && _profile.FragmentTlsClientHello && _tlsHandle != null && !_tlsHandle.IsInvalid)
+                            {
+                                ISPAudit.Utils.DebugLogger.Log("[WinDivert] TLS fragmentation already active globally");
+                                return;
+                            }
+                        }
+                        
+                        if (_state == BypassState.Enabled)
+                        {
+                            await DisableAsync().ConfigureAwait(false);
+                        }
+                        
                         var profile = new BypassProfile
                         {
-                            DropTcpRst = false,
+                            DropTcpRst = false,  // ✅ БЕЗ RST blocker
                             FragmentTlsClientHello = true,
                             TlsFirstFragmentSize = 64,
                             TlsFragmentThreshold = 128,
@@ -392,6 +420,7 @@ namespace IspAudit.Bypass
                 case "NONE":
                 case "UNKNOWN":
                     // Эти стратегии требуют внешнего вмешательства (системные настройки)
+                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Strategy {strategy} requires external intervention - skipping");
                     break;
             }
         }
@@ -413,6 +442,7 @@ namespace IspAudit.Bypass
             if (profile.DropTcpRst)
             {
                 // RST blocker: sniff + drop режим, priority 0 (default)
+                // ⚠️ МОЖЕТ КОНФЛИКТОВАТЬ с TrafficAnalyzer Flow layer
                 if (TryOpenWinDivert(
                     "outbound and tcp.Rst == 1", 
                     WinDivertNative.Layer.Network, 
@@ -424,7 +454,9 @@ namespace IspAudit.Bypass
                 }
                 else
                 {
-                    throw new InvalidOperationException("Failed to open WinDivert handle for RST blocking");
+                    // ⚠️ НЕ бросаем exception - graceful degradation
+                    // Если RST blocker не открылся (конфликт с Flow layer) - продолжаем без него
+                    ISPAudit.Utils.DebugLogger.Log("[WinDivert] WARNING: RST blocker failed to open (likely conflict with Flow layer) - continuing without it");
                 }
             }
 
