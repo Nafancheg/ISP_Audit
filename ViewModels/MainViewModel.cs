@@ -358,12 +358,9 @@ namespace ISPAudit.ViewModels
             Log("ШАГ 1: НАЧАЛЬНОЕ СОСТОЯНИЕ (Constructor)");
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             
-            // Инициализация списка профилей
-            AvailableProfiles = new ObservableCollection<string>
-            {
-                "Star Citizen",
-                "Default"
-            };
+            // Инициализация списка профилей (статические + захваченные)
+            AvailableProfiles = new ObservableCollection<string>();
+            LoadAvailableProfiles();
             Log($"✓ Профили загружены: {string.Join(", ", AvailableProfiles)}");
 
             InitializeTestResults();
@@ -552,6 +549,60 @@ namespace ISPAudit.ViewModels
             }
         }
 
+        private void LoadAvailableProfiles()
+        {
+            try
+            {
+                var profilesDir = "Profiles";
+                if (!Directory.Exists(profilesDir))
+                {
+                    Directory.CreateDirectory(profilesDir);
+                }
+
+                // Сканируем все .json файлы в папке Profiles
+                var profileFiles = Directory.GetFiles(profilesDir, "*.json");
+                
+                foreach (var filePath in profileFiles)
+                {
+                    try
+                    {
+                        var fileName = Path.GetFileNameWithoutExtension(filePath);
+                        
+                        // Пропускаем технические файлы
+                        if (fileName.StartsWith("_") || fileName.StartsWith("."))
+                            continue;
+
+                        // Читаем JSON чтобы получить Name
+                        var json = File.ReadAllText(filePath);
+                        var profile = System.Text.Json.JsonSerializer.Deserialize<GameProfile>(json);
+                        
+                        if (profile != null && !string.IsNullOrEmpty(profile.Name))
+                        {
+                            AvailableProfiles.Add(profile.Name);
+                        }
+                    }
+                    catch
+                    {
+                        // Игнорируем битые профили
+                    }
+                }
+
+                // Если ничего не нашли, добавляем дефолтные
+                if (AvailableProfiles.Count == 0)
+                {
+                    AvailableProfiles.Add("Star Citizen");
+                    AvailableProfiles.Add("Default");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[LoadAvailableProfiles] Error: {ex.Message}");
+                // Fallback на дефолтные профили
+                AvailableProfiles.Add("Star Citizen");
+                AvailableProfiles.Add("Default");
+            }
+        }
+
         private bool LoadProfileAndUpdateTargets()
         {
             Log($"\n>>> LoadProfileAndUpdateTargets() START");
@@ -564,10 +615,9 @@ namespace ISPAudit.ViewModels
                 Log($"    Mode: PROFILE");
                 Log($"    SelectedProfile: {SelectedProfile}");
                 
-                // Профиль: загружаем из JSON
-                var profileName = SelectedProfile.Replace(" ", ""); // "Star Citizen" -> "StarCitizen"
-                Log($"    Loading profile: {profileName}");
-                Config.LoadGameProfile(profileName);
+                // Профиль: загружаем из JSON (по имени профиля, а не имени файла)
+                Log($"    Loading profile: {SelectedProfile}");
+                Config.LoadGameProfile(SelectedProfile);
                 
                 if (Config.ActiveProfile?.Targets != null)
                 {
@@ -1443,6 +1493,14 @@ namespace ISPAudit.ViewModels
                         });
                         await File.WriteAllTextAsync(profilePath, json);
                         Log($"[Stage1] Profile saved to: {profilePath}");
+                        
+                        // Обновляем список доступных профилей
+                        System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                        {
+                            AvailableProfiles.Clear();
+                            LoadAvailableProfiles();
+                            Log($"[Stage1] Available profiles refreshed: {string.Join(", ", AvailableProfiles)}");
+                        });
                         
                         // Автоматически запускаем Stage 2 если есть захваченные цели
                         if (Stage1HostsFound > 0)

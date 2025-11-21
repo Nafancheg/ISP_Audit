@@ -296,15 +296,42 @@ namespace IspAudit
         {
             try
             {
+                // Сначала пробуем прямой путь (StarCitizen.json, Default.json)
                 string profilePath = Path.Combine("Profiles", $"{profileName}.json");
                 
                 if (!File.Exists(profilePath))
                 {
-                    throw new FileNotFoundException($"Профиль '{profileName}' не найден по пути: {profilePath}");
+                    // Если не нашли, ищем по имени профиля внутри JSON
+                    var profilesDir = "Profiles";
+                    if (Directory.Exists(profilesDir))
+                    {
+                        foreach (var file in Directory.GetFiles(profilesDir, "*.json"))
+                        {
+                            try
+                            {
+                                string json = File.ReadAllText(file);
+                                var testProfile = System.Text.Json.JsonSerializer.Deserialize<GameProfile>(json);
+                                if (testProfile?.Name == profileName)
+                                {
+                                    profilePath = file;
+                                    break;
+                                }
+                            }
+                            catch
+                            {
+                                // Игнорируем битые файлы
+                            }
+                        }
+                    }
+                }
+                
+                if (!File.Exists(profilePath))
+                {
+                    throw new FileNotFoundException($"Профиль '{profileName}' не найден");
                 }
 
-                string json = File.ReadAllText(profilePath);
-                var profile = System.Text.Json.JsonSerializer.Deserialize<GameProfile>(json);
+                string profileJson = File.ReadAllText(profilePath);
+                var profile = System.Text.Json.JsonSerializer.Deserialize<GameProfile>(profileJson);
                 
                 if (profile == null)
                 {
