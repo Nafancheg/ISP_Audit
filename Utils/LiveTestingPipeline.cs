@@ -422,12 +422,17 @@ namespace IspAudit.Utils
                         break;
 
                     case "TLS_FRAGMENT":
-                        _progress?.Report($"[BYPASS] Применяю TLS_FRAGMENT для {host}...");
+                        _progress?.Report($"[BYPASS] Применяю комбинированный bypass (TLS_FRAGMENT + DROP_RST) для {host}...");
                         
                         if (_bypassManager != null)
                         {
+                            // ✅ СНАЧАЛА активируем DROP_RST (блокирует RST от DPI)
+                            await _bypassManager.ApplyBypassStrategyAsync("DROP_RST", ip, port).ConfigureAwait(false);
+                            _progress?.Report($"✓ DROP_RST активен (защита от RST injection)");
+                            
+                            // ✅ ЗАТЕМ активируем TLS_FRAGMENT (затрудняет DPI анализ)
                             await _bypassManager.ApplyBypassStrategyAsync("TLS_FRAGMENT", ip, port).ConfigureAwait(false);
-                            _progress?.Report($"✓ TLS_FRAGMENT bypass активен для {host} (экстремальная фрагментация 8 байт)");
+                            _progress?.Report($"✓ TLS_FRAGMENT активен (ультра-фрагментация 2 байта)");
                             
                             // ✅ Принудительно сбрасываем все TCP соединения к цели
                             _progress?.Report($"[BYPASS] Сброс существующих TCP соединений к {ip}:{port}...");
@@ -440,40 +445,17 @@ namespace IspAudit.Utils
                             catch { /* Игнорируем ошибки сброса */ }
                             
                             // Ретест: проверяем что bypass работает (увеличена задержка до 3 сек)
-                            _progress?.Report($"[BYPASS] Проверяю эффективность bypass для {host}...");
+                            _progress?.Report($"[BYPASS] Проверяю эффективность комбинированного bypass для {host}...");
                             await Task.Delay(3000, ct).ConfigureAwait(false); // ✅ 3 секунды для инициализации
                             
                             var retestResult = await TestHostAsync(blocked.TestResult.Host, ct).ConfigureAwait(false);
                             if (retestResult.TlsOk)
                             {
-                                _progress?.Report($"✓✓ BYPASS РАБОТАЕТ! {host} теперь доступен (TLS: OK)");
+                                _progress?.Report($"✓✓ КОМБИНИРОВАННЫЙ BYPASS РАБОТАЕТ! {host} теперь доступен (TLS: OK)");
                             }
                             else
                             {
-                                _progress?.Report($"⚠ TLS_FRAGMENT не помог. Пробуем RST blocking как fallback...");
-                                
-                                // ✅ FALLBACK: включаем RST blocker
-                                try
-                                {
-                                    await _bypassManager.ApplyBypassStrategyAsync("DROP_RST", ip, port).ConfigureAwait(false);
-                                    _progress?.Report($"✓ DROP_RST fallback активен для {ip}:{port}");
-                                    
-                                    await Task.Delay(2000, ct).ConfigureAwait(false);
-                                    var fallbackResult = await TestHostAsync(blocked.TestResult.Host, ct).ConfigureAwait(false);
-                                    
-                                    if (fallbackResult.TcpOk)
-                                    {
-                                        _progress?.Report($"✓✓ RST FALLBACK СРАБОТАЛ! {host} доступен");
-                                    }
-                                    else
-                                    {
-                                        _progress?.Report($"✗ Оба метода (TLS_FRAGMENT + DROP_RST) не помогли. Блокировка не обходится.");
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    _progress?.Report($"⚠ Ошибка fallback: {ex.Message}");
-                                }
+                                _progress?.Report($"✗ Комбинированный bypass (TLS_FRAGMENT + DROP_RST) не помог. Блокировка не обходится.");
                             }
                         }
                         else

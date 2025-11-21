@@ -295,13 +295,13 @@ namespace IspAudit.Bypass
         /// </summary>
         public async Task EnableTlsFragmentationAsync(System.Net.IPAddress targetIp, int targetPort = 443)
         {
+            // ✅ Всегда активируем TLS fragmentation (глобальный HTTPS фильтр работает для всех хостов)
             lock (_sync)
             {
-                // Проверяем: уже включен и TLS fragmenter активен?
+                // Если TLS fragmenter уже активен - ничего не делаем
                 if (_state == BypassState.Enabled && _profile.FragmentTlsClientHello && _tlsHandle != null && !_tlsHandle.IsInvalid)
                 {
-                    // TLS fragmentation уже работает
-                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS fragmentation already active for {targetIp}:{targetPort}");
+                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS fragmentation already active (global HTTPS filter covers {targetIp}:{targetPort})");
                     return;
                 }
             }
@@ -321,7 +321,7 @@ namespace IspAudit.Bypass
             {
                 DropTcpRst = false,  // ⚠ НЕ включать RST blocker (конфликт с TrafficAnalyzer Flow layer)
                 FragmentTlsClientHello = true,
-                TlsFirstFragmentSize = 8,  // ✅ ЭКСТРЕМАЛЬНАЯ фрагментация (8 байт)
+                TlsFirstFragmentSize = 2,  // ✅ УЛЬТРА-ЭКСТРЕМАЛЬНАЯ фрагментация (2 байта - разделяет TLS Record Type от версии)
                 TlsFragmentThreshold = 16,
                 RedirectRules = Array.Empty<BypassRedirectRule>()  // Очищаем redirects
             };
