@@ -47,17 +47,26 @@
                   CanUserDeleteRows="False"
                   IsReadOnly="True"
                   HeadersVisibility="Column"
-                  SelectionMode="Single"
+                  SelectionMode="Extended"
                   GridLinesVisibility="Horizontal">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Хост" Binding="{Binding Host}" Width="*"/>
-                <DataGridTextColumn Header="Сервис" Binding="{Binding Service}" Width="100"/>
-                <DataGridCheckBoxColumn Header="Критичный" Binding="{Binding Critical}" Width="100"/>
+                <DataGridTextColumn Header="Хост" Binding="{Binding Host}" Width="2*"/>
+                <DataGridTextColumn Header="IP" Binding="{Binding FallbackIp}" Width="*"/>
+                <DataGridTextColumn Header="Порты" Binding="{Binding PortsDisplay}" Width="120"/>
+                <DataGridTextColumn Header="Протоколы" Binding="{Binding ProtocolsDisplay}" Width="100"/>
+                <DataGridTextColumn Header="Сервис" Binding="{Binding Service}" Width="120"/>
             </DataGrid.Columns>
         </DataGrid>
 
         <!-- Кнопки -->
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
+            <Button Content="Копировать список" 
+                    Click="CopyButton_Click"
+                    Padding="15,8"
+                    Margin="0,0,10,0"
+                    Background="White"
+                    BorderBrush="#4CAF50"
+                    BorderThickness="1"/>
             <Button Content="Сохранить в файл" 
                     Click="SaveButton_Click"
                     Padding="15,8"
