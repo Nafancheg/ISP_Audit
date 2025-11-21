@@ -770,6 +770,8 @@ namespace ISPAudit.ViewModels
                 // Парсинг имени цели из Status (формат: "TargetName: действие")
                 var targetName = ExtractTargetName(progress.Status);
                 
+                Log($"[HandleTestProgress] Kind={progress.Kind}, Status='{progress.Status}', ExtractedName='{targetName}', Success={progress.Success}");
+                
                 if (string.IsNullOrEmpty(targetName))
                 {
                     // Системный тест без конкретной цели (Firewall, ISP, Router, Software)
@@ -781,7 +783,7 @@ namespace ISPAudit.ViewModels
                 // Поиск TestResult по имени цели
                 if (!_testResultMap.TryGetValue(targetName, out var testResult))
                 {
-                    Log($"[WARN] Target '{targetName}' not found in map (available: {string.Join(", ", _testResultMap.Keys)})");
+                    Log($"[WARN] Target '{targetName}' not found in map (available: {string.Join(", ", _testResultMap.Keys.Take(5))})");
                     return;
                 }
 
@@ -1560,12 +1562,20 @@ namespace ISPAudit.ViewModels
                     {
                         HandleTestProgress(p); // существующий код
                         
+                        // Обновляем Stage2Status текущей целью
+                        if (!string.IsNullOrEmpty(p.Status))
+                        {
+                            Stage2Status = $"Тестирование: {p.Status}";
+                        }
+                        
                         // Добавить подсчёт прогресса для Exe-scenario
                         if (_capturedProfile != null)
                         {
                             var totalTargets = _capturedProfile.Targets.Count;
                             var completedTargets = TestResults.Count(r => r.Status != TestStatus.Running && r.Status != TestStatus.Idle);
                             Stage2Progress = totalTargets > 0 ? (completedTargets * 100 / totalTargets) : 0;
+                            
+                            Log($"[Stage2Progress] {completedTargets}/{totalTargets} ({Stage2Progress}%)");
                         }
                     });
                 });
