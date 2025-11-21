@@ -52,8 +52,8 @@ namespace IspAudit.Utils
                 var dnsCache = new ConcurrentDictionary<string, string>(); // IP -> Hostname
 
                 // 2. WinDivert фильтр
-                // Исключаем loopback, но оставляем частные сети (VPN/NAT)
-                var networkFilter = "outbound and !loopback and (tcp or udp)";
+                // Захватываем оба направления! В Sniff mode outbound-пакеты показываются с Outbound=False
+                var networkFilter = "!loopback and (tcp or udp)";
                 // Flow layer filter: используем "true", так как макросы tcp/udp могут быть недоступны для Flow layer
                 // Фильтрация по протоколу будет выполнена в коде
                 var flowFilter = "true";
@@ -344,31 +344,54 @@ namespace IspAudit.Utils
             if (length < ipHeaderLen + 8) return false;
 
             byte protocol = buffer[9];
-            var remoteIp = new IPAddress(new byte[] { buffer[16], buffer[17], buffer[18], buffer[19] });
             
-            ushort localPort = 0;
-            ushort remotePort = 0;
+            // В Sniff mode исходящие пакеты имеют Outbound=True, входящие Outbound=False
+            // Для outbound: SrcIP = LocalIP, DstIP = RemoteIP
+            // Для inbound: SrcIP = RemoteIP, DstIP = LocalIP
+            var srcIp = new IPAddress(new byte[] { buffer[12], buffer[13], buffer[14], buffer[15] });
+            var dstIp = new IPAddress(new byte[] { buffer[16], buffer[17], buffer[18], buffer[19] });
+            
+            ushort srcPort = 0;
+            ushort dstPort = 0;
             TransportProtocol transportProto;
 
             if (protocol == 6) // TCP
             {
                 if (length < ipHeaderLen + 20) return false;
                 
-                // Прямое чтение портов из network order (big-endian)
-                // (buffer << 8) | buffer уже даёт правильное значение для сравнения с Flow layer
-                localPort = (ushort)((buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1]);
-                remotePort = (ushort)((buffer[ipHeaderLen + 2] << 8) | buffer[ipHeaderLen + 3]);
+                srcPort = (ushort)((buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1]);
+                dstPort = (ushort)((buffer[ipHeaderLen + 2] << 8) | buffer[ipHeaderLen + 3]);
                 transportProto = TransportProtocol.TCP;
             }
             else if (protocol == 17) // UDP
             {
-                localPort = (ushort)((buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1]);
-                remotePort = (ushort)((buffer[ipHeaderLen + 2] << 8) | buffer[ipHeaderLen + 3]);
+                srcPort = (ushort)((buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1]);
+                dstPort = (ushort)((buffer[ipHeaderLen + 2] << 8) | buffer[ipHeaderLen + 3]);
                 transportProto = TransportProtocol.UDP;
             }
             else
             {
                 return false; // Неподдерживаемый протокол
+            }
+
+            // Определяем LocalPort/RemotePort в зависимости от направления
+            ushort localPort;
+            ushort remotePort;
+            IPAddress remoteIp;
+            
+            if (addr.Outbound)
+            {
+                // Исходящий: src = local, dst = remote
+                localPort = srcPort;
+                remotePort = dstPort;
+                remoteIp = dstIp;
+            }
+            else
+            {
+                // Входящий: dst = local, src = remote
+                localPort = dstPort;
+                remotePort = srcPort;
+                remoteIp = srcIp;
             }
 
             header = new PacketHeader
