@@ -400,6 +400,20 @@ namespace IspAudit.Utils
                         {
                             await _bypassManager.ApplyBypassStrategyAsync("DROP_RST", ip, port).ConfigureAwait(false);
                             _progress?.Report($"✓ DROP_RST bypass активен для {ip}:{port}");
+                            
+                            // Ретест: проверяем что bypass работает
+                            _progress?.Report($"[BYPASS] Проверяю эффективность bypass для {ip}:{port}...");
+                            await Task.Delay(500, ct).ConfigureAwait(false);
+                            
+                            var retestResult = await TestHostAsync(blocked.TestResult.Host, ct).ConfigureAwait(false);
+                            if (retestResult.TcpOk && retestResult.BlockageType != "TCP_RST")
+                            {
+                                _progress?.Report($"✓✓ BYPASS РАБОТАЕТ! {ip}:{port} теперь доступен (TCP RST заблокирован)");
+                            }
+                            else
+                            {
+                                _progress?.Report($"⚠ Bypass применен, но {ip}:{port} все еще заблокирован.");
+                            }
                         }
                         else
                         {
@@ -414,6 +428,20 @@ namespace IspAudit.Utils
                         {
                             await _bypassManager.ApplyBypassStrategyAsync("TLS_FRAGMENT", ip, port).ConfigureAwait(false);
                             _progress?.Report($"✓ TLS_FRAGMENT bypass активен для {host} (фрагментация ClientHello)");
+                            
+                            // Ретест: проверяем что bypass работает
+                            _progress?.Report($"[BYPASS] Проверяю эффективность bypass для {host}...");
+                            await Task.Delay(500, ct).ConfigureAwait(false); // Даем время WinDivert инициализироваться
+                            
+                            var retestResult = await TestHostAsync(blocked.TestResult.Host, ct).ConfigureAwait(false);
+                            if (retestResult.TlsOk)
+                            {
+                                _progress?.Report($"✓✓ BYPASS РАБОТАЕТ! {host} теперь доступен (TLS: OK)");
+                            }
+                            else
+                            {
+                                _progress?.Report($"⚠ Bypass применен, но {host} все еще заблокирован. Может потребоваться другая стратегия.");
+                            }
                         }
                         else
                         {
