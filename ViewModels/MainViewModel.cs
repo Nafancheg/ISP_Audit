@@ -822,20 +822,38 @@ namespace ISPAudit.ViewModels
                 
                 Log($"[HandleTestProgress] Kind={progress.Kind}, Status='{progress.Status}', ExtractedName='{targetName}', Success={progress.Success}");
                 
+                TestResult? testResult = null;
+                
+                // Для диагностических тестов используем Kind как ключ
                 if (string.IsNullOrEmpty(targetName))
                 {
-                    // Системный тест без конкретной цели (Firewall, ISP, Router, Software)
-                    // Логируем, но не создаём TestResult (эти тесты отображаются отдельно)
-                    Log($"[SYS] {progress.Kind}: {progress.Status} (Success={progress.Success})");
-                    return;
+                    // Системный тест (Software, Firewall, Router, ISP)
+                    var diagnosticKey = progress.Kind.ToString(); // "SOFTWARE" → ключ в map
+                    
+                    if (_testResultMap.TryGetValue(diagnosticKey, out var diagResult))
+                    {
+                        Log($"[SYS] {progress.Kind}: найден TestResult для {diagnosticKey}");
+                        targetName = diagnosticKey; // Устанавливаем targetName для дальнейшей обработки
+                        testResult = diagResult;
+                    }
+                    else
+                    {
+                        Log($"[SYS] {progress.Kind}: {progress.Status} (Success={progress.Success}) — TestResult не найден");
+                        return;
+                    }
                 }
-
-                // Поиск TestResult по имени цели
-                if (!_testResultMap.TryGetValue(targetName, out var testResult))
+                else
                 {
-                    Log($"[WARN] Target '{targetName}' not found in map (available: {string.Join(", ", _testResultMap.Keys.Take(5))})");
-                    return;
+                    // Поиск TestResult по имени цели
+                    if (!_testResultMap.TryGetValue(targetName, out testResult))
+                    {
+                        Log($"[WARN] Target '{targetName}' not found in map (available: {string.Join(", ", _testResultMap.Keys.Take(5))})");
+                        return;
+                    }
                 }
+                
+                if (testResult == null)
+                    return;
 
                 var oldStatus = testResult.Status;
                 
@@ -1579,6 +1597,33 @@ namespace ISPAudit.ViewModels
                 System.Windows.Application.Current?.Dispatcher.Invoke(() =>
                 {
                     TestResults.Clear();
+                    
+                    // 1. Добавляем диагностические тесты (показываются первыми)
+                    var diagnosticTests = new[] 
+                    {
+                        ("Software", "Проверка ПО"),
+                        ("Firewall", "Проверка файрволла"),
+                        ("Router", "Проверка роутера"),
+                        ("ISP", "Проверка провайдера")
+                    };
+                    
+                    foreach (var (name, displayName) in diagnosticTests)
+                    {
+                        TestResults.Add(new TestResult
+                        {
+                            Target = new Target
+                            {
+                                Name = name,
+                                Host = displayName,
+                                Service = "diagnostic",
+                                Critical = false,
+                                FallbackIp = ""
+                            },
+                            Status = TestStatus.Idle
+                        });
+                    }
+                    
+                    // 2. Добавляем цели из профиля
                     foreach (var target in _capturedProfile.Targets)
                     {
                         TestResults.Add(new TestResult
@@ -1599,8 +1644,8 @@ namespace ISPAudit.ViewModels
                     _testResultMap.Clear();
                     foreach (var result in TestResults)
                     {
-                        _testResultMap[result.Target.Host] = result; // Ключ = Host
-                        Log($"[Stage2] Map['{result.Target.Host}'] = TestResult (Service: {result.Target.Service})");
+                        _testResultMap[result.Target.Name] = result; // Ключ = Name (для диагностики) или Host
+                        Log($"[Stage2] Map['{result.Target.Name}'] = TestResult (Service: {result.Target.Service})");
                     }
                 });
 
