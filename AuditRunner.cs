@@ -57,7 +57,11 @@ namespace IspAudit
                 {
                     ct.ThrowIfCancellationRequested();
                     var profile = TargetServiceProfiles.Resolve(def.Service);
-                    var portsToUse = profile.ResolveTcpPorts(config.Ports);
+                    
+                    // Используем порты цели если есть (захваченный профиль), иначе Config.Ports
+                    var basePorts = def.Ports?.Any() == true ? def.Ports : config.Ports;
+                    var portsToUse = profile.ResolveTcpPorts(basePorts);
+                    
                     var targetReport = new TargetReport
                     {
                         host = def.Host,

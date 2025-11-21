@@ -553,7 +553,8 @@ namespace IspAudit.Utils
                     Host = hostname,
                     Service = DetermineService(hostname, portsUsed),
                     Critical = false,
-                    FallbackIp = fallbackIp  // IP-адрес для прямого тестирования
+                    FallbackIp = fallbackIp,  // IP-адрес для прямого тестирования
+                    Ports = portsUsed.Select(p => (int)p).ToList()  // Преобразование ushort → int
                 };
                 
                 targets.Add(target);
