@@ -59,14 +59,14 @@ namespace ISPAudit.ViewModels
             catch { }
         }
         
-        private string _selectedScenario = "profile";
+        private string _selectedScenario = "exe";
         private string _screenState = "start";
         private CancellationTokenSource? _cts;
         private Config? _config;
         private Dictionary<string, TestResult> _testResultMap = new();
         private string _hostInput = "";
         private string _exePath = "";
-        private string _selectedProfile = "Star Citizen";
+        private string _selectedProfile = "Default";
         private string _currentAction = "";
 
         public ObservableCollection<TestResult> TestResults { get; set; } = new();
@@ -590,7 +590,7 @@ namespace ISPAudit.ViewModels
                 // Если ничего не нашли, добавляем дефолтные
                 if (AvailableProfiles.Count == 0)
                 {
-                    AvailableProfiles.Add("Star Citizen");
+                    // Список профилей из Profiles/*.json
                     AvailableProfiles.Add("Default");
                 }
             }

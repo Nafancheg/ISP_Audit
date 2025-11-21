@@ -83,6 +83,7 @@ namespace IspAudit.Utils
         /// <summary>
         /// Checks if IP is truly bogus (invalid/loopback/link-local/multicast/reserved).
         /// Does NOT include RFC1918 private addresses (10.x, 172.16-31.x, 192.168.x).
+        /// Does NOT include 198.18.0.0/15 (used by bypass routers for VPN routing).
         /// </summary>
         public static bool IsBogusIPv4(IPAddress ip)
         {
@@ -115,6 +116,19 @@ namespace IspAudit.Utils
             if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return true;
             // 192.168.0.0/16
             if (b[0] == 192 && b[1] == 168) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Проверяет является ли IP из диапазона bypass-роутера (198.18.0.0/15).
+        /// Это TEST-NET диапазон (RFC 2544), используется Podkop и другими bypass решениями.
+        /// </summary>
+        public static bool IsBypassIPv4(IPAddress ip)
+        {
+            if (ip.AddressFamily != AddressFamily.InterNetwork) return false;
+            var b = ip.GetAddressBytes();
+            // 198.18.0.0/15 (198.18.x.x - 198.19.x.x)
+            if (b[0] == 198 && (b[1] == 18 || b[1] == 19)) return true;
             return false;
         }
 

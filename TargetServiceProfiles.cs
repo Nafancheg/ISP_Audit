@@ -5,7 +5,7 @@ using System.Linq;
 namespace IspAudit
 {
     /// <summary>
-    /// Описывает набор проверок для конкретного типа сервиса Star Citizen.
+    /// Описывает набор проверок для конкретного типа игрового сервиса.
     /// </summary>
     public sealed class ServiceTestProfile
     {

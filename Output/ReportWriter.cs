@@ -137,7 +137,7 @@ namespace IspAudit.Output
             else
                 summary.tcp_portal = "FAIL";
 
-            // TCP Launcher (8000-8020) - патчер/лаунчер Star Citizen
+            // TCP Launcher (8000-8020) - патчер/лаунчер игры
             var tcpLauncher = tcpAll.Where(r => r.port >= 8000 && r.port <= 8020).ToList();
             if (tcpLauncher.Count == 0)
                 summary.tcp_launcher = "UNKNOWN";
@@ -500,7 +500,7 @@ namespace IspAudit.Output
                 if (dnsBadTargets.Count > 0)
                     lines.Add("  • DNS: нажмите кнопку 'ИСПРАВИТЬ DNS' выше");
                 if (run.firewall != null && run.firewall.Status == "BLOCKING")
-                    lines.Add("  • Firewall: добавьте Star Citizen в исключения");
+                    lines.Add("  • Firewall: добавьте игру в исключения");
                 if (run.isp != null && run.isp.DpiDetected)
                     lines.Add("  • DPI: используйте VPN для обхода");
                 if (run.summary.tls == "BLOCK_PAGE")

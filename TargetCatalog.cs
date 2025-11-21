@@ -8,7 +8,7 @@ namespace IspAudit
 {
     public static class TargetCatalog
     {
-        private const string CatalogFileName = "star_citizen_targets.json";
+        private const string CatalogFileName = "game_targets.json";
 
         public static IReadOnlyList<TargetDefinition> Targets { get; }
         public static IReadOnlyList<int> DefaultTcpPorts { get; }

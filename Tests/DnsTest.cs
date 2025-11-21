@@ -9,7 +9,7 @@ using IspAudit.Utils;
 
 namespace IspAudit.Tests
 {
-    public enum DnsStatus { OK, DNS_FILTERED, DNS_BOGUS, WARN }
+    public enum DnsStatus { OK, DNS_FILTERED, DNS_BOGUS, DNS_BYPASS, WARN }
 
     public record DnsResult(List<string> SystemV4, List<string> DohV4, List<string> GoogleV4, DnsStatus Status);
 
@@ -51,7 +51,13 @@ namespace IspAudit.Tests
                 return DnsStatus.DNS_BOGUS;
             }
 
-            // 3. System DNS returned valid public addresses → OK
+            // 3. System DNS returned bypass router IP (198.18.0.0/15) → DNS_BYPASS
+            if (systemV4.Any(ip => NetUtils.IsBypassIPv4(IPAddress.Parse(ip))))
+            {
+                return DnsStatus.DNS_BYPASS;
+            }
+
+            // 4. System DNS returned valid public addresses → OK
             return DnsStatus.OK;
         }
 

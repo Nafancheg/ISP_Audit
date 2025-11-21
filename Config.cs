@@ -80,6 +80,10 @@ namespace IspAudit
                         if (i + 1 >= args.Length) { error = "--targets требует указания значения"; break; }
                         var tval = args[++i];
                         LoadTargets(cfg, tval);
+                        
+                        // При указании конкретных хостов отключаем глобальные тесты (UDP/ISP/Router/Firewall)
+                        // так как они специфичны для игровых профилей
+                        cfg.EnableUdp = false;
                         break;
                     case "--timeout":
                         if (i + 1 >= args.Length) { error = "--timeout требует указания секунд"; break; }
@@ -296,7 +300,7 @@ namespace IspAudit
         {
             try
             {
-                // Сначала пробуем прямой путь (StarCitizen.json, Default.json)
+                // Сначала пробуем прямой путь (Default.json, Custom.json)
                 string profilePath = Path.Combine("Profiles", $"{profileName}.json");
                 
                 if (!File.Exists(profilePath))

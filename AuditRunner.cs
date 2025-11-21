@@ -28,27 +28,33 @@ namespace IspAudit
             var udpRunner = new Tests.UdpProbeRunner(config);
             var rst = new RstHeuristic(config);
 
-            // Диагностические тесты системы (выполняются перед тестами целей)
-            progress?.Report(new Tests.TestProgress(Tests.TestKind.SOFTWARE, "Software: старт"));
-            run.software = await ISP_Audit.Tests.SoftwareTest.RunAsync().ConfigureAwait(false);
-            bool softwareOk = run.software.Status == "OK";
-            progress?.Report(new Tests.TestProgress(Tests.TestKind.SOFTWARE, "Software: завершено", softwareOk, run.software.Status));
+            // Определяем режим: если указаны конкретные хосты через --targets, пропускаем глобальные тесты
+            bool isSingleHostMode = config.Targets.Count > 0;
 
-            progress?.Report(new Tests.TestProgress(Tests.TestKind.FIREWALL, "Firewall: старт"));
-            var firewallTest = new FirewallTest();
-            run.firewall = await firewallTest.RunAsync().ConfigureAwait(false);
-            bool firewallOk = run.firewall.Status == "OK";
-            progress?.Report(new Tests.TestProgress(Tests.TestKind.FIREWALL, "Firewall: завершено", firewallOk, run.firewall.Status));
+            // Диагностические тесты системы (выполняются только для полного аудита, не для одиночных хостов)
+            if (!isSingleHostMode)
+            {
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.SOFTWARE, "Software: старт"));
+                run.software = await ISP_Audit.Tests.SoftwareTest.RunAsync().ConfigureAwait(false);
+                bool softwareOk = run.software.Status == "OK";
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.SOFTWARE, "Software: завершено", softwareOk, run.software.Status));
 
-            progress?.Report(new Tests.TestProgress(Tests.TestKind.ROUTER, "Router: старт"));
-            run.router = await ISP_Audit.Tests.RouterTest.RunAsync().ConfigureAwait(false);
-            bool routerOk = run.router.Status == "OK";
-            progress?.Report(new Tests.TestProgress(Tests.TestKind.ROUTER, "Router: завершено", routerOk, run.router.Status));
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.FIREWALL, "Firewall: старт"));
+                var firewallTest = new FirewallTest();
+                run.firewall = await firewallTest.RunAsync().ConfigureAwait(false);
+                bool firewallOk = run.firewall.Status == "OK";
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.FIREWALL, "Firewall: завершено", firewallOk, run.firewall.Status));
 
-            progress?.Report(new Tests.TestProgress(Tests.TestKind.ISP, "ISP: старт"));
-            run.isp = await ISP_Audit.Tests.IspTest.RunAsync().ConfigureAwait(false);
-            bool ispOk = run.isp.Status == "OK";
-            progress?.Report(new Tests.TestProgress(Tests.TestKind.ISP, "ISP: завершено", ispOk, run.isp.Status));
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.ROUTER, "Router: старт"));
+                run.router = await ISP_Audit.Tests.RouterTest.RunAsync().ConfigureAwait(false);
+                bool routerOk = run.router.Status == "OK";
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.ROUTER, "Router: завершено", routerOk, run.router.Status));
+
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.ISP, "ISP: старт"));
+                run.isp = await ISP_Audit.Tests.IspTest.RunAsync().ConfigureAwait(false);
+                bool ispOk = run.isp.Status == "OK";
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.ISP, "ISP: завершено", ispOk, run.isp.Status));
+            }
 
             bool anyTargetTests = config.EnableDns || config.EnableTcp || config.EnableHttp || (config.EnableTrace && !config.NoTrace);
             if (anyTargetTests)
@@ -203,14 +209,15 @@ namespace IspAudit
                 // финальные агрегированные статусы по per-target тестам
                 if (config.EnableDns && run.targets.Values.Any(t => t.dns_enabled))
                 {
-                    bool fail = false; bool warn = false;
+                    bool fail = false; bool warn = false; bool bypass = false;
                     foreach (var t in run.targets.Values)
                     {
                         if (!t.dns_enabled) continue;
                         fail |= t.dns_status == nameof(Tests.DnsStatus.DNS_BOGUS) || t.dns_status == nameof(Tests.DnsStatus.DNS_FILTERED);
                         warn |= t.dns_status == nameof(Tests.DnsStatus.WARN);
+                        bypass |= t.dns_status == nameof(Tests.DnsStatus.DNS_BYPASS);
                     }
-                    var msg = fail ? "обнаружены BOGUS/FILTERED" : (warn ? "есть WARN" : "OK");
+                    var msg = fail ? "обнаружены BOGUS/FILTERED" : (bypass ? "обнаружен bypass-роутер (198.18.x.x)" : (warn ? "есть WARN" : "OK"));
                     progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, "сводка", !fail, msg));
                 }
                 else if (config.EnableDns)

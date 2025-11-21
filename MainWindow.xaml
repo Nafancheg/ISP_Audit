@@ -122,6 +122,12 @@
                         Padding="4"
                         AutomationProperties.AutomationId="RadioButtonsPanel">
                     <StackPanel Orientation="Horizontal">
+                        <RadioButton Content="Приложение" 
+                                     Style="{StaticResource ToggleRadioButtonStyle}"
+                                     IsChecked="{Binding IsExeScenario, Mode=TwoWay}"
+                                     IsEnabled="{Binding IsStart}"
+                                     GroupName="Scenario"
+                                     AutomationProperties.AutomationId="ExeScenarioRadioButton"/>
                         <RadioButton Content="Профиль" 
                                      Style="{StaticResource ToggleRadioButtonStyle}"
                                      IsChecked="{Binding IsProfileScenario, Mode=TwoWay}"
@@ -134,12 +140,6 @@
                                      IsEnabled="{Binding IsStart}"
                                      GroupName="Scenario"
                                      AutomationProperties.AutomationId="HostScenarioRadioButton"/>
-                        <RadioButton Content="Приложение" 
-                                     Style="{StaticResource ToggleRadioButtonStyle}"
-                                     IsChecked="{Binding IsExeScenario, Mode=TwoWay}"
-                                     IsEnabled="{Binding IsStart}"
-                                     GroupName="Scenario"
-                                     AutomationProperties.AutomationId="ExeScenarioRadioButton"/>
                     </StackPanel>
                 </Border>
 

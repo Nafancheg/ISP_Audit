@@ -44,7 +44,27 @@ namespace IspAudit.Utils
                     // Сразу собираем все PID процессов с таким же именем
                     var allProcesses = System.Diagnostics.Process.GetProcessesByName(processName);
                     targetPids = new HashSet<int>(allProcesses.Select(p => p.Id));
-                    progress?.Report($"Процесс: '{processName}', найдено {targetPids.Count} экземпляров (PIDs: {string.Join(", ", targetPids.Take(10))})");
+                    
+                    // ДОБАВЛЯЕМ: поиск дочерних процессов (для WebView2/CEF и т.д.)
+                    if (OperatingSystem.IsWindows())
+                    {
+                        var childPids = GetChildProcesses(targetPid);
+                        foreach (var childPid in childPids)
+                        {
+                            targetPids.Add(childPid);
+                        }
+                        
+                        if (childPids.Count > 0)
+                        {
+                            progress?.Report($"  Найдено дочерних процессов: {childPids.Count}");
+                        }
+                    }
+                    
+                    progress?.Report($"Процесс: '{processName}' (PID={targetPid}), найдено экземпляров: {allProcesses.Length}, всего PIDs: {targetPids.Count}");
+                    if (targetPids.Count > 1)
+                    {
+                        progress?.Report($"  Отслеживаемые PIDs: {string.Join(", ", targetPids.Take(20))}");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -81,7 +101,10 @@ namespace IspAudit.Utils
                     // DNS Sniffer: парсинг DNS-ответов для получения hostname
                     dnsTask = Task.Run(() => RunDnsSniffer(dnsCache, progress, cts.Token), cts.Token);
                     
-                    await Task.WhenAll(flowTask, dnsTask, pidUpdaterTask).ConfigureAwait(false);
+                    // Status Reporter: периодические обновления статуса
+                    var statusTask = Task.Run(() => ReportCaptureStatus(targetPid, connections, progress, cts.Token), cts.Token);
+                    
+                    await Task.WhenAll(flowTask, dnsTask, pidUpdaterTask, statusTask).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -111,8 +134,68 @@ namespace IspAudit.Utils
         }
 
         /// <summary>
-        /// Динамически обновляет список целевых PID для поддержки launcher-паттерна.
-        /// Каждые 2 секунды проверяет наличие новых процессов с таким же именем.
+        /// Периодически выводит статус захвата для диагностики "пустого" снифа
+        /// </summary>
+        private static async Task ReportCaptureStatus(
+            int targetPid,
+            ConcurrentDictionary<string, ConnectionInfo> connections,
+            IProgress<string>? progress,
+            CancellationToken token)
+        {
+            try
+            {
+                var startTime = DateTime.Now;
+                int lastCount = 0;
+                
+                while (!token.IsCancellationRequested)
+                {
+                    await Task.Delay(10000, token).ConfigureAwait(false); // Каждые 10 секунд
+                    
+                    var elapsed = DateTime.Now - startTime;
+                    var currentCount = connections.Count;
+                    
+                    if (currentCount == 0)
+                    {
+                        // Проверяем жив ли процесс
+                        try
+                        {
+                            using var proc = System.Diagnostics.Process.GetProcessById(targetPid);
+                            if (proc.HasExited)
+                            {
+                                progress?.Report($"⚠️ Процесс завершился (захват: {elapsed.TotalSeconds:F0}с, соединений: 0)");
+                                break;
+                            }
+                            else
+                            {
+                                progress?.Report($"Захват активен ({elapsed.TotalSeconds:F0}с), соединений: 0. Выполните действия в приложении.");
+                            }
+                        }
+                        catch (ArgumentException)
+                        {
+                            progress?.Report($"⚠️ Процесс не найден (PID={targetPid})");
+                            break;
+                        }
+                    }
+                    else if (currentCount != lastCount)
+                    {
+                        progress?.Report($"Захвачено соединений: {currentCount}");
+                        lastCount = currentCount;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Нормальное завершение
+            }
+            catch (Exception ex)
+            {
+                progress?.Report($"[STATUS] Ошибка: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Динамически обновляет список целевых PID для поддержки launcher-паттерна и дочерних процессов.
+        /// Каждые 2 секунды проверяет наличие новых процессов с таким же именем + дочерние процессы всех известных PID.
         /// </summary>
         private static async Task UpdateTargetPidsAsync(
             string? processName,
@@ -132,26 +215,54 @@ namespace IspAudit.Utils
                     await Task.Delay(2000, token).ConfigureAwait(false);
                     iterationCount++;
 
-                    // Получаем текущий список процессов
+                    var newPidsFound = new List<int>();
+
+                    // 1. Получаем текущий список процессов по имени
                     var currentProcesses = System.Diagnostics.Process.GetProcessesByName(processName);
                     var currentPids = new HashSet<int>(currentProcesses.Select(p => p.Id));
 
-                    // Проверяем новые PID
-                    var newPids = currentPids.Except(targetPids).ToList();
-                    if (newPids.Any())
+                    // Проверяем новые PID по имени процесса
+                    var newPidsByName = currentPids.Except(targetPids).ToList();
+                    if (newPidsByName.Any())
                     {
-                        foreach (var pid in newPids)
+                        newPidsFound.AddRange(newPidsByName);
+                        foreach (var pid in newPidsByName)
                         {
                             targetPids.Add(pid);
                         }
-                        newPidCount++;
-                        progress?.Report($"[PID] Обнаружены новые процессы '{processName}': {string.Join(", ", newPids)} (всего: {targetPids.Count})");
-                        
-                        // Логируем состояние после обнаружения новых PID
-                        if (newPidCount <= 2)
+                    }
+
+                    // 2. Ищем дочерние процессы у всех известных PID (для WebView2/CEF)
+                    if (OperatingSystem.IsWindows())
+                    {
+                        var knownPids = targetPids.ToList(); // Snapshot для безопасной итерации
+                        foreach (var parentPid in knownPids)
                         {
-                            progress?.Report($"[PID] Отслеживается {targetPids.Count} процессов: {string.Join(", ", targetPids.Take(10))}");
+                            try
+                            {
+                                var childPids = GetChildProcesses(parentPid);
+                                var newChildPids = childPids.Except(targetPids).ToList();
+                                if (newChildPids.Any())
+                                {
+                                    newPidsFound.AddRange(newChildPids);
+                                    foreach (var childPid in newChildPids)
+                                    {
+                                        targetPids.Add(childPid);
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // Процесс мог завершиться - игнорируем
+                            }
                         }
+                    }
+
+                    // Репорт о новых PID
+                    if (newPidsFound.Any())
+                    {
+                        newPidCount++;
+                        progress?.Report($"  Добавлено новых PIDs: {string.Join(", ", newPidsFound)} (всего отслеживается: {targetPids.Count})");
                     }
                 }
             }
@@ -517,6 +628,35 @@ namespace IspAudit.Utils
             }
             
             progress?.Report($"✓ Hostname resolved: {fromCache + fromReverseDns}/{connections.Count} (DNS-кеш: {fromCache}, reverse: {fromReverseDns})");
+        }
+
+        /// <summary>
+        /// Получает список дочерних процессов через WMI
+        /// </summary>
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+        private static List<int> GetChildProcesses(int parentPid)
+        {
+            var childPids = new List<int>();
+            try
+            {
+                using var searcher = new System.Management.ManagementObjectSearcher(
+                    $"SELECT ProcessId FROM Win32_Process WHERE ParentProcessId={parentPid}");
+                using var results = searcher.Get();
+                
+                foreach (System.Management.ManagementObject mo in results)
+                {
+                    var pid = Convert.ToInt32(mo["ProcessId"]);
+                    childPids.Add(pid);
+                    
+                    // Рекурсивно ищем дочерние процессы дочерних процессов
+                    childPids.AddRange(GetChildProcesses(pid));
+                }
+            }
+            catch
+            {
+                // Игнорируем ошибки WMI (нет прав или процесс завершился)
+            }
+            return childPids;
         }
 
         /// <summary>

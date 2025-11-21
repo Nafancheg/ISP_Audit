@@ -362,7 +362,7 @@ namespace IspAudit.Tests
     public static void UnitTest_DetermineStatus_BlockingRules()
     {
         var blockedPorts = new List<string>();
-        var blockingRules = new List<string> { "Block Star Citizen" };
+        var blockingRules = new List<string> { "Block Game Traffic" };
         
         string status = TestDetermineStatus(false, blockedPorts, false, blockingRules);
         

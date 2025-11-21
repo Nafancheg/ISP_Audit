@@ -85,7 +85,7 @@ namespace IspAudit.Bypass
 
         private static BypassProfile BuildFallback()
         {
-            var starCitizenHosts = TargetCatalog.Targets
+            var gameHosts = TargetCatalog.Targets
                 .Where(t => t.Service.Contains("Игровые сервера", StringComparison.OrdinalIgnoreCase))
                 .Select(t => t.Host)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -93,24 +93,24 @@ namespace IspAudit.Bypass
 
             var defaultRule = new BypassRedirectRule
             {
-                Name = "Star Citizen игровые сервера (UDP)",
+                Name = "Игровые UDP порты",
                 Protocol = TransportProtocol.Udp,
                 Port = 64090,
                 RedirectIp = "127.0.0.1",
                 RedirectPort = 64090,
                 Enabled = false,
-                Hosts = starCitizenHosts,
+                Hosts = gameHosts,
             };
 
             var defaultTcpRule = new BypassRedirectRule
             {
-                Name = "Star Citizen игровые сервера (TCP)",
+                Name = "Игровые TCP порты",
                 Protocol = TransportProtocol.Tcp,
                 Port = 64090,
                 RedirectIp = "127.0.0.1",
                 RedirectPort = 64090,
                 Enabled = false,
-                Hosts = starCitizenHosts,
+                Hosts = gameHosts,
             };
 
             return new BypassProfile
