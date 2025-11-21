@@ -34,6 +34,11 @@ namespace IspAudit.Utils
         public int PacketCount { get; set; } = 1;
 
         /// <summary>
+        /// Общий объем переданных данных в байтах.
+        /// </summary>
+        public long TotalBytes { get; set; } = 0;
+
+        /// <summary>
         /// Временная метка первого обнаруженного пакета.
         /// </summary>
         public DateTime FirstSeen { get; set; } = DateTime.UtcNow;

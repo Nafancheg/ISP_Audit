@@ -132,6 +132,10 @@ namespace IspAudit.Bypass
 
         [DllImport("WinDivert.dll", CallingConvention = CallingConvention.Winapi, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool WinDivertRecv(SafeHandle handle, IntPtr pPacket, uint packetLen, ref Address address, IntPtr pReadLen);
+
+        [DllImport("WinDivert.dll", CallingConvention = CallingConvention.Winapi, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool WinDivertRecv(SafeHandle handle, byte[] packet, uint packetLen, ref Address address, out uint readLen);
 
         [DllImport("WinDivert.dll", CallingConvention = CallingConvention.Winapi, SetLastError = true)]

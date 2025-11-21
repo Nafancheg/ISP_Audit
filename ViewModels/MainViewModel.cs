@@ -1210,35 +1210,10 @@ namespace ISPAudit.ViewModels
                     var pid = process.Id;
                     Log($"[Stage1] Process started: EXE={Path.GetFileName(ExePath)}, PID={pid}");
 
-                    // Даем процессу время на инициализацию и установление соединений
-                    Stage1Status = $"Процесс запущен (PID={pid}), ожидание установления соединений...";
-                    Log($"[Stage1] Waiting 8 seconds for process to establish network connections...");
-                    await Task.Delay(8000); // 8 секунд для установления соединений
-
-                    // Проверяем, не завершился ли процесс
-                    if (process.HasExited)
-                    {
-                        Stage1Status = "Ошибка: процесс завершился сразу после запуска";
-                        Log($"[Stage1] Process exited immediately with code {process.ExitCode}");
-                        return;
-                    }
-
-                    Log($"[Stage1] Process alive, starting traffic capture for 30 seconds...");
-                    Log($"[Stage1] TIP: Check Output window for detailed capture logs");
-                    Stage1Status = $"Захват трафика (PID={pid}, 30 сек)...";
-
-                    // Запускаем таймер прогресса (30 сек = 100%)
-                    var sw = System.Diagnostics.Stopwatch.StartNew();
-                    _ = Task.Run(async () =>
-                    {
-                        while (sw.Elapsed.TotalSeconds < 30 && _isExeScenarioRunning)
-                        {
-                            var pct = (int)(sw.Elapsed.TotalSeconds / 30.0 * 100);
-                            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => Stage1Progress = pct);
-                            await Task.Delay(1000);
-                        }
-                    });
-
+                    // Сразу запускаем захват, чтобы не пропустить handshake
+                    Stage1Status = $"Процесс запущен (PID={pid}), старт захвата...";
+                    Log($"[Stage1] Starting capture immediately...");
+                    
                     // Анализируем трафик 30 секунд
                     var progress = new Progress<string>(msg =>
                     {

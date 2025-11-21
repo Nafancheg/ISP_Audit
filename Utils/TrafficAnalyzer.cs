@@ -41,128 +41,187 @@ namespace IspAudit.Utils
             IProgress<string>? progress = null,
             CancellationToken cancellationToken = default)
         {
-            progress?.Report($"Старт Dual Layer захвата трафика PID={targetPid} на {captureTimeout.TotalSeconds}с");
-
-            // 1. Коллекции данных
-            var flowMap = new ConcurrentDictionary<FlowKey, int>(); // (Port, Proto) -> PID
-            var packetBuffer = new ConcurrentBag<PacketHeader>();
-            var dnsCache = new ConcurrentDictionary<string, string>(); // IP -> Hostname
-
-            // 2. WinDivert фильтр
-            // Исключаем loopback, но оставляем частные сети (VPN/NAT)
-            var networkFilter = "outbound and !loopback and (tcp or udp)";
-            // Flow layer filter: используем "true", так как макросы tcp/udp могут быть недоступны для Flow layer
-            // Фильтрация по протоколу будет выполнена в коде
-            var flowFilter = "true";
-
-            // 3. Запуск задач мониторинга
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(captureTimeout);
-
-            Task? flowTask = null;
-            Task? netTask = null;
-
-            try
+            // Выполняем всё в фоновом потоке, чтобы не блокировать UI при инициализации
+            return await Task.Run(async () =>
             {
-                // Запускаем Flow Monitor (Layer.Flow)
-                progress?.Report($"Запуск Flow Monitor с фильтром: '{flowFilter}'");
-                flowTask = Task.Run(() => RunFlowMonitor(flowFilter, flowMap, progress, cts.Token), cts.Token);
-                
-                // Запускаем Packet Capture (Layer.Network)
-                progress?.Report($"Запуск Packet Capture с фильтром: '{networkFilter}'");
-                netTask = Task.Run(() => RunPacketCapture(networkFilter, packetBuffer, dnsCache, progress, cts.Token), cts.Token);
+                progress?.Report($"Старт Dual Layer захвата трафика PID={targetPid} на {captureTimeout.TotalSeconds}с");
 
-                progress?.Report("WinDivert мониторинг активен (Flow + Network layers)");
+                // 1. Коллекции данных
+                var flowMap = new ConcurrentDictionary<FlowKey, int>(); // (Port, Proto) -> PID
+                var packetBuffer = new ConcurrentBag<PacketHeader>();
+                var dnsCache = new ConcurrentDictionary<string, string>(); // IP -> Hostname
 
-                // Ждем завершения (по таймауту или отмене)
-                await Task.WhenAll(flowTask, netTask).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                progress?.Report($"Захват завершен (таймаут {captureTimeout.TotalSeconds}с)");
-            }
-            catch (Exception ex)
-            {
-                progress?.Report($"Ошибка во время захвата: {ex.Message}");
-                // Не прерываем выполнение, пробуем собрать то, что успели
-            }
+                // 2. WinDivert фильтр
+                // Исключаем loopback, но оставляем частные сети (VPN/NAT)
+                var networkFilter = "outbound and !loopback and (tcp or udp)";
+                // Flow layer filter: используем "true", так как макросы tcp/udp могут быть недоступны для Flow layer
+                // Фильтрация по протоколу будет выполнена в коде
+                var flowFilter = "true";
 
-            // 4. Корреляция и анализ
-            progress?.Report($"Анализ данных: {packetBuffer.Count} пакетов, {flowMap.Count} потоков...");
-            
-            // Фильтруем пакеты, принадлежащие целевому процессу
-            var targetPackets = packetBuffer
-                .Where(p => 
+                // 3. Запуск задач мониторинга
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(captureTimeout);
+
+                // 3.1 Снапшот существующих соединений (для тех, что открыты ДО запуска)
+                try 
                 {
-                    // Проверяем маппинг порта на PID
-                    byte protoByte = p.Protocol == TransportProtocol.TCP ? (byte)6 : (byte)17;
-                    if (flowMap.TryGetValue(new FlowKey(p.LocalPort, protoByte), out int pid))
+                    progress?.Report("Снятие снапшота активных соединений...");
+                    PopulateExistingFlows(flowMap, progress);
+                    progress?.Report($"Снапшот соединений: найдено {flowMap.Count} активных сокетов. TargetPID={targetPid}");
+                    
+                    // Debug: check if we have any ports for targetPid
+                    var targetPorts = flowMap.Where(kv => kv.Value == targetPid).Select(kv => kv.Key.LocalPort).ToList();
+                    if (targetPorts.Any())
                     {
-                        return pid == targetPid;
+                        progress?.Report($"Порты для PID {targetPid}: {string.Join(", ", targetPorts.Take(10))}{(targetPorts.Count > 10 ? "..." : "")}");
                     }
-                    return false;
-                })
-                .ToList();
-
-            progress?.Report($"Найдено {targetPackets.Count} пакетов от PID={targetPid}");
-
-            // 5. Сборка соединений
-            var connections = new ConcurrentDictionary<string, NetworkConnection>();
-            
-            foreach (var p in targetPackets)
-            {
-                var key = $"{p.RemoteIp}:{p.RemotePort}:{p.Protocol}";
-                connections.AddOrUpdate(
-                    key,
-                    _ => new NetworkConnection
+                    else
                     {
-                        RemoteIp = p.RemoteIp,
-                        RemotePort = p.RemotePort,
-                        Protocol = p.Protocol,
-                        PacketCount = 1,
-                        FirstSeen = p.Timestamp,
-                        LastSeen = p.Timestamp
-                    },
-                    (_, existing) =>
+                        progress?.Report($"ВНИМАНИЕ: Для PID {targetPid} не найдено активных портов в снапшоте.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    progress?.Report($"Ошибка получения таблицы соединений: {ex.Message}");
+                }
+
+                Task? flowTask = null;
+                Task? netTask = null;
+
+                try
+                {
+                    // Запускаем Flow Monitor (Layer.Flow)
+                    progress?.Report($"Запуск Flow Monitor с фильтром: '{flowFilter}'");
+                    flowTask = Task.Run(() => RunFlowMonitor(flowFilter, flowMap, targetPid, progress, cts.Token), cts.Token);
+                    
+                    // Запускаем Packet Capture (Layer.Network)
+                    progress?.Report($"Запуск Packet Capture с фильтром: '{networkFilter}'");
+                    netTask = Task.Run(() => RunPacketCapture(networkFilter, packetBuffer, dnsCache, progress, cts.Token), cts.Token);
+
+                    progress?.Report("WinDivert мониторинг активен (Flow + Network layers)");
+
+                    // Ждем завершения (по таймауту или отмене)
+                    await Task.WhenAll(flowTask, netTask).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    progress?.Report($"Захват завершен (таймаут {captureTimeout.TotalSeconds}с)");
+                }
+                catch (Exception ex)
+                {
+                    progress?.Report($"Ошибка во время захвата: {ex.Message}");
+                    // Не прерываем выполнение, пробуем собрать то, что успели
+                }
+
+                // 4. Корреляция и анализ
+                progress?.Report($"Анализ данных: {packetBuffer.Count} пакетов, {flowMap.Count} потоков...");
+                
+                if (packetBuffer.Count == 0)
+                {
+                    progress?.Report("WARNING: packetBuffer пуст — WinDivert не захватил ни одного пакета. Возможные причины: процесс не создал соединения, фильтр слишком строгий, или нет прав админа.");
+                }
+
+                // Фильтруем пакеты, принадлежащие целевому процессу
+                var targetPackets = packetBuffer
+                    .Where(p => 
                     {
-                        existing.PacketCount++;
-                        existing.TotalBytes += p.TotalSize;
-                        if (p.Timestamp > existing.LastSeen) existing.LastSeen = p.Timestamp;
-                        return existing;
-                    });
-            }
+                        // Проверяем маппинг порта на PID
+                        byte protoByte = p.Protocol == TransportProtocol.TCP ? (byte)6 : (byte)17;
+                        
+                        // Для outbound пакетов LocalPort (Source) должен совпадать с портом процесса
+                        bool matchLocal = flowMap.TryGetValue(new FlowKey(p.LocalPort, protoByte), out int pid) && pid == targetPid;
+                        
+                        return matchLocal;
+                    })
+                    .ToList();
 
-            // 6. Обогащение Hostnames
-            await EnrichWithHostnamesAsync(connections, dnsCache, progress, default).ConfigureAwait(false);
+                if (targetPackets.Count == 0 && packetBuffer.Count > 0)
+                {
+                    progress?.Report($"WARNING: 0 packets matched PID {targetPid}. Dumping first 5 packets for debug:");
+                    foreach(var p in packetBuffer.Take(5))
+                    {
+                        byte protoByte = p.Protocol == TransportProtocol.TCP ? (byte)6 : (byte)17;
+                        flowMap.TryGetValue(new FlowKey(p.LocalPort, protoByte), out int pidLocal);
+                        flowMap.TryGetValue(new FlowKey(p.RemotePort, protoByte), out int pidRemote);
+                        progress?.Report($"  [{p.Protocol}] {p.LocalPort} -> {p.RemoteIp}:{p.RemotePort} (LocalPID={pidLocal}, RemotePID={pidRemote})");
+                    }
+                }
 
-            // 7. Генерация профиля
-            var profile = BuildGameProfile(connections, progress);
-            return profile;
+                progress?.Report($"Найдено {targetPackets.Count} пакетов от PID={targetPid}");
+
+                // 5. Сборка соединений
+                var connections = new ConcurrentDictionary<string, NetworkConnection>();
+                
+                foreach (var p in targetPackets)
+                {
+                    // Для outbound пакетов RemoteIp/RemotePort уже корректны
+                    var remoteIp = p.RemoteIp;
+                    var remotePort = p.RemotePort;
+
+                    var key = $"{remoteIp}:{remotePort}:{p.Protocol}";
+                    connections.AddOrUpdate(
+                        key,
+                        _ => new NetworkConnection
+                        {
+                            RemoteIp = remoteIp,
+                            RemotePort = remotePort,
+                            Protocol = p.Protocol,
+                            PacketCount = 1,
+                            FirstSeen = p.Timestamp,
+                            LastSeen = p.Timestamp
+                        },
+                        (_, existing) =>
+                        {
+                            existing.PacketCount++;
+                            existing.TotalBytes += p.TotalSize;
+                            if (p.Timestamp > existing.LastSeen) existing.LastSeen = p.Timestamp;
+                            return existing;
+                        });
+                }
+
+                // 6. Обогащение Hostnames
+                await EnrichWithHostnamesAsync(connections, dnsCache, progress, default).ConfigureAwait(false);
+
+                // 7. Генерация профиля
+                var profile = BuildGameProfile(connections, progress);
+                return profile;
+            });
         }
 
         private static void RunFlowMonitor(
             string filter,
             ConcurrentDictionary<FlowKey, int> flowMap,
+            int targetPid,
             IProgress<string>? progress,
             CancellationToken token)
         {
             WinDivertNative.SafeHandle? handle = null;
             try
             {
-                handle = WinDivertNative.Open(filter, WinDivertNative.Layer.Flow, 0, WinDivertNative.OpenFlags.Sniff);
-                var buffer = new byte[WinDivertNative.MaxPacketSize]; // Flow events are small, but use standard buffer
+                // Use Sniff | RecvOnly as per flowtrack.c example
+                handle = WinDivertNative.Open(filter, WinDivertNative.Layer.Flow, 0, WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.RecvOnly);
+                
+                // Flow layer does not use packet buffer, pass NULL/0
                 var addr = new WinDivertNative.Address();
-                uint readLen;
+                int flowCount = 0;
 
                 while (!token.IsCancellationRequested)
                 {
-                    if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, ref addr, out readLen))
+                    if (!WinDivertNative.WinDivertRecv(handle, IntPtr.Zero, 0, ref addr, IntPtr.Zero))
                     {
                         var error = Marshal.GetLastWin32Error();
                         if (error == WinDivertNative.ErrorNoData || error == WinDivertNative.ErrorOperationAborted) break;
                         
                         progress?.Report($"FlowMonitor Recv Error: {error}");
+                        // Avoid tight loop on error
+                        Thread.Sleep(100); 
                         continue;
+                    }
+                    
+                    flowCount++;
+                    if (flowCount % 50 == 0)
+                    {
+                        // progress?.Report($"Flow events: {flowCount}, Map size: {flowMap.Count}");
                     }
 
                     if (addr.Event == WinDivertNative.WINDIVERT_EVENT_FLOW_ESTABLISHED)
@@ -177,6 +236,11 @@ namespace IspAudit.Utils
                         var protocol = addr.Flow.Protocol;
 
                         flowMap.TryAdd(new FlowKey(localPort, protocol), pid);
+                        
+                        if (pid == targetPid)
+                        {
+                            progress?.Report($"✓ FLOW MATCH: PID={pid} LocalPort={localPort} Proto={protocol}");
+                        }
                     }
                 }
             }
@@ -224,15 +288,15 @@ namespace IspAudit.Utils
                         packetBuffer.Add(header);
                         capturedCount++;
 
+                        // Периодический отчёт о захвате
+                        if (capturedCount % 500 == 0)
+                        {
+                            progress?.Report($"PacketCapture: захвачено {capturedCount} пакетов");
+                        }
+
                         // Opportunistic DNS parsing
                         if (header.Protocol == TransportProtocol.UDP && header.RemotePort == 53)
                         {
-                            // Parse DNS response to populate cache
-                            // Note: We need to parse the payload from 'buffer'
-                            // TryParsePacket only returns header info, so we need to parse DNS here or inside TryParsePacket
-                            // For simplicity, let's do a quick DNS parse here if needed, 
-                            // but we need the offset to payload.
-                            // Let's refactor TryParsePacket to return payload offset or do it inside.
                             TryParseDns(buffer, (int)readLen, dnsCache);
                         }
                     }
@@ -266,14 +330,23 @@ namespace IspAudit.Utils
             if (protocol == 6) // TCP
             {
                 if (length < ipHeaderLen + 20) return false;
-                localPort = (ushort)((buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1]);
-                remotePort = (ushort)((buffer[ipHeaderLen + 2] << 8) | buffer[ipHeaderLen + 3]);
+
+                // Порты в сетевом пакете в сетевом порядке байт, приводим к host order,
+                // чтобы они совпадали с тем, что приходит из Flow layer и IP Helper API.
+                ushort srcPortNetwork = (ushort)((buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1]);
+                ushort dstPortNetwork = (ushort)((buffer[ipHeaderLen + 2] << 8) | buffer[ipHeaderLen + 3]);
+
+                localPort = (ushort)IPAddress.NetworkToHostOrder((short)srcPortNetwork);
+                remotePort = (ushort)IPAddress.NetworkToHostOrder((short)dstPortNetwork);
                 transportProto = TransportProtocol.TCP;
             }
             else if (protocol == 17) // UDP
             {
-                localPort = (ushort)((buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1]);
-                remotePort = (ushort)((buffer[ipHeaderLen + 2] << 8) | buffer[ipHeaderLen + 3]);
+                ushort srcPortNetwork = (ushort)((buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1]);
+                ushort dstPortNetwork = (ushort)((buffer[ipHeaderLen + 2] << 8) | buffer[ipHeaderLen + 3]);
+
+                localPort = (ushort)IPAddress.NetworkToHostOrder((short)srcPortNetwork);
+                remotePort = (ushort)IPAddress.NetworkToHostOrder((short)dstPortNetwork);
                 transportProto = TransportProtocol.UDP;
             }
             else
@@ -481,6 +554,164 @@ namespace IspAudit.Utils
             if (ports.Any(p => p >= 27000 && p <= 28000)) return "game";
             if (ports.Any(p => p >= 64000 && p <= 65000)) return "voice";
             return "unknown";
+        }
+
+        private static void PopulateExistingFlows(ConcurrentDictionary<FlowKey, int> flowMap, IProgress<string>? progress)
+        {
+            // TCP
+            var tcpRows = GetAllTcpConnections();
+            int tcpCount = 0;
+            foreach (var row in tcpRows)
+            {
+                // LocalPort in MIB_TCPROW_OWNER_PID is in network byte order? 
+                // Actually GetExtendedTcpTable returns ports in network byte order usually.
+                // Let's check implementation of GetAllTcpConnections.
+                // If it returns host order, we are good.
+                flowMap.TryAdd(new FlowKey((ushort)row.LocalPort, 6), row.ProcessId);
+                if (row.ProcessId > 0) tcpCount++;
+            }
+            progress?.Report($"PopulateExistingFlows: Loaded {tcpCount} TCP connections");
+
+            // UDP
+            var udpRows = GetAllUdpConnections();
+            int udpCount = 0;
+            foreach (var row in udpRows)
+            {
+                flowMap.TryAdd(new FlowKey((ushort)row.LocalPort, 17), row.ProcessId);
+                if (row.ProcessId > 0) udpCount++;
+            }
+            progress?.Report($"PopulateExistingFlows: Loaded {udpCount} UDP connections");
+        }
+
+        // --- IP Helper API P/Invoke ---
+
+        [DllImport("iphlpapi.dll", SetLastError = true)]
+        private static extern uint GetExtendedTcpTable(IntPtr pTcpTable, ref int dwOutBufLen, bool sort, int ipVersion, TcpTableClass tblClass, uint reserved = 0);
+
+        [DllImport("iphlpapi.dll", SetLastError = true)]
+        private static extern uint GetExtendedUdpTable(IntPtr pUdpTable, ref int dwOutBufLen, bool sort, int ipVersion, UdpTableClass tblClass, uint reserved = 0);
+
+        private enum TcpTableClass
+        {
+            TCP_TABLE_BASIC_LISTENER,
+            TCP_TABLE_BASIC_CONNECTIONS,
+            TCP_TABLE_BASIC_ALL,
+            TCP_TABLE_OWNER_PID_LISTENER,
+            TCP_TABLE_OWNER_PID_CONNECTIONS,
+            TCP_TABLE_OWNER_PID_ALL,
+            TCP_TABLE_OWNER_MODULE_LISTENER,
+            TCP_TABLE_OWNER_MODULE_CONNECTIONS,
+            TCP_TABLE_OWNER_MODULE_ALL
+        }
+
+        private enum UdpTableClass
+        {
+            UDP_TABLE_BASIC,
+            UDP_TABLE_OWNER_PID,
+            UDP_TABLE_OWNER_MODULE
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MIB_TCPROW_OWNER_PID
+        {
+            public uint state;
+            public uint localAddr;
+            public uint localPort;
+            public uint remoteAddr;
+            public uint remotePort;
+            public int owningPid;
+
+            public ushort LocalPort => (ushort)IPAddress.NetworkToHostOrder((short)localPort);
+            public int ProcessId => owningPid;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MIB_UDPROW_OWNER_PID
+        {
+            public uint localAddr;
+            public uint localPort;
+            public int owningPid;
+
+            public ushort LocalPort => (ushort)IPAddress.NetworkToHostOrder((short)localPort);
+            public int ProcessId => owningPid;
+        }
+
+        private static List<MIB_TCPROW_OWNER_PID> GetAllTcpConnections()
+        {
+            var table = new List<MIB_TCPROW_OWNER_PID>();
+            int bufferSize = 0;
+            
+            // Loop to handle buffer resizing
+            for (int i = 0; i < 5; i++)
+            {
+                uint ret = GetExtendedTcpTable(IntPtr.Zero, ref bufferSize, true, 2 /* AF_INET */, TcpTableClass.TCP_TABLE_OWNER_PID_ALL);
+                if (ret != 0 && ret != 122) // 122 = ERROR_INSUFFICIENT_BUFFER
+                    return table;
+
+                IntPtr tcpTablePtr = Marshal.AllocHGlobal(bufferSize);
+                try
+                {
+                    ret = GetExtendedTcpTable(tcpTablePtr, ref bufferSize, true, 2, TcpTableClass.TCP_TABLE_OWNER_PID_ALL);
+                    if (ret == 122) 
+                    {
+                        // Buffer too small (changed between calls), retry
+                        continue;
+                    }
+                    if (ret != 0) return table;
+
+                    int numEntries = Marshal.ReadInt32(tcpTablePtr);
+                    IntPtr rowPtr = IntPtr.Add(tcpTablePtr, 4);
+                    
+                    for (int j = 0; j < numEntries; j++)
+                    {
+                        MIB_TCPROW_OWNER_PID row = Marshal.PtrToStructure<MIB_TCPROW_OWNER_PID>(rowPtr);
+                        table.Add(row);
+                        rowPtr = IntPtr.Add(rowPtr, Marshal.SizeOf<MIB_TCPROW_OWNER_PID>());
+                    }
+                    return table; // Success
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(tcpTablePtr);
+                }
+            }
+            return table;
+        }
+
+        private static List<MIB_UDPROW_OWNER_PID> GetAllUdpConnections()
+        {
+            var table = new List<MIB_UDPROW_OWNER_PID>();
+            int bufferSize = 0;
+            
+            for (int i = 0; i < 5; i++)
+            {
+                uint ret = GetExtendedUdpTable(IntPtr.Zero, ref bufferSize, true, 2 /* AF_INET */, UdpTableClass.UDP_TABLE_OWNER_PID);
+                if (ret != 0 && ret != 122) return table;
+
+                IntPtr udpTablePtr = Marshal.AllocHGlobal(bufferSize);
+                try
+                {
+                    ret = GetExtendedUdpTable(udpTablePtr, ref bufferSize, true, 2, UdpTableClass.UDP_TABLE_OWNER_PID);
+                    if (ret == 122) continue;
+                    if (ret != 0) return table;
+
+                    int numEntries = Marshal.ReadInt32(udpTablePtr);
+                    IntPtr rowPtr = IntPtr.Add(udpTablePtr, 4);
+
+                    for (int j = 0; j < numEntries; j++)
+                    {
+                        MIB_UDPROW_OWNER_PID row = Marshal.PtrToStructure<MIB_UDPROW_OWNER_PID>(rowPtr);
+                        table.Add(row);
+                        rowPtr = IntPtr.Add(rowPtr, Marshal.SizeOf<MIB_UDPROW_OWNER_PID>());
+                    }
+                    return table;
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(udpTablePtr);
+                }
+            }
+            return table;
         }
     }
 }

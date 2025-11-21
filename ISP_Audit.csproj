@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <OutputType>Exe</OutputType>
     <!-- Use the windows-specific TF to enable WPF on Windows -->
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
@@ -9,6 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <StartupObject>IspAudit.Program</StartupObject>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- Exclude UI test project from compilation -->
     <DefaultItemExcludes>$(DefaultItemExcludes);ISP_Audit.UITests/**</DefaultItemExcludes>
     <!-- Disable WPF design-time build and Hot Reload -->

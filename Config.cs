@@ -64,6 +64,9 @@ namespace IspAudit
                     case "--no-trace":
                         cfg.NoTrace = true;
                         break;
+                    case "--rst":
+                        cfg.EnableRst = true;
+                        break;
                     case "--report":
                         if (i + 1 >= args.Length) { error = "--report требует указания пути к файлу"; break; }
                         cfg.ReportPath = args[++i];

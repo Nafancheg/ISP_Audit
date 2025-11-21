@@ -1,0 +1,2508 @@
+{
+  "run_at": "2025-11-21T03:45:51.4003579Z",
+  "cli": "--targets youtube.com --verbose --rst",
+  "ext_ip": "185.53.46.108",
+  "summary": {
+    "dns": "OK",
+    "tcp": "OK",
+    "tcp_portal": "OK",
+    "tcp_launcher": "OK",
+    "udp": "FAIL",
+    "tls": "MITM_SUSPECT",
+    "rst_inject": "UNKNOWN",
+    "playable": "MAYBE",
+    "firewall": "WARN",
+    "isp_blocking": "DPI_DETECTED",
+    "router_issues": "BAD",
+    "software_conflicts": "WARN"
+  },
+  "targets": {
+    "YouTube": {
+      "host": "www.youtube.com",
+      "display_name": "YouTube",
+      "service": "\u0412\u0438\u0434\u0435\u043E \u0441\u0442\u0440\u0438\u043C\u0438\u043D\u0433 (TCP 80, 443)",
+      "system_dns": [
+        "142.251.36.142",
+        "142.251.36.110",
+        "142.251.38.142",
+        "142.251.36.78"
+      ],
+      "doh": [
+        "142.251.36.78",
+        "142.251.38.142",
+        "142.251.36.110",
+        "142.251.36.142"
+      ],
+      "dns_status": "OK",
+      "tcp": [
+        {
+          "ip": "142.251.36.142",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 5
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.36.142",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.36.110",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 10
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 7
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 7
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 7
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 7
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 10
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 10
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 9
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 8
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.38.142",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 12
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 12
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 12
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 12
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 12
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 12
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 12
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 11
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 11
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 10
+        },
+        {
+          "ip": "142.251.36.78",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 2
+        }
+      ],
+      "http": [
+        {
+          "url": "https://www.youtube.com",
+          "success": true,
+          "status": 200,
+          "serverHeader": "ESF",
+          "cert_cn": "*.google.com",
+          "cert_cn_matches": false,
+          "is_block_page": false
+        },
+        {
+          "url": "https://www.youtube.com/generate_204",
+          "success": true,
+          "status": 204,
+          "serverHeader": "",
+          "cert_cn": "*.google.com",
+          "cert_cn_matches": false,
+          "is_block_page": false
+        }
+      ],
+      "dns_enabled": true,
+      "tcp_enabled": true,
+      "http_enabled": true,
+      "trace_enabled": false,
+      "tcp_ports_checked": [
+        80,
+        443,
+        8000,
+        8001,
+        8002,
+        8003,
+        8004,
+        8005,
+        8006,
+        8007,
+        8008,
+        8009,
+        8010,
+        8011,
+        8012,
+        8013,
+        8014,
+        8015,
+        8016,
+        8017,
+        8018,
+        8019,
+        8020
+      ]
+    },
+    "Google DNS": {
+      "host": "dns.google",
+      "display_name": "Google DNS",
+      "service": "DNS \u0447\u0435\u0440\u0435\u0437 HTTPS (TCP 443)",
+      "system_dns": [
+        "8.8.4.4",
+        "8.8.8.8"
+      ],
+      "doh": [
+        "8.8.8.8",
+        "8.8.4.4"
+      ],
+      "dns_status": "OK",
+      "tcp": [
+        {
+          "ip": "8.8.4.4",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 5
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 8
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "8.8.4.4",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 7
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "8.8.8.8",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 2
+        }
+      ],
+      "http": [
+        {
+          "url": "https://dns.google",
+          "success": true,
+          "status": 200,
+          "serverHeader": "scaffolding on HTTPServer2",
+          "cert_cn": "dns.google",
+          "cert_cn_matches": true,
+          "is_block_page": false
+        },
+        {
+          "url": "https://www.dns.google",
+          "success": false,
+          "error": "\u042D\u0442\u043E\u0442 \u0445\u043E\u0441\u0442 \u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u0435\u043D. (www.dns.google:443)"
+        },
+        {
+          "url": "https://dns.google/generate_204",
+          "success": true,
+          "status": 204,
+          "serverHeader": "",
+          "cert_cn": "dns.google",
+          "cert_cn_matches": true,
+          "is_block_page": false
+        }
+      ],
+      "dns_enabled": true,
+      "tcp_enabled": true,
+      "http_enabled": true,
+      "trace_enabled": false,
+      "tcp_ports_checked": [
+        80,
+        443,
+        8000,
+        8001,
+        8002,
+        8003,
+        8004,
+        8005,
+        8006,
+        8007,
+        8008,
+        8009,
+        8010,
+        8011,
+        8012,
+        8013,
+        8014,
+        8015,
+        8016,
+        8017,
+        8018,
+        8019,
+        8020
+      ]
+    },
+    "Cloudflare": {
+      "host": "cloudflare.com",
+      "display_name": "Cloudflare",
+      "service": "CDN/DNS (TCP 80, 443)",
+      "system_dns": [
+        "104.16.132.229",
+        "104.16.133.229"
+      ],
+      "doh": [
+        "104.16.133.229",
+        "104.16.132.229"
+      ],
+      "dns_status": "OK",
+      "tcp": [
+        {
+          "ip": "104.16.132.229",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "104.16.132.229",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "104.16.133.229",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "104.16.133.229",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        }
+      ],
+      "http": [
+        {
+          "url": "https://cloudflare.com",
+          "success": true,
+          "status": 200,
+          "serverHeader": "cloudflare",
+          "cert_cn": "www.cloudflare.com",
+          "cert_cn_matches": false,
+          "is_block_page": false
+        },
+        {
+          "url": "https://www.cloudflare.com",
+          "success": true,
+          "status": 200,
+          "serverHeader": "cloudflare",
+          "cert_cn": "www.cloudflare.com",
+          "cert_cn_matches": false,
+          "is_block_page": false
+        },
+        {
+          "url": "https://cloudflare.com/generate_204",
+          "success": true,
+          "status": 404,
+          "serverHeader": "cloudflare",
+          "cert_cn": "www.cloudflare.com",
+          "cert_cn_matches": false,
+          "is_block_page": false
+        }
+      ],
+      "dns_enabled": true,
+      "tcp_enabled": true,
+      "http_enabled": true,
+      "trace_enabled": false,
+      "tcp_ports_checked": [
+        80,
+        443
+      ]
+    },
+    "Amazon AWS": {
+      "host": "aws.amazon.com",
+      "display_name": "Amazon AWS",
+      "service": "\u041E\u0431\u043B\u0430\u0447\u043D\u044B\u0435 \u0441\u0435\u0440\u0432\u0438\u0441\u044B (TCP 443)",
+      "system_dns": [
+        "3.165.206.28",
+        "3.165.206.54",
+        "3.165.206.74",
+        "3.165.206.65"
+      ],
+      "doh": [
+        "3.165.206.65",
+        "3.165.206.74",
+        "3.165.206.54",
+        "3.165.206.28"
+      ],
+      "dns_status": "OK",
+      "tcp": [
+        {
+          "ip": "3.165.206.28",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 5
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 5
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 5
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.28",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 9
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 8
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 9
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 9
+        },
+        {
+          "ip": "3.165.206.54",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 8
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 7
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.74",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 80,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 443,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 5
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 5
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 5
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 7
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 7
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 6
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 9
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 9
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "3.165.206.65",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 0
+        }
+      ],
+      "http": [
+        {
+          "url": "https://aws.amazon.com",
+          "success": true,
+          "status": 200,
+          "serverHeader": "Server",
+          "cert_cn": "aws.amazon.com",
+          "cert_cn_matches": true,
+          "is_block_page": false
+        },
+        {
+          "url": "https://www.aws.amazon.com",
+          "success": true,
+          "status": 200,
+          "serverHeader": "Server",
+          "cert_cn": "aws.amazon.com",
+          "cert_cn_matches": true,
+          "is_block_page": false
+        },
+        {
+          "url": "https://aws.amazon.com/generate_204",
+          "success": true,
+          "status": 404,
+          "serverHeader": "Server",
+          "cert_cn": "aws.amazon.com",
+          "cert_cn_matches": true,
+          "is_block_page": false
+        }
+      ],
+      "dns_enabled": true,
+      "tcp_enabled": true,
+      "http_enabled": true,
+      "trace_enabled": false,
+      "tcp_ports_checked": [
+        80,
+        443,
+        8000,
+        8001,
+        8002,
+        8003,
+        8004,
+        8005,
+        8006,
+        8007,
+        8008,
+        8009,
+        8010,
+        8011,
+        8012,
+        8013,
+        8014,
+        8015,
+        8016,
+        8017,
+        8018,
+        8019,
+        8020
+      ]
+    },
+    "Discord": {
+      "host": "discord.com",
+      "display_name": "Discord",
+      "service": "\u0418\u0433\u0440\u043E\u0432\u043E\u0439 \u0447\u0430\u0442 (TCP 443, UDP 50000-65535)",
+      "system_dns": [
+        "162.159.137.232",
+        "162.159.135.232",
+        "162.159.128.233",
+        "162.159.138.232",
+        "162.159.136.232"
+      ],
+      "doh": [
+        "162.159.137.232",
+        "162.159.136.232",
+        "162.159.138.232",
+        "162.159.135.232",
+        "162.159.128.233"
+      ],
+      "dns_status": "OK",
+      "tcp": [
+        {
+          "ip": "162.159.137.232",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.137.232",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.135.232",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 7
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 7
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 5
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "162.159.128.233",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.138.232",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 0
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8000,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8001,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8002,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8003,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8004,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8005,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8006,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8007,
+          "open": true,
+          "elapsed_ms": 4
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8008,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8009,
+          "open": true,
+          "elapsed_ms": 3
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8010,
+          "open": true,
+          "elapsed_ms": 2
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8011,
+          "open": true,
+          "elapsed_ms": 10
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8012,
+          "open": true,
+          "elapsed_ms": 10
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8013,
+          "open": true,
+          "elapsed_ms": 9
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8014,
+          "open": true,
+          "elapsed_ms": 9
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8015,
+          "open": true,
+          "elapsed_ms": 9
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8016,
+          "open": true,
+          "elapsed_ms": 9
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8017,
+          "open": true,
+          "elapsed_ms": 8
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8018,
+          "open": true,
+          "elapsed_ms": 8
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8019,
+          "open": true,
+          "elapsed_ms": 1
+        },
+        {
+          "ip": "162.159.136.232",
+          "port": 8020,
+          "open": true,
+          "elapsed_ms": 1
+        }
+      ],
+      "http": [],
+      "dns_enabled": true,
+      "tcp_enabled": true,
+      "http_enabled": false,
+      "trace_enabled": false,
+      "tcp_ports_checked": [
+        8000,
+        8001,
+        8002,
+        8003,
+        8004,
+        8005,
+        8006,
+        8007,
+        8008,
+        8009,
+        8010,
+        8011,
+        8012,
+        8013,
+        8014,
+        8015,
+        8016,
+        8017,
+        8018,
+        8019,
+        8020
+      ]
+    }
+  },
+  "udp_tests": [
+    {
+      "name": "Cloudflare DNS",
+      "host": "1.1.1.1",
+      "port": 53,
+      "service": "\u0411\u0430\u0437\u043E\u0432\u0430\u044F \u0441\u0435\u0442\u044C",
+      "expect_reply": true,
+      "success": false,
+      "reply": false,
+      "reply_bytes": 0,
+      "note": "timeout",
+      "description": "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 UDP DNS",
+      "certainty": "high"
+    },
+    {
+      "name": "Vivox STUN",
+      "host": "viv.vivox.com",
+      "port": 3478,
+      "service": "\u0413\u043E\u043B\u043E\u0441\u043E\u0432\u043E\u0439 \u0447\u0430\u0442",
+      "expect_reply": false,
+      "success": false,
+      "reply": false,
+      "reply_bytes": 0,
+      "note": "\u043D\u0435\u0442 IPv4",
+      "description": "Vivox STUN \u043F\u043E\u0440\u0442 \u0434\u043B\u044F \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u043E\u0433\u043E \u0447\u0430\u0442\u0430",
+      "certainty": "high"
+    },
+    {
+      "name": "\u0418\u0433\u0440\u043E\u0432\u043E\u0439 \u043F\u043E\u0440\u0442 64090",
+      "host": "robertsspaceindustries.com",
+      "port": 64090,
+      "service": "\u0418\u0433\u0440\u043E\u0432\u044B\u0435 \u0441\u0435\u0440\u0432\u0435\u0440\u044B",
+      "expect_reply": false,
+      "success": true,
+      "reply": false,
+      "reply_bytes": 0,
+      "note": "\u043F\u0430\u043A\u0435\u0442 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D",
+      "description": "Star Citizen \u0438\u0433\u0440\u043E\u0432\u043E\u0439 UDP \u043F\u043E\u0440\u0442 64090",
+      "certainty": "low"
+    },
+    {
+      "name": "\u0418\u0433\u0440\u043E\u0432\u043E\u0439 \u043F\u043E\u0440\u0442 64091",
+      "host": "robertsspaceindustries.com",
+      "port": 64091,
+      "service": "\u0418\u0433\u0440\u043E\u0432\u044B\u0435 \u0441\u0435\u0440\u0432\u0435\u0440\u044B",
+      "expect_reply": false,
+      "success": true,
+      "reply": false,
+      "reply_bytes": 0,
+      "note": "\u043F\u0430\u043A\u0435\u0442 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D",
+      "description": "Star Citizen \u0438\u0433\u0440\u043E\u0432\u043E\u0439 UDP \u043F\u043E\u0440\u0442 64091",
+      "certainty": "low"
+    },
+    {
+      "name": "\u0418\u0433\u0440\u043E\u0432\u043E\u0439 \u043F\u043E\u0440\u0442 64092",
+      "host": "robertsspaceindustries.com",
+      "port": 64092,
+      "service": "\u0418\u0433\u0440\u043E\u0432\u044B\u0435 \u0441\u0435\u0440\u0432\u0435\u0440\u044B",
+      "expect_reply": false,
+      "success": true,
+      "reply": false,
+      "reply_bytes": 0,
+      "note": "\u043F\u0430\u043A\u0435\u0442 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D",
+      "description": "Star Citizen \u0438\u0433\u0440\u043E\u0432\u043E\u0439 UDP \u043F\u043E\u0440\u0442 64092",
+      "certainty": "low"
+    },
+    {
+      "name": "\u0418\u0433\u0440\u043E\u0432\u043E\u0439 \u043F\u043E\u0440\u0442 64093",
+      "host": "robertsspaceindustries.com",
+      "port": 64093,
+      "service": "\u0418\u0433\u0440\u043E\u0432\u044B\u0435 \u0441\u0435\u0440\u0432\u0435\u0440\u044B",
+      "expect_reply": false,
+      "success": true,
+      "reply": false,
+      "reply_bytes": 0,
+      "note": "\u043F\u0430\u043A\u0435\u0442 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D",
+      "description": "Star Citizen \u0438\u0433\u0440\u043E\u0432\u043E\u0439 UDP \u043F\u043E\u0440\u0442 64093",
+      "certainty": "low"
+    },
+    {
+      "name": "\u0418\u0433\u0440\u043E\u0432\u043E\u0439 \u043F\u043E\u0440\u0442 64094",
+      "host": "robertsspaceindustries.com",
+      "port": 64094,
+      "service": "\u0418\u0433\u0440\u043E\u0432\u044B\u0435 \u0441\u0435\u0440\u0432\u0435\u0440\u044B",
+      "expect_reply": false,
+      "success": true,
+      "reply": false,
+      "reply_bytes": 0,
+      "note": "\u043F\u0430\u043A\u0435\u0442 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D",
+      "description": "Star Citizen \u0438\u0433\u0440\u043E\u0432\u043E\u0439 UDP \u043F\u043E\u0440\u0442 64094",
+      "certainty": "low"
+    }
+  ],
+  "firewall": {
+    "WindowsFirewallEnabled": true,
+    "BlockedPorts": [],
+    "WindowsDefenderActive": true,
+    "BlockingRules": [],
+    "Status": "WARN"
+  },
+  "isp": {
+    "Isp": "PQ HOSTING PLUS S.R.L.",
+    "Country": "Czechia",
+    "City": "Prague",
+    "CgnatDetected": false,
+    "DpiDetected": true,
+    "DnsFiltered": false,
+    "KnownProblematicISPs": [],
+    "Status": "DPI_DETECTED"
+  },
+  "router": {
+    "GatewayIp": "10.227.22.1",
+    "UpnpEnabled": false,
+    "SipAlgDetected": false,
+    "AvgPingMs": 0,
+    "MaxPingMs": 0,
+    "PacketLossPercent": 100,
+    "Status": "BAD"
+  },
+  "software": {
+    "AntivirusDetected": [
+      "Kaspersky",
+      "Windows Defender",
+      "WinDefend"
+    ],
+    "VpnClientsDetected": [
+      "VPN Adapter (tun2)"
+    ],
+    "ProxyEnabled": false,
+    "HostsFileIssues": false,
+    "HostsFileEntries": [],
+    "Status": "WARN"
+  }
+}
