@@ -149,8 +149,23 @@ namespace IspAudit
                         ct.ThrowIfCancellationRequested();
                         progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{def.Name}: старт"));
                         targetReport.http = await httpTest.CheckAsync(def.Host).ConfigureAwait(false);
-                        bool ok = targetReport.http.Exists(h => h.success && h.status is >= 200 and < 400);
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{def.Name}: завершено", ok, ok?"2xx/3xx":"ошибки/таймаут"));
+                        
+                        // Проверяем ТОЛЬКО успешность получения ответа (не смотрим на статус-код)
+                        // 4xx/5xx — это НЕ сетевая проблема, это бизнес-логика сервера
+                        bool ok = targetReport.http.Exists(h => h.success);
+                        
+                        // Проверяем на блок-страницу
+                        bool hasBlockPage = targetReport.http.Exists(h => h.is_block_page == true);
+                        
+                        string message;
+                        if (hasBlockPage)
+                            message = "обнаружена блокировка";
+                        else if (ok)
+                            message = "соединение установлено";
+                        else
+                            message = "ошибки/таймаут";
+                        
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{def.Name}: завершено", ok && !hasBlockPage, message));
                     }
                     else
                     {
