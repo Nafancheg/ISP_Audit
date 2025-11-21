@@ -52,7 +52,7 @@ namespace IspAudit.Utils
     public class PipelineConfig
     {
         public bool EnableLiveTesting { get; set; } = true;
-        public bool EnableAutoBypass { get; set; } = false;
+        public bool EnableAutoBypass { get; set; } = true; // Автоматическое применение bypass включено по умолчанию
         public int MaxConcurrentTests { get; set; } = 5;
         public TimeSpan TestTimeout { get; set; } = TimeSpan.FromSeconds(3);
     }
