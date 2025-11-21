@@ -463,6 +463,13 @@
                                       VerticalAlignment="Center"
                                       ToolTip="При включении каждый обнаруженный хост будет немедленно тестироваться (DNS/TCP/TLS) для выявления блокировок"/>
 
+                            <CheckBox Content="Автоматическое применение bypass (требуется запуск от администратора)"
+                                      IsChecked="{Binding EnableAutoBypass}"
+                                      Margin="0,0,0,8"
+                                      VerticalAlignment="Center"
+                                      IsEnabled="{Binding EnableLiveTesting}"
+                                      ToolTip="При включении обнаруженные блокировки будут автоматически обходиться через WinDivert (TLS fragmentation, RST blocking). Требуются права администратора."/>
+
                             <StackPanel Orientation="Horizontal"
                                        Visibility="{Binding Stage1Complete, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <TextBlock Text="{Binding Stage1HostsFound, StringFormat='Обнаружено целей: {0}'}" 

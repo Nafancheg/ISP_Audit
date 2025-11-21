@@ -27,7 +27,8 @@ namespace IspAudit.Utils
             TimeSpan? captureTimeout,
             IProgress<string>? progress = null,
             CancellationToken cancellationToken = default,
-            bool enableLiveTesting = false)
+            bool enableLiveTesting = false,
+            bool enableAutoBypass = false)
         {
             return await Task.Run(async () =>
             {
@@ -84,7 +85,7 @@ namespace IspAudit.Utils
                     var pipelineConfig = new PipelineConfig
                     {
                         EnableLiveTesting = true,
-                        EnableAutoBypass = false, // Пока не включаем auto-bypass
+                        EnableAutoBypass = enableAutoBypass,
                         MaxConcurrentTests = 5,
                         TestTimeout = TimeSpan.FromSeconds(3)
                     };
