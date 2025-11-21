@@ -542,17 +542,22 @@ namespace IspAudit.Utils
                 var hostname = group.Key;
                 var portsUsed = group.Select(c => c.RemotePort).Distinct().OrderBy(p => p).ToList();
                 var protocols = group.Select(c => c.Protocol).Distinct().ToList();
+                
+                // Берём первый IP из группы как fallback (все соединения в группе имеют одинаковый hostname)
+                var firstConnection = group.First();
+                var fallbackIp = firstConnection.RemoteIp.ToString();
 
                 var target = new TargetDefinition
                 {
                     Name = hostname,
                     Host = hostname,
                     Service = DetermineService(hostname, portsUsed),
-                    Critical = false
+                    Critical = false,
+                    FallbackIp = fallbackIp  // IP-адрес для прямого тестирования
                 };
                 
                 targets.Add(target);
-                progress?.Report($"  • {hostname}: порты {string.Join(", ", portsUsed)} ({string.Join(", ", protocols)})");
+                progress?.Report($"  • {hostname} ({fallbackIp}): порты {string.Join(", ", portsUsed)} ({string.Join(", ", protocols)})");
             }
 
             return new GameProfile
