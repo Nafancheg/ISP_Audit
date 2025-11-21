@@ -344,23 +344,26 @@ namespace IspAudit.Bypass
 
             if (profile.DropTcpRst)
             {
+                // RST blocker: sniff + drop режим (driver уже установлен TrafficAnalyzer)
                 _rstHandle = WinDivertNative.Open("outbound and tcp.Rst == 1", WinDivertNative.Layer.Network, 0,
-                    WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.Drop | WinDivertNative.OpenFlags.NoInstall);
+                    WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.Drop);
                 _rstTask = Task.Run(() => PumpPackets(_rstHandle!, _cts.Token), _cts.Token);
             }
 
             if (profile.FragmentTlsClientHello)
             {
-                // Priority = -1 чтобы перехватывать ДО Flow layer (который использует priority 0)
+                // TLS fragmenter: priority = -1 для перехвата ДО Flow layer (priority 0)
+                // Используем default mode (capture + reinject) без NoInstall
                 _tlsHandle = WinDivertNative.Open("outbound and tcp.DstPort == 443 and tcp.PayloadLength > 0",
-                    WinDivertNative.Layer.Network, -1, WinDivertNative.OpenFlags.NoInstall);
+                    WinDivertNative.Layer.Network, -1, WinDivertNative.OpenFlags.None);
                 _tlsTask = Task.Run(() => RunTlsFragmenter(_tlsHandle!, _cts.Token, profile), _cts.Token);
             }
 
             if (_runtimeRedirectRules.Count > 0)
             {
+                // Redirect: default mode (capture + reinject)
                 _redirectHandle = WinDivertNative.Open(BuildRedirectFilter(_runtimeRedirectRules), WinDivertNative.Layer.Network, 0,
-                    WinDivertNative.OpenFlags.NoInstall);
+                    WinDivertNative.OpenFlags.None);
                 _redirectTask = Task.Run(() => RunRedirector(_redirectHandle!, _cts.Token, _runtimeRedirectRules), _cts.Token);
             }
         }
