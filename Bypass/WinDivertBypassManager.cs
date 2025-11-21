@@ -467,7 +467,7 @@ namespace IspAudit.Bypass
                 if (TryOpenWinDivert(
                     "outbound and tcp.DstPort == 443 and tcp.PayloadLength > 0",
                     WinDivertNative.Layer.Network,
-                    priority: 1000,  // ✅ ВЫШЕ Flow layer (0)
+                    priority: 500,  // ✅ Умеренный приоритет (Flow layer = 0)
                     WinDivertNative.OpenFlags.None,
                     out _tlsHandle))
                 {
@@ -497,6 +497,20 @@ namespace IspAudit.Bypass
                     throw new InvalidOperationException("Failed to open WinDivert handle for redirects");
                 }
             }
+        }
+
+        /// <summary>
+        /// Создает WinDivert фильтр для TLS fragmentation (опционально для конкретного хоста)
+        /// </summary>
+        private static string BuildTlsFragmentFilter(IPAddress? targetIp, int targetPort)
+        {
+            if (targetIp != null)
+            {
+                // Хост-специфичный фильтр
+                return $"outbound and ip.DstAddr == {targetIp} and tcp.DstPort == {targetPort} and tcp.PayloadLength > 0";
+            }
+            // Глобальный HTTPS фильтр
+            return "outbound and tcp.DstPort == 443 and tcp.PayloadLength > 0";
         }
 
         private static IReadOnlyList<RuntimeRedirectRule> BuildRuntimeRedirects(BypassProfile profile)
