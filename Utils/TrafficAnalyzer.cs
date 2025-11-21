@@ -66,10 +66,14 @@ namespace IspAudit.Utils
                 // Запуск мониторинга
                 Task? flowTask = null;
                 Task? dnsTask = null;
+                Task? pidUpdaterTask = null;
                 try
                 {
                     bool isContinuous = !captureTimeout.HasValue;
                     progress?.Report($"Запуск Flow Monitor (события соединений) + DNS Sniffer (парсинг DNS-ответов), режим: {(isContinuous ? "непрерывный" : "30с")}");
+                    
+                    // PID Updater: динамическое отслеживание новых процессов с тем же именем (для launcher-паттерна)
+                    pidUpdaterTask = Task.Run(() => UpdateTargetPidsAsync(processName, targetPids, progress, cts.Token), cts.Token);
                     
                     // Flow Monitor: сбор соединений по PID
                     flowTask = Task.Run(() => RunFlowMonitor(targetPids, connections, isContinuous, progress, cts.Token), cts.Token);
@@ -77,7 +81,7 @@ namespace IspAudit.Utils
                     // DNS Sniffer: парсинг DNS-ответов для получения hostname
                     dnsTask = Task.Run(() => RunDnsSniffer(dnsCache, progress, cts.Token), cts.Token);
                     
-                    await Task.WhenAll(flowTask, dnsTask).ConfigureAwait(false);
+                    await Task.WhenAll(flowTask, dnsTask, pidUpdaterTask).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -104,6 +108,59 @@ namespace IspAudit.Utils
                 var profile = BuildGameProfile(connections, processName, progress);
                 return profile;
             }).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Динамически обновляет список целевых PID для поддержки launcher-паттерна.
+        /// Каждые 2 секунды проверяет наличие новых процессов с таким же именем.
+        /// </summary>
+        private static async Task UpdateTargetPidsAsync(
+            string? processName,
+            HashSet<int> targetPids,
+            IProgress<string>? progress,
+            CancellationToken token)
+        {
+            if (string.IsNullOrEmpty(processName))
+                return;
+
+            try
+            {
+                int updateCount = 0;
+                while (!token.IsCancellationRequested)
+                {
+                    await Task.Delay(2000, token).ConfigureAwait(false);
+
+                    // Получаем текущий список процессов
+                    var currentProcesses = System.Diagnostics.Process.GetProcessesByName(processName);
+                    var currentPids = new HashSet<int>(currentProcesses.Select(p => p.Id));
+
+                    // Проверяем новые PID
+                    var newPids = currentPids.Except(targetPids).ToList();
+                    if (newPids.Any())
+                    {
+                        foreach (var pid in newPids)
+                        {
+                            targetPids.Add(pid);
+                        }
+                        updateCount++;
+                        progress?.Report($"[PID] Обнаружены новые процессы '{processName}': {string.Join(", ", newPids)} (всего: {targetPids.Count})");
+                    }
+
+                    // Логируем только первые 3 обновления для отладки
+                    if (updateCount > 0 && updateCount <= 3)
+                    {
+                        progress?.Report($"[PID] Отслеживается {targetPids.Count} процессов: {string.Join(", ", targetPids.Take(10))}");
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Нормальное завершение
+            }
+            catch (Exception ex)
+            {
+                progress?.Report($"[PID] Ошибка обновления списка PID: {ex.Message}");
+            }
         }
 
         /// <summary>
