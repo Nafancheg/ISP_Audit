@@ -68,10 +68,11 @@ namespace IspAudit.Utils
                 Task? dnsTask = null;
                 try
                 {
-                    progress?.Report("Запуск Flow Monitor (события соединений) + DNS Sniffer (парсинг DNS-ответов)");
+                    bool isContinuous = !captureTimeout.HasValue;
+                    progress?.Report($"Запуск Flow Monitor (события соединений) + DNS Sniffer (парсинг DNS-ответов), режим: {(isContinuous ? "непрерывный" : "30с")}");
                     
                     // Flow Monitor: сбор соединений по PID
-                    flowTask = Task.Run(() => RunFlowMonitor(targetPids, connections, progress, cts.Token), cts.Token);
+                    flowTask = Task.Run(() => RunFlowMonitor(targetPids, connections, isContinuous, progress, cts.Token), cts.Token);
                     
                     // DNS Sniffer: парсинг DNS-ответов для получения hostname
                     dnsTask = Task.Run(() => RunDnsSniffer(dnsCache, progress, cts.Token), cts.Token);
@@ -111,13 +112,14 @@ namespace IspAudit.Utils
         private static void RunFlowMonitor(
             HashSet<int> targetPids,
             ConcurrentDictionary<string, ConnectionInfo> connections,
+            bool isContinuous,
             IProgress<string>? progress,
             CancellationToken token)
         {
             WinDivertNative.SafeHandle? handle = null;
             int flowCount = 0;
             int matchCount = 0;
-            const int MaxConnections = 50; // Лимит уникальных соединений
+            const int MaxConnections = 50; // Лимит уникальных соединений (только для фиксированного режима)
 
             try
             {
@@ -208,8 +210,8 @@ namespace IspAudit.Utils
                             progress?.Report($"Обнаружено соединений: {connections.Count}");
                         }
 
-                        // Достигли лимита — завершаем
-                        if (connections.Count >= MaxConnections)
+                        // Достигли лимита — завершаем (только для фиксированного режима)
+                        if (!isContinuous && connections.Count >= MaxConnections)
                         {
                             progress?.Report($"Достигнут лимит соединений ({MaxConnections}), завершение захвата");
                             break;
