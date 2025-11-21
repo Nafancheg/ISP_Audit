@@ -457,7 +457,7 @@
                                       Margin="0,0,0,8"
                                       VerticalAlignment="Center"/>
 
-                            <CheckBox Content="Включить живое тестирование (детекция блокировок в реальном времени)"
+                            <CheckBox Content="Live тестирование (детекция блокировок в реальном времени)"
                                       IsChecked="{Binding EnableLiveTesting}"
                                       Margin="0,0,0,8"
                                       VerticalAlignment="Center"
