@@ -1604,13 +1604,20 @@ namespace ISPAudit.ViewModels
                     }
                 });
 
-                // Создаем Config из захваченного профиля
+                // Создаем Config из захваченного профиля (используем те же настройки что и в обычных профилях)
                 _config = new Config
                 {
                     Targets = _capturedProfile.Targets.Select(t => t.Host).ToList(),
                     HttpTimeoutSeconds = 6,
                     TcpTimeoutSeconds = 5,
-                    UdpTimeoutSeconds = 2
+                    UdpTimeoutSeconds = 2,
+                    EnableDns = true,
+                    EnableTcp = true,
+                    EnableHttp = true,
+                    EnableTrace = false,
+                    NoTrace = true,
+                    EnableUdp = false,  // Отключаем UDP для захваченных профилей
+                    EnableRst = false   // Отключаем RST эвристику
                 };
 
                 _cts = new CancellationTokenSource();
