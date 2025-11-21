@@ -28,14 +28,6 @@ public static class SoftwareTest
         "wireguard", "viscosity", "fortivpn", "sonicwall", "pulsesecure"
     };
 
-    private static readonly string[] RsiDomains = {
-        "robertsspaceindustries.com",
-        "cloudimperiumgames.com",
-        "cloudimperiumgames.cn",
-        "turbulent.ca",
-        "vivox.com"
-    };
-
     /// <summary>
     /// Выполняет проверку программного обеспечения на конфликты
     /// </summary>
@@ -294,14 +286,12 @@ public static class SoftwareTest
                         continue;
                     }
 
-                    // Проверяем наличие RSI доменов
-                    foreach (var domain in RsiDomains)
+                    // Добавляем любую не-localhost запись как потенциально проблемную
+                    if (!trimmedLine.Contains("localhost", StringComparison.OrdinalIgnoreCase) &&
+                        !trimmedLine.StartsWith("127.0.0.1") &&
+                        !trimmedLine.StartsWith("::1"))
                     {
-                        if (trimmedLine.Contains(domain, StringComparison.OrdinalIgnoreCase))
-                        {
-                            problematicEntries.Add(trimmedLine);
-                            break;
-                        }
+                        problematicEntries.Add(trimmedLine);
                     }
                 }
 

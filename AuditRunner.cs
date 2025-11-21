@@ -28,7 +28,7 @@ namespace IspAudit
             var udpRunner = new Tests.UdpProbeRunner(config);
             var rst = new RstHeuristic(config);
 
-            // Новые диагностические тесты (выполняются перед тестами по целям)
+            // Диагностические тесты системы (выполняются перед тестами целей)
             progress?.Report(new Tests.TestProgress(Tests.TestKind.SOFTWARE, "Software: старт"));
             run.software = await ISP_Audit.Tests.SoftwareTest.RunAsync().ConfigureAwait(false);
             bool softwareOk = run.software.Status == "OK";

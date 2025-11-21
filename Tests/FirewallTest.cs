@@ -15,12 +15,11 @@ namespace IspAudit.Tests
     /// </summary>
     public class FirewallTest
     {
-        private static readonly int[] GamePorts = { 80, 443, 8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8010, 8011, 8012, 8013, 8014, 8015, 8016, 8017, 8018, 8019, 8020 };
-        private static readonly string[] StarCitizenPaths = {
-            "Star Citizen",
-            "StarCitizen",
-            "RSI Launcher",
-            "RSILauncher"
+        private static readonly int[] CommonGamePorts = { 80, 443, 8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8010, 8011, 8012, 8013, 8014, 8015, 8016, 8017, 8018, 8019, 8020 };
+        private static readonly string[] CommonGamePaths = {
+            "Game",
+            "Launcher",
+            "Client"
         };
 
         public async Task<FirewallTestResult> RunAsync()
@@ -147,7 +146,7 @@ namespace IspAudit.Tests
                                 continue;
 
                             // Проверяем пересечение с игровыми портами
-                            foreach (int port in GamePorts)
+                            foreach (int port in CommonGamePorts)
                             {
                                 if (PortMatchesRule(port, localPorts))
                                 {
@@ -226,13 +225,13 @@ namespace IspAudit.Tests
                             if (string.IsNullOrEmpty(displayName))
                                 continue;
 
-                            // Проверяем упоминание Star Citizen в правиле
-                            bool isStarCitizenRule = StarCitizenPaths.Any(path =>
+                            // Проверяем упоминание игровых процессов в правиле
+                            bool isGameRule = CommonGamePaths.Any(path =>
                                 displayName.Contains(path, StringComparison.OrdinalIgnoreCase) ||
                                 (applicationName != null && applicationName.Contains(path, StringComparison.OrdinalIgnoreCase))
                             );
 
-                            if (isStarCitizenRule)
+                            if (isGameRule)
                             {
                                 blockingRules.Add(displayName);
                             }
