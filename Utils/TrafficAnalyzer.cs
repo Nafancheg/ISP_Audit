@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -21,7 +23,158 @@ namespace IspAudit.Utils
     {
         /// <summary>
         /// Собирает список уникальных IP-адресов из сетевых соединений процесса.
-        /// Использует только Flow Layer (без захвата пакетов) для минимального overhead.
+        /// НОВАЯ ВЕРСИЯ: Использует внешние FlowMonitorService и DnsParserService (D1).
+        /// </summary>
+        public static async Task<GameProfile> AnalyzeProcessTrafficAsync(
+            int targetPid,
+            TimeSpan? captureTimeout,
+            FlowMonitorService flowMonitor,
+            PidTrackerService pidTracker,
+            DnsParserService dnsParser,
+            IProgress<string>? progress = null,
+            CancellationToken cancellationToken = default,
+            bool enableLiveTesting = false,
+            bool enableAutoBypass = false,
+            IspAudit.Bypass.WinDivertBypassManager? bypassManager = null)
+        {
+            return await Task.Run(async () =>
+            {
+                var secondsText = captureTimeout.HasValue ? $"на {captureTimeout.Value.TotalSeconds}с" : "(до ручной остановки)";
+                progress?.Report($"Старт захвата трафика PID={targetPid} {secondsText} (используя внешние сервисы)");
+                
+                // Коллекция для хранения уникальных соединений
+                var connections = new ConcurrentDictionary<string, ConnectionInfo>();
+                
+                // Инициализация live-testing pipeline (если включен)
+                LiveTestingPipeline? pipeline = null;
+                if (enableLiveTesting)
+                {
+                    var pipelineConfig = new PipelineConfig
+                    {
+                        EnableLiveTesting = true,
+                        EnableAutoBypass = enableAutoBypass,
+                        MaxConcurrentTests = 5,
+                        TestTimeout = TimeSpan.FromSeconds(3)
+                    };
+                    pipeline = new LiveTestingPipeline(pipelineConfig, progress, bypassManager);
+                    progress?.Report("✓ Live-testing pipeline активен");
+                }
+
+                // Настройка таймаута
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                if (captureTimeout.HasValue)
+                {
+                    cts.CancelAfter(captureTimeout.Value);
+                }
+
+                // Подписываемся на уведомления о новых PIDs от PidTracker
+                pidTracker.OnNewPidsDiscovered += (newPids) =>
+                {
+                    progress?.Report($"[TrafficAnalyzer] PidTracker обнаружил новые PIDs: {string.Join(", ", newPids)} — теперь отслеживаем {pidTracker.TrackedPids.Count} процессов");
+                };
+
+                // Подписываемся на события FlowMonitor
+                int connectionCount = 0;
+                int totalFlowEvents = 0;
+                int targetPidMatches = 0;
+                void OnFlowEvent(int eventNum, int pid, byte protocol, uint remoteIp, ushort remotePort, ushort localPort)
+                {
+                    totalFlowEvents++;
+                    
+                    // Используем актуальный список PIDs из PidTracker (обновляется динамически)
+                    if (!pidTracker.TrackedPids.Contains(pid))
+                        return;
+                    
+                    targetPidMatches++;
+                    
+                    // ИСПРАВЛЕНИЕ: WinDivert возвращает IP в host byte order, конвертируем правильно
+                    var ipBytes = BitConverter.GetBytes(remoteIp);
+                    if (BitConverter.IsLittleEndian)
+                        Array.Reverse(ipBytes);
+                    var ip = new IPAddress(ipBytes);
+                    var key = $"{ip}:{remotePort}:{protocol}";
+                    
+                    if (connections.TryAdd(key, new ConnectionInfo
+                    {
+                        RemoteIp = ip,
+                        RemotePort = remotePort,
+                        Protocol = protocol == 6 ? TransportProtocol.TCP : TransportProtocol.UDP,
+                        FirstSeen = DateTime.UtcNow
+                    }))
+                    {
+                        connectionCount++;
+                        progress?.Report($"[TrafficAnalyzer] Новое соединение #{connectionCount}: {ip}:{remotePort} (proto={protocol}, pid={pid})");
+                        
+                        // Live testing для нового соединения
+                        if (pipeline != null)
+                        {
+                            var host = new IspAudit.Core.Models.HostDiscovered(
+                                Key: $"{ip}:{remotePort}:{protocol}",
+                                RemoteIp: ip,
+                                RemotePort: remotePort,
+                                Protocol: protocol == 6 ? IspAudit.Bypass.TransportProtocol.Tcp : IspAudit.Bypass.TransportProtocol.Udp,
+                                DiscoveredAt: DateTime.UtcNow
+                            );
+                            _ = Task.Run(() => pipeline.EnqueueHostAsync(host), cts.Token);
+                        }
+                    }
+                }
+                
+                flowMonitor.OnFlowEvent += OnFlowEvent;
+                
+                try
+                {
+                    // Status Reporter: периодические обновления
+                    var statusTask = Task.Run(async () =>
+                    {
+                        int lastCount = 0;
+                        while (!cts.Token.IsCancellationRequested)
+                        {
+                            await Task.Delay(10000, cts.Token).ConfigureAwait(false);
+                            if (connections.Count > lastCount)
+                            {
+                                progress?.Report($"Захват активен ({(DateTime.UtcNow - flowMonitor.FlowOpenedUtc!.Value).TotalSeconds:F0}с), соединений: {connections.Count}. Выполните действия в приложении.");
+                                lastCount = connections.Count;
+                            }
+                        }
+                    }, cts.Token);
+                    
+                    await statusTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    if (captureTimeout.HasValue)
+                    {
+                        progress?.Report($"Захват завершен (таймаут {captureTimeout.Value.TotalSeconds}с)");
+                    }
+                    else
+                    {
+                        progress?.Report("Захват остановлен пользователем");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    progress?.Report($"Ошибка во время захвата: {ex.Message}");
+                }
+                finally
+                {
+                    flowMonitor.OnFlowEvent -= OnFlowEvent;
+                    progress?.Report($"[TrafficAnalyzer] Статистика: получено Flow событий={totalFlowEvents}, совпадений PID={targetPidMatches}, уникальных соединений={connections.Count}");
+                }
+
+                progress?.Report($"Обнаружено {connections.Count} уникальных соединений");
+
+                // Обогащение hostname из DnsParserService (передаем кеш напрямую как ConcurrentDictionary)
+                var dnsCache = new ConcurrentDictionary<string, string>(dnsParser.DnsCache);
+                await EnrichWithHostnamesAsync(connections, dnsCache, progress, cancellationToken).ConfigureAwait(false);
+
+                // Генерация профиля
+                return BuildGameProfile(connections, null, progress);
+            }, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// СТАРАЯ ВЕРСИЯ: Использует внутренний Flow/DNS (deprecated, для обратной совместимости).
         /// </summary>
         public static async Task<GameProfile> AnalyzeProcessTrafficAsync(
             int targetPid,
@@ -309,6 +462,8 @@ namespace IspAudit.Utils
             WinDivertNative.SafeHandle? handle = null;
             int flowCount = 0;
             int matchCount = 0;
+            DateTime? flowHandleOpenedUtc = null;
+            DateTime? firstTargetFlowUtc = null;
             const int MaxConnections = 50; // Лимит уникальных соединений (только для фиксированного режима)
 
             try
@@ -317,9 +472,11 @@ namespace IspAudit.Utils
                 
                 try
                 {
-                    handle = WinDivertNative.Open("true", WinDivertNative.Layer.Flow, 0, 
+                    const string flowFilter = "true"; // TODO(D1): сделать конфигурируемым через профиль/настройки
+                    handle = WinDivertNative.Open(flowFilter, WinDivertNative.Layer.Flow, 0, 
                         WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.RecvOnly);
-                    progress?.Report("[FLOW] ✓ WinDivert Flow layer открыт успешно");
+                    flowHandleOpenedUtc = DateTime.UtcNow;
+                    progress?.Report($"[FLOW] ✓ WinDivert Flow layer открыт успешно (Filter='{flowFilter}', Utc={flowHandleOpenedUtc:O})");
                 }
                 catch (System.ComponentModel.Win32Exception wx)
                 {
@@ -366,6 +523,24 @@ namespace IspAudit.Utils
                         continue;
 
                     matchCount++;
+
+                    // Фиксируем момент первого события для целевого PID
+                    if (!firstTargetFlowUtc.HasValue)
+                    {
+                        firstTargetFlowUtc = DateTime.UtcNow;
+                        var deltaMs = (flowHandleOpenedUtc.HasValue)
+                            ? (firstTargetFlowUtc.Value - flowHandleOpenedUtc.Value).TotalMilliseconds
+                            : (double?)null;
+
+                        if (deltaMs.HasValue)
+                        {
+                            progress?.Report($"[FLOW] Первое целевое событие: Utc={firstTargetFlowUtc:O}, Δ={deltaMs.Value:F0} мс с момента открытия handle");
+                        }
+                        else
+                        {
+                            progress?.Report($"[FLOW] Первое целевое событие: Utc={firstTargetFlowUtc:O}");
+                        }
+                    }
 
                     // Извлекаем информацию о соединении
                     // RemoteAddr1 в WinDivert хранится в network byte order (big-endian)
@@ -422,7 +597,16 @@ namespace IspAudit.Utils
                     }
                 }
 
-                progress?.Report($"[FLOW] Обработано событий: {flowCount}, совпадений с целевыми PID: {matchCount}");
+                // Итоговое логирование шума и полезных Flow-событий
+                if (flowCount > 0)
+                {
+                    var percentTarget = (matchCount * 100.0) / flowCount;
+                    progress?.Report($"[FLOW] Обработано событий: {flowCount}, совпадений с целевыми PID: {matchCount} ({percentTarget:F1}% целевых)");
+                }
+                else
+                {
+                    progress?.Report("[FLOW] Обработано событий: 0 (целевых событий не обнаружено)");
+                }
             }
             catch (Exception ex)
             {
@@ -611,6 +795,8 @@ namespace IspAudit.Utils
             return labels.Count > 0 ? string.Join(".", labels) : null;
         }
 
+        /// <summary>
+        /// Обогащение соединений hostname: сначала из DNS-кеша, потом через reverse DNS
         /// <summary>
         /// Обогащение соединений hostname: сначала из DNS-кеша, потом через reverse DNS
         /// </summary>

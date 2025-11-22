@@ -189,6 +189,12 @@ namespace ISPAudit.ViewModels
         }
         private bool _enableLiveTesting = true; // Live testing enabled by default
         private bool _enableAutoBypass = false; // Auto-bypass disabled by default (C2 requirement)
+        
+        // Monitoring Services (D1 refactoring)
+        private FlowMonitorService? _flowMonitor;
+        private NetworkMonitorService? _networkMonitor;
+        private DnsParserService? _dnsParser;
+        private PidTrackerService? _pidTracker;
 
         public bool EnableLiveTesting
         {
@@ -332,7 +338,24 @@ namespace ISPAudit.ViewModels
 
         private void CancelAudit()
         {
+            if (_cts == null || _cts.IsCancellationRequested)
+            {
+                Log("[CancelAudit] Токен отмены уже активирован или отсутствует");
+                return;
+            }
+            
+            Log("[CancelAudit] Отправка сигнала отмены...");
             _cts?.Cancel();
+            
+            // Немедленное обновление UI после отмены
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                IsDiagnosticRunning = false; // Сразу сбрасываем флаг
+                ScreenState = "start"; // Возвращаем в начальное состояние
+                DiagnosticStatus = "Диагностика отменена";
+                Log("[UI] CancelAudit: UI обновлен, ScreenState='start', IsDiagnosticRunning=false");
+                CommandManager.InvalidateRequerySuggested();
+            });
         }
 
 
@@ -823,7 +846,43 @@ namespace ISPAudit.ViewModels
                 // Настройка отмены
                 _cts = new CancellationTokenSource();
                 
-                // Запуск процесса
+                // Шаг 1: Запуск мониторинговых сервисов (D1)
+                Log("[Services] Starting monitoring services...");
+                var progress = new Progress<string>(msg => 
+                {
+                    System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        DiagnosticStatus = msg;
+                        Log($"[Pipeline] {msg}");
+                        ParsePipelineMessage(msg);
+                    });
+                });
+                
+                // 1.1 Flow Monitor
+                _flowMonitor = new FlowMonitorService(progress);
+                await _flowMonitor.StartAsync(_cts.Token).ConfigureAwait(false);
+                
+                // 1.2 Network Monitor (для DNS)
+                _networkMonitor = new NetworkMonitorService("udp.DstPort == 53 or udp.SrcPort == 53", progress);
+                await _networkMonitor.StartAsync(_cts.Token).ConfigureAwait(false);
+                
+                // 1.3 DNS Parser (подписывается на Network Monitor)
+                _dnsParser = new DnsParserService(_networkMonitor, progress);
+                await _dnsParser.StartAsync().ConfigureAwait(false);
+                
+                // Шаг 2: Warmup через TestNetworkApp (его трафик попадет в сервисы)
+                try
+                {
+                    Log("[Warmup] Starting TestNetworkApp for Flow warmup...");
+                    await WarmupFlowWithTestNetworkAppAsync(_cts.Token).ConfigureAwait(false);
+                }
+                catch (Exception warmupEx)
+                {
+                    Log($"[Warmup] Error (non-critical): {warmupEx.Message}");
+                }
+                
+                // Шаг 3: Запуск целевого процесса
+                DiagnosticStatus = "Запуск целевого приложения...";
                 Log($"[Pipeline] Starting process: {ExePath}");
                 using var process = new System.Diagnostics.Process
                 {
@@ -842,25 +901,14 @@ namespace ISPAudit.ViewModels
                 var pid = process.Id;
                 Log($"[Pipeline] Process started: PID={pid}");
                 
+                // Шаг 4: Запуск PID Tracker (отслеживание новых процессов)
+                _pidTracker = new PidTrackerService(pid, progress);
+                await _pidTracker.StartAsync(_cts.Token).ConfigureAwait(false);
+                
                 // Запускаем фоновое разрешение имен целей
                 _ = PreResolveTargetsAsync();
                 
                 DiagnosticStatus = "Анализ трафика...";
-                
-                // Обработчик прогресса
-                var progress = new Progress<string>(msg => 
-                {
-                    // Обновляем UI в главном потоке
-                    System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                    {
-                        DiagnosticStatus = msg;
-                        // Также пишем в лог/отладку
-                        Log($"[Pipeline] {msg}");
-                        
-                        // Парсим сообщение для обновления TestResults
-                        ParsePipelineMessage(msg);
-                    });
-                });
 
                 // Инициализация BypassManager (C3)
                 if (_bypassManager == null)
@@ -868,11 +916,14 @@ namespace ISPAudit.ViewModels
                     _bypassManager = new WinDivertBypassManager();
                 }
 
-                // Запуск анализатора с Live Testing
+                // Запуск анализатора с Live Testing (НОВАЯ ВЕРСИЯ — использует сервисы)
                 // Блокирует до завершения захвата (таймаут или отмена)
                 var profile = await TrafficAnalyzer.AnalyzeProcessTrafficAsync(
                     pid,
                     TimeSpan.FromMinutes(10), // Long timeout for live testing session
+                    _flowMonitor!,   // Используем уже работающий Flow monitor
+                    _pidTracker!,    // Используем уже работающий PID tracker
+                    _dnsParser!,     // Используем уже работающий DNS parser
                     progress,
                     _cts.Token,
                     enableLiveTesting: true,
@@ -897,6 +948,30 @@ namespace ISPAudit.ViewModels
             }
             finally
             {
+                // Остановка мониторинговых сервисов (D1)
+                try
+                {
+                    Log("[Services] Stopping monitoring services...");
+                    if (_pidTracker != null) await _pidTracker.StopAsync().ConfigureAwait(false);
+                    if (_dnsParser != null) await _dnsParser.StopAsync().ConfigureAwait(false);
+                    if (_networkMonitor != null) await _networkMonitor.StopAsync().ConfigureAwait(false);
+                    if (_flowMonitor != null) await _flowMonitor.StopAsync().ConfigureAwait(false);
+                    
+                    _pidTracker?.Dispose();
+                    _dnsParser?.Dispose();
+                    _networkMonitor?.Dispose();
+                    _flowMonitor?.Dispose();
+                    
+                    _pidTracker = null;
+                    _dnsParser = null;
+                    _networkMonitor = null;
+                    _flowMonitor = null;
+                }
+                catch (Exception ex)
+                {
+                    Log($"[Services] Error stopping services: {ex.Message}");
+                }
+                
                 IsDiagnosticRunning = false;
                 _cts?.Dispose();
                 _cts = null;
@@ -918,6 +993,67 @@ namespace ISPAudit.ViewModels
         private System.Collections.Concurrent.ConcurrentDictionary<string, Target> _resolvedIpMap = new();
 
         private System.Collections.Concurrent.ConcurrentDictionary<string, bool> _pendingResolutions = new();
+
+        /// <summary>
+        /// Прогревает Flow-слой через однократный запуск TestNetworkApp до старта основной диагностики.
+        /// Используется только в dev/QA сценариях для проверки таймингов Flow (D1).
+        /// Ошибки прогрева логируются, но не мешают основному UX.
+        /// </summary>
+        private async Task WarmupFlowWithTestNetworkAppAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                // Ищем TestNetworkApp.exe рядом с основным ISP_Audit.exe (однофайловый прогрев)
+                var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                var testAppPath = System.IO.Path.Combine(baseDir, "TestNetworkApp.exe");
+                if (!File.Exists(testAppPath))
+                {
+                    Log($"[Warmup] TestNetworkApp not found at '{testAppPath}', skipping warmup");
+                    return;
+                }
+
+                Log($"[Warmup] Starting TestNetworkApp: {testAppPath}");
+
+                using var process = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = testAppPath,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+
+                if (!process.Start())
+                {
+                    Log("[Warmup] Failed to start TestNetworkApp");
+                    return;
+                }
+
+                // Ждём завершения или отмены
+                try
+                {
+                    using (cancellationToken.Register(() =>
+                    {
+                        try { if (!process.HasExited) process.Kill(); } catch { }
+                    }))
+                    {
+                        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    Log("[Warmup] Cancelled by user");
+                    return;
+                }
+
+                Log($"[Warmup] TestNetworkApp finished with code {process.ExitCode}");
+            }
+            catch (Exception ex)
+            {
+                Log($"[Warmup] Error: {ex.Message}");
+            }
+        }
 
         private async Task ResolveUnknownHostAsync(string ip)
         {
@@ -1071,13 +1207,24 @@ namespace ISPAudit.ViewModels
                         if (result != null)
                         {
                             result.BypassStrategy = strategy;
-                            // Если есть стратегия, значит можно исправить
-                            // Исключаем ROUTER_REDIRECT (Fake IP), так как это не ошибка, а особенность среды
-                            if (strategy != "NONE" && strategy != "UNKNOWN" && strategy != "ROUTER_REDIRECT")
+                            
+                            // ROUTER_REDIRECT (Fake IP) - это не ошибка, а информация об особенности сети (клиент в VPN/туннеле)
+                            if (strategy == "ROUTER_REDIRECT")
+                            {
+                                result.Status = TestStatus.Warn;
+                                result.Details = result.Details?.Replace("Блокировка", "Информация: Fake IP (VPN/туннель)") ?? "Fake IP обнаружен";
+                                Log($"[UI] ROUTER_REDIRECT → Status=Warn для {_lastUpdatedHost}");
+                            }
+                            // Если есть стратегия обхода (настоящая блокировка), значит можно исправить
+                            else if (strategy != "NONE" && strategy != "UNKNOWN")
                             {
                                 result.Fixable = true;
                                 result.FixType = FixType.Bypass;
                                 result.FixInstructions = $"Применить стратегию обхода: {strategy}";
+                                
+                                // Принудительное обновление биндинга ShowFixButton
+                                result.OnPropertyChanged(nameof(result.ShowFixButton));
+                                Log($"[UI] ShowFixButton=True для {_lastUpdatedHost}: {strategy}");
                             }
                         }
                     }

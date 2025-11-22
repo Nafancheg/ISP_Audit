@@ -30,59 +30,45 @@ namespace TestNetworkApp
                 ("https://1.1.1.1", "Cloudflare DNS"),
             };
 
-            Console.WriteLine("Старт цикла запросов (60 секунд)...\n");
+            Console.WriteLine("Старт одного цикла запросов...\n");
 
-            var startTime = DateTime.UtcNow;
             int successCount = 0;
             int failCount = 0;
 
-            while ((DateTime.UtcNow - startTime).TotalSeconds < 60)
+            foreach (var (url, name) in targets)
             {
-                foreach (var (url, name) in targets)
+                try
                 {
-                    try
-                    {
-                        Console.Write($"[{DateTime.Now:HH:mm:ss}] {name,-15} -> ");
-                        
-                        var response = await client.GetAsync(url);
-                        var statusCode = (int)response.StatusCode;
-                        
-                        Console.ForegroundColor = statusCode >= 200 && statusCode < 300 
-                            ? ConsoleColor.Green 
-                            : ConsoleColor.Yellow;
-                        
-                        Console.WriteLine($"{statusCode} {response.StatusCode}");
-                        Console.ResetColor();
-                        
-                        successCount++;
-                        
-                        // Небольшая пауза между запросами
-                        await Task.Delay(500);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine($"ERROR: {ex.Message}");
-                        Console.ResetColor();
-                        failCount++;
-                    }
-
-                    // Проверка времени
-                    if ((DateTime.UtcNow - startTime).TotalSeconds >= 60)
-                        break;
+                    Console.Write($"[{DateTime.Now:HH:mm:ss}] {name,-15} -> ");
+                    
+                    var response = await client.GetAsync(url);
+                    var statusCode = (int)response.StatusCode;
+                    
+                    Console.ForegroundColor = statusCode >= 200 && statusCode < 300 
+                        ? ConsoleColor.Green 
+                        : ConsoleColor.Yellow;
+                    
+                    Console.WriteLine($"{statusCode} {response.StatusCode}");
+                    Console.ResetColor();
+                    
+                    successCount++;
+                    
+                    // Небольшая пауза между запросами
+                    await Task.Delay(500);
                 }
-
-                Console.WriteLine($"\n--- Статистика: {successCount} OK, {failCount} FAIL ---\n");
-                
-                // Пауза перед следующим циклом
-                await Task.Delay(2000);
+                catch (Exception ex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"ERROR: {ex.Message}");
+                    Console.ResetColor();
+                    failCount++;
+                }
             }
 
+            Console.WriteLine($"\n--- Статистика: {successCount} OK, {failCount} FAIL ---\n");
             Console.WriteLine("\n=== Тестирование завершено ===");
             Console.WriteLine($"Всего успешных: {successCount}");
             Console.WriteLine($"Всего ошибок: {failCount}");
-            Console.WriteLine("\nНажмите любую клавишу для выхода...");
-            Console.ReadKey();
         }
     }
 }
