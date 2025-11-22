@@ -4,7 +4,7 @@
         xmlns:converters="clr-namespace:ISPAudit.Converters"
         Title="Подробности теста"
         Width="600"
-        Height="500"
+        Height="750"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource BgBrush}"
         ResizeMode="CanResize">
@@ -31,10 +31,6 @@
                        FontSize="24" 
                        FontWeight="Bold"
                        Foreground="{DynamicResource PrimaryBrush}"/>
-            <TextBlock Text="{Binding Service}" 
-                       FontSize="14" 
-                       Foreground="{DynamicResource MutedBrush}"
-                       Margin="0,4,0,0"/>
         </StackPanel>
 
         <!-- Статус -->
@@ -51,40 +47,70 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <Ellipse Grid.Column="0"
-                         Width="12" 
-                         Height="12"
-                         VerticalAlignment="Center"
-                         Margin="0,0,12,0">
-                    <Ellipse.Style>
-                        <Style TargetType="Ellipse">
-                            <Setter Property="Fill" Value="{DynamicResource MutedBrush}"/>
+                <!-- Large Status Icon -->
+                <Border Grid.Column="0" 
+                        Width="48" Height="48" 
+                        CornerRadius="24"
+                        Margin="0,0,16,0"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="#F3F4F6"/> <!-- Default Gray -->
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding Status}" Value="Pass">
-                                    <Setter Property="Fill" Value="{DynamicResource PassBrush}"/>
+                                    <Setter Property="Background" Value="#DEF7EC"/> <!-- Green -->
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Status}" Value="Fail">
-                                    <Setter Property="Fill" Value="{DynamicResource FailBrush}"/>
+                                    <Setter Property="Background" Value="#FDE8E8"/> <!-- Red -->
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Status}" Value="Warn">
-                                    <Setter Property="Fill" Value="{DynamicResource WarnBrush}"/>
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding Status}" Value="Running">
-                                    <Setter Property="Fill" Value="{DynamicResource RunningBrush}"/>
+                                    <Setter Property="Background" Value="#FEF3C7"/> <!-- Yellow -->
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
-                    </Ellipse.Style>
-                </Ellipse>
+                    </Border.Style>
+                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="24">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="?"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Status}" Value="Pass">
+                                        <Setter Property="Text" Value="✓"/>
+                                        <Setter Property="Foreground" Value="#03543F"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="Fail">
+                                        <Setter Property="Text" Value="✕"/>
+                                        <Setter Property="Foreground" Value="#9B1C1C"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="Warn">
+                                        <Setter Property="Text" Value="!"/>
+                                        <Setter Property="Foreground" Value="#92400E"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Border>
 
-                <StackPanel Grid.Column="1">
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Diagnosis}" 
+                               FontSize="16" 
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding HasDiagnosis, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    
+                    <TextBlock Text="{Binding Recommendation}" 
+                               Foreground="{DynamicResource MutedBrush}"
+                               Margin="0,4,0,0"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding HasDiagnosis, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                               
+                    <!-- Fallback if no diagnosis parsed -->
                     <TextBlock Text="{Binding StatusText}" 
                                FontSize="16" 
-                               FontWeight="SemiBold"/>
-                    <TextBlock Text="{Binding Error}" 
-                               Foreground="{DynamicResource FailBrush}"
-                               Margin="0,4,0,0"
-                               Visibility="{Binding HasError, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                               FontWeight="SemiBold"
+                               Visibility="{Binding HasDiagnosis, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -93,8 +119,148 @@
         <ScrollViewer Grid.Row="2" 
                       VerticalScrollBarVisibility="Auto">
             <StackPanel>
+                
+                <!-- Visual Checks Grid -->
+                <TextBlock Text="Результаты проверок" 
+                           FontSize="16" 
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,12"/>
+                           
+                <Border Background="#F9FAFB" CornerRadius="8" Padding="16" Margin="0,0,0,20">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/> <!-- Separator -->
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/> <!-- Separator -->
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <!-- DNS -->
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Center">
+                            <TextBlock Text="DNS" FontWeight="Bold" Foreground="#6B7280" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                            <Border Width="32" Height="32" CornerRadius="16" HorizontalAlignment="Center">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="#E5E7EB"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsDnsOk}" Value="True">
+                                                <Setter Property="Background" Value="#DEF7EC"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsDnsFail}" Value="True">
+                                                <Setter Property="Background" Value="#FDE8E8"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="?"/>
+                                            <Setter Property="Foreground" Value="#6B7280"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsDnsOk}" Value="True">
+                                                    <Setter Property="Text" Value="✓"/>
+                                                    <Setter Property="Foreground" Value="#03543F"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsDnsFail}" Value="True">
+                                                    <Setter Property="Text" Value="✕"/>
+                                                    <Setter Property="Foreground" Value="#9B1C1C"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Border>
+                            <TextBlock Text="{Binding DnsStatus}" FontSize="12" Margin="0,4,0,0" HorizontalAlignment="Center" Foreground="#374151"/>
+                        </StackPanel>
+                        
+                        <Rectangle Grid.Column="1" Width="1" Fill="#E5E7EB" Margin="0,4"/>
+                        
+                        <!-- TCP -->
+                        <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+                            <TextBlock Text="TCP" FontWeight="Bold" Foreground="#6B7280" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                            <Border Width="32" Height="32" CornerRadius="16" HorizontalAlignment="Center">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="#E5E7EB"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsTcpOk}" Value="True">
+                                                <Setter Property="Background" Value="#DEF7EC"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsTcpFail}" Value="True">
+                                                <Setter Property="Background" Value="#FDE8E8"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="?"/>
+                                            <Setter Property="Foreground" Value="#6B7280"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsTcpOk}" Value="True">
+                                                    <Setter Property="Text" Value="✓"/>
+                                                    <Setter Property="Foreground" Value="#03543F"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsTcpFail}" Value="True">
+                                                    <Setter Property="Text" Value="✕"/>
+                                                    <Setter Property="Foreground" Value="#9B1C1C"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Border>
+                            <TextBlock Text="{Binding TcpStatus}" FontSize="12" Margin="0,4,0,0" HorizontalAlignment="Center" Foreground="#374151"/>
+                        </StackPanel>
+                        
+                        <Rectangle Grid.Column="3" Width="1" Fill="#E5E7EB" Margin="0,4"/>
+                        
+                        <!-- TLS -->
+                        <StackPanel Grid.Column="4" HorizontalAlignment="Center">
+                            <TextBlock Text="TLS" FontWeight="Bold" Foreground="#6B7280" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                            <Border Width="32" Height="32" CornerRadius="16" HorizontalAlignment="Center">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="#E5E7EB"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsTlsOk}" Value="True">
+                                                <Setter Property="Background" Value="#DEF7EC"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsTlsFail}" Value="True">
+                                                <Setter Property="Background" Value="#FDE8E8"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="?"/>
+                                            <Setter Property="Foreground" Value="#6B7280"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsTlsOk}" Value="True">
+                                                    <Setter Property="Text" Value="✓"/>
+                                                    <Setter Property="Foreground" Value="#03543F"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsTlsFail}" Value="True">
+                                                    <Setter Property="Text" Value="✕"/>
+                                                    <Setter Property="Foreground" Value="#9B1C1C"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Border>
+                            <TextBlock Text="{Binding TlsStatus}" FontSize="12" Margin="0,4,0,0" HorizontalAlignment="Center" Foreground="#374151"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            
                 <!-- Основная информация -->
-                <TextBlock Text="Основная информация" 
+                <TextBlock Text="Параметры соединения" 
                            FontSize="16" 
                            FontWeight="SemiBold"
                            Margin="0,0,0,12"/>
@@ -114,31 +280,33 @@
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Хост:" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"/>
                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Host}" Margin="0,0,0,8"/>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Сервис:" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"/>
-                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Service}" Margin="0,0,0,8"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Задержка (Ping):" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Latency}" Margin="0,0,0,8"/>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Критичность:" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"/>
-                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding CriticalText}" Margin="0,0,0,8"/>
-
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Fallback IP:" Foreground="{DynamicResource MutedBrush}"
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Fallback IP:" Foreground="{DynamicResource MutedBrush}"
                                Visibility="{Binding HasFallbackIp, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding FallbackIp}"
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding FallbackIp}"
                                Visibility="{Binding HasFallbackIp, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </Grid>
 
                 <!-- Детали теста -->
-                <TextBlock Text="Детали теста" 
+                <TextBlock Text="Технические подробности" 
                            FontSize="16" 
                            FontWeight="SemiBold"
                            Margin="0,8,0,12"
                            Visibility="{Binding HasDetails, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
-                <TextBlock Text="{Binding Details}" 
-                           Background="{DynamicResource PanelBrush}"
-                           Padding="12"
-                           FontFamily="Consolas"
-                           FontSize="12"
-                           Visibility="{Binding HasDetails, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                <Border Background="#F3F4F6" 
+                        BorderBrush="#E5E7EB" 
+                        BorderThickness="1" 
+                        CornerRadius="6" 
+                        Padding="12"
+                        Visibility="{Binding HasDetails, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="{Binding Details}" 
+                               FontFamily="Consolas"
+                               FontSize="13"
+                               Foreground="#1F2937"/>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 

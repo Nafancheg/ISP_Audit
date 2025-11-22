@@ -17,7 +17,17 @@ namespace ISPAudit.Models
         private string _error = string.Empty;
         private string? _details;
 
-        public Target Target { get; set; } = null!;
+        private Target _target = null!;
+
+        public Target Target
+        {
+            get => _target;
+            set
+            {
+                _target = value;
+                OnPropertyChanged(nameof(Target));
+            }
+        }
 
         public TestStatus Status
         {
@@ -64,6 +74,11 @@ namespace ISPAudit.Models
         /// </summary>
         public string? FixInstructions { get; set; }
 
+        /// <summary>
+        /// Стратегия обхода (WinDivert), полученная от LiveTestingPipeline
+        /// </summary>
+        public string? BypassStrategy { get; set; }
+
         public string StatusText
         {
             get
@@ -72,8 +87,8 @@ namespace ISPAudit.Models
                 {
                     TestStatus.Idle => "Ожидание",
                     TestStatus.Running => "Проверяем…",
-                    TestStatus.Pass => "Успешно",
-                    TestStatus.Fail => Error ?? "Ошибка",
+                    TestStatus.Pass => "Доступно",
+                    TestStatus.Fail => "Блокировка",
                     TestStatus.Warn => "Предупреждение",
                     _ => ""
                 };
@@ -81,9 +96,7 @@ namespace ISPAudit.Models
         }
 
         public bool ShowFixButton => Status == TestStatus.Fail && FixType != FixType.None;
-        public bool ShowDetailsButton => (Status == TestStatus.Fail && FixType == FixType.None) || 
-                                         Status == TestStatus.Pass || 
-                                         Status == TestStatus.Warn;
+        public bool ShowDetailsButton => Status == TestStatus.Fail || Status == TestStatus.Pass || Status == TestStatus.Warn;
 
         public event PropertyChangedEventHandler? PropertyChanged;
 

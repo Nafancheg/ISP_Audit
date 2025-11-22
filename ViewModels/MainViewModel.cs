@@ -59,18 +59,15 @@ namespace ISPAudit.ViewModels
             catch { }
         }
         
-        private string _selectedScenario = "exe";
         private string _screenState = "start";
         private CancellationTokenSource? _cts;
-        private Config? _config;
+        private WinDivertBypassManager? _bypassManager;
+
         private Dictionary<string, TestResult> _testResultMap = new();
-        private string _hostInput = "";
         private string _exePath = "";
-        private string _selectedProfile = "Default";
         private string _currentAction = "";
 
         public ObservableCollection<TestResult> TestResults { get; set; } = new();
-        public ObservableCollection<string> AvailableProfiles { get; set; }
 
         public string CurrentAction
         {
@@ -79,19 +76,6 @@ namespace ISPAudit.ViewModels
             {
                 _currentAction = value;
                 OnPropertyChanged(nameof(CurrentAction));
-            }
-        }
-
-        public string SelectedScenario
-        {
-            get => _selectedScenario;
-            set
-            {
-                _selectedScenario = value;
-                OnPropertyChanged(nameof(SelectedScenario));
-                OnPropertyChanged(nameof(IsHostScenario));
-                OnPropertyChanged(nameof(IsExeScenario));
-                OnPropertyChanged(nameof(IsProfileScenario));
             }
         }
 
@@ -120,13 +104,13 @@ namespace ISPAudit.ViewModels
                     Log("ШАГ 4: СОСТОЯНИЕ 'DONE'");
                     Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                     Log("UI должен показывать:");
-                    Log($"  ✓ Заголовок: 'Проверка завершена'");
+                    Log($"  ✓ Заголовок: 'Диагностика завершена'");
                     Log($"  ✓ Summary блок с счётчиками:");
                     Log($"      Успешно: {PassCount} (зелёный)");
                     Log($"      Ошибки: {FailCount} (красный)");
                     Log($"      Предупреждения: {WarnCount} (жёлтый)");
                     Log($"  ✓ Карточки тестов: ВИДИМЫ в ScrollViewer ({TestResults.Count} шт)");
-                    Log($"  ✓ Кнопки: 'Экспорт отчета' и 'Новая проверка'");
+                    Log($"  ✓ Кнопки: 'Экспорт отчета' и 'Новая диагностика'");
                     Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
                 }
                 
@@ -134,39 +118,11 @@ namespace ISPAudit.ViewModels
             }
         }
 
-        public bool IsHostScenario
-        {
-            get => SelectedScenario == "host";
-            set { if (value) SelectedScenario = "host"; }
-        }
-
-        public bool IsExeScenario
-        {
-            get => SelectedScenario == "exe";
-            set { if (value) SelectedScenario = "exe"; }
-        }
-
-        public bool IsProfileScenario
-        {
-            get => SelectedScenario == "profile";
-            set { if (value) SelectedScenario = "profile"; }
-        }
-
         public bool IsStart => ScreenState == "start";
-        public bool IsRunning => ScreenState == "running" || _isExeScenarioRunning;
+        public bool IsRunning => ScreenState == "running" || IsDiagnosticRunning;
         public bool IsDone => ScreenState == "done";
         public bool ShowSummary => IsDone;
         public bool ShowReport => IsDone;
-
-        public string HostInput
-        {
-            get => _hostInput;
-            set
-            {
-                _hostInput = value;
-                OnPropertyChanged(nameof(HostInput));
-            }
-        }
 
         public string ExePath
         {
@@ -178,28 +134,18 @@ namespace ISPAudit.ViewModels
             }
         }
 
-        public string SelectedProfile
-        {
-            get => _selectedProfile;
-            set
-            {
-                _selectedProfile = value;
-                OnPropertyChanged(nameof(SelectedProfile));
-            }
-        }
 
-        public string ProfileName => "Default";
-        public string ProfileTestMode => "general";
 
         public int TotalTargets => TestResults?.Count ?? 0;
+        public int ProgressBarMax => TotalTargets == 0 ? 1 : TotalTargets;
         public int CurrentTest => TestResults?.Count(t => t.Status == TestStatus.Running || t.Status == TestStatus.Pass || t.Status == TestStatus.Fail || t.Status == TestStatus.Warn) ?? 0;
         public int CompletedTests => TestResults?.Count(t => t.Status == TestStatus.Pass || t.Status == TestStatus.Fail || t.Status == TestStatus.Warn) ?? 0;
         public int PassCount => TestResults?.Count(t => t.Status == TestStatus.Pass) ?? 0;
         public int FailCount => TestResults?.Count(t => t.Status == TestStatus.Fail) ?? 0;
         public int WarnCount => TestResults?.Count(t => t.Status == TestStatus.Warn) ?? 0;
 
-        public string RunningStatusText => $"Выполняется {CurrentTest} из {TotalTargets}";
-        public string StartButtonText => IsRunning ? "Остановить тест" : "Начать проверку";
+        public string RunningStatusText => $"Диагностика: {CurrentTest} из {TotalTargets}";
+        public string StartButtonText => IsRunning ? "Остановить диагностику" : "Начать диагностику";
 
         // Fix System Properties
         public ObservableCollection<AppliedFix> ActiveFixes { get; set; } = new();
@@ -209,58 +155,40 @@ namespace ISPAudit.ViewModels
         public ICommand StartCommand { get; }
         public ICommand CancelCommand { get; }
         public ICommand SetStateCommand { get; }
-        public ICommand ChooseExeCommand { get; }
+
         public ICommand ReportCommand { get; }
         public ICommand DetailsCommand { get; }
         public ICommand FixCommand { get; }
         public ICommand RollbackFixCommand { get; }
         public ICommand RollbackAllCommand { get; }
-
+        
         // Exe Scenario Properties
-        private string _stage1Status = "";
-        private string _stage2Status = "";
-        private string _stage3Status = "";
-        private int _stage1HostsFound = 0;
-        private int _stage2ProblemsFound = 0;
-        private int _stage1Progress = 0;
-        private int _stage2Progress = 0;
-        private int _stage3Progress = 0;
-        private bool _stage1Complete = false;
-        private bool _stage2Complete = false;
-        private bool _stage3Complete = false;
-        private bool _isExeScenarioRunning = false;
-        private bool _isAnalyzingTraffic;
-        private bool _isStoppingCapture;
-        private bool _isStage1ContinuousMode;
+        private bool _isDiagnosticRunning = false;
+        private string _diagnosticStatus = "";
+
+
+        public bool IsDiagnosticRunning
+        {
+            get => _isDiagnosticRunning;
+            set
+            {
+                _isDiagnosticRunning = value;
+                OnPropertyChanged(nameof(IsDiagnosticRunning));
+                OnPropertyChanged(nameof(IsRunning)); // Update IsRunning too as it aggregates states
+            }
+        }
+
+        public string DiagnosticStatus
+        {
+            get => _diagnosticStatus;
+            set
+            {
+                _diagnosticStatus = value;
+                OnPropertyChanged(nameof(DiagnosticStatus));
+            }
+        }
         private bool _enableLiveTesting = true; // Live testing enabled by default
-        private bool _enableAutoBypass = true; // Auto-bypass enabled by default (requires admin)
-        private GameProfile? _capturedProfile;
-        private List<BlockageProblem>? _detectedProblems;
-        private BypassProfile? _plannedBypass;
-
-        public string Stage1Status
-        {
-            get => _stage1Status;
-            set { _stage1Status = value; OnPropertyChanged(nameof(Stage1Status)); }
-        }
-
-        public string Stage2Status
-        {
-            get => _stage2Status;
-            set { _stage2Status = value; OnPropertyChanged(nameof(Stage2Status)); }
-        }
-
-        public string Stage3Status
-        {
-            get => _stage3Status;
-            set { _stage3Status = value; OnPropertyChanged(nameof(Stage3Status)); }
-        }
-
-        public int Stage1HostsFound
-        {
-            get => _stage1HostsFound;
-            set { _stage1HostsFound = value; OnPropertyChanged(nameof(Stage1HostsFound)); }
-        }
+        private bool _enableAutoBypass = false; // Auto-bypass disabled by default (C2 requirement)
 
         public bool EnableLiveTesting
         {
@@ -274,97 +202,13 @@ namespace ISPAudit.ViewModels
             set { _enableAutoBypass = value; OnPropertyChanged(nameof(EnableAutoBypass)); }
         }
 
-        public int Stage2ProblemsFound
-        {
-            get => _stage2ProblemsFound;
-            set { _stage2ProblemsFound = value; OnPropertyChanged(nameof(Stage2ProblemsFound)); }
-        }
 
-        public int Stage1Progress
-        {
-            get => _stage1Progress;
-            set { _stage1Progress = value; OnPropertyChanged(nameof(Stage1Progress)); }
-        }
 
-        public int Stage2Progress
-        {
-            get => _stage2Progress;
-            set { _stage2Progress = value; OnPropertyChanged(nameof(Stage2Progress)); }
-        }
 
-        public int Stage3Progress
-        {
-            get => _stage3Progress;
-            set { _stage3Progress = value; OnPropertyChanged(nameof(Stage3Progress)); }
-        }
 
-        // Признак, что целевое приложение уже запущено (используется только в RunStage1)
-        private bool IsExeProcessRunning =>
-            !string.IsNullOrWhiteSpace(ExePath)
-            && File.Exists(ExePath)
-            && System.Diagnostics.Process
-                   .GetProcessesByName(Path.GetFileNameWithoutExtension(ExePath))
-                   .Length > 0;
-
-        public bool Stage1Complete
-        {
-            get => _stage1Complete;
-            set { _stage1Complete = value; OnPropertyChanged(nameof(Stage1Complete)); OnPropertyChanged(nameof(CanRunStage2)); }
-        }
-
-        public bool Stage2Complete
-        {
-            get => _stage2Complete;
-            set { _stage2Complete = value; OnPropertyChanged(nameof(Stage2Complete)); OnPropertyChanged(nameof(CanRunStage3)); }
-        }
-
-        public bool Stage3Complete
-        {
-            get => _stage3Complete;
-            set { _stage3Complete = value; OnPropertyChanged(nameof(Stage3Complete)); }
-        }
-
-        public bool IsAnalyzingTraffic
-        {
-            get => _isAnalyzingTraffic;
-            set
-            {
-                _isAnalyzingTraffic = value;
-                OnPropertyChanged(nameof(IsAnalyzingTraffic));
-            }
-        }
-
-        public bool IsStoppingCapture
-        {
-            get => _isStoppingCapture;
-            set
-            {
-                _isStoppingCapture = value;
-                OnPropertyChanged(nameof(IsStoppingCapture));
-            }
-        }
-
-        public bool IsStage1ContinuousMode
-        {
-            get => _isStage1ContinuousMode;
-            set
-            {
-                _isStage1ContinuousMode = value;
-                OnPropertyChanged(nameof(IsStage1ContinuousMode));
-            }
-        }
-
-        public bool CanRunStage2 => Stage1Complete && _capturedProfile != null;
-        public bool CanRunStage3 => Stage2Complete && _detectedProblems != null && _detectedProblems.Any();
-
-        public ICommand AnalyzeTrafficCommand { get; }
-        public ICommand DiagnoseCommand { get; }
-        public ICommand ApplyBypassCommand { get; }
-        public ICommand ViewStage1ResultsCommand { get; }
         public ICommand BrowseExeCommand { get; }
-        public ICommand ResetExeScenarioCommand { get; }
-        public ICommand CancelStage1Command { get; }
-        private CancellationTokenSource? _stage1Cts;
+
+        public ICommand StartLiveTestingCommand { get; }
 
         public MainViewModel()
         {
@@ -372,10 +216,7 @@ namespace ISPAudit.ViewModels
             Log("ШАГ 1: НАЧАЛЬНОЕ СОСТОЯНИЕ (Constructor)");
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             
-            // Инициализация списка профилей (статические + захваченные)
-            AvailableProfiles = new ObservableCollection<string>();
-            LoadAvailableProfiles();
-            Log($"✓ Профили загружены: {string.Join(", ", AvailableProfiles)}");
+
 
             InitializeTestResults();
             Log($"✓ TestResults инициализирована (Count={TestResults?.Count ?? 0})");
@@ -383,33 +224,27 @@ namespace ISPAudit.ViewModels
             Log($"✓ IsStart = {IsStart} (ожидается true)");
             Log($"✓ IsRunning = {IsRunning} (ожидается false)");
 
-            StartCommand = new RelayCommand(async _ => 
+            StartLiveTestingCommand = new RelayCommand(async _ => 
             {
                 Log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                Log("ШАГ 2: НАЖАТИЕ 'НАЧАТЬ ПРОВЕРКУ'");
+                Log("ШАГ 2: НАЖАТИЕ 'НАЧАТЬ ДИАГНОСТИКУ' (Unified)");
                 Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                Log($"IsRunning={IsRunning}, ScreenState={ScreenState}, Scenario={SelectedScenario}");
+                Log($"IsRunning={IsRunning}, ScreenState={ScreenState}");
                 
                 if (IsRunning)
                 {
-                    Log("→ Тест уже запущен. Вызов CancelAudit()");
+                    Log("→ Диагностика уже запущена. Вызов CancelAudit()");
                     CancelAudit();
                 }
                 else
                 {
-                    // Для Exe-сценария сразу запускаем Stage1
-                    if (IsExeScenario)
-                    {
-                        Log("→ Exe сценарий: запуск Stage1 (RunStage1AnalyzeTrafficAsync)");
-                        await RunStage1AnalyzeTrafficAsync();
-                    }
-                    else
-                    {
-                        Log("→ Вызов RunAuditAsync()");
-                        await RunAuditAsync();
-                    }
+                    Log("→ Exe сценарий: запуск Live Pipeline");
+                    await RunLivePipelineAsync();
                 }
-            }, _ => !IsRunning); // Кнопка активна только когда НЕ запущен тест
+            }, _ => true); // Always enabled to allow cancellation
+
+            StartCommand = StartLiveTestingCommand; // Alias for backward compatibility if needed
+
             CancelCommand = new RelayCommand(_ => CancelAudit(), _ => IsRunning && _cts != null);
             SetStateCommand = new RelayCommand(state => 
             {
@@ -417,8 +252,8 @@ namespace ISPAudit.ViewModels
                 // Обновляем CanExecute для команд
                 System.Windows.Input.CommandManager.InvalidateRequerySuggested();
             });
-            ChooseExeCommand = new RelayCommand(_ => ChooseExeFile(), _ => IsStart);
-            ReportCommand = new RelayCommand(_ => { /* Generate report */ }, _ => IsDone);
+
+            ReportCommand = new RelayCommand(_ => GenerateReport(), _ => IsDone);
             DetailsCommand = new RelayCommand(param => ShowDetailsDialog(param as TestResult), _ => true);
             
             // Fix Commands
@@ -428,119 +263,70 @@ namespace ISPAudit.ViewModels
 
             // Exe Scenario Commands
             BrowseExeCommand = new RelayCommand(_ => BrowseExe(), _ => !IsRunning);
-            // Повторный запуск Stage 1 должен быть возможен после закрытия приложения,
-            // поэтому не блокируем по Stage1Complete, а только по IsRunning/ExePath.
-            AnalyzeTrafficCommand = new RelayCommand(async _ => await RunStage1AnalyzeTrafficAsync(), _ => !string.IsNullOrEmpty(ExePath) && !IsRunning);
-            ViewStage1ResultsCommand = new RelayCommand(_ => ViewStage1Results(), _ => _capturedProfile != null);
-            DiagnoseCommand = new RelayCommand(async _ => await RunStage2DiagnoseAsync(), _ => CanRunStage2 && !IsRunning);
-            ApplyBypassCommand = new RelayCommand(async _ => await RunStage3ApplyBypassAsync(), _ => CanRunStage3 && !IsRunning);
-            ResetExeScenarioCommand = new RelayCommand(_ => ResetExeScenario(), 
-                _ => (Stage1Complete || Stage2Complete || Stage3Complete) && !IsRunning);
-            CancelStage1Command = new RelayCommand(_ => 
-            {
-                IsStoppingCapture = true;
-                _stage1Cts?.Cancel();
-            }, _ => IsAnalyzingTraffic && !IsStoppingCapture);
             
             // Load Fix History on startup
             LoadFixHistory();
             
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             Log("ШАГ 1: ЗАВЕРШЁН. UI должен показывать:");
-            Log("  ✓ Центральный текст: 'Готов к проверке'");
-            Log("  ✓ Кнопка: 'Начать проверку' (активна)");
+            Log("  ✓ Центральный текст: 'Готов к диагностике'");
+            Log("  ✓ Кнопка: 'Начать диагностику' (активна)");
             Log("  ✓ Выбор сценария: активен");
             Log("  ✓ Карточки тестов: НЕ ВИДИМЫ (TestResults.Count=0)");
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
         }
 
-        private async Task RunAuditAsync()
+
+
+        private void GenerateReport()
         {
             try
             {
-                Log("→ 2.1: LoadProfileAndUpdateTargets()...");
-                if (!LoadProfileAndUpdateTargets())
+                var report = new
                 {
-                    Log("[ERROR] LoadProfileAndUpdateTargets() вернул false - отмена");
-                    return;
-                }
-                Log($"✓ 2.1: Профиль загружен. TestResults.Count={TestResults?.Count ?? 0}");
-                
-                Log("→ 2.2: Смена ScreenState на 'running'...");
-                ScreenState = "running";
-                Log($"✓ 2.2: ScreenState='{ScreenState}'");
-                Log($"  Ожидается в UI:");
-                Log($"    ✓ Выбор сценария: ЗАБЛОКИРОВАН");
-                Log($"    ✓ Кнопка текст: 'Остановить тест'");
-                Log($"    ✓ Центральная область: переключена на ScrollViewer");
-                Log($"    ✓ Текст: 'Выполняется проверка...'");
-                Log($"    ✓ ProgressStepper: ВИДИМ (0/{TotalTargets})");
-                Log($"    ✓ КАРТОЧКИ ТЕСТОВ: ДОЛЖНЫ ПОЯВИТЬСЯ ({TestResults?.Count ?? 0} шт)");
-                
-                Log("→ 2.3: CreateConfig()...");
-                _config = CreateConfig();
-                if (_config == null)
-                {
-                    Log("[ERROR] CreateConfig() вернул null - отмена");
-                    return;
-                }
-                Log($"✓ 2.3: Config создан");
-
-                Log("→ 2.4: Создание CancellationTokenSource и Progress...");
-                _cts = new CancellationTokenSource();
-                var progress = new Progress<TestProgress>(HandleTestProgress);
-                Log($"✓ 2.4: CTS и Progress созданы");
-
-                Log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                Log("ШАГ 3: ВЫПОЛНЕНИЕ ТЕСТОВ");
-                Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                Log($"→ 3.1: Запуск AuditRunner.RunAsync()...");
-                Log($"  TotalTargets={TotalTargets}, CurrentTest={CurrentTest}, CompletedTests={CompletedTests}");
-                
-                var report = await AuditRunner.RunAsync(_config, progress, _cts.Token).ConfigureAwait(false);
-                
-                Log($"✓ 3.X: AuditRunner.RunAsync() завершён");
-                Log($"  ФИНАЛЬНЫЕ СЧЁТЧИКИ:");
-                Log($"    PassCount={PassCount}");
-                Log($"    FailCount={FailCount}");
-                Log($"    WarnCount={WarnCount}");
-                Log($"    CompletedTests={CompletedTests}/{TotalTargets}");
-
-                Log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                Log("ШАГ 4: ЗАВЕРШЕНИЕ ТЕСТОВ");
-                Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                
-                var app = System.Windows.Application.Current;
-                    if (app != null)
+                    Date = DateTime.Now,
+                    ExePath = ExePath,
+                    Summary = new
                     {
-                        app.Dispatcher.Invoke(() => ScreenState = "done");
-                    }
-            }
-            catch (OperationCanceledException)
-            {
-                Log("[INFO] Тесты отменены пользователем");
-                var app = System.Windows.Application.Current;
-                if (app != null)
-                {
-                    app.Dispatcher.Invoke(() => ScreenState = "done");
-                }
+                        Total = TotalTargets,
+                        Passed = PassCount,
+                        Failed = FailCount,
+                        Warnings = WarnCount
+                    },
+                    Results = TestResults.Select(t => new
+                    {
+                        Host = t.Target.Host,
+                        Name = t.Target.Name,
+                        Service = t.Target.Service,
+                        Status = t.Status.ToString(),
+                        Details = t.Details,
+                        Error = t.Error,
+                        BypassStrategy = t.BypassStrategy,
+                        FixApplied = t.FixType != FixType.None
+                    }).ToList(),
+                    ActiveFixes = ActiveFixes.Select(f => new 
+                    {
+                        Type = f.Type.ToString(),
+                        Description = f.Description,
+                        AppliedAt = f.AppliedAt
+                    }).ToList()
+                };
+
+                var json = System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                var filename = $"isp_audit_report_{DateTime.Now:yyyyMMdd_HHmmss}.json";
+                var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, filename);
+                
+                File.WriteAllText(path, json);
+                
+                Log($"[Report] Saved to {path}");
+                
+                // Open folder with report
+                System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\"");
             }
             catch (Exception ex)
             {
-                Log($"[ERROR] Исключение в RunAuditAsync: {ex.GetType().Name}");
-                Log($"  Message: {ex.Message}");
-                Log($"  StackTrace:\n{ex.StackTrace}");
-                
-                var app = System.Windows.Application.Current;
-                if (app != null)
-                {
-                    app.Dispatcher.Invoke(() => ScreenState = "done");
-                }
-            }
-            finally
-            {
-                _cts?.Dispose();
-                _cts = null;
+                Log($"[Report] Error generating report: {ex.Message}");
+                System.Windows.MessageBox.Show($"Ошибка создания отчета: {ex.Message}", "Ошибка", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
             }
         }
 
@@ -549,229 +335,9 @@ namespace ISPAudit.ViewModels
             _cts?.Cancel();
         }
 
-        private void ChooseExeFile()
-        {
-            var openFileDialog = new Microsoft.Win32.OpenFileDialog
-            {
-                Filter = "Исполняемые файлы (*.exe)|*.exe|Все файлы (*.*)|*.*",
-                Title = "Выберите exe файл"
-            };
 
-            if (openFileDialog.ShowDialog() == true)
-            {
-                ExePath = openFileDialog.FileName;
-            }
-        }
 
-        private void LoadAvailableProfiles()
-        {
-            try
-            {
-                var profilesDir = "Profiles";
-                if (!Directory.Exists(profilesDir))
-                {
-                    Directory.CreateDirectory(profilesDir);
-                }
 
-                // Сканируем все .json файлы в папке Profiles
-                var profileFiles = Directory.GetFiles(profilesDir, "*.json");
-                
-                foreach (var filePath in profileFiles)
-                {
-                    try
-                    {
-                        var fileName = Path.GetFileNameWithoutExtension(filePath);
-                        
-                        // Пропускаем технические файлы
-                        if (fileName.StartsWith("_") || fileName.StartsWith("."))
-                            continue;
-
-                        // Читаем JSON чтобы получить Name
-                        var json = File.ReadAllText(filePath);
-                        var profile = System.Text.Json.JsonSerializer.Deserialize<GameProfile>(json);
-                        
-                        if (profile != null && !string.IsNullOrEmpty(profile.Name))
-                        {
-                            AvailableProfiles.Add(profile.Name);
-                        }
-                    }
-                    catch
-                    {
-                        // Игнорируем битые профили
-                    }
-                }
-
-                // Если ничего не нашли, добавляем дефолтные
-                if (AvailableProfiles.Count == 0)
-                {
-                    // Список профилей из Profiles/*.json
-                    AvailableProfiles.Add("Default");
-                }
-            }
-            catch (Exception ex)
-            {
-                Log($"[LoadAvailableProfiles] Error: {ex.Message}");
-                // Fallback на дефолтные профили
-                AvailableProfiles.Add("Star Citizen");
-                AvailableProfiles.Add("Default");
-            }
-        }
-
-        private bool LoadProfileAndUpdateTargets()
-        {
-            Target[] targets;
-
-            if (IsProfileScenario)
-            {
-                Config.LoadGameProfile(SelectedProfile);
-                
-                if (Config.ActiveProfile?.Targets != null)
-                {
-                    targets = Config.ActiveProfile.Targets.Select(t => new Target
-                    {
-                        Name = t.Name,
-                        Host = t.Host,
-                        Service = t.Service ?? "Unknown",
-                        Critical = t.Critical,
-                        FallbackIp = t.FallbackIp ?? ""
-                    }).ToArray();
-                }
-                else
-                {
-                    targets = Array.Empty<Target>();
-                }
-            }
-            else if (IsHostScenario)
-            {
-                if (string.IsNullOrWhiteSpace(HostInput))
-                {
-                    System.Windows.MessageBox.Show("Введите хост или IP-адрес", "Ошибка", 
-                        System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
-                    return false;
-                }
-
-                targets = new[]
-                {
-                    new Target
-                    {
-                        Name = HostInput,
-                        Host = HostInput,
-                        Service = "Произвольный хост",
-                        Critical = true,
-                        FallbackIp = ""
-                    }
-                };
-            }
-            else if (IsExeScenario)
-            {
-                if (string.IsNullOrWhiteSpace(ExePath))
-                {
-                    System.Windows.MessageBox.Show("Выберите exe файл", "Ошибка", 
-                        System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
-                    return false;
-                }
-
-                if (!System.IO.File.Exists(ExePath))
-                {
-                    System.Windows.MessageBox.Show($"Файл не найден: {ExePath}", "Ошибка", 
-                        System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
-                    return false;
-                }
-
-                var exeNameWithoutExtension = System.IO.Path.GetFileNameWithoutExtension(ExePath);
-                var profilesDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Profiles");
-                var profilePath = System.IO.Path.Combine(profilesDir, $"{exeNameWithoutExtension}.json");
-
-                if (System.IO.File.Exists(profilePath))
-                {
-                    try
-                    {
-                        Config.LoadGameProfile(exeNameWithoutExtension);
-                        
-                        if (Config.ActiveProfile?.Targets != null)
-                        {
-                            targets = Config.ActiveProfile.Targets.Select(t => new Target
-                            {
-                                Name = t.Name,
-                                Host = t.Host,
-                                Service = t.Service ?? "Unknown",
-                                Critical = t.Critical,
-                                FallbackIp = t.FallbackIp ?? ""
-                            }).ToArray();
-                        }
-                        else
-                        {
-                            targets = Array.Empty<Target>();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Log($"[ERROR] Failed to load profile: {ex.Message}");
-                        System.Windows.MessageBox.Show($"Ошибка загрузки профиля: {ex.Message}", "Ошибка",
-                            System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-                        return false;
-                    }
-                }
-                else
-                {
-                    var result = System.Windows.MessageBox.Show(
-                        $"Профиль для {exeNameWithoutExtension}.exe не найден.\n\n" +
-                        $"Хотите ввести хост вручную для проверки?",
-                        "Профиль не найден",
-                        System.Windows.MessageBoxButton.YesNo,
-                        System.Windows.MessageBoxImage.Question);
-
-                    if (result == System.Windows.MessageBoxResult.No)
-                        return false;
-
-                    SelectedScenario = "Host";
-                    System.Windows.MessageBox.Show(
-                        "Перейдите в режим \"По хосту\" и введите адрес вручную.",
-                        "Информация",
-                        System.Windows.MessageBoxButton.OK,
-                        System.Windows.MessageBoxImage.Information);
-                    return false;
-                }
-            }
-            else
-            {
-                targets = Array.Empty<Target>();
-            }
-
-            // Обновляем TestResults
-            TestResults.Clear();
-            foreach (var target in targets)
-            {
-                TestResults.Add(new TestResult { Target = target, Status = TestStatus.Idle });
-            }
-
-            // Обновляем map
-            _testResultMap.Clear();
-            foreach (var result in TestResults)
-            {
-                _testResultMap[result.Target.Name] = result;
-            }
-
-            return true;
-        }
-
-        private Config? CreateConfig()
-        {
-            var config = new Config
-            {
-                Targets = TestResults.Select(t => t.Target.Host).ToList(),
-                Ports = TargetCatalog.CreateDefaultTcpPorts(),
-                HttpTimeoutSeconds = 3,  // Снижено с 6 до 3 сек
-                TcpTimeoutSeconds = 2,   // Снижено с 3 до 2 сек
-                EnableDns = true,
-                EnableTcp = true,
-                EnableHttp = true,
-                EnableTrace = false,
-                NoTrace = true
-            };
-
-            return config;
-        }
 
         private void HandleTestProgress(TestProgress progress)
         {
@@ -981,13 +547,8 @@ namespace ISPAudit.ViewModels
         {
             if (result == null)
             {
-                Log("[ShowDetailsDialog] ERROR: result is null");
                 return;
             }
-            
-            Log($"[ShowDetailsDialog] Opening for: {result.Target?.Name ?? "NULL"}");
-            Log($"[ShowDetailsDialog] Status: {result.Status}");
-            Log($"[ShowDetailsDialog] Details length: {result.Details?.Length ?? 0}");
             
             try
             {
@@ -995,14 +556,11 @@ namespace ISPAudit.ViewModels
                 {
                     Owner = System.Windows.Application.Current.MainWindow
                 };
-                Log("[ShowDetailsDialog] Window created, calling ShowDialog()...");
                 detailsWindow.ShowDialog();
-                Log("[ShowDetailsDialog] Dialog closed");
             }
             catch (Exception ex)
             {
                 Log($"[ShowDetailsDialog] EXCEPTION: {ex.Message}");
-                Log($"[ShowDetailsDialog] StackTrace: {ex.StackTrace}");
             }
         }
 
@@ -1061,6 +619,34 @@ namespace ISPAudit.ViewModels
                             System.Windows.MessageBoxImage.Information
                         );
                         return;
+
+                    case FixType.Bypass:
+                        if (_bypassManager == null) _bypassManager = new WinDivertBypassManager();
+                        
+                        var strategy = result.BypassStrategy ?? "UNKNOWN";
+                        // Маппинг стратегий
+                        if (strategy == "TCP_RST_DROP") strategy = "DROP_RST";
+                        
+                        // Получаем IP цели
+                        System.Net.IPAddress? targetIp = null;
+                        if (result.Target != null)
+                        {
+                            try {
+                                var addresses = System.Net.Dns.GetHostAddresses(result.Target.Host);
+                                targetIp = addresses.FirstOrDefault();
+                            } catch {}
+                        }
+
+                        await _bypassManager.ApplyBypassStrategyAsync(strategy, targetIp);
+                        
+                        appliedFix = new AppliedFix 
+                        { 
+                            Type = FixType.Bypass, 
+                            Description = $"WinDivert Bypass: {strategy} for {result.Target?.Host ?? "Unknown"}",
+                            OriginalSettings = new Dictionary<string, string> { { "Strategy", strategy } }
+                        };
+                        success = true;
+                        break;
                     
                     default:
                         Log($"[ApplyFix] Unknown FixType: {result.FixType}");
@@ -1073,6 +659,10 @@ namespace ISPAudit.ViewModels
                     OnPropertyChanged(nameof(HasActiveFixes));
                     OnPropertyChanged(nameof(ActiveFixesMessage));
                     Log($"[ApplyFix] SUCCESS: {appliedFix.Description}");
+                    
+                    // Обновляем UI результата
+                    result.Status = TestStatus.Warn; 
+                    result.Details += $"\n[Fix] Исправление применено: {appliedFix.Description}";
                     
                     System.Windows.MessageBox.Show(
                         $"Исправление применено успешно:\n{appliedFix.Description}",
@@ -1117,6 +707,14 @@ namespace ISPAudit.ViewModels
                     
                     case FixType.FirewallRule:
                         (success, error) = await FixService.RollbackFirewallFixAsync(fix);
+                        break;
+
+                    case FixType.Bypass:
+                        if (_bypassManager != null)
+                        {
+                            await _bypassManager.DisableAsync();
+                            success = true;
+                        }
                         break;
                     
                     default:
@@ -1187,698 +785,364 @@ namespace ISPAudit.ViewModels
             {
                 ExePath = openFileDialog.FileName;
                 Log($"[BrowseExe] Selected: {ExePath}");
-                Stage1Status = "Готов к анализу. Вы можете запустить захват.";
             }
         }
-        
-        // Монитор Exe-сценария больше не нужен: IsExeProcessRunning вычисляется на лету
 
-        /// <summary>
-        /// Показать окно с результатами Stage 1 (захваченные цели)
-        /// </summary>
-        private void ViewStage1Results()
+        private async Task RunLivePipelineAsync()
         {
-            if (_capturedProfile == null)
-            {
-                Log("[ViewStage1Results] No captured profile available");
-                return;
-            }
-
-            Log($"[ViewStage1Results] Opening window with {_capturedProfile.Targets.Count} targets");
-            
-            var window = new IspAudit.Windows.CapturedTargetsWindow(_capturedProfile)
-            {
-                Owner = System.Windows.Application.Current.MainWindow
-            };
-            window.ShowDialog();
-        }
-
-        /// <summary>
-        /// Сбросить состояние Exe-сценария и начать заново
-        /// </summary>
-        private void ResetExeScenario()
-        {
-            Log("[ResetExeScenario] Сброс состояния Exe-сценария...");
-            
-            // Сбросить captured data
-            _capturedProfile = null;
-            _detectedProblems = null;
-            _plannedBypass = null;
-            
-            // Сбросить флаги
-            Stage1Complete = false;
-            Stage2Complete = false;
-            Stage3Complete = false;
-            
-            // Сбросить счётчики
-            Stage1HostsFound = 0;
-            Stage2ProblemsFound = 0;
-            
-            // Сбросить статусы
-            Stage1Status = "";
-            Stage2Status = "";
-            Stage3Status = "";
-            
-            // Сбросить прогресс
-            Stage1Progress = 0;
-            Stage2Progress = 0;
-            Stage3Progress = 0;
-            
-            // Очистить TestResults
-            TestResults.Clear();
-            
-            // НЕ сбрасываем ExePath - пользователь может захотеть оставить его
-            // ExePath = "";
-            
-            // Переоценить команды
-            CommandManager.InvalidateRequerySuggested();
-            
-            Log("[ResetExeScenario] Сброс завершён. Готов к новому анализу.");
-        }
-
-        /// <summary>
-        /// Stage 1: Анализ трафика процесса
-        /// </summary>
-        private async Task RunStage1AnalyzeTrafficAsync()
-        {
-            // Защита от race condition
-            if (_isExeScenarioRunning)
-            {
-                Log("[Stage1] Already running, ignoring duplicate call");
-                return;
-            }
-            
             try
             {
-                Log("[Stage1] Starting traffic analysis...");
+                Log("→ RunLivePipelineAsync()");
                 
-                // Проверки БЕЗ изменения флагов до момента реального старта
                 if (!OperatingSystem.IsWindows() || !IsAdministrator())
                 {
-                    Stage1Status = "Ошибка: требуются права администратора";
-                    Log("[Stage1] FAILED: Administrator rights required for WinDivert");
-                    
                     System.Windows.MessageBox.Show(
                         "Для захвата трафика требуются права администратора.\n\n" +
-                        "Запустите ISP_Audit от имени администратора.",
-                        "Требуются права администратора",
-                        System.Windows.MessageBoxButton.OK,
-                        System.Windows.MessageBoxImage.Warning
-                    );
+                        "Запустите приложение от имени администратора.", 
+                        "Требуются права администратора", 
+                        System.Windows.MessageBoxButton.OK, 
+                        System.Windows.MessageBoxImage.Warning);
                     return;
                 }
 
                 if (string.IsNullOrEmpty(ExePath) || !File.Exists(ExePath))
                 {
-                    Stage1Status = "Ошибка: файл exe не найден";
-                    Log("[Stage1] FAILED: exe file not found");
+                    System.Windows.MessageBox.Show("Файл не найден.", "Ошибка", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                     return;
                 }
 
-                var exeName = Path.GetFileNameWithoutExtension(ExePath);
-                Log($"[Stage1] Поиск процессов по имени: '{exeName}'");
-                var alreadyRunning = System.Diagnostics.Process.GetProcessesByName(exeName);
-                Log($"[Stage1] Найдено процессов: {alreadyRunning.Length}");
-
-                if (alreadyRunning.Length > 0)
-                {
-                    // Фильтруем только процессы с главным окном (UI процесс)
-                    var mainProcesses = alreadyRunning
-                        .Where(p => 
-                        {
-                            try
-                            {
-                                // Проверяем: процесс жив, имеет главное окно, окно видимо
-                                bool isAlive = !p.HasExited;
-                                bool hasMainWindow = p.MainWindowHandle != IntPtr.Zero;
-                                
-                                Log($"[Stage1]   - PID={p.Id}, HasExited={p.HasExited}, MainWindowHandle={p.MainWindowHandle}, MainWindowTitle='{p.MainWindowTitle}'");
-                                
-                                return isAlive && hasMainWindow;
-                            }
-                            catch (Exception ex)
-                            {
-                                Log($"[Stage1]   - PID={p.Id}, (ошибка проверки: {ex.Message})");
-                                return false;
-                            }
-                        })
-                        .ToArray();
-                    
-                    Log($"[Stage1] Процессов с главным окном: {mainProcesses.Length}");
-                    
-                    if (mainProcesses.Length > 0)
-                    {
-                        var p = mainProcesses[0];
-                        Stage1Status =
-                            $"Приложение уже запущено (PID={p.Id}).\n" +
-                            "Закройте игру/лаунчер и нажмите кнопку повторно.";
-                        Log($"[Stage1] Отмена: целевое приложение уже запущено (PID={p.Id}, окно: '{p.MainWindowTitle}')");
-                        return;
-                    }
-                    
-                    Log($"[Stage1] Найденные процессы не имеют главного окна (фоновые/дочерние), продолжаем запуск");
-                }
-
-                // ВСЕ проверки прошли → ТЕПЕРЬ начинаем реальный захват
-                _isExeScenarioRunning = true;
-                IsAnalyzingTraffic = true;
-                Stage1Complete = false;
-                Stage1HostsFound = 0;
-                Stage1Progress = 0;
-                Stage1Status = "Проверка прав администратора...";
+                // Обновление состояния UI
+                ScreenState = "running";
+                IsDiagnosticRunning = true;
+                DiagnosticStatus = "Запуск приложения...";
+                TestResults.Clear();
+                OnPropertyChanged(nameof(CompletedTests)); // Важно: сначала обновляем Value (0), чтобы не превысить старый Maximum
+                OnPropertyChanged(nameof(TotalTargets));   // Затем обновляем Maximum (0)
+                OnPropertyChanged(nameof(ProgressBarMax));
                 
-                OnPropertyChanged(nameof(IsRunning));
-                CommandManager.InvalidateRequerySuggested();
-
-                _stage1Cts?.Dispose();
-                _stage1Cts = new CancellationTokenSource();
-
-                Stage1Status = "Запуск захвата трафика и приложения...";
-                Log("[Stage1] Opening WinDivert and starting target process...");
-
+                // Настройка отмены
+                _cts = new CancellationTokenSource();
+                
+                // Запуск процесса
+                Log($"[Pipeline] Starting process: {ExePath}");
                 using var process = new System.Diagnostics.Process
                 {
                     StartInfo = new System.Diagnostics.ProcessStartInfo
                     {
                         FileName = ExePath,
                         UseShellExecute = true
-                    },
-                    EnableRaisingEvents = false
+                    }
                 };
-
+                
                 if (!process.Start())
                 {
-                    Stage1Status = "Ошибка: не удалось запустить приложение";
-                    Log("[Stage1] FAILED: Process.Start() returned false");
-                    return;
+                    throw new Exception("Не удалось запустить процесс");
                 }
-
-                var targetPid = process.Id;
-                Log($"[Stage1] Target process started: EXE={exeName}, PID={targetPid}");
-
-                // Анализируем трафик: либо фиксированное окно, либо до ручной остановки
-                var progress = new Progress<string>(msg =>
+                
+                var pid = process.Id;
+                Log($"[Pipeline] Process started: PID={pid}");
+                
+                // Запускаем фоновое разрешение имен целей
+                _ = PreResolveTargetsAsync();
+                
+                DiagnosticStatus = "Анализ трафика...";
+                
+                // Обработчик прогресса
+                var progress = new Progress<string>(msg => 
                 {
-                    // Обновляем статус в UI (обрабатывается в UI потоке через Progress<T>)
-                    Stage1Status = msg;
-                    Log($"[Stage1] {msg}");
+                    // Обновляем UI в главном потоке
+                    System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        DiagnosticStatus = msg;
+                        // Также пишем в лог/отладку
+                        Log($"[Pipeline] {msg}");
+                        
+                        // Парсим сообщение для обновления TestResults
+                        ParsePipelineMessage(msg);
+                    });
                 });
 
-                var captureDuration = IsStage1ContinuousMode
-                    ? (TimeSpan?)null
-                    : TimeSpan.FromSeconds(30);
+                // Инициализация BypassManager (C3)
+                if (_bypassManager == null)
+                {
+                    _bypassManager = new WinDivertBypassManager();
+                }
 
-                _capturedProfile = await TrafficAnalyzer.AnalyzeProcessTrafficAsync(
-                    targetPid,
-                    captureDuration,
+                // Запуск анализатора с Live Testing
+                // Блокирует до завершения захвата (таймаут или отмена)
+                var profile = await TrafficAnalyzer.AnalyzeProcessTrafficAsync(
+                    pid,
+                    TimeSpan.FromMinutes(10), // Long timeout for live testing session
                     progress,
-                    _stage1Cts.Token,
-                    EnableLiveTesting,
-                    EnableAutoBypass
-                ).ConfigureAwait(false);
-
-                IsAnalyzingTraffic = false;
-                Stage1HostsFound = _capturedProfile?.Targets?.Count ?? 0;
-                Stage1Complete = true;
-                Stage1Progress = 100;
-
-                // После завершения Stage1 пересчитываем CanExecute у команд, чтобы
-                // кнопка шага 2 (DiagnoseCommand) сразу разблокировалась без клика мышкой.
-                CommandManager.InvalidateRequerySuggested();
-
-                if (Stage1HostsFound == 0)
-                {
-                    Stage1Status = "Захват завершен: соединения не обнаружены";
-                    Log("[Stage1] WARNING: No network connections captured. Process may not have established connections or already exited.");
-                    
-                    // Показываем MessageBox с диагностикой
-                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
-                    {
-                        System.Windows.MessageBox.Show(
-                            "Не удалось захватить сетевые соединения.\n\n" +
-                            "Возможные причины:\n" +
-                            "• Приложение не устанавливало соединения за 30 секунд\n" +
-                            "• Соединения были слишком кратковременными\n" +
-                            "• Файрволл блокирует приложение\n\n" +
-                            "Проверьте Output окно для деталей.",
-                            "Stage 1: Соединения не обнаружены",
-                            System.Windows.MessageBoxButton.OK,
-                            System.Windows.MessageBoxImage.Warning
-                        );
-                    });
-                }
-                else
-                {
-                    Stage1Status = $"✓ Завершено: обнаружено {Stage1HostsFound} целей";
-                    Log($"[Stage1] SUCCESS: {Stage1HostsFound} unique hosts captured");
-
-                    // Явно обновляем связанные свойства и команды,
-                    // чтобы форма "проснулась" сразу после завершения Stage1.
-                    OnPropertyChanged(nameof(Stage1Complete));
-                    OnPropertyChanged(nameof(CanRunStage2));
-                    CommandManager.InvalidateRequerySuggested();
-                    
-                    // Логируем список захваченных целей
-                    if (_capturedProfile?.Targets != null)
-                    {
-                        Log($"[Stage1] Captured targets:");
-                        foreach (var target in _capturedProfile.Targets.Take(10))
-                        {
-                            Log($"[Stage1]   → {target.Host} ({target.Service})");
-                        }
-                        if (_capturedProfile.Targets.Count > 10)
-                            Log($"[Stage1]   ... и еще {_capturedProfile.Targets.Count - 10} целей");
-                    }
-
-                    // Сохраняем профиль в файл
-                    var profilePath = Path.Combine("Profiles", $"{exeName}_captured.json");
-                    
-                    try
-                    {
-                        Directory.CreateDirectory("Profiles");
-                        var json = System.Text.Json.JsonSerializer.Serialize(_capturedProfile, new System.Text.Json.JsonSerializerOptions 
-                        { 
-                            WriteIndented = true 
-                        });
-                        await File.WriteAllTextAsync(profilePath, json);
-                        Log($"[Stage1] Profile saved to: {profilePath}");
-                        
-                        // Обновляем список доступных профилей
-                        System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                        {
-                            AvailableProfiles.Clear();
-                            LoadAvailableProfiles();
-                            Log($"[Stage1] Available profiles refreshed: {string.Join(", ", AvailableProfiles)}");
-                        });
-                        
-                        // Автоматически запускаем Stage 2 если есть захваченные цели
-                        if (Stage1HostsFound > 0)
-                        {
-                            Log($"[Stage1] Автоматический переход к Stage 2...");
-                            _ = RunStage2DiagnoseAsync();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Log($"[Stage1] Failed to save profile: {ex.Message}");
-                    }
-                }
+                    _cts.Token,
+                    enableLiveTesting: true,
+                    enableAutoBypass: EnableAutoBypass,
+                    bypassManager: _bypassManager
+                );
+                
+                Log($"[Pipeline] Finished. Captured {profile?.Targets?.Count ?? 0} targets.");
+                
+                ScreenState = "done";
+            }
+            catch (OperationCanceledException)
+            {
+                Log("[Pipeline] Cancelled by user");
+                ScreenState = "done";
             }
             catch (Exception ex)
             {
-                Log($"[Stage1] EXCEPTION: {ex.Message}");
-                Stage1Status = $"Ошибка: {ex.Message}";
+                Log($"[Pipeline] Error: {ex.Message}");
+                System.Windows.MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка Pipeline", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                ScreenState = "done";
             }
             finally
             {
-                // Гарантированный сброс флага даже при исключениях
-                _isExeScenarioRunning = false;
-                OnPropertyChanged(nameof(IsRunning));
-                CommandManager.InvalidateRequerySuggested();
-                IsAnalyzingTraffic = false;
-                IsStoppingCapture = false;
-                _stage1Cts?.Dispose();
-                _stage1Cts = null;
-            }
-        }
-
-        /// <summary>
-        /// Stage 2: Диагностика проблем
-        /// </summary>
-        private async Task RunStage2DiagnoseAsync()
-        {
-            // Защита от race condition
-            if (_isExeScenarioRunning) return;
-            
-            try
-            {
-                Log("[Stage2] Starting diagnostics...");
-                Stage2Status = "Запуск тестов...";
-                IsAnalyzingTraffic = false;
-                Stage2Complete = false;
-                Stage2ProblemsFound = 0;
-                Stage2Progress = 0;
-
-                if (_capturedProfile == null)
-                {
-                    Stage2Status = "Ошибка: профиль не захвачен (выполните Stage 1 сначала)";
-                    Log("[Stage2] ERROR: _capturedProfile is null");
-                    
-                    System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                    {
-                        System.Windows.MessageBox.Show(
-                            "Профиль не захвачен.\n\n" +
-                            "Выполните Stage 1 (Анализ трафика) сначала.",
-                            "Stage 2: Ошибка",
-                            System.Windows.MessageBoxButton.OK,
-                            System.Windows.MessageBoxImage.Warning
-                        );
-                    });
-                    return;
-                }
+                IsDiagnosticRunning = false;
+                _cts?.Dispose();
+                _cts = null;
                 
-                // Устанавливаем флаг блокировки ПОСЛЕ всех проверок
-                _isExeScenarioRunning = true;
-                OnPropertyChanged(nameof(IsRunning));
-                CommandManager.InvalidateRequerySuggested();
-
-                Log($"[Stage2] Using captured profile with {_capturedProfile.Targets.Count} targets");
-                
-                // Инициализируем TestResults из захваченного профиля
+                // Обновляем UI
                 System.Windows.Application.Current?.Dispatcher.Invoke(() =>
                 {
-                    TestResults.Clear();
-                    
-                    // 1. Добавляем диагностические тесты (показываются первыми)
-                    var diagnosticTests = new[] 
-                    {
-                        ("Software", "Проверка ПО"),
-                        ("Firewall", "Проверка файрволла"),
-                        ("Router", "Проверка роутера"),
-                        ("ISP", "Проверка провайдера")
-                    };
-                    
-                    foreach (var (name, displayName) in diagnosticTests)
-                    {
-                        TestResults.Add(new TestResult
-                        {
-                            Target = new Target
-                            {
-                                Name = name,
-                                Host = displayName,
-                                Service = "diagnostic",
-                                Critical = false,
-                                FallbackIp = ""
-                            },
-                            Status = TestStatus.Idle
-                        });
-                    }
-                    
-                    // 2. Добавляем цели из профиля
-                    foreach (var target in _capturedProfile.Targets)
-                    {
-                        TestResults.Add(new TestResult
-                        {
-                            Target = new Target 
-                            { 
-                                Name = target.Host, // Используем Host как ключ (hostname или IP)
-                                Host = target.Host,
-                                Service = target.Service,
-                                Critical = target.Critical,
-                                FallbackIp = target.FallbackIp ?? ""
-                            },
-                            Status = TestStatus.Idle
-                        });
-                    }
-                    
-                    // Пересоздаём _testResultMap для захваченного профиля
-                    _testResultMap.Clear();
-                    foreach (var result in TestResults)
-                    {
-                        _testResultMap[result.Target.Name] = result; // Ключ = Name (для диагностики) или Host
-                        Log($"[Stage2] Map['{result.Target.Name}'] = TestResult (Service: {result.Target.Service})");
-                    }
+                    CommandManager.InvalidateRequerySuggested();
                 });
-
-                // Создаем Config из захваченного профиля (быстрая диагностика: только DNS + TCP)
-                _config = new Config
-                {
-                    Targets = _capturedProfile.Targets.Select(t => t.Host).ToList(),
-                    HttpTimeoutSeconds = 3,  // Снижено с 6 до 3 сек
-                    TcpTimeoutSeconds = 2,   // Снижено с 5 до 2 сек
-                    UdpTimeoutSeconds = 2,
-                    EnableDns = true,
-                    EnableTcp = true,
-                    EnableHttp = false,      // Отключено: медленный (3 сек/цель) и неинформативный (4xx/5xx не проблема)
-                    EnableTrace = false,
-                    NoTrace = true,
-                    EnableUdp = false,       // Отключаем UDP для захваченных профилей
-                    EnableRst = false        // Отключаем RST эвристику
-                };
-
-                _cts = new CancellationTokenSource();
-                var progress = new Progress<TestProgress>(p =>
-                {
-                    System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                    {
-                        HandleTestProgress(p); // существующий код
-                        
-                        // Обновляем Stage2Status текущей целью
-                        if (!string.IsNullOrEmpty(p.Status))
-                        {
-                            Stage2Status = $"Тестирование: {p.Status}";
-                        }
-                        
-                        // Добавить подсчёт прогресса для Exe-scenario
-                        if (_capturedProfile != null)
-                        {
-                            var totalTargets = _capturedProfile.Targets.Count;
-                            var completedTargets = TestResults.Count(r => r.Status != TestStatus.Running && r.Status != TestStatus.Idle);
-                            Stage2Progress = totalTargets > 0 ? (completedTargets * 100 / totalTargets) : 0;
-                            
-                            Log($"[Stage2Progress] {completedTargets}/{totalTargets} ({Stage2Progress}%)");
-                        }
-                    });
-                });
-
-                Stage2Status = "Запуск тестов диагностики...";
-                Log("[Stage2] Running audit with captured targets...");
-
-                // Запускаем тесты
-                try
-                {
-                    var report = await AuditRunner.RunAsync(_config, progress, _cts.Token).ConfigureAwait(false);
-                    Log($"[Stage2] Audit completed. Analyzing results...");
-                }
-                catch (OperationCanceledException)
-                {
-                    Log("[Stage2] Audit cancelled");
-                    Stage2Status = "Диагностика отменена";
-                    return;
-                }
-
-                Stage2Status = "Анализ результатов...";
-
-                // Классифицируем проблемы
-                var app = System.Windows.Application.Current;
-                var testResults = app != null
-                    ? await app.Dispatcher.InvokeAsync(() => TestResults.ToList())
-                    : TestResults.ToList();
-                _detectedProblems = ProblemClassifier.ClassifyProblems(testResults);
-
-                Stage2ProblemsFound = _detectedProblems.Count;
-
-                if (_detectedProblems.Any())
-                {
-                    // Генерируем стратегию обхода
-                    var planningProgress = new Progress<string>(msg =>
-                    {
-                        Stage2Status = msg;
-                        Log($"[Stage2] {msg}");
-                    });
-
-                    _plannedBypass = BypassStrategyPlanner.PlanBypassStrategy(
-                        _detectedProblems,
-                        _capturedProfile,
-                        planningProgress
-                    );
-
-                    Stage2Complete = true;
-                    Stage2Progress = 100;
-                    Stage2Status = $"✓ Обнаружено проблем: {Stage2ProblemsFound}";
-                    Log($"[Stage2] SUCCESS: {Stage2ProblemsFound} problems detected");
-                    
-                    // Автоматически запускаем Stage 3 если есть проблемы
-                    if (_detectedProblems != null && _detectedProblems.Any())
-                    {
-                        Log($"[Stage2] Автоматический переход к Stage 3...");
-                        _ = RunStage3ApplyBypassAsync();
-                    }
-                }
-                else
-                {
-                    Stage2Status = "✓ Проблем не обнаружено - все тесты успешны";
-                    Stage2Complete = true;
-                    Stage2Progress = 100;
-                    Log("[Stage2] No problems detected");
-                    
-                    var app2 = System.Windows.Application.Current;
-                    if (app2 != null)
-                    {
-                        await app2.Dispatcher.InvokeAsync(() =>
-                        {
-                            System.Windows.MessageBox.Show(
-                            "Диагностика завершена успешно!\n\n" +
-                            "Проблем с подключением не обнаружено.\n" +
-                            "Применение обхода не требуется.",
-                            "Stage 2: Завершено",
-                            System.Windows.MessageBoxButton.OK,
-                            System.Windows.MessageBoxImage.Information
-                        );
-                        });
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Log($"[Stage2] EXCEPTION: {ex.Message}");
-                Stage2Status = $"Ошибка: {ex.Message}";
-            }
-            finally
-            {
-                // Гарантированный сброс флага даже при исключениях
-                _isExeScenarioRunning = false;
-                OnPropertyChanged(nameof(IsRunning));
-                CommandManager.InvalidateRequerySuggested();
             }
         }
-
-        /// <summary>
-        /// Stage 3: Применение обхода
-        /// </summary>
-        private async Task RunStage3ApplyBypassAsync()
-        {
-            // Защита от race condition
-            if (_isExeScenarioRunning) return;
-            
-            try
-            {
-                Log("[Stage3] Starting bypass application...");
-                Stage3Status = "Применение исправлений...";
-                Stage3Complete = false;
-                Stage3Progress = 0;
-
-                if (_detectedProblems == null || _plannedBypass == null)
-                {
-                    Stage3Status = "Ошибка: нет данных для применения";
-                    return;
-                }
-                
-                // Устанавливаем флаг блокировки ПОСЛЕ всех проверок
-                _isExeScenarioRunning = true;
-                OnPropertyChanged(nameof(IsRunning));
-                CommandManager.InvalidateRequerySuggested();
-
-                // Определяем, что нужно применить
-                bool needsDns = BypassStrategyPlanner.RequiresDnsChange(_detectedProblems);
-                bool needsWinDivert = BypassStrategyPlanner.CanBypassWithWinDivert(_detectedProblems);
-
-                var progress = new Progress<string>(msg =>
-                {
-                    Stage3Status = msg;
-                    Log($"[Stage3] {msg}");
-                    
-                    // Парсинг сообщений для определения прогресса DNS fix
-                    if (needsDns)
-                    {
-                        // Если DNS + WinDivert: DNS = 0-70%, WinDivert = 70-100%
-                        // Если только DNS: DNS = 0-100%
-                        int dnsMaxProgress = needsWinDivert ? 70 : 100;
-                        
-                        if (msg.Contains("Тестирование") || msg.Contains("1.1.1.1"))
-                        {
-                            Stage3Progress = dnsMaxProgress * 20 / 100;
-                        }
-                        else if (msg.Contains("8.8.8.8"))
-                        {
-                            Stage3Progress = dnsMaxProgress * 40 / 100;
-                        }
-                        else if (msg.Contains("9.9.9.9"))
-                        {
-                            Stage3Progress = dnsMaxProgress * 60 / 100;
-                        }
-                        else if (msg.Contains("успешно применен"))
-                        {
-                            Stage3Progress = dnsMaxProgress;
-                        }
-                    }
-                });
-
-                // Проверяем, нужна ли смена DNS
-                if (needsDns)
-                {
-                    Stage3Progress = 10;
-                    Stage3Status = "Применение DNS исправления...";
-                    var dnsResult = await DnsFixApplicator.ApplyDnsFixAsync(progress, CancellationToken.None).ConfigureAwait(false);
-
-                    if (!dnsResult.Success)
-                    {
-                        if (dnsResult.RequiresElevation)
-                        {
-                            Stage3Status = "Ошибка: требуются права администратора";
-                        }
-                        else if (dnsResult.RequiresVpn)
-                        {
-                            Stage3Status = "Ошибка: все DoH провайдеры заблокированы, требуется VPN";
-                        }
-                        else
-                        {
-                            Stage3Status = $"Ошибка DNS: {dnsResult.Error}";
-                        }
-                        Log($"[Stage3] DNS Fix FAILED: {dnsResult.Error}");
-                        return;
-                    }
-
-                    Log($"[Stage3] DNS Fix SUCCESS: {dnsResult.AppliedProvider}");
-                    Stage3Progress = needsWinDivert ? 70 : 100;
-                }
-
-                // Применяем WinDivert bypass (если нужен)
-                if (needsWinDivert)
-                {
-                    // Если только WinDivert (без DNS) → устанавливаем 50%
-                    if (!needsDns)
-                    {
-                        Stage3Progress = 50;
-                    }
-                    else
-                    {
-                        Stage3Progress = 80;
-                    }
-                    
-                    Stage3Status = "Применение WinDivert bypass...";
-                    
-                    // Сохраняем профиль в bypass_profile.json
-                    var profileJson = System.Text.Json.JsonSerializer.Serialize(_plannedBypass, new System.Text.Json.JsonSerializerOptions
-                    {
-                        WriteIndented = true
-                    });
-                    
-                    File.WriteAllText("bypass_profile.json", profileJson);
-                    Log("[Stage3] Bypass profile saved to bypass_profile.json");
-                    
-                    Stage3Status = "WinDivert bypass настроен (требуется ручной запуск)";
-                }
-
-                // Проверяем, нужен ли VPN
-                if (BypassStrategyPlanner.RequiresVpn(_detectedProblems))
-                {
-                    Stage3Status += "\n⚠️ Для полного обхода требуется VPN";
-                    Log("[Stage3] VPN required for complete bypass");
-                }
-
-                Stage3Progress = 100;
-                Stage3Complete = true;
-                Stage3Status = "Обход настроен успешно";
-                Log("[Stage3] SUCCESS: Bypass applied");
-            }
-            catch (Exception ex)
-            {
-                Log($"[Stage3] EXCEPTION: {ex.Message}");
-                Stage3Status = $"Ошибка: {ex.Message}";
-            }
-            finally
-            {
-                // Гарантированный сброс флага даже при исключениях
-                _isExeScenarioRunning = false;
-                OnPropertyChanged(nameof(IsRunning));
-                CommandManager.InvalidateRequerySuggested();
-            }
-        }
-
+        
         #endregion
 
         #region Helper Methods
+
+        private string? _lastUpdatedHost;
+
+        private System.Collections.Concurrent.ConcurrentDictionary<string, Target> _resolvedIpMap = new();
+
+        private System.Collections.Concurrent.ConcurrentDictionary<string, bool> _pendingResolutions = new();
+
+        private async Task ResolveUnknownHostAsync(string ip)
+        {
+            if (_resolvedIpMap.ContainsKey(ip) || _pendingResolutions.ContainsKey(ip)) return;
+            
+            _pendingResolutions.TryAdd(ip, true);
+
+            try 
+            {
+                var entry = await System.Net.Dns.GetHostEntryAsync(ip);
+                if (!string.IsNullOrEmpty(entry.HostName))
+                {
+                    var newTarget = new Target 
+                    { 
+                        Name = entry.HostName, 
+                        Host = ip, 
+                        Service = "Resolved" 
+                    };
+                    
+                    _resolvedIpMap[ip] = newTarget;
+
+                    System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        var result = TestResults.FirstOrDefault(t => t.Target.Host == ip);
+                        if (result != null)
+                        {
+                            result.Target = newTarget;
+                        }
+                    });
+                }
+            }
+            catch 
+            {
+                // Ignore failures
+            }
+            finally
+            {
+                _pendingResolutions.TryRemove(ip, out _);
+            }
+        }
+
+        private async Task PreResolveTargetsAsync()
+        {
+            await Task.Run(async () => 
+            {
+                try
+                {
+                    Log("[PreResolve] Starting target resolution...");
+                    _resolvedIpMap.Clear();
+                    
+                    var targets = TargetCatalog.Targets;
+                    foreach (var t in targets)
+                    {
+                        try
+                        {
+                            // Add FallbackIP if exists
+                            if (!string.IsNullOrEmpty(t.FallbackIp))
+                            {
+                                _resolvedIpMap[t.FallbackIp] = new Target 
+                                { 
+                                    Name = t.Name, 
+                                    Host = t.Host, 
+                                    Service = t.Service,
+                                    Critical = t.Critical,
+                                    FallbackIp = t.FallbackIp 
+                                };
+                            }
+
+                            // Resolve Host
+                            var addresses = await System.Net.Dns.GetHostAddressesAsync(t.Host);
+                            foreach (var ip in addresses)
+                            {
+                                var ipStr = ip.ToString();
+                                if (!_resolvedIpMap.ContainsKey(ipStr))
+                                {
+                                    _resolvedIpMap[ipStr] = new Target 
+                                    { 
+                                        Name = t.Name, 
+                                        Host = t.Host, 
+                                        Service = t.Service,
+                                        Critical = t.Critical,
+                                        FallbackIp = t.FallbackIp ?? ""
+                                    };
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                    Log($"[PreResolve] Resolved {_resolvedIpMap.Count} IPs for {targets.Count} targets");
+                    
+                    // Update existing results that might have been added as IPs
+                    System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        foreach (var result in TestResults)
+                        {
+                            if (result.Target.Name == result.Target.Host && _resolvedIpMap.TryGetValue(result.Target.Host, out var resolvedTarget))
+                            {
+                                result.Target = resolvedTarget;
+                                Log($"[PreResolve] Updated {result.Target.Host} to {resolvedTarget.Name}");
+                            }
+                        }
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Log($"[PreResolve] Error: {ex.Message}");
+                }
+            });
+        }
+
+        private void ParsePipelineMessage(string msg)
+        {
+            try 
+            {
+                if (msg.StartsWith("✓ "))
+                {
+                    // Формат: "✓ 1.2.3.4:80 (20ms)"
+                    var parts = msg.Substring(2).Split(' ');
+                    var hostPort = parts[0].Split(':');
+                    if (hostPort.Length == 2)
+                    {
+                        var host = hostPort[0];
+                        UpdateTestResult(host, TestStatus.Pass, msg);
+                        _lastUpdatedHost = host;
+                    }
+                }
+                else if (msg.StartsWith("❌ "))
+                {
+                    // Формат: "❌ 1.2.3.4:443 | DNS:✓ TCP:✓ TLS:✗ | TLS_DPI"
+                    var parts = msg.Substring(2).Split('|');
+                    if (parts.Length > 0)
+                    {
+                        var hostPortStr = parts[0].Trim().Split(' ')[0];
+                        var hostPort = hostPortStr.Split(':');
+                        if (hostPort.Length == 2)
+                        {
+                            var host = hostPort[0];
+                            UpdateTestResult(host, TestStatus.Fail, msg);
+                            _lastUpdatedHost = host;
+                        }
+                    }
+                }
+                else if (msg.Contains("→ Стратегия:") && !string.IsNullOrEmpty(_lastUpdatedHost))
+                {
+                    // Формат: "   → Стратегия: TLS_FRAGMENT"
+                    var parts = msg.Split(':');
+                    if (parts.Length >= 2)
+                    {
+                        var strategy = parts[1].Trim();
+                        var result = TestResults.FirstOrDefault(t => t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
+                        if (result != null)
+                        {
+                            result.BypassStrategy = strategy;
+                            // Если есть стратегия, значит можно исправить
+                            // Исключаем ROUTER_REDIRECT (Fake IP), так как это не ошибка, а особенность среды
+                            if (strategy != "NONE" && strategy != "UNKNOWN" && strategy != "ROUTER_REDIRECT")
+                            {
+                                result.Fixable = true;
+                                result.FixType = FixType.Bypass;
+                                result.FixInstructions = $"Применить стратегию обхода: {strategy}";
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private void UpdateTestResult(string host, TestStatus status, string details)
+        {
+            var existing = TestResults.FirstOrDefault(t => t.Target.Host == host || t.Target.Name == host);
+            if (existing != null)
+            {
+                existing.Status = status;
+                existing.Details = details;
+                if (status == TestStatus.Fail)
+                {
+                    existing.Error = details;
+                }
+            }
+            else
+            {
+                // Пытаемся найти цель в каталоге для получения метаданных (FallbackIp и т.д.)
+                // Сначала ищем по имени/хосту
+                var knownTarget = TargetCatalog.Targets.FirstOrDefault(t => 
+                    t.Host.Equals(host, StringComparison.OrdinalIgnoreCase) || 
+                    t.Name.Equals(host, StringComparison.OrdinalIgnoreCase));
+
+                Target target;
+                if (knownTarget != null)
+                {
+                    target = new Target 
+                    { 
+                        Name = knownTarget.Name, 
+                        Host = knownTarget.Host, 
+                        Service = knownTarget.Service,
+                        Critical = knownTarget.Critical,
+                        FallbackIp = knownTarget.FallbackIp ?? ""
+                    };
+                }
+                // Если не нашли по имени, ищем в кэше разрешенных IP
+                else if (_resolvedIpMap.TryGetValue(host, out var resolvedTarget))
+                {
+                    target = resolvedTarget;
+                }
+                else
+                {
+                    target = new Target { Name = host, Host = host, Service = "Обнаружено" };
+                    _ = ResolveUnknownHostAsync(host);
+                }
+
+                var result = new TestResult { Target = target, Status = status, Details = details };
+                if (status == TestStatus.Fail)
+                {
+                    result.Error = details;
+                }
+                TestResults.Add(result);
+                OnPropertyChanged(nameof(TotalTargets));
+                OnPropertyChanged(nameof(ProgressBarMax));
+            }
+            
+            OnPropertyChanged(nameof(PassCount));
+            OnPropertyChanged(nameof(FailCount));
+            OnPropertyChanged(nameof(WarnCount));
+        }
 
         /// <summary>
         /// Проверяет, запущено ли приложение с правами администратора

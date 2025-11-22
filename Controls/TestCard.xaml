@@ -39,10 +39,15 @@
 
                 <!-- Host and Fallback -->
                 <StackPanel Orientation="Horizontal">
-                    <Border Background="#F9FAFB" CornerRadius="4" Padding="6,2">
-                        <TextBlock x:Name="hostText" 
-                                   Style="{StaticResource CaptionStyle}" 
-                                   FontFamily="Consolas"/>
+                    <Border Background="#F3F4F6" CornerRadius="4" Padding="8,4" BorderBrush="#E5E7EB" BorderThickness="1">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="IP/Host: " Foreground="#6B7280" FontSize="11" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="hostText" 
+                                       Style="{StaticResource CaptionStyle}" 
+                                       FontFamily="Consolas"
+                                       FontWeight="SemiBold"
+                                       Foreground="#374151"/>
+                        </StackPanel>
                     </Border>
                     <TextBlock x:Name="fallbackText" 
                                Style="{StaticResource CaptionStyle}" 

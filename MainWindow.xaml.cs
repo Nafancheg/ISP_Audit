@@ -1,4 +1,8 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using ISPAudit.Models;
+using ISPAudit.ViewModels;
 
 namespace ISPAudit
 {
@@ -20,6 +24,17 @@ namespace ISPAudit
             {
                 FixDetailsList.Visibility = Visibility.Collapsed;
                 ToggleFixDetailsButton.Content = "▼ Подробнее";
+            }
+        }
+
+        private void DataGridRow_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is DataGridRow row && row.DataContext is TestResult result)
+            {
+                if (DataContext is MainViewModel viewModel && viewModel.DetailsCommand.CanExecute(result))
+                {
+                    viewModel.DetailsCommand.Execute(result);
+                }
             }
         }
     }

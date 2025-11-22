@@ -4,9 +4,12 @@
         xmlns:local="clr-namespace:ISPAudit.Controls"
         xmlns:vm="clr-namespace:ISPAudit.ViewModels"
         Title="ISP Audit - Диагностика сети"
-        Height="800" Width="1200"
-        MinHeight="600" MinWidth="900"
-        Background="{StaticResource BgBrush}">
+        Height="800" Width="1400"
+        MinHeight="600" MinWidth="1000"
+        Background="{StaticResource BgBrush}"
+        FontFamily="Segoe UI"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType">
     
     <Window.DataContext>
         <vm:MainViewModel/>
@@ -115,64 +118,12 @@
                 Margin="0,0,0,24"
                 AutomationProperties.AutomationId="ScenarioSelector">
             <StackPanel>
-                <TextBlock Text="Выберите сценарий проверки" Style="{StaticResource H2Style}" Margin="0,0,0,16"/>
+                <TextBlock Text="Диагностика приложения" Style="{StaticResource H2Style}" Margin="0,0,0,16"/>
                 
-                <Border Background="#F9FAFB" 
-                        CornerRadius="8" 
-                        Padding="4"
-                        AutomationProperties.AutomationId="RadioButtonsPanel">
-                    <StackPanel Orientation="Horizontal">
-                        <RadioButton Content="Приложение" 
-                                     Style="{StaticResource ToggleRadioButtonStyle}"
-                                     IsChecked="{Binding IsExeScenario, Mode=TwoWay}"
-                                     IsEnabled="{Binding IsStart}"
-                                     GroupName="Scenario"
-                                     AutomationProperties.AutomationId="ExeScenarioRadioButton"/>
-                        <RadioButton Content="Профиль" 
-                                     Style="{StaticResource ToggleRadioButtonStyle}"
-                                     IsChecked="{Binding IsProfileScenario, Mode=TwoWay}"
-                                     IsEnabled="{Binding IsStart}"
-                                     GroupName="Scenario"
-                                     AutomationProperties.AutomationId="ProfileScenarioRadioButton"/>
-                        <RadioButton Content="Хост" 
-                                     Style="{StaticResource ToggleRadioButtonStyle}"
-                                     IsChecked="{Binding IsHostScenario, Mode=TwoWay}"
-                                     IsEnabled="{Binding IsStart}"
-                                     GroupName="Scenario"
-                                     AutomationProperties.AutomationId="HostScenarioRadioButton"/>
-                    </StackPanel>
-                </Border>
-
-                <!-- Profile Scenario -->
-                <StackPanel Margin="0,16,0,0" 
-                            Visibility="{Binding IsProfileScenario, Converter={StaticResource BoolToVisibilityConverter}}"
-                            AutomationProperties.AutomationId="ProfileScenarioPanel">
-                    <TextBlock Text="Профиль" Style="{StaticResource BodyStyle}" Margin="0,0,0,8"/>
-                    <ComboBox Height="40"
-                              Padding="12,8"
-                              FontSize="14"
-                              ItemsSource="{Binding AvailableProfiles}"
-                              SelectedItem="{Binding SelectedProfile, Mode=TwoWay}"
-                              IsEnabled="{Binding IsStart}"
-                              AutomationProperties.AutomationId="ProfileComboBox"/>
-                </StackPanel>
-
-                <!-- Host Scenario -->
-                <StackPanel Margin="0,16,0,0" 
-                            Visibility="{Binding IsHostScenario, Converter={StaticResource BoolToVisibilityConverter}}"
-                            AutomationProperties.AutomationId="HostScenarioPanel">
-                    <TextBlock Text="Введите хост" Style="{StaticResource BodyStyle}" Margin="0,0,0,8"/>
-                    <TextBox Style="{StaticResource ModernTextBoxStyle}" 
-                             Text="{Binding HostInput, UpdateSourceTrigger=PropertyChanged}"
-                             IsEnabled="{Binding IsStart}"
-                             AutomationProperties.AutomationId="HostInputTextBox"/>
-                </StackPanel>
-
-                <!-- Exe Scenario -->
-                <StackPanel Margin="0,16,0,0" 
-                            Visibility="{Binding IsExeScenario, Converter={StaticResource BoolToVisibilityConverter}}"
+                <!-- Exe Selection -->
+                <StackPanel Margin="0,0,0,0" 
                             AutomationProperties.AutomationId="ExeScenarioPanel">
-                    <TextBlock Text="Выберите exe файл" Style="{StaticResource BodyStyle}" Margin="0,0,0,8"/>
+                    <TextBlock Text="Выберите exe файл игры или лаунчера" Style="{StaticResource BodyStyle}" Margin="0,0,0,8"/>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -190,13 +141,12 @@
                     </Grid>
                 </StackPanel>
 
-                <!-- Start Button (только для сценариев Профиль/Хост) -->
+                <!-- Start Button (Unified) -->
                 <Button Content="{Binding StartButtonText}" 
                     Style="{StaticResource PrimaryButtonStyle}"
-                    Command="{Binding StartCommand}"
+                    Command="{Binding StartLiveTestingCommand}"
                     HorizontalAlignment="Left"
                     Margin="0,24,0,0"
-                    Visibility="{Binding IsExeScenario, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                     AutomationProperties.AutomationId="StartButton"/>
             </StackPanel>
         </Border>
@@ -212,404 +162,248 @@
                             VerticalAlignment="Center" 
                             HorizontalAlignment="Center"
                             AutomationProperties.AutomationId="StartState">
-                    <TextBlock Text="Готов к проверке" Style="{StaticResource H2Style}" 
+                    <TextBlock Text="Готов к диагностике" Style="{StaticResource H2Style}" 
                                Foreground="{StaticResource MutedBrush}" TextAlignment="Center"/>
-                    <TextBlock Text="Выберите сценарий и нажмите 'Начать проверку'" 
+                    <TextBlock Text="Выберите сценарий и нажмите 'Начать диагностику'" 
                                Style="{StaticResource BodyStyle}"
                                Foreground="{StaticResource MutedBrush}"
                                TextAlignment="Center" Margin="0,8,0,0"/>
                 </StackPanel>
 
-                <!-- Running/Done State -->
-                <ScrollViewer VerticalScrollBarVisibility="Auto" 
-                              Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibilityConverter}}"
-                              AutomationProperties.AutomationId="RunningState">
-                    <StackPanel>
-                        <TextBlock Text="Выполняется проверка..." Style="{StaticResource H2Style}" Margin="0,0,0,8"/>
-                        
-                        <!-- Current Action -->
+                <!-- Active State (Running OR Done) -->
+                <Grid Visibility="{Binding IsStart, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/> <!-- Header (Running) -->
+                        <RowDefinition Height="Auto"/> <!-- Header (Done) -->
+                        <RowDefinition Height="*"/>    <!-- DataGrid -->
+                    </Grid.RowDefinitions>
+
+                    <!-- Running Header -->
+                    <StackPanel Grid.Row="0" 
+                                Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Margin="0,0,0,16">
+                        <TextBlock Text="Выполняется диагностика..." Style="{StaticResource H2Style}" Margin="0,0,0,8"/>
                         <TextBlock Text="{Binding CurrentAction}" 
                                    Foreground="{StaticResource MutedBrush}"
                                    FontSize="14"
                                    Margin="0,0,0,16"
                                    TextWrapping="Wrap"
-                                   Visibility="{Binding CurrentAction, Converter={StaticResource StringToVisibilityConverter}}"
-                                   AutomationProperties.AutomationId="CurrentActionText"/>
-                        
-                        <!-- Progress Stepper -->
-                        <local:ProgressStepper Total="{Binding TotalTargets}" 
-                                               Current="{Binding CurrentTest}"
-                                               Completed="{Binding CompletedTests}"
-                                               Margin="0,0,0,24"
-                                               AutomationProperties.AutomationId="ProgressStepper"/>
-
-                        <!-- Test Cards -->
-                        <ItemsControl ItemsSource="{Binding TestResults}"
-                                      AutomationProperties.AutomationId="TestResultsItemsControl">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <local:TestCard TestResult="{Binding}" Margin="0,0,0,12"/>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                                   Visibility="{Binding CurrentAction, Converter={StaticResource StringToVisibilityConverter}}"/>
+                        <ProgressBar IsIndeterminate="True"
+                                     Height="4" 
+                                     BorderThickness="0"
+                                     Background="#E5E7EB"
+                                     Foreground="{StaticResource PrimaryBrush}"/>
                     </StackPanel>
-                </ScrollViewer>
 
-                <!-- Done State -->
-                <StackPanel Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibilityConverter}}"
-                            AutomationProperties.AutomationId="DoneState">
-                    <Grid Margin="0,0,0,24">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        
-                        <TextBlock Text="Проверка завершена" Style="{StaticResource H2Style}"/>
-                        
-                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <Button Content="Экспорт отчета" 
-                                    Style="{StaticResource SecondaryButtonStyle}"
-                                    Command="{Binding ReportCommand}"
-                                    Margin="0,0,8,0"
-                                    AutomationProperties.AutomationId="ExportReportButton"/>
-                            <Button Content="Новая проверка" 
-                                    Style="{StaticResource PrimaryButtonStyle}"
-                                    Command="{Binding SetStateCommand}"
-                                    CommandParameter="start"
-                                    AutomationProperties.AutomationId="NewCheckButton"/>
-                        </StackPanel>
-                    </Grid>
-
-                    <!-- Summary -->
-                    <Border Background="#F9FAFB" 
-                            CornerRadius="12" 
-                            Padding="20" 
-                            Margin="0,0,0,24"
-                            AutomationProperties.AutomationId="SummaryCard">
-                        <Grid>
+                    <!-- Done Header -->
+                    <StackPanel Grid.Row="1" 
+                                Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Margin="0,0,0,16">
+                        <Grid Margin="0,0,0,24">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="Успешно" Style="{StaticResource CaptionStyle}"/>
-                                <TextBlock Text="{Binding PassCount}" Style="{StaticResource H1Style}" 
-                                           Foreground="{StaticResource PassBrush}"
-                                           AutomationProperties.AutomationId="PassCountText"/>
-                            </StackPanel>
+                            <TextBlock Text="Диагностика завершена" Style="{StaticResource H2Style}"/>
                             
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="Ошибки" Style="{StaticResource CaptionStyle}"/>
-                                <TextBlock Text="{Binding FailCount}" Style="{StaticResource H1Style}" 
-                                           Foreground="{StaticResource FailBrush}"
-                                           AutomationProperties.AutomationId="FailCountText"/>
-                            </StackPanel>
-                            
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="Предупреждения" Style="{StaticResource CaptionStyle}"/>
-                                <TextBlock Text="{Binding WarnCount}" Style="{StaticResource H1Style}" 
-                                           Foreground="{StaticResource WarnBrush}"
-                                           AutomationProperties.AutomationId="WarnCountText"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Button Content="Экспорт отчета" 
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding ReportCommand}"
+                                        Margin="0,0,8,0"/>
+                                <Button Content="Новая диагностика" 
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Command="{Binding SetStateCommand}"
+                                        CommandParameter="start"/>
                             </StackPanel>
                         </Grid>
-                    </Border>
 
-                    <!-- Test Results List -->
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="400">
-                        <ItemsControl ItemsSource="{Binding TestResults}"
-                                      AutomationProperties.AutomationId="DoneTestResultsItemsControl">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <local:TestCard TestResult="{Binding}" Margin="0,0,0,12"/>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                </StackPanel>
+                        <!-- Summary Stats -->
+                        <Border Background="#F9FAFB" 
+                                CornerRadius="12" 
+                                Padding="20">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Успешно" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBlock Text="{Binding PassCount}" Style="{StaticResource H1Style}" Foreground="{StaticResource PassBrush}"/>
+                                </StackPanel>
+                                
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="Ошибки" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBlock Text="{Binding FailCount}" Style="{StaticResource H1Style}" Foreground="{StaticResource FailBrush}"/>
+                                </StackPanel>
+                                
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Предупреждения" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBlock Text="{Binding WarnCount}" Style="{StaticResource H1Style}" Foreground="{StaticResource WarnBrush}"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Unified DataGrid -->
+                    <DataGrid Grid.Row="2"
+                              ItemsSource="{Binding TestResults}"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              CanUserResizeRows="False"
+                              IsReadOnly="True"
+                              SelectionMode="Single"
+                              SelectionUnit="FullRow"
+                              ClipboardCopyMode="IncludeHeader"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#E5E7EB"
+                              VerticalGridLinesBrush="#E5E7EB"
+                              Background="White"
+                              BorderThickness="1"
+                              BorderBrush="#E5E7EB"
+                              RowBackground="White"
+                              AlternatingRowBackground="#F9FAFB"
+                              Padding="0"
+                              FontSize="14"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              AutomationProperties.AutomationId="TestResultsDataGrid">
+                        
+                        <DataGrid.Resources>
+                            <!-- Override Selection Colors to Light Blue so buttons and gray text are visible -->
+                            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#DBEAFE"/>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="Black"/>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#F3F4F6"/>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="Black"/>
+
+                            <Style TargetType="DataGridColumnHeader">
+                                <Setter Property="Padding" Value="12,10"/>
+                                <Setter Property="Background" Value="#F3F4F6"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="Foreground" Value="#374151"/>
+                                <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                <Setter Property="BorderBrush" Value="#E5E7EB"/>
+                            </Style>
+                            
+                            <Style TargetType="DataGridRow">
+                                <Setter Property="MinHeight" Value="48"/>
+                                <EventSetter Event="MouseDoubleClick" Handler="DataGridRow_MouseDoubleClick"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="#DBEAFE"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                            
+                            <Style TargetType="DataGridCell">
+                                <Setter Property="Padding" Value="12,8"/>
+                                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="DataGridCell">
+                                            <Border Padding="{TemplateBinding Padding}" 
+                                                    BorderBrush="Transparent" 
+                                                    BorderThickness="0" 
+                                                    Background="{TemplateBinding Background}" 
+                                                    SnapsToDevicePixels="True">
+                                                <ContentPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </DataGrid.Resources>
+
+                        <DataGrid.Columns>
+                            <!-- Service Name -->
+                            <DataGridTextColumn Header="Сервис" 
+                                                Binding="{Binding Target.Name}" 
+                                                Width="1.5*"
+                                                MinWidth="120"
+                                                FontWeight="SemiBold"/>
+
+                            <!-- Host/IP -->
+                            <DataGridTextColumn Header="Хост / IP" 
+                                                Binding="{Binding Target.Host}" 
+                                                Width="1*"
+                                                MinWidth="100"/>
+
+                            <!-- Status -->
+                            <DataGridTemplateColumn Header="Статус" Width="1*" MinWidth="100">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <local:StatusDot Status="{Binding Status}" Margin="0,0,8,0"/>
+                                            <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" FontWeight="Medium"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Details -->
+                            <DataGridTextColumn Header="Детали" 
+                                                Binding="{Binding Details}" 
+                                                Width="3*"
+                                                MinWidth="200">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                        <Setter Property="Padding" Value="12,8"/>
+                                        <Setter Property="VerticalAlignment" Value="Center"/>
+                                        <Setter Property="FontSize" Value="13"/>
+                                        <Setter Property="Foreground" Value="#4B5563"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <!-- Strategy -->
+                            <DataGridTextColumn Header="Стратегия" 
+                                                Binding="{Binding BypassStrategy}" 
+                                                Width="1.2*"
+                                                MinWidth="110">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="VerticalAlignment" Value="Center"/>
+                                        <Setter Property="Padding" Value="12,8"/>
+                                        <Setter Property="Foreground" Value="#6B7280"/>
+                                        <Setter Property="FontWeight" Value="Medium"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <!-- Actions -->
+                            <DataGridTemplateColumn Header="Действия" Width="110" MinWidth="110">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="Исправить"
+                                                Command="{Binding DataContext.FixCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="{Binding ShowFixButton, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                Style="{StaticResource PrimaryButtonStyle}"
+                                                Padding="10,6"
+                                                FontSize="12"
+                                                HorizontalAlignment="Stretch"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
             </Grid>
         </Border>
 
-        <!-- Exe Scenario: 3-Stage Workflow -->
-        <Border Grid.Row="2" 
-                Background="White" 
-                BorderBrush="#E5E7EB"
-                BorderThickness="1"
-                CornerRadius="12"
-                Padding="24"
-                Margin="0,24,0,0"
-                Visibility="{Binding ExePath, Converter={StaticResource StringToVisibilityConverter}}"
-                AutomationProperties.AutomationId="ExeScenarioWorkflow">
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel>
-                    <TextBlock Text="Автоматический анализ и обход блокировок" 
-                               Style="{StaticResource H2Style}" 
-                               Margin="0,0,0,24"/>
 
-                    <!-- Stage 1: Traffic Analysis -->
-                    <Border Background="#F9FAFB" 
-                            BorderBrush="#E5E7EB" 
-                            BorderThickness="1"
-                            CornerRadius="8"
-                            Padding="20"
-                            Margin="0,0,0,16"
-                            AutomationProperties.AutomationId="Stage1Card">
-                        <StackPanel>
-                            <Grid Margin="0,0,0,16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock Grid.Column="0" 
-                                           Text="Этап 1: Анализ сетевого трафика" 
-                                           Style="{StaticResource BodyStyle}" 
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center"/>
-
-                                <!-- Круглый индикатор Stage 1 справа от заголовка -->
-                                <Viewbox Grid.Column="2"
-                                         Height="20" Width="20" Margin="8,0,8,0"
-                                         VerticalAlignment="Center"
-                                         Visibility="{Binding IsAnalyzingTraffic, Converter={StaticResource BoolToVisibilityConverter}}"
-                                         AutomationProperties.AutomationId="Stage1Spinner">
-                                    <Grid>
-                                        <Ellipse Width="18" Height="18"
-                                                 StrokeThickness="2"
-                                                 StrokeDashArray="14 7"
-                                                 StrokeStartLineCap="Round"
-                                                 StrokeEndLineCap="Round">
-                                            <Ellipse.Style>
-                                                <Style TargetType="Ellipse">
-                                                    <Setter Property="Stroke" Value="{StaticResource RunningBrush}"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsStoppingCapture}" Value="True">
-                                                            <Setter Property="Stroke" Value="{StaticResource WarnBrush}"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Ellipse.Style>
-                                            <Ellipse.RenderTransform>
-                                                <RotateTransform x:Name="SpinnerRotate" CenterX="9" CenterY="9"/>
-                                            </Ellipse.RenderTransform>
-                                            <Ellipse.Triggers>
-                                                <EventTrigger RoutedEvent="Loaded">
-                                                    <BeginStoryboard>
-                                                        <Storyboard RepeatBehavior="Forever">
-                                                            <DoubleAnimation Storyboard.TargetName="SpinnerRotate"
-                                                                            Storyboard.TargetProperty="Angle"
-                                                                            From="0" To="360" 
-                                                                            Duration="0:0:1.5"/>
-                                                        </Storyboard>
-                                                    </BeginStoryboard>
-                                                </EventTrigger>
-                                            </Ellipse.Triggers>
-                                        </Ellipse>
-                                    </Grid>
-                                </Viewbox>
-
-                                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,0">
-                                    <Button Content="Запустить анализ"
-                                        Command="{Binding AnalyzeTrafficCommand}"
-                                        Background="{StaticResource PassBrush}"
-                                        Foreground="White"
-                                        BorderThickness="0"
-                                        Padding="20,10"
-                                        Cursor="Hand"
-                                        AutomationProperties.AutomationId="AnalyzeButton"/>
-
-                                    <Button Command="{Binding CancelStage1Command}"
-                                        Visibility="{Binding IsStage1ContinuousMode, Converter={StaticResource BoolToVisibilityConverter}}"
-                                        Background="{StaticResource FailBrush}"
-                                        Foreground="White"
-                                        BorderThickness="0"
-                                        Padding="12,10"
-                                        Margin="8,0,0,0"
-                                        Cursor="Hand"
-                                        AutomationProperties.AutomationId="StopCaptureButton">
-                                        <Button.Style>
-                                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                                                <Setter Property="Content" Value="Остановить захват"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsStoppingCapture}" Value="True">
-                                                        <Setter Property="Content" Value="Остановка..."/>
-                                                        <Setter Property="IsEnabled" Value="False"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Button.Style>
-                                    </Button>
-                                </StackPanel>
-                            </Grid>
-
-                            <TextBlock Text="{Binding Stage1Status}" 
-                                       Style="{StaticResource BodyStyle}" 
-                                       TextWrapping="Wrap"
-                                       Margin="0,0,0,8"
-                                       Visibility="{Binding Stage1Status, Converter={StaticResource StringToVisibilityConverter}}"
-                                       AutomationProperties.AutomationId="Stage1StatusText"/>
-
-                            <CheckBox Content="Тестировать до ручной отмены"
-                                      IsChecked="{Binding IsStage1ContinuousMode}"
-                                      Margin="0,0,0,8"
-                                      VerticalAlignment="Center"/>
-
-                            <CheckBox Content="Live тестирование (детекция блокировок в реальном времени)"
-                                      IsChecked="{Binding EnableLiveTesting}"
-                                      Margin="0,0,0,8"
-                                      VerticalAlignment="Center"
-                                      ToolTip="При включении каждый обнаруженный хост будет немедленно тестироваться (DNS/TCP/TLS) для выявления блокировок"/>
-
-                            <CheckBox Content="Автоматическое применение bypass (требуется запуск от администратора)"
-                                      IsChecked="{Binding EnableAutoBypass}"
-                                      Margin="0,0,0,8"
-                                      VerticalAlignment="Center"
-                                      IsEnabled="{Binding EnableLiveTesting}"
-                                      ToolTip="При включении обнаруженные блокировки будут автоматически обходиться через WinDivert (TLS fragmentation, RST blocking). Требуются права администратора."/>
-
-                            <StackPanel Orientation="Horizontal"
-                                       Visibility="{Binding Stage1Complete, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <TextBlock Text="{Binding Stage1HostsFound, StringFormat='Обнаружено целей: {0}'}" 
-                                           Style="{StaticResource BodyStyle}"
-                                           Foreground="{StaticResource PassBrush}"
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,12,0"
-                                           AutomationProperties.AutomationId="Stage1HostsFoundText"/>
-                                <Button Content="Просмотр результатов"
-                                        Command="{Binding ViewStage1ResultsCommand}"
-                                        Style="{StaticResource SecondaryButtonStyle}"
-                                        Padding="12,6"
-                                        FontSize="13"
-                                        AutomationProperties.AutomationId="ViewStage1ResultsButton"/>
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Stage 2: Diagnosis -->
-                    <Border Background="#F9FAFB" 
-                            BorderBrush="#E5E7EB" 
-                            BorderThickness="1"
-                            CornerRadius="8"
-                            Padding="20"
-                            Margin="0,0,0,16"
-                            AutomationProperties.AutomationId="Stage2Card">
-                        <StackPanel>
-                            <Grid Margin="0,0,0,16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock Grid.Column="0" 
-                                           Text="Этап 2: Диагностика проблем" 
-                                           Style="{StaticResource BodyStyle}" 
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center"/>
-
-                                <Button Grid.Column="2"
-                                    Content="Диагностировать"
-                                    Command="{Binding DiagnoseCommand}"
-                                    Background="#3B82F6"
-                                    Foreground="White"
-                                    BorderThickness="0"
-                                    Padding="20,10"
-                                    Cursor="Hand"
-                                    AutomationProperties.AutomationId="DiagnoseButton"/>
-                            </Grid>
-
-                            <TextBlock Text="{Binding Stage2Status}" 
-                                       Style="{StaticResource BodyStyle}" 
-                                       TextWrapping="Wrap"
-                                       Margin="0,0,0,8"
-                                       Visibility="{Binding Stage2Status, Converter={StaticResource StringToVisibilityConverter}}"
-                                       AutomationProperties.AutomationId="Stage2StatusText"/>
-
-                            <!-- Нормальный прогресс Stage 2 по результатам диагностики -->
-                            <ProgressBar 
-                                Value="{Binding Stage2Progress}" 
-                                Height="4" 
-                                Margin="0,8,0,8"
-                                Visibility="{Binding Stage2Complete, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                                AutomationProperties.AutomationId="Stage2ProgressBar"/>
-
-                            <TextBlock Text="{Binding Stage2ProblemsFound, StringFormat='Обнаружено проблем: {0}'}" 
-                                       Style="{StaticResource BodyStyle}"
-                                       Foreground="{StaticResource FailBrush}"
-                                       FontWeight="SemiBold"
-                                       Visibility="{Binding Stage2Complete, Converter={StaticResource BoolToVisibilityConverter}}"
-                                       AutomationProperties.AutomationId="Stage2ProblemsFoundText"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Stage 3: Apply Bypass -->
-                    <Border Background="#F9FAFB" 
-                            BorderBrush="#E5E7EB" 
-                            BorderThickness="1"
-                            CornerRadius="8"
-                            Padding="20"
-                            Margin="0,0,0,16"
-                            AutomationProperties.AutomationId="Stage3Card">
-                        <StackPanel>
-                            <Grid Margin="0,0,0,16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock Grid.Column="0" 
-                                           Text="Этап 3: Применение обхода" 
-                                           Style="{StaticResource BodyStyle}" 
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center"/>
-
-                                <Button Grid.Column="2"
-                                        Content="Применить обход"
-                                        Command="{Binding ApplyBypassCommand}"
-                                        Background="#10B981"
-                                        Foreground="White"
-                                        BorderThickness="0"
-                                        Padding="20,10"
-                                        Cursor="Hand"
-                                        IsEnabled="{Binding CanRunStage3}"
-                                        AutomationProperties.AutomationId="ApplyBypassButton"/>
-                            </Grid>
-
-                            <TextBlock Text="{Binding Stage3Status}" 
-                                       Style="{StaticResource BodyStyle}" 
-                                       TextWrapping="Wrap"
-                                       Visibility="{Binding Stage3Status, Converter={StaticResource StringToVisibilityConverter}}"
-                                       AutomationProperties.AutomationId="Stage3StatusText"/>
-
-                            <ProgressBar 
-                                Value="{Binding Stage3Progress}" 
-                                Height="4" 
-                                Margin="0,8,0,0"
-                                Visibility="{Binding Stage3Complete, Converter={StaticResource InverseBoolToVisibilityConverter}}"
-                                AutomationProperties.AutomationId="Stage3ProgressBar"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Reset Button -->
-                    <Button 
-                        Content="🔄 Сбросить и начать заново"
-                        Command="{Binding ResetExeScenarioCommand}"
-                        Style="{StaticResource SecondaryButtonStyle}"
-                        Margin="0,0,0,0"
-                        AutomationProperties.AutomationId="ResetButton"
-                        HorizontalAlignment="Left"/>
-                </StackPanel>
-            </ScrollViewer>
-        </Border>
 
         <!-- Footer -->
         <TextBlock Grid.Row="3" 
-                   Text="ISP Audit v2.0 • Проверка сетевых проблем (с)DAfanasev 2025"
+                   Text="ISP Audit v2.0 • Диагностика сетевых проблем (с)DAfanasev 2025"
                    Style="{StaticResource CaptionStyle}"
                    HorizontalAlignment="Center"
                    Margin="0,16,0,0"/>

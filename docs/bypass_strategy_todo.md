@@ -332,14 +332,97 @@ if (resultsAfter.AllPassed) {
 2. Обновить `ProblemClassifier` с точными типами блокировок
 3. Реализовать `BypassStrategyPlanner` с WinDivert параметрами
 
+## Инсайты из GoodbyeDPI (что реально применимо)
+
+### 1. TLS/HTTP фрагментация
+
+- **TLS фрагментация по SNI** (`--frag-by-sni`)
+    - Идея: находить в ClientHello смещение поля SNI и резать пакет так, чтобы
+        значение SNI начиналось со второго сегмента.
+    - Что взять:
+        - В `WinDivertBypassManager` добавить парсер TLS ClientHello уровня SNI
+            и режим "fragment-before-sni" вместо тупого `TlsFirstFragmentSize = N`.
+        - Использовать этот режим только для хостов из профиля (аналог blacklist).
+
+- **Обратная фрагментация** (`--reverse-frag`)
+    - Идея: отправлять фрагменты в обратном порядке, чтобы DPI, который
+        делает reassemble, не смог нормально распознать поток.
+    - Что взять:
+        - В `RunTlsFragmenter` добавить экспериментальный режим reverse-frag:
+            сначала инжектить второй фрагмент, потом первый.
+        - Включать только для конкретных целей через профиль `BypassProfile`.
+
+- **Native fragmentation** (`--native-frag`)
+    - Идея: не занижать TCP window, а реально резать payload на несколько
+        пакетов, сохраняя нормальные параметры TCP.
+    - Что взять:
+        - Пересмотреть текущую реализацию фрагментации: максимально приблизить
+            логику к native-frag (менять только payload и длины, не трогая
+            окно и флаги).
+
+### 2. Fake Request Mode (ложные пакеты)
+
+- **Fake TLS/HTTP пакеты с низким TTL / неправильным SEQ/CHK**
+    - GoodbyeDPI шлёт один или несколько фейковых запросов, которые DPI
+        видит как "запрос к запрещённому ресурсу", но реальный сервер их
+        не получает (TTL истёк, checksum неверный, seq устаревший).
+    - Что взять в MVP для TLS:
+        - В `WinDivertBypassManager` спроектировать простую функцию:
+            `SendFakeTlsClientHelloAsync(IPAddress ip, int port, string sni, FakeMode mode)`.
+        - `FakeMode` варианты:
+            - `LowTtl` — IP TTL занижен так, чтобы пакет умер до сервера;
+            - `WrongChecksum` — TCP checksum заведомо неверный;
+            - `WrongSeq` — seq в прошлом.
+        - Вызывать эту функцию из `LiveTestingPipeline` **до** реальной
+            попытки TLS‑handshake для целей с `TLS_DPI`/`TCP_RST`.
+
+- **Множество повторов** (`--fake-resend`, `--dpi-desync-repeats`)
+    - Что взять:
+        - При Fake Request Mode отправлять не один, а 3–6 фейковых пакетов
+            подряд для повышения шанса, что DPI "насытится" ложными сессиями.
+
+### 3. DNS редирект на нестандартный порт
+
+- **`--dns-addr` + `--dns-port` / `--dnsv6-addr`**
+    - GoodbyeDPI перенаправляет plain UDP DNS на публичный резолвер
+        (например, `77.88.8.8:1253`), чтобы обойти провайдерский DNS spoofing.
+    - Что взять:
+        - Добавить в `BypassProfile` режим `DnsRedirect` с указанием IP/порта.
+        - В `WinDivertBypassManager` реализовать фильтр для `udp.DstPort == 53`
+            и переписывание dst IP/port на указанные значения.
+        - Интегрировать как стратегию для `DNS_FILTERED` / `DNS_BOGUS` помимо
+            уже существующего `DnsFixApplicator`.
+
+### 4. Таргетинг по доменам (аналог blacklist)
+
+- **`--blacklist` + SNI/Host‑match**
+    - GoodbyeDPI применяет трюки только к нужным доменам из списков.
+    - Что взять:
+        - Расширить `BypassProfile`/`BypassRedirectRule` так, чтобы
+            WinDivert‑фильтры могли опционально ограничиваться по SNI/Host,
+            а не только по IP/порту.
+        - В `LiveTestingPipeline` и профилях Star Citizen/FsHud держать явные
+            доменные паттерны (аналог blacklist) и включать тяжёлые режимы
+            (fake, reverse-frag) только для них.
+
+### 5. Ограничение нагрузки (`--max-payload`)
+
+- **Пропуск больших пакетов**
+    - GoodbyeDPI не обрабатывает TCP пакеты с большим payload, чтобы не
+        тратить CPU на уже установленные сессии/скачивания.
+    - Что взять:
+        - Добавить порог `MaxPayloadBytes` в профиль fragmenter/fake‑логики,
+            чтобы `RunTlsFragmenter` и будущий Fake Request Mode просто игнорировали
+            огромные сегменты.
+
 ## Полезные ресурсы
 
 - **zapret-discord-youtube**: https://github.com/Flowseal/zapret-discord-youtube
-  - 10+ готовых стратегий (general.bat, ALT, ALT2-10, FAKE TLS)
-  - Реальные параметры для Discord/YouTube/игр
+    - 10+ готовых стратегий (general.bat, ALT, ALT2-10, FAKE TLS)
+    - Реальные параметры для Discord/YouTube/игр
   
 - **zapret документация**: https://github.com/bol-van/zapret/blob/master/docs/readme.md#nfqws
-  - Полное описание всех параметров nfqws/winws
+    - Полное описание всех параметров nfqws/winws
   
 - **WinDivert**: https://reqrypt.org/windivert-doc.html
-  - Документация по фильтрам и API
+    - Документация по фильтрам и API

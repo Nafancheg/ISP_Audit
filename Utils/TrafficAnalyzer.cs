@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.Core.Models;
 
 namespace IspAudit.Utils
 {
@@ -28,7 +29,8 @@ namespace IspAudit.Utils
             IProgress<string>? progress = null,
             CancellationToken cancellationToken = default,
             bool enableLiveTesting = false,
-            bool enableAutoBypass = false)
+            bool enableAutoBypass = false,
+            IspAudit.Bypass.WinDivertBypassManager? bypassManager = null)
         {
             return await Task.Run(async () =>
             {
@@ -89,7 +91,7 @@ namespace IspAudit.Utils
                         MaxConcurrentTests = 5,
                         TestTimeout = TimeSpan.FromSeconds(3)
                     };
-                    pipeline = new LiveTestingPipeline(pipelineConfig, progress);
+                    pipeline = new LiveTestingPipeline(pipelineConfig, progress, bypassManager);
                     progress?.Report("✓ Live-testing pipeline активен");
                 }
 
@@ -405,7 +407,7 @@ namespace IspAudit.Utils
                                 key,
                                 remoteIp,
                                 remotePort,
-                                protocol == 6 ? TransportProtocol.TCP : TransportProtocol.UDP,
+                                protocol == 6 ? IspAudit.Bypass.TransportProtocol.Tcp : IspAudit.Bypass.TransportProtocol.Udp,
                                 DateTime.UtcNow
                             );
                             _ = pipeline.EnqueueHostAsync(discovered); // Fire and forget

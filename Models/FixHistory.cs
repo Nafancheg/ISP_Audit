@@ -14,7 +14,8 @@ namespace ISPAudit.Models
         DnsChange = 1,      // Смена DNS серверов + DoH
         FirewallRule = 2,   // Добавление правил Windows Firewall
         HostsFile = 3,      // Изменение hosts файла
-        Manual = 4          // Ручное исправление (показать инструкции)
+        Manual = 4,         // Ручное исправление (показать инструкции)
+        Bypass = 5          // WinDivert обход (DPI/TCP Reset)
     }
 
     /// <summary>
