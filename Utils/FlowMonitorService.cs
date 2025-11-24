@@ -17,7 +17,9 @@ namespace IspAudit.Utils
     public class FlowMonitorService : IDisposable
     {
         private WinDivertNative.SafeHandle? _handle;
+        private WinDivertNative.SafeHandle? _socketHandle;
         private Task? _monitorTask;
+        private Task? _socketMonitorTask;
         private CancellationTokenSource? _cts;
         private readonly IProgress<string>? _progress;
         private bool _isRunning;
@@ -64,6 +66,7 @@ namespace IspAudit.Utils
             else
             {
                 _monitorTask = Task.Run(() => RunMonitorLoop(_cts.Token), _cts.Token);
+                _socketMonitorTask = Task.Run(() => RunSocketMonitorLoop(_cts.Token), _cts.Token);
             }
             
             // Ждем, пока WinDivert откроется (или Watcher запустится)
@@ -113,6 +116,100 @@ namespace IspAudit.Utils
             finally
             {
                 _isRunning = false;
+            }
+        }
+
+        private void RunSocketMonitorLoop(CancellationToken token)
+        {
+            try
+            {
+                _progress?.Report("[FlowMonitor] Открытие WinDivert Socket layer...");
+                
+                const string socketFilter = "true"; 
+                _socketHandle = WinDivertNative.Open(socketFilter, WinDivertNative.Layer.Socket, -1000, 
+                    WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.RecvOnly);
+                
+                _progress?.Report($"[FlowMonitor] ✓ Socket layer открыт");
+                
+                var addr = new WinDivertNative.Address();
+
+                while (!token.IsCancellationRequested)
+                {
+                    if (!WinDivertNative.WinDivertRecv(_socketHandle, IntPtr.Zero, 0, out var _, out addr))
+                    {
+                        var error = Marshal.GetLastWin32Error();
+                        if (error == WinDivertNative.ErrorNoData || error == WinDivertNative.ErrorOperationAborted)
+                            break;
+                        
+                        Thread.Sleep(50);
+                        continue;
+                    }
+
+                    // Обрабатываем только события SOCKET_CONNECT (попытка соединения)
+                    if (addr.Event != WinDivertNative.WINDIVERT_EVENT_SOCKET_CONNECT)
+                        continue;
+
+                    // Пропускаем loopback
+                    if (addr.Loopback)
+                        continue;
+
+                    var pid = (int)addr.Data.Socket.ProcessId;
+                    var protocol = addr.Data.Socket.Protocol;
+                    
+                    IPAddress remoteIp;
+                    if (addr.IPv6)
+                    {
+                        var parts = new uint[] 
+                        { 
+                            addr.Data.Socket.RemoteAddr1, 
+                            addr.Data.Socket.RemoteAddr2, 
+                            addr.Data.Socket.RemoteAddr3, 
+                            addr.Data.Socket.RemoteAddr4 
+                        };
+                        
+                        var bytes = new byte[16];
+                        for (int i = 0; i < 4; i++)
+                        {
+                            var b = BitConverter.GetBytes(parts[i]);
+                            // WinDivert возвращает в Host Byte Order (Little Endian на x64)
+                            // BitConverter.GetBytes возвращает Little Endian
+                            // IPAddress ожидает Network Byte Order (Big Endian)
+                            // Поэтому нужно реверсировать
+                            if (BitConverter.IsLittleEndian)
+                            {
+                                Array.Reverse(b);
+                            }
+                            Array.Copy(b, 0, bytes, i * 4, 4);
+                        }
+                        remoteIp = new IPAddress(bytes);
+                    }
+                    else
+                    {
+                        uint remoteAddrRaw = addr.Data.Socket.RemoteAddr1;
+                        var ipBytes = BitConverter.GetBytes(remoteAddrRaw);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(ipBytes);
+                        }
+                        remoteIp = new IPAddress(ipBytes);
+                    }
+
+                    var remotePort = addr.Data.Socket.RemotePort;
+                    var localPort = addr.Data.Socket.LocalPort;
+
+                    // Передаем событие подписчикам (используем тот же event, так как это тоже "поток")
+                    TotalEventsCount++;
+                    OnFlowEvent?.Invoke(TotalEventsCount, pid, protocol, remoteIp, remotePort, localPort);
+                }
+            }
+            catch (Exception ex)
+            {
+                _progress?.Report($"[FlowMonitor] Socket Layer Error: {ex.Message}");
+            }
+            finally
+            {
+                _socketHandle?.Dispose();
+                _socketHandle = null;
             }
         }
 
@@ -169,22 +266,39 @@ namespace IspAudit.Utils
                     var pid = (int)addr.Data.Flow.ProcessId;
                     var protocol = addr.Data.Flow.Protocol;
                     
-                    // Конвертируем IP из WinDivert (Network Byte Order) в IPAddress
-                    uint remoteAddrRaw = addr.Data.Flow.RemoteAddr1;
-                    var ipBytes = BitConverter.GetBytes(remoteAddrRaw);
-                    // WinDivert возвращает в Big Endian (Network Order), IPAddress конструктор ожидает байты в правильном порядке
-                    // Но BitConverter зависит от архитектуры (Little Endian на x86/x64).
-                    // Если мы на Little Endian, GetBytes перевернет порядок.
-                    // Нам нужно получить байты так, как они лежат в памяти (Big Endian от сети).
-                    // addr.Data.Flow.RemoteAddr1 - это uint.
-                    // Если это IPv4, то это 4 байта.
-                    
-                    // FIX: Используем проверенный метод из TrafficAnalyzer
-                    if (BitConverter.IsLittleEndian)
+                    IPAddress remoteIp;
+                    if (addr.IPv6)
                     {
-                        Array.Reverse(ipBytes);
+                        var parts = new uint[] 
+                        { 
+                            addr.Data.Flow.RemoteAddr1, 
+                            addr.Data.Flow.RemoteAddr2, 
+                            addr.Data.Flow.RemoteAddr3, 
+                            addr.Data.Flow.RemoteAddr4 
+                        };
+                        
+                        var bytes = new byte[16];
+                        for (int i = 0; i < 4; i++)
+                        {
+                            var b = BitConverter.GetBytes(parts[i]);
+                            if (BitConverter.IsLittleEndian)
+                            {
+                                Array.Reverse(b);
+                            }
+                            Array.Copy(b, 0, bytes, i * 4, 4);
+                        }
+                        remoteIp = new IPAddress(bytes);
                     }
-                    var remoteIp = new IPAddress(ipBytes);
+                    else
+                    {
+                        uint remoteAddrRaw = addr.Data.Flow.RemoteAddr1;
+                        var ipBytes = BitConverter.GetBytes(remoteAddrRaw);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(ipBytes);
+                        }
+                        remoteIp = new IPAddress(ipBytes);
+                    }
 
                     var remotePort = addr.Data.Flow.RemotePort;
                     var localPort = addr.Data.Flow.LocalPort;
@@ -229,16 +343,17 @@ namespace IspAudit.Utils
 
             _cts?.Cancel();
             
-            if (_monitorTask != null)
+            var tasks = new List<Task>();
+            if (_monitorTask != null) tasks.Add(_monitorTask);
+            if (_socketMonitorTask != null) tasks.Add(_socketMonitorTask);
+
+            try
             {
-                try
-                {
-                    await _monitorTask.ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    // Ожидаемое исключение при отмене
-                }
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Ожидаемое исключение при отмене
             }
         }
 
