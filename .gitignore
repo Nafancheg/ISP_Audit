@@ -23,3 +23,6 @@ publish/
 .DS_Store
 Thumbs.db
 
+# External dependencies
+native/WinDivert-2.2.2/
+
