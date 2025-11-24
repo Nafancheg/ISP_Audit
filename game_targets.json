@@ -1,5 +1,21 @@
 {
-  "targets": [],
+  "targets": [
+    {
+      "name": "YouTube",
+      "host": "youtube.com",
+      "service": "Video"
+    },
+    {
+      "name": "Cloudflare DNS",
+      "host": "1.1.1.1",
+      "service": "DNS"
+    },
+    {
+      "name": "Google DNS",
+      "host": "8.8.8.8",
+      "service": "DNS"
+    }
+  ],
   "tcpPorts": [80, 443],
   "udpProbes": [
     {

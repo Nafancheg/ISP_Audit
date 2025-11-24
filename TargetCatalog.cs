@@ -90,11 +90,9 @@ namespace IspAudit
         {
             var targets = new List<TargetDefinition>
             {
-                new() { Name = "RSI Портал", Host = "robertsspaceindustries.com", Service = "Портал" },
-                new() { Name = "RSI Аккаунты", Host = "accounts.robertsspaceindustries.com", Service = "Портал" },
-                new() { Name = "RSI API", Host = "api.robertsspaceindustries.com", Service = "API" },
-                new() { Name = "RSI CDN", Host = "cdn.robertsspaceindustries.com", Service = "CDN" },
-                new() { Name = "RSI Установщик", Host = "install.robertsspaceindustries.com", Service = "CDN" }
+                new() { Name = "YouTube", Host = "youtube.com", Service = "Video" },
+                new() { Name = "Cloudflare DNS", Host = "1.1.1.1", Service = "DNS" },
+                new() { Name = "Google DNS", Host = "8.8.8.8", Service = "DNS" }
             };
 
             var tcpPorts = new List<int> { 80, 443 };
