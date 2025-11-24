@@ -88,25 +88,14 @@ namespace IspAudit
 
         private static TargetCatalogData BuildFallback()
         {
-            var targets = new List<TargetDefinition>
-            {
-                new() { Name = "YouTube", Host = "youtube.com", Service = "Video" },
-                new() { Name = "Cloudflare DNS", Host = "1.1.1.1", Service = "DNS" },
-                new() { Name = "Google DNS", Host = "8.8.8.8", Service = "DNS" }
-            };
+            // Пустой список по умолчанию - чтобы не было "левых" сработок.
+            // Цели будут добавляться динамически при анализе трафика.
+            var targets = new List<TargetDefinition>();
 
             var tcpPorts = new List<int> { 80, 443 };
             tcpPorts.AddRange(Enumerable.Range(8000, 21)); // 8000-8020 включительно
 
-            var udp = new List<UdpProbeDefinition>
-            {
-                new()
-                {
-                    Name = "Cloudflare DNS", Host = "1.1.1.1", Port = 53,
-                    Service = "Базовая сеть", Kind = UdpProbeKind.Dns, ExpectReply = true,
-                    Note = "Проверка UDP DNS"
-                }
-            };
+            var udp = new List<UdpProbeDefinition>();
 
             return new TargetCatalogData
             {

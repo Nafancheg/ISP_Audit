@@ -1,31 +1,5 @@
 {
-  "targets": [
-    {
-      "name": "YouTube",
-      "host": "youtube.com",
-      "service": "Video"
-    },
-    {
-      "name": "Cloudflare DNS",
-      "host": "1.1.1.1",
-      "service": "DNS"
-    },
-    {
-      "name": "Google DNS",
-      "host": "8.8.8.8",
-      "service": "DNS"
-    }
-  ],
+  "targets": [],
   "tcpPorts": [80, 443],
-  "udpProbes": [
-    {
-      "name": "Cloudflare DNS",
-      "host": "1.1.1.1",
-      "port": 53,
-      "service": "Базовая сеть",
-      "kind": "Dns",
-      "expectReply": true,
-      "note": "Проверка UDP DNS"
-    }
-  ]
+  "udpProbes": []
 }
