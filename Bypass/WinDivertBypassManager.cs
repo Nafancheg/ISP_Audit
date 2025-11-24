@@ -36,6 +36,8 @@ namespace IspAudit.Bypass
         private IReadOnlyList<RuntimeRedirectRule> _runtimeRedirectRules = Array.Empty<RuntimeRedirectRule>();
         private BypassProfile _profile = BypassProfile.CreateDefault();
 
+        public bool IsRstBlockerActive { get; private set; }
+
         // Диагностика WinDivert handles
         private static void LogHandleState(string operation, string filter, int priority, WinDivertNative.OpenFlags flags)
         {
@@ -228,6 +230,7 @@ namespace IspAudit.Bypass
                 _redirectTask = null;
                 _cts = null;
                 _runtimeRedirectRules = Array.Empty<RuntimeRedirectRule>();
+                IsRstBlockerActive = false;
             }
 
             if (raiseDisablingEvent)
@@ -441,19 +444,19 @@ namespace IspAudit.Bypass
 
             if (profile.DropTcpRst)
             {
-                // RST blocker: sniff + drop режим, priority 0 (default)
+                // RST blocker: A2 - используем flags=0 (intercept), чтобы избежать конфликта Sniff|Drop с Flow layer
                 // Ловим RST как во входящем, так и в исходящем направлении
-                // ⚠️ МОЖЕТ КОНФЛИКТОВАТЬ с TrafficAnalyzer Flow layer
                 const string rstFilter = "tcp.Rst == 1";
 
                 if (TryOpenWinDivert(
                     rstFilter,
                     WinDivertNative.Layer.Network,
                     priority: 0,
-                    WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.Drop,
+                    WinDivertNative.OpenFlags.None, // A2: Changed from Sniff|Drop to None
                     out _rstHandle))
                 {
                     ISPAudit.Utils.DebugLogger.Log($"[WinDivert] RST blocker started with filter: {rstFilter}");
+                    IsRstBlockerActive = true;
                     _rstTask = Task.Run(() => PumpPackets(_rstHandle!, _cts.Token), _cts.Token);
                 }
                 else
@@ -461,7 +464,12 @@ namespace IspAudit.Bypass
                     // ⚠️ НЕ бросаем exception - graceful degradation
                     // Если RST blocker не открылся (конфликт с Flow layer) - продолжаем без него
                     ISPAudit.Utils.DebugLogger.Log("[WinDivert] WARNING: RST blocker failed to open (likely conflict with Flow layer) - continuing without it");
+                    IsRstBlockerActive = false;
                 }
+            }
+            else
+            {
+                IsRstBlockerActive = false;
             }
 
             if (profile.FragmentTlsClientHello)
@@ -658,7 +666,7 @@ namespace IspAudit.Bypass
                     }
                 }
 
-                // Пакет НЕ реинжектим: он просто дропнут (Drop-флаг у хэндла)
+                // Пакет НЕ реинжектим: он дропается, так как мы его перехватили (flags=0) и не вызвали Send
             }
         }
 

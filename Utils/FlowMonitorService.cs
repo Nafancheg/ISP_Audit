@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7,8 +9,10 @@ using IspAudit.Bypass;
 namespace IspAudit.Utils
 {
     /// <summary>
-    /// Сервис для мониторинга WinDivert Flow Layer.
-    /// Открывается один раз и предоставляет события соединений всем подписчикам.
+    /// Сервис для мониторинга сетевой активности.
+    /// Поддерживает два режима:
+    /// 1. WinDivert Flow Layer (событийная модель, высокая точность)
+    /// 2. TcpConnectionWatcher (polling модель, совместимость с RST blocker)
     /// </summary>
     public class FlowMonitorService : IDisposable
     {
@@ -18,16 +22,22 @@ namespace IspAudit.Utils
         private readonly IProgress<string>? _progress;
         private bool _isRunning;
         private readonly TaskCompletionSource<bool> _readySignal = new();
+        private readonly TcpConnectionWatcher _watcher = new();
         
         public DateTime? FlowOpenedUtc { get; private set; }
         public DateTime? FirstEventUtc { get; private set; }
         public int TotalEventsCount { get; private set; }
+
+        /// <summary>
+        /// Если true, используется TcpConnectionWatcher (polling) вместо WinDivert Flow Layer.
+        /// </summary>
+        public bool UseWatcherMode { get; set; }
         
         /// <summary>
         /// Событие, вызываемое при получении Flow события.
         /// Args: (eventCount, pid, protocol, remoteIp, remotePort, localPort)
         /// </summary>
-        public event Action<int, int, byte, uint, ushort, ushort>? OnFlowEvent;
+        public event Action<int, int, byte, IPAddress, ushort, ushort>? OnFlowEvent;
 
         public FlowMonitorService(IProgress<string>? progress = null)
         {
@@ -47,10 +57,63 @@ namespace IspAudit.Utils
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _isRunning = true;
 
-            _monitorTask = Task.Run(() => RunMonitorLoop(_cts.Token), _cts.Token);
+            if (UseWatcherMode)
+            {
+                _monitorTask = Task.Run(() => RunWatcherLoop(_cts.Token), _cts.Token);
+            }
+            else
+            {
+                _monitorTask = Task.Run(() => RunMonitorLoop(_cts.Token), _cts.Token);
+            }
             
-            // Ждем, пока WinDivert откроется
+            // Ждем, пока WinDivert откроется (или Watcher запустится)
             return _readySignal.Task;
+        }
+
+        private async Task RunWatcherLoop(CancellationToken token)
+        {
+            try
+            {
+                _progress?.Report("[FlowMonitor] Запуск в режиме Watcher (Polling)...");
+                FlowOpenedUtc = DateTime.UtcNow;
+                _readySignal.TrySetResult(true);
+
+                var seenConnections = new HashSet<string>();
+
+                while (!token.IsCancellationRequested)
+                {
+                    var snapshot = await _watcher.GetSnapshotAsync(token).ConfigureAwait(false);
+                    
+                    foreach (var conn in snapshot)
+                    {
+                        // Формируем уникальный ключ соединения
+                        var key = $"{conn.RemoteIp}:{conn.RemotePort}:{conn.LocalPort}:{conn.Protocol}";
+                        
+                        if (seenConnections.Add(key))
+                        {
+                            TotalEventsCount++;
+                            if (TotalEventsCount == 1)
+                            {
+                                FirstEventUtc = DateTime.UtcNow;
+                            }
+
+                            byte proto = conn.Protocol == TransportProtocol.TCP ? (byte)6 : (byte)17;
+                            OnFlowEvent?.Invoke(TotalEventsCount, conn.ProcessId, proto, conn.RemoteIp, conn.RemotePort, conn.LocalPort);
+                        }
+                    }
+
+                    // Пауза между опросами (1 секунда)
+                    await Task.Delay(1000, token).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                _progress?.Report($"[FlowMonitor] Watcher Error: {ex.Message}");
+            }
+            finally
+            {
+                _isRunning = false;
+            }
         }
 
         private void RunMonitorLoop(CancellationToken token)
@@ -60,7 +123,8 @@ namespace IspAudit.Utils
                 _progress?.Report("[FlowMonitor] Открытие WinDivert Flow layer...");
                 
                 const string flowFilter = "true"; // Слушаем все Flow события в системе
-                _handle = WinDivertNative.Open(flowFilter, WinDivertNative.Layer.Flow, 0, 
+                // A1: Используем низкий приоритет (-1000), чтобы не конфликтовать с Network слоем (RST blocker)
+                _handle = WinDivertNative.Open(flowFilter, WinDivertNative.Layer.Flow, -1000, 
                     WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.RecvOnly);
                 
                 FlowOpenedUtc = DateTime.UtcNow;
@@ -104,7 +168,24 @@ namespace IspAudit.Utils
 
                     var pid = (int)addr.Data.Flow.ProcessId;
                     var protocol = addr.Data.Flow.Protocol;
-                    var remoteIp = addr.Data.Flow.RemoteAddr1; // IPv4 (first 32 bits)
+                    
+                    // Конвертируем IP из WinDivert (Network Byte Order) в IPAddress
+                    uint remoteAddrRaw = addr.Data.Flow.RemoteAddr1;
+                    var ipBytes = BitConverter.GetBytes(remoteAddrRaw);
+                    // WinDivert возвращает в Big Endian (Network Order), IPAddress конструктор ожидает байты в правильном порядке
+                    // Но BitConverter зависит от архитектуры (Little Endian на x86/x64).
+                    // Если мы на Little Endian, GetBytes перевернет порядок.
+                    // Нам нужно получить байты так, как они лежат в памяти (Big Endian от сети).
+                    // addr.Data.Flow.RemoteAddr1 - это uint.
+                    // Если это IPv4, то это 4 байта.
+                    
+                    // FIX: Используем проверенный метод из TrafficAnalyzer
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        Array.Reverse(ipBytes);
+                    }
+                    var remoteIp = new IPAddress(ipBytes);
+
                     var remotePort = addr.Data.Flow.RemotePort;
                     var localPort = addr.Data.Flow.LocalPort;
 

@@ -32,7 +32,7 @@ namespace IspAudit.Utils
         private readonly IBlockageClassifier _classifier;
         private readonly IBypassEnforcer _bypassEnforcer;
         
-        public LiveTestingPipeline(PipelineConfig config, IProgress<string>? progress = null, IspAudit.Bypass.WinDivertBypassManager? bypassManager = null)
+        public LiveTestingPipeline(PipelineConfig config, IProgress<string>? progress = null, IspAudit.Bypass.WinDivertBypassManager? bypassManager = null, DnsParserService? dnsParser = null)
         {
             _config = config;
             _progress = progress;
@@ -48,7 +48,7 @@ namespace IspAudit.Utils
             }
 
             // Инициализация модулей
-            _tester = new StandardHostTester(progress);
+            _tester = new StandardHostTester(progress, dnsParser?.DnsCache);
             _classifier = new StandardBlockageClassifier();
             _bypassEnforcer = new WinDivertBypassEnforcer(_bypassManager, _tester, progress);
             

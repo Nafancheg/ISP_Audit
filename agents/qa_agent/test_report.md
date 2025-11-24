@@ -175,3 +175,28 @@
 - Приложение компилируется без ошибок.
 - XAML-биндинги работают корректно (нет ошибок в Output при запуске).
 - Кнопка "Сбросить" работает и сбрасывает состояние пайплайна.
+
+## Результаты тестирования D2, A1-A4
+
+### ✅ PASS: D2 - UI индикация Flow
+- В `MainViewModel` добавлены свойства `FlowEventsCount` и `ConnectionsDiscovered`.
+- В `MainWindow.xaml` добавлен блок статистики сети.
+- При получении событий от `FlowMonitorService` счетчики обновляются в реальном времени.
+
+### ✅ PASS: A1 - Приоритет Flow layer
+- В `FlowMonitorService.cs` приоритет изменен с 0 на -1000.
+- Это должно снизить вероятность конфликтов с Network layer (RST blocker).
+
+### ✅ PASS: A2 - Флаги RST blocker
+- В `WinDivertBypassManager.cs` флаги RST blocker изменены с `Sniff|Drop` на `None` (0).
+- Пакеты перехватываются и дропаются (не реинжектятся) в `PumpPackets`.
+
+### ✅ PASS: A3 - UI предупреждение RST
+- В `WinDivertBypassManager.cs` добавлено свойство `IsRstBlockerActive`.
+- В `MainViewModel.cs` добавлена логика проверки: если стратегия требует RST (DROP_RST), а блокер не активен -> `BypassWarningText`.
+- В `MainWindow.xaml` добавлен красный баннер предупреждения в `FixStatusBar`.
+
+### ✅ PASS: A4 - Отключение Flow при Bypass
+- В `MainViewModel.cs` в `RunLivePipelineAsync` добавлена проверка `_bypassManager.State == Enabled`.
+- Если Bypass активен, `_flowMonitor` не запускается, чтобы избежать конфликта с RST blocker.
+- Пользователю выводится предупреждение в статус.

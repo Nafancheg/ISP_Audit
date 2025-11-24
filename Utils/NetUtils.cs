@@ -6,11 +6,106 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json;
+using System.Linq;
 
 namespace IspAudit.Utils
 {
     public static class NetUtils
     {
+        private const string DoHUrlTemplate = "https://cloudflare-dns.com/dns-query?name={0}&type=A";
+
+        public class DnsResolutionResult
+        {
+            public List<IPAddress> Addresses { get; set; } = new();
+            public bool SystemDnsFailed { get; set; }
+            public bool SystemDnsBogus { get; set; }
+            public string Source { get; set; } = "System"; // "System" or "DoH"
+        }
+
+        /// <summary>
+        /// Пытается разрешить имя хоста через системный DNS, а при неудаче - через Cloudflare DoH.
+        /// Возвращает результат с метаданными о том, какой метод сработал.
+        /// </summary>
+        public static async Task<DnsResolutionResult> ResolveWithFallbackAsync(string host)
+        {
+            var result = new DnsResolutionResult();
+
+            // 1. Пробуем системный DNS
+            var systemResult = await SafeDnsGetV4Async(host).ConfigureAwait(false);
+            
+            if (systemResult.Count == 0)
+            {
+                result.SystemDnsFailed = true;
+            }
+            else if (systemResult.Any(IsBogusIPv4))
+            {
+                result.SystemDnsBogus = true;
+                result.SystemDnsFailed = true; // Bogus is effectively a failure
+            }
+            else
+            {
+                // System DNS OK
+                result.Addresses = systemResult;
+                result.Source = "System";
+                return result;
+            }
+
+            // 2. Если системный DNS вернул пустоту или мусор, пробуем DoH
+            try
+            {
+                var dohResult = await ResolveDohAAsync(host).ConfigureAwait(false);
+                if (dohResult.Count > 0)
+                {
+                    result.Addresses = dohResult;
+                    result.Source = "DoH";
+                    return result;
+                }
+            }
+            catch { /* Ignore DoH errors */ }
+
+            // Возвращаем что есть (даже если это bogus IP от системы, если DoH не сработал)
+            result.Addresses = systemResult;
+            return result;
+        }
+
+        private static async Task<List<IPAddress>> ResolveDohAAsync(string host)
+        {
+            var res = new List<IPAddress>();
+            try
+            {
+                using var handler = new HttpClientHandler { AutomaticDecompression = DecompressionMethods.All };
+                using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(3) };
+                var url = string.Format(DoHUrlTemplate, Uri.EscapeDataString(host));
+
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.Accept.ParseAdd("application/dns-json");
+                
+                using var resp = await http.SendAsync(req).ConfigureAwait(false);
+                resp.EnsureSuccessStatusCode();
+                
+                var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                using var doc = JsonDocument.Parse(json);
+                
+                if (doc.RootElement.TryGetProperty("Answer", out var ans) && ans.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var entry in ans.EnumerateArray())
+                    {
+                        if (entry.TryGetProperty("type", out var t) && t.GetInt32() == 1 && entry.TryGetProperty("data", out var data))
+                        {
+                            var ipStr = data.GetString();
+                            if (IPAddress.TryParse(ipStr, out var ip) && ip.AddressFamily == AddressFamily.InterNetwork)
+                            {
+                                res.Add(ip);
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+            return res;
+        }
+
         public static bool LikelyVpnActive()
         {
             try

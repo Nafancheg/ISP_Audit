@@ -56,7 +56,7 @@ namespace IspAudit.Utils
                         MaxConcurrentTests = 5,
                         TestTimeout = TimeSpan.FromSeconds(3)
                     };
-                    pipeline = new LiveTestingPipeline(pipelineConfig, progress, bypassManager);
+                    pipeline = new LiveTestingPipeline(pipelineConfig, progress, bypassManager, dnsParser);
                     progress?.Report("✓ Live-testing pipeline активен");
                 }
 
@@ -77,7 +77,7 @@ namespace IspAudit.Utils
                 int connectionCount = 0;
                 int totalFlowEvents = 0;
                 int targetPidMatches = 0;
-                void OnFlowEvent(int eventNum, int pid, byte protocol, uint remoteIp, ushort remotePort, ushort localPort)
+                void OnFlowEvent(int eventNum, int pid, byte protocol, IPAddress remoteIp, ushort remotePort, ushort localPort)
                 {
                     totalFlowEvents++;
                     
@@ -87,30 +87,25 @@ namespace IspAudit.Utils
                     
                     targetPidMatches++;
                     
-                    // ИСПРАВЛЕНИЕ: WinDivert возвращает IP в host byte order, конвертируем правильно
-                    var ipBytes = BitConverter.GetBytes(remoteIp);
-                    if (BitConverter.IsLittleEndian)
-                        Array.Reverse(ipBytes);
-                    var ip = new IPAddress(ipBytes);
-                    var key = $"{ip}:{remotePort}:{protocol}";
+                    var key = $"{remoteIp}:{remotePort}:{protocol}";
                     
                     if (connections.TryAdd(key, new ConnectionInfo
                     {
-                        RemoteIp = ip,
+                        RemoteIp = remoteIp,
                         RemotePort = remotePort,
                         Protocol = protocol == 6 ? TransportProtocol.TCP : TransportProtocol.UDP,
                         FirstSeen = DateTime.UtcNow
                     }))
                     {
                         connectionCount++;
-                        progress?.Report($"[TrafficAnalyzer] Новое соединение #{connectionCount}: {ip}:{remotePort} (proto={protocol}, pid={pid})");
+                        progress?.Report($"[TrafficAnalyzer] Новое соединение #{connectionCount}: {remoteIp}:{remotePort} (proto={protocol}, pid={pid})");
                         
                         // Live testing для нового соединения
                         if (pipeline != null)
                         {
                             var host = new IspAudit.Core.Models.HostDiscovered(
-                                Key: $"{ip}:{remotePort}:{protocol}",
-                                RemoteIp: ip,
+                                Key: $"{remoteIp}:{remotePort}:{protocol}",
+                                RemoteIp: remoteIp,
                                 RemotePort: remotePort,
                                 Protocol: protocol == 6 ? IspAudit.Bypass.TransportProtocol.Tcp : IspAudit.Bypass.TransportProtocol.Udp,
                                 DiscoveredAt: DateTime.UtcNow
@@ -168,8 +163,8 @@ namespace IspAudit.Utils
                 var dnsCache = new ConcurrentDictionary<string, string>(dnsParser.DnsCache);
                 await EnrichWithHostnamesAsync(connections, dnsCache, progress, cancellationToken).ConfigureAwait(false);
 
-                // Генерация профиля
-                return BuildGameProfile(connections, null, progress);
+                // Генерация профиля (включая неудачные DNS запросы)
+                return BuildGameProfile(connections, dnsParser.FailedRequests, null, progress);
             }, cancellationToken).ConfigureAwait(false);
         }
 
@@ -300,7 +295,7 @@ namespace IspAudit.Utils
                 await EnrichWithHostnamesAsync(connections, dnsCache, progress, cancellationToken).ConfigureAwait(false);
 
                 // Генерация профиля
-                var profile = BuildGameProfile(connections, processName, progress);
+                var profile = BuildGameProfile(connections, null, processName, progress);
                 return profile;
             }).ConfigureAwait(false);
         }
@@ -883,6 +878,7 @@ namespace IspAudit.Utils
         /// </summary>
         private static GameProfile BuildGameProfile(
             ConcurrentDictionary<string, ConnectionInfo> connections,
+            IReadOnlyDictionary<string, DnsFailureInfo>? failedDnsRequests,
             string? processName,
             IProgress<string>? progress)
         {
@@ -896,6 +892,7 @@ namespace IspAudit.Utils
 
             var targets = new List<TargetDefinition>();
 
+            // 1. Добавляем успешные соединения
             foreach (var group in targetGroups)
             {
                 var hostname = group.Key;
@@ -919,6 +916,32 @@ namespace IspAudit.Utils
                 
                 targets.Add(target);
                 progress?.Report($"  • {hostname} ({fallbackIp}): порты {string.Join(", ", portsUsed)} ({string.Join(", ", protocols)})");
+            }
+
+            // 2. Добавляем неудачные DNS запросы (если их еще нет в списке)
+            if (failedDnsRequests != null && failedDnsRequests.Count > 0)
+            {
+                progress?.Report($"Обработка {failedDnsRequests.Count} сбойных DNS-запросов...");
+                foreach (var fail in failedDnsRequests.Values)
+                {
+                    // Пропускаем, если этот хост уже есть в успешных (возможно, был временный сбой, но потом соединение прошло)
+                    if (targets.Any(t => t.Host.Equals(fail.Hostname, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+
+                    var target = new TargetDefinition
+                    {
+                        Name = fail.Hostname,
+                        Host = fail.Hostname,
+                        Service = "dns-failed", // Маркер для UI
+                        Critical = false,
+                        FallbackIp = "", // IP неизвестен
+                        Ports = new List<int>(), // Порты неизвестны (скорее всего 80/443)
+                        Protocols = new List<string>()
+                    };
+                    
+                    targets.Add(target);
+                    progress?.Report($"  • {fail.Hostname} (DNS FAIL: {fail.Error})");
+                }
             }
 
             return new GameProfile

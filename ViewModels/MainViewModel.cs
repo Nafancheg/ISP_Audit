@@ -66,6 +66,7 @@ namespace ISPAudit.ViewModels
         private Dictionary<string, TestResult> _testResultMap = new();
         private string _exePath = "";
         private string _currentAction = "";
+        private string _bypassWarningText = "";
 
         public ObservableCollection<TestResult> TestResults { get; set; } = new();
 
@@ -165,7 +166,49 @@ namespace ISPAudit.ViewModels
         // Exe Scenario Properties
         private bool _isDiagnosticRunning = false;
         private string _diagnosticStatus = "";
+        private int _flowEventsCount;
+        private int _connectionsDiscovered;
+        private string _flowModeText = "WinDivert"; // Default
 
+        public string BypassWarningText
+        {
+            get => _bypassWarningText;
+            set
+            {
+                _bypassWarningText = value;
+                OnPropertyChanged(nameof(BypassWarningText));
+            }
+        }
+
+        public string FlowModeText
+        {
+            get => _flowModeText;
+            set
+            {
+                _flowModeText = value;
+                OnPropertyChanged(nameof(FlowModeText));
+            }
+        }
+
+        public int FlowEventsCount
+        {
+            get => _flowEventsCount;
+            set
+            {
+                _flowEventsCount = value;
+                OnPropertyChanged(nameof(FlowEventsCount));
+            }
+        }
+
+        public int ConnectionsDiscovered
+        {
+            get => _connectionsDiscovered;
+            set
+            {
+                _connectionsDiscovered = value;
+                OnPropertyChanged(nameof(ConnectionsDiscovered));
+            }
+        }
 
         public bool IsDiagnosticRunning
         {
@@ -208,9 +251,30 @@ namespace ISPAudit.ViewModels
             set { _enableAutoBypass = value; OnPropertyChanged(nameof(EnableAutoBypass)); }
         }
 
-
-
-
+        private void UpdateBypassWarning()
+        {
+            if (_bypassManager != null && _bypassManager.State == BypassState.Enabled)
+            {
+                // A3: Check if we expected RST blocking (DROP_RST strategy) but didn't get it
+                bool rstExpected = ActiveFixes.Any(f => f.Type == FixType.Bypass && 
+                    f.OriginalSettings != null && 
+                    f.OriginalSettings.ContainsKey("Strategy") && 
+                    (f.OriginalSettings["Strategy"] == "DROP_RST" || f.OriginalSettings["Strategy"] == "TCP_RST_DROP"));
+                
+                if (rstExpected && !_bypassManager.IsRstBlockerActive)
+                {
+                    BypassWarningText = "⚠️ Обход активен без RST-защиты (возможны разрывы)";
+                }
+                else
+                {
+                    BypassWarningText = "";
+                }
+            }
+            else
+            {
+                BypassWarningText = "";
+            }
+        }
 
         public ICommand BrowseExeCommand { get; }
 
@@ -644,7 +708,11 @@ namespace ISPAudit.ViewModels
                         return;
 
                     case FixType.Bypass:
-                        if (_bypassManager == null) _bypassManager = new WinDivertBypassManager();
+                        if (_bypassManager == null) 
+                        {
+                            _bypassManager = new WinDivertBypassManager();
+                            _bypassManager.StateChanged += (s, e) => System.Windows.Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
+                        }
                         
                         var strategy = result.BypassStrategy ?? "UNKNOWN";
                         // Маппинг стратегий
@@ -669,6 +737,9 @@ namespace ISPAudit.ViewModels
                             OriginalSettings = new Dictionary<string, string> { { "Strategy", strategy } }
                         };
                         success = true;
+                        
+                        // Update warning immediately
+                        System.Windows.Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
                         break;
                     
                     default:
@@ -821,7 +892,7 @@ namespace ISPAudit.ViewModels
                 {
                     System.Windows.MessageBox.Show(
                         "Для захвата трафика требуются права администратора.\n\n" +
-                        "Запустите приложение от имени администратора.", 
+                        "Запустите приложение от имени администратора", 
                         "Требуются права администратора", 
                         System.Windows.MessageBoxButton.OK, 
                         System.Windows.MessageBoxImage.Warning);
@@ -839,6 +910,8 @@ namespace ISPAudit.ViewModels
                 IsDiagnosticRunning = true;
                 DiagnosticStatus = "Запуск приложения...";
                 TestResults.Clear();
+                FlowEventsCount = 0;
+                ConnectionsDiscovered = 0;
                 OnPropertyChanged(nameof(CompletedTests)); // Важно: сначала обновляем Value (0), чтобы не превысить старый Maximum
                 OnPropertyChanged(nameof(TotalTargets));   // Затем обновляем Maximum (0)
                 OnPropertyChanged(nameof(ProgressBarMax));
@@ -846,6 +919,10 @@ namespace ISPAudit.ViewModels
                 // Настройка отмены
                 _cts = new CancellationTokenSource();
                 
+                // Сброс DNS кеша перед захватом (по требованию пользователя)
+                Log("[Pipeline] Flushing DNS cache...");
+                await RunFlushDnsAsync();
+
                 // Шаг 1: Запуск мониторинговых сервисов (D1)
                 Log("[Services] Starting monitoring services...");
                 var progress = new Progress<string>(msg => 
@@ -860,6 +937,45 @@ namespace ISPAudit.ViewModels
                 
                 // 1.1 Flow Monitor
                 _flowMonitor = new FlowMonitorService(progress);
+                
+                // D2: Subscribe to Flow events for UI updates
+                var uniqueConnections = new System.Collections.Concurrent.ConcurrentDictionary<string, bool>();
+                _flowMonitor.OnFlowEvent += (count, pid, proto, remoteIp, remotePort, localPort) => 
+                {
+                    // Update counters
+                    var key = $"{remoteIp}:{remotePort}:{proto}";
+                    if (uniqueConnections.TryAdd(key, true))
+                    {
+                        // New connection
+                        System.Windows.Application.Current?.Dispatcher.Invoke(() => 
+                        {
+                            ConnectionsDiscovered = uniqueConnections.Count;
+                        });
+                    }
+
+                    // Update total events (throttle slightly if needed, but for now direct update)
+                    if (count % 10 == 0) // Update UI every 10 events to reduce load
+                    {
+                        System.Windows.Application.Current?.Dispatcher.Invoke(() => 
+                        {
+                            FlowEventsCount = count;
+                        });
+                    }
+                };
+
+                // A4: If Bypass is active OR AutoBypass is enabled, use Watcher mode (IP Helper API) to avoid WinDivert conflict
+                bool isBypassActive = (_bypassManager != null && _bypassManager.State == BypassState.Enabled) || EnableAutoBypass;
+                if (isBypassActive)
+                {
+                    Log($"[Pipeline] Bypass/AutoBypass active: Switching FlowMonitor to Watcher mode (IP Helper API). AutoBypass={EnableAutoBypass}");
+                    _flowMonitor.UseWatcherMode = true;
+                    FlowModeText = "Watcher (IP Helper)";
+                }
+                else
+                {
+                    FlowModeText = "WinDivert (Driver)";
+                }
+                
                 await _flowMonitor.StartAsync(_cts.Token).ConfigureAwait(false);
                 
                 // 1.2 Network Monitor (для DNS)
@@ -868,6 +984,17 @@ namespace ISPAudit.ViewModels
                 
                 // 1.3 DNS Parser (подписывается на Network Monitor)
                 _dnsParser = new DnsParserService(_networkMonitor, progress);
+                _dnsParser.OnDnsLookupFailed += (hostname, error) => 
+                {
+                    System.Windows.Application.Current?.Dispatcher.Invoke(() => 
+                    {
+                        // Добавляем в UI как сбойный тест
+                        UpdateTestResult(hostname, TestStatus.Fail, $"DNS сбой: {error}");
+                        
+                        // Пытаемся разрешить самостоятельно (Smart DNS / DoH)
+                        _ = ResolveUnknownHostAsync(hostname); 
+                    });
+                };
                 await _dnsParser.StartAsync().ConfigureAwait(false);
                 
                 // Шаг 2: Warmup через TestNetworkApp (его трафик попадет в сервисы)
@@ -914,6 +1041,7 @@ namespace ISPAudit.ViewModels
                 if (_bypassManager == null)
                 {
                     _bypassManager = new WinDivertBypassManager();
+                    _bypassManager.StateChanged += (s, e) => System.Windows.Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
                 }
 
                 // Запуск анализатора с Live Testing (НОВАЯ ВЕРСИЯ — использует сервисы)
@@ -1063,12 +1191,22 @@ namespace ISPAudit.ViewModels
 
             try 
             {
-                var entry = await System.Net.Dns.GetHostEntryAsync(ip);
-                if (!string.IsNullOrEmpty(entry.HostName))
+                var dnsResult = await NetUtils.ResolveWithFallbackAsync(ip);
+                if (dnsResult.Addresses.Count > 0)
                 {
+                    // Пытаемся получить имя хоста (Reverse DNS) только если IP валидный
+                    // Но если это не удастся, используем IP как имя
+                    string hostName = ip;
+                    try 
+                    {
+                        var entry = await System.Net.Dns.GetHostEntryAsync(ip);
+                        if (!string.IsNullOrEmpty(entry.HostName)) hostName = entry.HostName;
+                    }
+                    catch {}
+
                     var newTarget = new Target 
                     { 
-                        Name = entry.HostName, 
+                        Name = hostName, 
                         Host = ip, 
                         Service = "Resolved" 
                     };
@@ -1081,6 +1219,13 @@ namespace ISPAudit.ViewModels
                         if (result != null)
                         {
                             result.Target = newTarget;
+                            
+                            // Если IP был получен через DoH (системный DNS сбойнул), добавляем инфо
+                            if (dnsResult.SystemDnsFailed)
+                            {
+                                result.Details += "\n⚠️ Имя хоста разрешено через DoH (системный DNS недоступен/фильтруется)";
+                                if (result.Status == TestStatus.Pass) result.Status = TestStatus.Warn;
+                            }
                         }
                     });
                 }
@@ -1123,8 +1268,9 @@ namespace ISPAudit.ViewModels
                             }
 
                             // Resolve Host
-                            var addresses = await System.Net.Dns.GetHostAddressesAsync(t.Host);
-                            foreach (var ip in addresses)
+                            var dnsResult = await NetUtils.ResolveWithFallbackAsync(t.Host);
+                            
+                            foreach (var ip in dnsResult.Addresses)
                             {
                                 var ipStr = ip.ToString();
                                 if (!_resolvedIpMap.ContainsKey(ipStr))
@@ -1194,6 +1340,38 @@ namespace ISPAudit.ViewModels
                             UpdateTestResult(host, TestStatus.Fail, msg);
                             _lastUpdatedHost = host;
                         }
+                    }
+                }
+                else if (msg.StartsWith("✓✓ "))
+                {
+                    // Успешный bypass: "✓✓ BYPASS РАБОТАЕТ! 1.2.3.4:443 теперь доступен..."
+                    // Ищем хост между "! " и " теперь"
+                    var match = System.Text.RegularExpressions.Regex.Match(msg, @"! (.*?) теперь доступен");
+                    if (match.Success)
+                    {
+                        var hostPort = match.Groups[1].Value.Trim();
+                        var host = hostPort.Split(':')[0]; // Отсекаем порт если есть
+                        
+                        // Находим существующий результат чтобы дополнить лог, а не затереть
+                        var existing = TestResults.FirstOrDefault(t => t.Target.Host == host || t.Target.Name == host);
+                        var newDetails = msg;
+                        if (existing != null && !string.IsNullOrEmpty(existing.Details))
+                        {
+                            newDetails = existing.Details + "\n" + msg;
+                        }
+                        
+                        UpdateTestResult(host, TestStatus.Pass, newDetails);
+                        _lastUpdatedHost = host;
+                    }
+                }
+                else if (msg.StartsWith("✗ ") && !string.IsNullOrEmpty(_lastUpdatedHost))
+                {
+                    // Неудачный bypass: "✗ Комбинированный bypass ... не помог"
+                    var existing = TestResults.FirstOrDefault(t => t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
+                    if (existing != null)
+                    {
+                        existing.Details += "\n" + msg;
+                        // Статус остается Fail
                     }
                 }
                 else if (msg.Contains("→ Стратегия:") && !string.IsNullOrEmpty(_lastUpdatedHost))
@@ -1289,6 +1467,34 @@ namespace ISPAudit.ViewModels
             OnPropertyChanged(nameof(PassCount));
             OnPropertyChanged(nameof(FailCount));
             OnPropertyChanged(nameof(WarnCount));
+        }
+
+        private async Task RunFlushDnsAsync()
+        {
+            try
+            {
+                Log("[DNS] Executing 'ipconfig /flushdns'...");
+                var startInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "ipconfig",
+                    Arguments = "/flushdns",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true
+                };
+
+                using var process = System.Diagnostics.Process.Start(startInfo);
+                if (process != null)
+                {
+                    await process.WaitForExitAsync();
+                    var output = await process.StandardOutput.ReadToEndAsync();
+                    Log($"[DNS] Flush result: {output.Trim()}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[DNS] Flush failed: {ex.Message}");
+            }
         }
 
         /// <summary>

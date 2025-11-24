@@ -10,10 +10,12 @@ namespace IspAudit.Core.Modules
     public class StandardHostTester : IHostTester
     {
         private readonly IProgress<string>? _progress;
+        private readonly System.Collections.Generic.IReadOnlyDictionary<string, string>? _dnsCache;
 
-        public StandardHostTester(IProgress<string>? progress)
+        public StandardHostTester(IProgress<string>? progress, System.Collections.Generic.IReadOnlyDictionary<string, string>? dnsCache = null)
         {
             _progress = progress;
+            _dnsCache = dnsCache;
         }
 
         public async Task<HostTested> TestHostAsync(HostDiscovered host, CancellationToken ct)
@@ -29,15 +31,24 @@ namespace IspAudit.Core.Modules
 
             try
             {
-                // 1. Reverse DNS (быстро)
-                try
+                // 0. Проверка в DNS кеше (самый быстрый и точный способ)
+                if (_dnsCache != null && _dnsCache.TryGetValue(host.RemoteIp.ToString(), out var cachedName))
                 {
-                    var hostEntry = await System.Net.Dns.GetHostEntryAsync(host.RemoteIp.ToString()).ConfigureAwait(false);
-                    hostname = hostEntry.HostName;
+                    hostname = cachedName;
                 }
-                catch
+
+                // 1. Reverse DNS (если нет в кеше)
+                if (string.IsNullOrEmpty(hostname))
                 {
-                    // Не критично, продолжаем
+                    try
+                    {
+                        var hostEntry = await System.Net.Dns.GetHostEntryAsync(host.RemoteIp.ToString()).ConfigureAwait(false);
+                        hostname = hostEntry.HostName;
+                    }
+                    catch
+                    {
+                        // Не критично, продолжаем
+                    }
                 }
 
                 // 2. TCP connect (таймаут 3с)

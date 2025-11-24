@@ -14,7 +14,7 @@
 1. В логах bypass-а: TLS ClientHello успешно обнаруживаются и фрагментируются.
 2. При этом RST-блокер либо не стартует (warning о невозможности открыть хэндл), либо не логирует ни одного "RST DROPPED".
 3. В сетевом трафике и логах приложений видны RST сразу после ClientHello / в начале TLS-handshake.
-4. LiveTesting/авторизация Star Citizen / FsHud часто проваливается, несмотря на включенный bypass.
+4. LiveTesting/авторизация Star Citizen / FsHud часто проваливается, несмотря на включённый bypass.
 ```
 
 **Контекст**:
@@ -457,5 +457,78 @@ Generated with AI Assistant
 
 **Результат:**
 GUI переведен на одноступенчатую модель запуска. Пользователь видит одну кнопку, которая запускает последовательное выполнение всех этапов диагностики.
+
+### D2. UI-индикация активности Flow/захвата
+**Статус:** COMPLETED
+**Изменения:**
+1.  **ViewModels/MainViewModel.cs**:
+    -   Добавлены свойства `FlowEventsCount` и `ConnectionsDiscovered`.
+    -   В `RunLivePipelineAsync` добавлена подписка на `_flowMonitor.OnFlowEvent` для обновления счетчиков в реальном времени.
+2.  **MainWindow.xaml**:
+    -   Добавлен блок статистики ("Соединений: X | Событий Flow: Y") в заголовок диагностики.
+
+### A1. Эксперимент с приоритетами Flow layer
+**Статус:** COMPLETED
+**Изменения:**
+1.  **Utils/FlowMonitorService.cs**:
+    -   Приоритет Flow handle изменен с 0 на -1000 для минимизации конфликтов с Network layer.
+
+### A2. Эксперимент с флагами RST-blocker
+**Статус:** COMPLETED
+**Изменения:**
+1.  **Bypass/WinDivertBypassManager.cs**:
+    -   Флаги открытия RST blocker изменены с `Sniff | Drop` на `None` (0).
+    -   Дроп пакетов осуществляется путем их перехвата и отсутствия реинжекта в `PumpPackets`.
+
+### A3. Явная деградация и UI-warning при отсутствии RST-blocker
+**Статус:** COMPLETED
+**Изменения:**
+1.  **Bypass/WinDivertBypassManager.cs**:
+    -   Добавлено свойство `IsRstBlockerActive`.
+2.  **ViewModels/MainViewModel.cs**:
+    -   Добавлено свойство `BypassWarningText`.
+    -   Добавлена логика проверки: если стратегия требует RST (DROP_RST), а блокер не активен -> показываем предупреждение.
+3.  **MainWindow.xaml**:
+    -   Добавлен красный баннер предупреждения в `FixStatusBar`.
+
+### A4. Вариант A — отключение Flow при включении bypass
+**Статус:** COMPLETED
+**Изменения:**
+1.  **ViewModels/MainViewModel.cs**:
+    -   В `RunLivePipelineAsync` добавлена проверка `_bypassManager.State == Enabled`.
+    -   Если Bypass активен, `_flowMonitor` не запускается (Flow layer skipped), чтобы избежать конфликта с RST blocker.
+    -   Пользователю выводится предупреждение в статус.
+
+### B1. TcpConnectionWatcher
+**Статус:** COMPLETED
+**Изменения:**
+1.  **Utils/TcpConnectionWatcher.cs**:
+    -   Реализован компонент для получения снапшотов TCP/UDP соединений через IP Helper API (`GetExtendedTcpTable`).
+    -   Поддержка IPv4 и IPv6.
+    -   Заменяет функционал Flow layer для маппинга PID.
+
+## План (оставшиеся задачи)
+
+### B2. Integration
+**Статус:** COMPLETED
+**Изменения:**
+1.  **Utils/TcpConnectionWatcher.cs**:
+    -   Добавлен метод `ToInfo()` для конвертации нативных структур в управляемые.
+    -   Обновлен `GetSnapshotAsync` для возврата списка `TcpConnectionInfo`.
+2.  **Utils/FlowMonitorService.cs**:
+    -   Добавлено свойство `UseWatcherMode`.
+    -   Реализован цикл опроса `RunWatcherLoop` (1000ms polling).
+    -   Событие `OnFlowEvent` нормализовано для использования `IPAddress` вместо raw uint.
+3.  **Utils/TrafficAnalyzer.cs**:
+    -   Обновлен подписчик `OnFlowEvent` для соответствия новой сигнатуре.
+4.  **ViewModels/MainViewModel.cs**:
+    -   В `RunLivePipelineAsync` добавлена логика: если Bypass активен, включаем `UseWatcherMode = true` для `FlowMonitorService`.
+
+## План (оставшиеся задачи)
+
+- [ ] **QA & Verification**
+  - [ ] Проверить работу в режиме без Bypass (Flow Layer).
+  - [ ] Проверить работу в режиме с Bypass (Watcher Mode).
+  - [ ] Убедиться, что RST-блокер работает стабильно при активном Watcher.
 
 

@@ -36,6 +36,15 @@
                 AutomationProperties.AutomationId="FixStatusBar">
             <!-- Будет показываться через ViewModel когда есть активные фиксы -->
             <StackPanel>
+                <!-- A3: Bypass Warning -->
+                <Border Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1" CornerRadius="6" Margin="0,0,0,12" Padding="12,8"
+                        Visibility="{Binding BypassWarningText, Converter={StaticResource StringToVisibilityConverter}}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="⚠️" Foreground="#DC2626" Margin="0,0,8,0" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding BypassWarningText}" Foreground="#B91C1C" FontWeight="Medium"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- Compact Header (always visible) -->
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -141,6 +150,19 @@
                     </Grid>
                 </StackPanel>
 
+                <!-- Options -->
+                <StackPanel Margin="0,16,0,0">
+                    <CheckBox Content="Включить режим обхода (Auto Bypass)"
+                              IsChecked="{Binding EnableAutoBypass}"
+                              IsEnabled="{Binding IsStart}"
+                              ToolTip="Автоматически применять стратегии обхода (TLS Fragment, RST Drop) при обнаружении блокировок"
+                              AutomationProperties.AutomationId="AutoBypassCheckbox"/>
+                    <TextBlock Text="Включает активный обход DPI. Используйте с осторожностью." 
+                               Style="{StaticResource CaptionStyle}" 
+                               Margin="24,4,0,0" 
+                               Foreground="{StaticResource MutedBrush}"/>
+                </StackPanel>
+
                 <!-- Start Button (Unified) -->
                 <Button Content="{Binding StartButtonText}" 
                     Style="{StaticResource PrimaryButtonStyle}"
@@ -182,7 +204,21 @@
                     <StackPanel Grid.Row="0" 
                                 Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibilityConverter}}"
                                 Margin="0,0,0,16">
-                        <TextBlock Text="Выполняется диагностика..." Style="{StaticResource H2Style}" Margin="0,0,0,8"/>
+                        
+                        <!-- Title Row with Badge -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Text="Выполняется диагностика..." Style="{StaticResource H2Style}" VerticalAlignment="Center"/>
+                            
+                            <!-- Auto Bypass Badge -->
+                            <Border Background="#FEF3F2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="4" Margin="16,0,0,0" Padding="8,2"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding EnableAutoBypass, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="🛡️ Auto Bypass" Foreground="#B91C1C" FontWeight="SemiBold" FontSize="12"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
                         <TextBlock Text="{Binding CurrentAction}" 
                                    Foreground="{StaticResource MutedBrush}"
                                    FontSize="14"
@@ -194,6 +230,14 @@
                                      BorderThickness="0"
                                      Background="#E5E7EB"
                                      Foreground="{StaticResource PrimaryBrush}"/>
+                        
+                        <!-- D2: Flow Stats -->
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBlock Text="Активность сети:" FontWeight="SemiBold" Margin="0,0,8,0" Foreground="#4B5563"/>
+                            <TextBlock Text="{Binding FlowModeText, StringFormat='Режим: {0}'}" Margin="0,0,16,0" Foreground="#4B5563" FontWeight="Medium"/>
+                            <TextBlock Text="{Binding ConnectionsDiscovered, StringFormat='Соединений: {0}'}" Margin="0,0,16,0" Foreground="#374151"/>
+                            <TextBlock Text="{Binding FlowEventsCount, StringFormat='Событий Flow: {0}'}" Foreground="#6B7280"/>
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- Done Header -->
