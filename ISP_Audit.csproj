@@ -12,7 +12,7 @@
     <StartupObject>IspAudit.Program</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- Exclude UI test project from compilation -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);ISP_Audit.UITests/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);ISP_Audit.UITests/**;TestNetworkApp/**</DefaultItemExcludes>
     <!-- Disable WPF design-time build and Hot Reload -->
     <ProvideCommandLineArgs>false</ProvideCommandLineArgs>
     <EnableDefaultItems>true</EnableDefaultItems>

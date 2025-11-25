@@ -13,6 +13,14 @@ namespace ISPAudit
             InitializeComponent();
         }
 
+        private void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            // Позиционирование окна: Слева по центру
+            var workArea = SystemParameters.WorkArea;
+            this.Left = workArea.Left + 50; // Отступ 50px от левого края
+            this.Top = workArea.Top + (workArea.Height - this.Height) / 2;
+        }
+
         private void ToggleFixDetails_Click(object sender, RoutedEventArgs e)
         {
             if (FixDetailsList.Visibility == Visibility.Collapsed)

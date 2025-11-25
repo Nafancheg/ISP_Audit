@@ -16,11 +16,11 @@ namespace IspAudit.Bypass
         public const byte WINDIVERT_EVENT_FLOW_ESTABLISHED = 1;
         public const byte WINDIVERT_EVENT_FLOW_DELETED = 2;
 
-        public const byte WINDIVERT_EVENT_SOCKET_BIND = 0;
-        public const byte WINDIVERT_EVENT_SOCKET_CONNECT = 1;
-        public const byte WINDIVERT_EVENT_SOCKET_LISTEN = 2;
-        public const byte WINDIVERT_EVENT_SOCKET_ACCEPT = 3;
-        public const byte WINDIVERT_EVENT_SOCKET_CLOSE = 4;
+        public const byte WINDIVERT_EVENT_SOCKET_BIND = 3;
+        public const byte WINDIVERT_EVENT_SOCKET_CONNECT = 4;
+        public const byte WINDIVERT_EVENT_SOCKET_LISTEN = 5;
+        public const byte WINDIVERT_EVENT_SOCKET_ACCEPT = 6;
+        public const byte WINDIVERT_EVENT_SOCKET_CLOSE = 7;
 
         [Flags]
         public enum OpenFlags : ulong

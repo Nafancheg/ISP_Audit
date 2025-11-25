@@ -59,6 +59,9 @@ Workflow `.github/workflows/build.yml` автоматически собирае
   - Список сервисов (ItemsControl) с прогресс-индикаторами и иконками статусов
   - Прогресс-бар внизу
 - **MainWindow.xaml.cs**: Code-behind с MVVM-паттерном
+- **Windows/OverlayWindow.xaml**: Компактное окно статуса (AlwaysOnTop), отображаемое во время Live Testing.
+  - Показывает время сессии и количество соединений.
+  - При отсутствии активности (60с) переключается в режим таймера с предложением завершить диагностику.
 - **Wpf/ServiceItemViewModel.cs**: ViewModel для элементов списка сервисов (INotifyPropertyChanged)
 - Старый WinForms GUI сохранён в `GuiForm.cs.old` для истории
 
@@ -70,6 +73,11 @@ Workflow `.github/workflows/build.yml` автоматически собирае
 - **TracerouteTest.cs**: Запуск системного `tracert.exe`, парсинг stdout построчно, фикс кодировки (OEM866)
 - **UdpProbeRunner.cs**: UDP-зонды (DNS на 1.1.1.1:53 с парсингом ответа, Raw UDP пакеты на игровые шлюзы)
 - **RstHeuristic.cs**: Эвристика RST-инжекции по таймингам (без pcap)
+
+### Эвристика анализа (MainViewModel)
+- **AnalyzeHeuristicSeverity**: Фильтрация ложных срабатываний `TLS_DPI`.
+  - Инфраструктурные домены (Microsoft, Azure, Analytics) понижаются до статуса `WARN`.
+  - Проверка "родственных" сервисов: если основной домен доступен, ошибки на субдоменах считаются некритичными.
 
 ### Обход блокировок (Bypass/)
 - **WinDivertBypassManager.cs**: Менеджер WinDivert-драйвера для фильтрации пакетов
@@ -98,10 +106,10 @@ Workflow `.github/workflows/build.yml` автоматически собирае
 ### Утилиты (Utils/)
 - **NetUtils.cs**: Получение внешнего IP через ifconfig.me
 - **GuiProfileStorage.cs**: Сохранение/загрузка профилей диагностики (*.iaprofile) - цели, порты, включённые тесты
-- **FlowMonitorService.cs**: Мониторинг сетевой активности процесса. Использует гибридный подход:
-  - **WinDivert Flow Layer**: Для отслеживания успешных соединений и сбора статистики (PID, IP, Port).
-  - **WinDivert Socket Layer**: Для отслеживания *попыток* соединения (`connect()`), даже если они блокируются фаерволом или провайдером.
-  - **TcpConnectionWatcher**: Fallback-режим (polling) через IP Helper API, если драйвер недоступен.
+- **FlowMonitorService.cs**: Мониторинг сетевой активности процесса. Использует **Гибридную Архитектуру**:
+  - **WinDivert Flow Layer**: Для пассивного анализа (Diag Mode).
+  - **TcpConnectionWatcher (IP Helper)**: Для активного режима (Bypass Mode), чтобы избежать конфликтов драйвера с RST-блокером.
+  - **WinDivert Socket Layer**: Для отслеживания *попыток* соединения (`connect()`), даже если они блокируются.
   - Приоритет драйвера `-1000` (мониторинг не влияет на прохождение трафика).
 - **DnsParserService.cs**: Сниффинг DNS-трафика (UDP 53) для сопоставления IP-адресов с доменными именами.
 - **TrafficAnalyzer.cs**: Оркестратор захвата трафика. Объединяет данные от FlowMonitor, DnsParser и PidTracker для построения профиля целей.

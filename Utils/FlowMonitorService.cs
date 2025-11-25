@@ -28,7 +28,8 @@ namespace IspAudit.Utils
         
         public DateTime? FlowOpenedUtc { get; private set; }
         public DateTime? FirstEventUtc { get; private set; }
-        public int TotalEventsCount { get; private set; }
+        private int _totalEventsCount;
+        public int TotalEventsCount => _totalEventsCount;
 
         /// <summary>
         /// Если true, используется TcpConnectionWatcher (polling) вместо WinDivert Flow Layer.
@@ -94,14 +95,14 @@ namespace IspAudit.Utils
                         
                         if (seenConnections.Add(key))
                         {
-                            TotalEventsCount++;
-                            if (TotalEventsCount == 1)
+                            int count = Interlocked.Increment(ref _totalEventsCount);
+                            if (count == 1)
                             {
                                 FirstEventUtc = DateTime.UtcNow;
                             }
 
                             byte proto = conn.Protocol == TransportProtocol.TCP ? (byte)6 : (byte)17;
-                            OnFlowEvent?.Invoke(TotalEventsCount, conn.ProcessId, proto, conn.RemoteIp, conn.RemotePort, conn.LocalPort);
+                            OnFlowEvent?.Invoke(count, conn.ProcessId, proto, conn.RemoteIp, conn.RemotePort, conn.LocalPort);
                         }
                     }
 
@@ -198,8 +199,9 @@ namespace IspAudit.Utils
                     var localPort = addr.Data.Socket.LocalPort;
 
                     // Передаем событие подписчикам (используем тот же event, так как это тоже "поток")
-                    TotalEventsCount++;
-                    OnFlowEvent?.Invoke(TotalEventsCount, pid, protocol, remoteIp, remotePort, localPort);
+                    int count = Interlocked.Increment(ref _totalEventsCount);
+                    
+                    OnFlowEvent?.Invoke(count, pid, protocol, remoteIp, remotePort, localPort);
                 }
             }
             catch (Exception ex)
@@ -246,9 +248,9 @@ namespace IspAudit.Utils
                         continue;
                     }
 
-                    TotalEventsCount++;
+                    int count = Interlocked.Increment(ref _totalEventsCount);
                     
-                    if (TotalEventsCount == 1)
+                    if (count == 1)
                     {
                         FirstEventUtc = DateTime.UtcNow;
                         var delta = (FirstEventUtc.Value - FlowOpenedUtc.Value).TotalMilliseconds;
@@ -304,10 +306,10 @@ namespace IspAudit.Utils
                     var localPort = addr.Data.Flow.LocalPort;
 
                     // Передаем событие подписчикам
-                    OnFlowEvent?.Invoke(TotalEventsCount, pid, protocol, remoteIp, remotePort, localPort);
+                    OnFlowEvent?.Invoke(count, pid, protocol, remoteIp, remotePort, localPort);
                 }
 
-                _progress?.Report($"[FlowMonitor] Завершение. Обработано событий: {TotalEventsCount}");
+                _progress?.Report($"[FlowMonitor] Завершение. Обработано событий: {_totalEventsCount}");
             }
             catch (System.ComponentModel.Win32Exception wx)
             {

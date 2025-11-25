@@ -6,6 +6,8 @@
         Title="ISP Audit - Диагностика сети"
         Height="800" Width="1400"
         MinHeight="600" MinWidth="1000"
+        WindowStartupLocation="Manual"
+        Loaded="Window_Loaded"
         Background="{StaticResource BgBrush}"
         FontFamily="Segoe UI"
         TextOptions.TextFormattingMode="Display"
@@ -15,7 +17,7 @@
         <vm:MainViewModel/>
     </Window.DataContext>
 
-    <Grid Margin="32">
+    <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -30,8 +32,8 @@
                 BorderBrush="#FEE2E2"
                 BorderThickness="1"
                 CornerRadius="8" 
-                Padding="16,12"
-                Margin="0,0,0,24"
+                Padding="12,8"
+                Margin="0,0,0,12"
                 Visibility="{Binding HasActiveFixes, Converter={StaticResource BoolToVisibilityConverter}}"
                 AutomationProperties.AutomationId="FixStatusBar">
             <!-- Будет показываться через ViewModel когда есть активные фиксы -->
@@ -123,16 +125,17 @@
         <!-- Scenario Selector -->
         <Border Grid.Row="1" 
                 Style="{StaticResource CardStyle}" 
-                Padding="20" 
-                Margin="0,0,0,24"
+                Padding="16" 
+                Margin="0,0,0,12"
                 AutomationProperties.AutomationId="ScenarioSelector">
             <StackPanel>
-                <TextBlock Text="Диагностика приложения" Style="{StaticResource H2Style}" Margin="0,0,0,16"/>
+                <TextBlock Text="Диагностика приложения" Style="{StaticResource H2Style}" Margin="0,0,0,8"/>
                 
                 <!-- Exe Selection -->
                 <StackPanel Margin="0,0,0,0" 
+                            IsEnabled="{Binding IsBasicTestMode, Converter={StaticResource InverseBoolConverter}}"
                             AutomationProperties.AutomationId="ExeScenarioPanel">
-                    <TextBlock Text="Выберите exe файл игры или лаунчера" Style="{StaticResource BodyStyle}" Margin="0,0,0,8"/>
+                    <TextBlock Text="Выберите exe файл игры или лаунчера" Style="{StaticResource BodyStyle}" Margin="0,0,0,4"/>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -150,46 +153,63 @@
                     </Grid>
                 </StackPanel>
 
-                <!-- Options -->
-                <StackPanel Margin="0,16,0,0">
-                    <CheckBox Content="Включить режим обхода (Auto Bypass)"
-                              IsChecked="{Binding EnableAutoBypass}"
-                              IsEnabled="{Binding IsStart}"
-                              ToolTip="Автоматически применять стратегии обхода (TLS Fragment, RST Drop) при обнаружении блокировок"
-                              AutomationProperties.AutomationId="AutoBypassCheckbox"/>
-                    <TextBlock Text="Включает активный обход DPI. Используйте с осторожностью." 
-                               Style="{StaticResource CaptionStyle}" 
-                               Margin="24,4,0,0" 
-                               Foreground="{StaticResource MutedBrush}"/>
-                </StackPanel>
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-                <!-- Start Button (Unified) -->
-                <Button Content="{Binding StartButtonText}" 
-                    Style="{StaticResource PrimaryButtonStyle}"
-                    Command="{Binding StartLiveTestingCommand}"
-                    HorizontalAlignment="Left"
-                    Margin="0,24,0,0"
-                    AutomationProperties.AutomationId="StartButton"/>
+                    <StackPanel Grid.Column="0">
+                        <!-- Basic Services Test Checkbox -->
+                        <CheckBox Content="Тест базовых сервисов (Google, YouTube, Discord)"
+                                  IsChecked="{Binding IsBasicTestMode}"
+                                  IsEnabled="{Binding IsStart}"
+                                  AutomationProperties.AutomationId="BasicTestCheckbox"/>
+
+                        <!-- Options -->
+                        <StackPanel Margin="0,8,0,0">
+                            <CheckBox Content="Включить режим обхода (Auto Bypass)"
+                                      IsChecked="{Binding EnableAutoBypass}"
+                                      IsEnabled="{Binding IsStart}"
+                                      ToolTip="Автоматически применять стратегии обхода (TLS Fragment, RST Drop) при обнаружении блокировок"
+                                      AutomationProperties.AutomationId="AutoBypassCheckbox"/>
+                            <TextBlock Text="Включает активный обход DPI. Используйте с осторожностью." 
+                                       Style="{StaticResource CaptionStyle}" 
+                                       Margin="24,2,0,0" 
+                                       Foreground="{StaticResource MutedBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Start Button (Unified) -->
+                    <Button Grid.Column="1"
+                            Content="{Binding StartButtonText}" 
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Command="{Binding StartLiveTestingCommand}"
+                            VerticalAlignment="Bottom"
+                            Margin="16,0,0,0"
+                            AutomationProperties.AutomationId="StartButton"/>
+                </Grid>
             </StackPanel>
         </Border>
 
         <!-- Test Results -->
         <Border Grid.Row="2" 
                 Style="{StaticResource CardStyle}" 
-                Padding="20"
+                Padding="0"
                 AutomationProperties.AutomationId="TestResults">
             <Grid>
                 <!-- Start State -->
                 <StackPanel Visibility="{Binding IsStart, Converter={StaticResource BoolToVisibilityConverter}}"
                             VerticalAlignment="Center" 
                             HorizontalAlignment="Center"
+                            Margin="16"
                             AutomationProperties.AutomationId="StartState">
                     <TextBlock Text="Готов к диагностике" Style="{StaticResource H2Style}" 
                                Foreground="{StaticResource MutedBrush}" TextAlignment="Center"/>
                     <TextBlock Text="Выберите сценарий и нажмите 'Начать диагностику'" 
                                Style="{StaticResource BodyStyle}"
                                Foreground="{StaticResource MutedBrush}"
-                               TextAlignment="Center" Margin="0,8,0,0"/>
+                               TextAlignment="Center" Margin="0,4,0,0"/>
                 </StackPanel>
 
                 <!-- Active State (Running OR Done) -->
@@ -203,48 +223,48 @@
                     <!-- Running Header -->
                     <StackPanel Grid.Row="0" 
                                 Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibilityConverter}}"
-                                Margin="0,0,0,16">
+                                Margin="16,16,16,8">
                         
                         <!-- Title Row with Badge -->
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <TextBlock Text="Выполняется диагностика..." Style="{StaticResource H2Style}" VerticalAlignment="Center"/>
                             
                             <!-- Auto Bypass Badge -->
-                            <Border Background="#FEF3F2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="4" Margin="16,0,0,0" Padding="8,2"
+                            <Border Background="#FEF3F2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="4" Margin="12,0,0,0" Padding="6,2"
                                     VerticalAlignment="Center"
                                     Visibility="{Binding EnableAutoBypass, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="🛡️ Auto Bypass" Foreground="#B91C1C" FontWeight="SemiBold" FontSize="12"/>
+                                    <TextBlock Text="🛡️ Auto Bypass" Foreground="#B91C1C" FontWeight="SemiBold" FontSize="11"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
 
                         <TextBlock Text="{Binding CurrentAction}" 
                                    Foreground="{StaticResource MutedBrush}"
-                                   FontSize="14"
-                                   Margin="0,0,0,16"
+                                   FontSize="13"
+                                   Margin="0,0,0,8"
                                    TextWrapping="Wrap"
                                    Visibility="{Binding CurrentAction, Converter={StaticResource StringToVisibilityConverter}}"/>
                         <ProgressBar IsIndeterminate="True"
-                                     Height="4" 
+                                     Height="2" 
                                      BorderThickness="0"
                                      Background="#E5E7EB"
                                      Foreground="{StaticResource PrimaryBrush}"/>
                         
                         <!-- D2: Flow Stats -->
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <TextBlock Text="Активность сети:" FontWeight="SemiBold" Margin="0,0,8,0" Foreground="#4B5563"/>
-                            <TextBlock Text="{Binding FlowModeText, StringFormat='Режим: {0}'}" Margin="0,0,16,0" Foreground="#4B5563" FontWeight="Medium"/>
-                            <TextBlock Text="{Binding ConnectionsDiscovered, StringFormat='Соединений: {0}'}" Margin="0,0,16,0" Foreground="#374151"/>
-                            <TextBlock Text="{Binding FlowEventsCount, StringFormat='Событий Flow: {0}'}" Foreground="#6B7280"/>
+                            <TextBlock Text="Активность сети:" FontWeight="SemiBold" Margin="0,0,8,0" Foreground="#4B5563" FontSize="12"/>
+                            <TextBlock Text="{Binding FlowModeText, StringFormat='Режим: {0}'}" Margin="0,0,12,0" Foreground="#4B5563" FontWeight="Medium" FontSize="12"/>
+                            <TextBlock Text="{Binding ConnectionsDiscovered, StringFormat='Соединений: {0}'}" Margin="0,0,12,0" Foreground="#374151" FontSize="12"/>
+                            <TextBlock Text="{Binding FlowEventsCount, StringFormat='Событий Flow: {0}'}" Foreground="#6B7280" FontSize="12"/>
                         </StackPanel>
                     </StackPanel>
 
                     <!-- Done Header -->
                     <StackPanel Grid.Row="1" 
                                 Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibilityConverter}}"
-                                Margin="0,0,0,16">
-                        <Grid Margin="0,0,0,24">
+                                Margin="16,16,16,8">
+                        <Grid Margin="0,0,0,12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -256,39 +276,62 @@
                                 <Button Content="Экспорт отчета" 
                                         Style="{StaticResource SecondaryButtonStyle}"
                                         Command="{Binding ReportCommand}"
-                                        Margin="0,0,8,0"/>
+                                        Margin="0,0,8,0"
+                                        Padding="10,4"
+                                        FontSize="12"/>
                                 <Button Content="Новая диагностика" 
                                         Style="{StaticResource PrimaryButtonStyle}"
                                         Command="{Binding SetStateCommand}"
-                                        CommandParameter="start"/>
+                                        CommandParameter="start"
+                                        Padding="10,4"
+                                        FontSize="12"/>
                             </StackPanel>
                         </Grid>
 
                         <!-- Summary Stats -->
                         <Border Background="#F9FAFB" 
-                                CornerRadius="12" 
-                                Padding="20">
+                                CornerRadius="8" 
+                                Padding="12">
                             <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 
-                                <StackPanel Grid.Column="0">
+                                <StackPanel Grid.Row="0" Grid.Column="0">
                                     <TextBlock Text="Успешно" Style="{StaticResource CaptionStyle}"/>
-                                    <TextBlock Text="{Binding PassCount}" Style="{StaticResource H1Style}" Foreground="{StaticResource PassBrush}"/>
+                                    <TextBlock Text="{Binding PassCount}" Style="{StaticResource H2Style}" Foreground="{StaticResource PassBrush}"/>
                                 </StackPanel>
                                 
-                                <StackPanel Grid.Column="1">
+                                <StackPanel Grid.Row="0" Grid.Column="1">
                                     <TextBlock Text="Ошибки" Style="{StaticResource CaptionStyle}"/>
-                                    <TextBlock Text="{Binding FailCount}" Style="{StaticResource H1Style}" Foreground="{StaticResource FailBrush}"/>
+                                    <TextBlock Text="{Binding FailCount}" Style="{StaticResource H2Style}" Foreground="{StaticResource FailBrush}"/>
                                 </StackPanel>
                                 
-                                <StackPanel Grid.Column="2">
+                                <StackPanel Grid.Row="0" Grid.Column="2">
                                     <TextBlock Text="Предупреждения" Style="{StaticResource CaptionStyle}"/>
-                                    <TextBlock Text="{Binding WarnCount}" Style="{StaticResource H1Style}" Foreground="{StaticResource WarnBrush}"/>
+                                    <TextBlock Text="{Binding WarnCount}" Style="{StaticResource H2Style}" Foreground="{StaticResource WarnBrush}"/>
                                 </StackPanel>
+
+                                <!-- Profile Saved Notification -->
+                                <Border Grid.Row="1" Grid.ColumnSpan="3" 
+                                        Margin="0,8,0,0" 
+                                        Background="#ECFDF5" 
+                                        BorderBrush="#A7F3D0" 
+                                        BorderThickness="1" 
+                                        CornerRadius="4" 
+                                        Padding="8,4"
+                                        Visibility="{Binding DiagnosticStatus, Converter={StaticResource StringToVisibilityConverter}}">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <TextBlock Text="💾" Margin="0,0,8,0" FontSize="12"/>
+                                        <TextBlock Text="{Binding DiagnosticStatus}" Foreground="#047857" FontWeight="Medium" FontSize="12"/>
+                                    </StackPanel>
+                                </Border>
                             </Grid>
                         </Border>
                     </StackPanel>
@@ -327,7 +370,7 @@
                             <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="Black"/>
 
                             <Style TargetType="DataGridColumnHeader">
-                                <Setter Property="Padding" Value="12,10"/>
+                                <Setter Property="Padding" Value="8,6"/>
                                 <Setter Property="Background" Value="#F3F4F6"/>
                                 <Setter Property="FontWeight" Value="SemiBold"/>
                                 <Setter Property="Foreground" Value="#374151"/>
@@ -336,7 +379,7 @@
                             </Style>
                             
                             <Style TargetType="DataGridRow">
-                                <Setter Property="MinHeight" Value="48"/>
+                                <Setter Property="MinHeight" Value="36"/>
                                 <EventSetter Event="MouseDoubleClick" Handler="DataGridRow_MouseDoubleClick"/>
                                 <Style.Triggers>
                                     <Trigger Property="IsSelected" Value="True">
@@ -346,7 +389,7 @@
                             </Style>
                             
                             <Style TargetType="DataGridCell">
-                                <Setter Property="Padding" Value="12,8"/>
+                                <Setter Property="Padding" Value="8,4"/>
                                 <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
                                 <Setter Property="BorderThickness" Value="0"/>
                                 <Setter Property="Template">
@@ -384,7 +427,7 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal">
-                                            <local:StatusDot Status="{Binding Status}" Margin="0,0,8,0"/>
+                                            <local:StatusDot Status="{Binding Status}" Margin="0,0,6,0"/>
                                             <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" FontWeight="Medium"/>
                                         </StackPanel>
                                     </DataTemplate>
@@ -399,9 +442,9 @@
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="TextWrapping" Value="Wrap"/>
-                                        <Setter Property="Padding" Value="12,8"/>
+                                        <Setter Property="Padding" Value="8,4"/>
                                         <Setter Property="VerticalAlignment" Value="Center"/>
-                                        <Setter Property="FontSize" Value="13"/>
+                                        <Setter Property="FontSize" Value="12"/>
                                         <Setter Property="Foreground" Value="#4B5563"/>
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
@@ -415,15 +458,16 @@
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="VerticalAlignment" Value="Center"/>
-                                        <Setter Property="Padding" Value="12,8"/>
+                                        <Setter Property="Padding" Value="8,4"/>
                                         <Setter Property="Foreground" Value="#6B7280"/>
                                         <Setter Property="FontWeight" Value="Medium"/>
+                                        <Setter Property="FontSize" Value="12"/>
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
 
                             <!-- Actions -->
-                            <DataGridTemplateColumn Header="Действия" Width="110" MinWidth="110">
+                            <DataGridTemplateColumn Header="Действия" Width="100" MinWidth="100">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Button Content="Исправить"
@@ -431,8 +475,8 @@
                                                 CommandParameter="{Binding}"
                                                 Visibility="{Binding ShowFixButton, Converter={StaticResource BoolToVisibilityConverter}}"
                                                 Style="{StaticResource PrimaryButtonStyle}"
-                                                Padding="10,6"
-                                                FontSize="12"
+                                                Padding="8,4"
+                                                FontSize="11"
                                                 HorizontalAlignment="Stretch"/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -445,11 +489,21 @@
 
 
 
-        <!-- Footer -->
-        <TextBlock Grid.Row="3" 
-                   Text="ISP Audit v2.0 • Диагностика сетевых проблем (с)DAfanasev 2025"
-                   Style="{StaticResource CaptionStyle}"
-                   HorizontalAlignment="Center"
-                   Margin="0,16,0,0"/>
+        <!-- Footer: User Communication Area -->
+        <Border Grid.Row="3" 
+                Background="#F3F4F6" 
+                CornerRadius="6" 
+                Padding="12,8" 
+                Margin="0,8,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <TextBlock Text="ℹ️" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding UserMessage}" 
+                           Style="{StaticResource BodyStyle}"
+                           FontWeight="Medium"
+                           Foreground="#374151"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+        </Border>
     </Grid>
 </Window>

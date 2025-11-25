@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -194,11 +195,43 @@ namespace IspAudit.Utils
                     // Тип A (IPv4)
                     if (type == 1 && dataLen == 4 && pos + 4 <= length)
                     {
-                        var ip = $"{buffer[pos]}.{buffer[pos + 1]}.{buffer[pos + 2]}.{buffer[pos + 3]}";
+                        var ip = new IPAddress(new byte[] { buffer[pos], buffer[pos + 1], buffer[pos + 2], buffer[pos + 3] }).ToString();
                         if (!string.IsNullOrEmpty(name))
                         {
-                            // Сохраняем имя в нижнем регистре для консистентности
-                            _dnsCache[ip] = name.ToLowerInvariant();
+                            var lowerName = name.ToLowerInvariant();
+                            var isNew = true;
+                            if (_dnsCache.TryGetValue(ip, out var existingName))
+                            {
+                                if (existingName == lowerName) isNew = false;
+                            }
+                            
+                            if (isNew)
+                            {
+                                _dnsCache[ip] = lowerName;
+                                OnHostnameUpdated?.Invoke(ip, lowerName);
+                            }
+                        }
+                    }
+                    // Тип AAAA (IPv6)
+                    else if (type == 28 && dataLen == 16 && pos + 16 <= length)
+                    {
+                        var ipBytes = new byte[16];
+                        Array.Copy(buffer, pos, ipBytes, 0, 16);
+                        var ip = new IPAddress(ipBytes).ToString();
+                        if (!string.IsNullOrEmpty(name))
+                        {
+                            var lowerName = name.ToLowerInvariant();
+                            var isNew = true;
+                            if (_dnsCache.TryGetValue(ip, out var existingName))
+                            {
+                                if (existingName == lowerName) isNew = false;
+                            }
+                            
+                            if (isNew)
+                            {
+                                _dnsCache[ip] = lowerName;
+                                OnHostnameUpdated?.Invoke(ip, lowerName);
+                            }
                         }
                     }
                     // Тип CNAME (5) - можно было бы отслеживать цепочки, но пока просто пропускаем
@@ -281,6 +314,11 @@ namespace IspAudit.Utils
         }
 
         public event Action<string, string>? OnDnsLookupFailed;
+        
+        /// <summary>
+        /// Событие при обновлении/добавлении hostname для IP (IP, Hostname)
+        /// </summary>
+        public event Action<string, string>? OnHostnameUpdated;
     }
 
     public class DnsFailureInfo

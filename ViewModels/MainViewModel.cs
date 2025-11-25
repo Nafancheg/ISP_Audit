@@ -218,6 +218,7 @@ namespace ISPAudit.ViewModels
                 _isDiagnosticRunning = value;
                 OnPropertyChanged(nameof(IsDiagnosticRunning));
                 OnPropertyChanged(nameof(IsRunning)); // Update IsRunning too as it aggregates states
+                OnPropertyChanged(nameof(StartButtonText)); // Update button text when running state changes
             }
         }
 
@@ -232,7 +233,8 @@ namespace ISPAudit.ViewModels
         }
         private bool _enableLiveTesting = true; // Live testing enabled by default
         private bool _enableAutoBypass = false; // Auto-bypass disabled by default (C2 requirement)
-        
+        private bool _isBasicTestMode = false;  // Basic Test Mode (TestNetworkApp only)
+
         // Monitoring Services (D1 refactoring)
         private FlowMonitorService? _flowMonitor;
         private NetworkMonitorService? _networkMonitor;
@@ -249,6 +251,16 @@ namespace ISPAudit.ViewModels
         {
             get => _enableAutoBypass;
             set { _enableAutoBypass = value; OnPropertyChanged(nameof(EnableAutoBypass)); }
+        }
+
+        public bool IsBasicTestMode
+        {
+            get => _isBasicTestMode;
+            set 
+            { 
+                _isBasicTestMode = value; 
+                OnPropertyChanged(nameof(IsBasicTestMode)); 
+            }
         }
 
         private void UpdateBypassWarning()
@@ -277,8 +289,21 @@ namespace ISPAudit.ViewModels
         }
 
         public ICommand BrowseExeCommand { get; }
+        // public ICommand TestBasicServicesCommand { get; } // Removed in favor of CheckBox
 
         public ICommand StartLiveTestingCommand { get; }
+
+        private string _userMessage = "Готов к диагностике. Выберите приложение и нажмите 'Начать'.";
+
+        public string UserMessage
+        {
+            get => _userMessage;
+            set
+            {
+                _userMessage = value;
+                OnPropertyChanged(nameof(UserMessage));
+            }
+        }
 
         public MainViewModel()
         {
@@ -333,6 +358,7 @@ namespace ISPAudit.ViewModels
 
             // Exe Scenario Commands
             BrowseExeCommand = new RelayCommand(_ => BrowseExe(), _ => !IsRunning);
+            // TestBasicServicesCommand = new RelayCommand(async _ => await RunBasicServicesTestAsync(), _ => !IsRunning);
             
             // Load Fix History on startup
             LoadFixHistory();
@@ -411,14 +437,13 @@ namespace ISPAudit.ViewModels
             Log("[CancelAudit] Отправка сигнала отмены...");
             _cts?.Cancel();
             
-            // Немедленное обновление UI после отмены
+            // Не сбрасываем UI в 'start' здесь. 
+            // Пайплайн сам переведет состояние в 'done' через finally блок или обработку отмены,
+            // сохранив результаты для просмотра.
             System.Windows.Application.Current?.Dispatcher.Invoke(() =>
             {
-                IsDiagnosticRunning = false; // Сразу сбрасываем флаг
-                ScreenState = "start"; // Возвращаем в начальное состояние
-                DiagnosticStatus = "Диагностика отменена";
-                Log("[UI] CancelAudit: UI обновлен, ScreenState='start', IsDiagnosticRunning=false");
-                CommandManager.InvalidateRequerySuggested();
+                DiagnosticStatus = "Остановка...";
+                Log("[UI] CancelAudit: Токен отмены установлен, ожидание завершения пайплайна...");
             });
         }
 
@@ -882,6 +907,23 @@ namespace ISPAudit.ViewModels
             }
         }
 
+        private async Task RunBasicServicesTestAsync()
+        {
+            var testAppPath = GetTestNetworkAppPath();
+            
+            if (string.IsNullOrEmpty(testAppPath))
+            {
+                System.Windows.MessageBox.Show("Не удалось найти TestNetworkApp.exe", "Ошибка", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                return;
+            }
+
+            ExePath = testAppPath;
+            Log($"[BasicTest] Selected TestNetworkApp: {ExePath}");
+            
+            // Запускаем диагностику
+            await RunLivePipelineAsync();
+        }
+
         private async Task RunLivePipelineAsync()
         {
             try
@@ -899,10 +941,27 @@ namespace ISPAudit.ViewModels
                     return;
                 }
 
-                if (string.IsNullOrEmpty(ExePath) || !File.Exists(ExePath))
+                // Определение целевого приложения
+                string targetExePath;
+                if (IsBasicTestMode)
                 {
-                    System.Windows.MessageBox.Show("Файл не найден.", "Ошибка", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-                    return;
+                    targetExePath = GetTestNetworkAppPath() ?? "";
+                    if (string.IsNullOrEmpty(targetExePath))
+                    {
+                        System.Windows.MessageBox.Show("Не удалось найти TestNetworkApp.exe", "Ошибка", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                        return;
+                    }
+                    Log($"[Pipeline] Mode: Basic Test (Target: {targetExePath})");
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(ExePath) || !File.Exists(ExePath))
+                    {
+                        System.Windows.MessageBox.Show("Файл не найден.", "Ошибка", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                        return;
+                    }
+                    targetExePath = ExePath;
+                    Log($"[Pipeline] Mode: Normal (Target: {targetExePath})");
                 }
 
                 // Обновление состояния UI
@@ -925,6 +984,16 @@ namespace ISPAudit.ViewModels
 
                 // Шаг 1: Запуск мониторинговых сервисов (D1)
                 Log("[Services] Starting monitoring services...");
+                
+                // Создаем и показываем оверлей сразу
+                var overlay = new ISPAudit.Windows.OverlayWindow();
+                overlay.Show();
+                overlay.StopRequested += () => 
+                {
+                    Log("[Overlay] User requested stop");
+                    CancelAudit();
+                };
+
                 var progress = new Progress<string>(msg => 
                 {
                     System.Windows.Application.Current?.Dispatcher.Invoke(() =>
@@ -932,6 +1001,18 @@ namespace ISPAudit.ViewModels
                         DiagnosticStatus = msg;
                         Log($"[Pipeline] {msg}");
                         ParsePipelineMessage(msg);
+                        UpdateUserMessage(msg); // Обновление пользовательского сообщения
+                        
+                        // Обновляем статус в оверлее
+                        if (msg.Contains("Захват активен"))
+                        {
+                            // Пример: "Захват активен (10с), соединений: 5."
+                            overlay.UpdateStatus(msg);
+                        }
+                        else if (msg.Contains("Обнаружено соединение"))
+                        {
+                            overlay.UpdateStatus("Обнаружено новое соединение...");
+                        }
                     });
                 });
                 
@@ -998,24 +1079,39 @@ namespace ISPAudit.ViewModels
                 await _dnsParser.StartAsync().ConfigureAwait(false);
                 
                 // Шаг 2: Warmup через TestNetworkApp (его трафик попадет в сервисы)
-                try
+                // Если мы в Basic Test Mode, то TestNetworkApp - это и есть цель, поэтому Warmup не нужен (мы его запустим на шаге 3)
+                if (!IsBasicTestMode)
                 {
-                    Log("[Warmup] Starting TestNetworkApp for Flow warmup...");
-                    await WarmupFlowWithTestNetworkAppAsync(_cts.Token).ConfigureAwait(false);
+                    try
+                    {
+                        Log("[Warmup] Starting TestNetworkApp for Flow warmup...");
+                        await WarmupFlowWithTestNetworkAppAsync(
+                            _flowMonitor, 
+                            _dnsParser, 
+                            progress, 
+                            _cts.Token, 
+                            EnableAutoBypass, 
+                            _bypassManager
+                        ).ConfigureAwait(false);
+                    }
+                    catch (Exception warmupEx)
+                    {
+                        Log($"[Warmup] Error (non-critical): {warmupEx.Message}");
+                    }
                 }
-                catch (Exception warmupEx)
+                else
                 {
-                    Log($"[Warmup] Error (non-critical): {warmupEx.Message}");
+                    Log("[Warmup] Skipping warmup step because Basic Test Mode is active");
                 }
                 
                 // Шаг 3: Запуск целевого процесса
                 DiagnosticStatus = "Запуск целевого приложения...";
-                Log($"[Pipeline] Starting process: {ExePath}");
+                Log($"[Pipeline] Starting process: {targetExePath}");
                 using var process = new System.Diagnostics.Process
                 {
                     StartInfo = new System.Diagnostics.ProcessStartInfo
                     {
-                        FileName = ExePath,
+                        FileName = targetExePath,
                         UseShellExecute = true
                     }
                 };
@@ -1056,23 +1152,73 @@ namespace ISPAudit.ViewModels
                     _cts.Token,
                     enableLiveTesting: true,
                     enableAutoBypass: EnableAutoBypass,
-                    bypassManager: _bypassManager
+                    bypassManager: _bypassManager,
+                    onSilenceDetected: async () => 
+                    {
+                        // Callback for silence detection (auto-stop feature)
+                        // Must return Task<bool>: true to continue, false to stop
+                        var task = System.Windows.Application.Current.Dispatcher.Invoke(() => 
+                        {
+                            // Используем уже существующий оверлей
+                            return overlay.ShowSilencePromptAsync(60);
+                        });
+                        return await task;
+                    }
                 );
                 
                 Log($"[Pipeline] Finished. Captured {profile?.Targets?.Count ?? 0} targets.");
                 
+                // Закрываем оверлей после завершения
+                System.Windows.Application.Current?.Dispatcher.Invoke(() => overlay.Close());
+                
+                // Сохранение профиля
+                if (profile != null && profile.Targets.Count > 0)
+                {
+                    try 
+                    {
+                        var profilesDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Profiles");
+                        Directory.CreateDirectory(profilesDir);
+                        
+                        var exeName = Path.GetFileNameWithoutExtension(targetExePath);
+                        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                        var profilePath = Path.Combine(profilesDir, $"{exeName}_{timestamp}.json");
+                        
+                        // Update profile metadata
+                        profile.ExePath = targetExePath;
+                        profile.Name = $"{exeName} (Captured {DateTime.Now:g})";
+                        
+                        var jsonOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+                        var json = System.Text.Json.JsonSerializer.Serialize(profile, jsonOptions);
+                        
+                        await File.WriteAllTextAsync(profilePath, json);
+                        Log($"[Pipeline] Profile saved to: {profilePath}");
+                        
+                        System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                        {
+                             DiagnosticStatus = $"Профиль сохранен: {Path.GetFileName(profilePath)}";
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"[Pipeline] Error saving profile: {ex.Message}");
+                    }
+                }
+                
                 ScreenState = "done";
+                UpdateUserMessage("Диагностика завершена. Проверьте результаты и рекомендации.");
             }
             catch (OperationCanceledException)
             {
                 Log("[Pipeline] Cancelled by user");
                 ScreenState = "done";
+                UpdateUserMessage("Диагностика отменена пользователем.");
             }
             catch (Exception ex)
             {
                 Log($"[Pipeline] Error: {ex.Message}");
                 System.Windows.MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка Pipeline", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                 ScreenState = "done";
+                UpdateUserMessage($"Ошибка диагностики: {ex.Message}");
             }
             finally
             {
@@ -1123,20 +1269,22 @@ namespace ISPAudit.ViewModels
         private System.Collections.Concurrent.ConcurrentDictionary<string, bool> _pendingResolutions = new();
 
         /// <summary>
-        /// Прогревает Flow-слой через однократный запуск TestNetworkApp до старта основной диагностики.
-        /// Используется только в dev/QA сценариях для проверки таймингов Flow (D1).
-        /// Ошибки прогрева логируются, но не мешают основному UX.
+        /// Прогревает Flow-слой и проводит предварительную диагностику через TestNetworkApp.
         /// </summary>
-        private async Task WarmupFlowWithTestNetworkAppAsync(CancellationToken cancellationToken)
+        private async Task WarmupFlowWithTestNetworkAppAsync(
+            FlowMonitorService flowMonitor,
+            DnsParserService dnsParser,
+            IProgress<string> progress,
+            CancellationToken cancellationToken,
+            bool enableAutoBypass,
+            WinDivertBypassManager? bypassManager)
         {
             try
             {
-                // Ищем TestNetworkApp.exe рядом с основным ISP_Audit.exe (однофайловый прогрев)
-                var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                var testAppPath = System.IO.Path.Combine(baseDir, "TestNetworkApp.exe");
-                if (!File.Exists(testAppPath))
+                var testAppPath = GetTestNetworkAppPath();
+                if (string.IsNullOrEmpty(testAppPath))
                 {
-                    Log($"[Warmup] TestNetworkApp not found at '{testAppPath}', skipping warmup");
+                    Log($"[Warmup] TestNetworkApp not found, skipping warmup");
                     return;
                 }
 
@@ -1158,24 +1306,57 @@ namespace ISPAudit.ViewModels
                     return;
                 }
 
-                // Ждём завершения или отмены
+                // Создаем временный PidTracker для тестового процесса
+                var warmupPidTracker = new PidTrackerService(process.Id, progress);
+                await warmupPidTracker.StartAsync(cancellationToken).ConfigureAwait(false);
+
                 try
                 {
-                    using (cancellationToken.Register(() =>
-                    {
-                        try { if (!process.HasExited) process.Kill(); } catch { }
-                    }))
-                    {
-                        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    Log("[Warmup] Cancelled by user");
-                    return;
-                }
+                    Log("[Warmup] Запуск предварительной диагностики...");
+                    
+                    // Запускаем анализатор параллельно с процессом
+                    using var warmupCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    
+                    var analyzerTask = TrafficAnalyzer.AnalyzeProcessTrafficAsync(
+                        process.Id,
+                        null, // Без таймаута, управляем вручную
+                        flowMonitor,
+                        warmupPidTracker,
+                        dnsParser,
+                        progress,
+                        warmupCts.Token,
+                        enableLiveTesting: true, // Всегда включаем тесты для диагностики
+                        enableAutoBypass: enableAutoBypass,
+                        bypassManager: bypassManager
+                    );
 
-                Log($"[Warmup] TestNetworkApp finished with code {process.ExitCode}");
+                    // Ждем завершения тестового приложения
+                    await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                    Log($"[Warmup] TestNetworkApp finished with code {process.ExitCode}");
+
+                    // Даем немного времени на завершение тестов (2 секунды)
+                    try { await Task.Delay(2000, cancellationToken); } catch { }
+
+                    // Останавливаем анализатор
+                    warmupCts.Cancel();
+                    try { await analyzerTask; } catch (OperationCanceledException) { }
+
+                    // Проверка результатов предварительной диагностики
+                    System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        var failedTests = TestResults.Where(t => t.Status == TestStatus.Fail).ToList();
+                        if (failedTests.Count > 0)
+                        {
+                            var names = string.Join(", ", failedTests.Select(t => t.Target.Name).Distinct());
+                            Log($"[Warmup] ⚠️ Базовые сервисы недоступны: {names}");
+                            // Не прерываем работу модальными окнами, результаты видны в списке
+                        }
+                    });
+                }
+                finally
+                {
+                    await warmupPidTracker.StopAsync().ConfigureAwait(false);
+                }
             }
             catch (Exception ex)
             {
@@ -1337,7 +1518,42 @@ namespace ISPAudit.ViewModels
                         if (hostPort.Length == 2)
                         {
                             var host = hostPort[0];
-                            UpdateTestResult(host, TestStatus.Fail, msg);
+                            
+                            // Если цель - IP адрес, убираем "DNS:✓" из сообщения, чтобы не путать пользователя
+                            if (System.Net.IPAddress.TryParse(host, out _))
+                            {
+                                msg = msg.Replace("DNS:✓ ", "").Replace("DNS:✓", "");
+                            }
+
+                            // Добавляем пояснение для TLS_DPI
+                            var status = TestStatus.Fail;
+                            if (msg.Contains("TLS_DPI"))
+                            {
+                                msg += "\nℹ️ Обнаружены признаки DPI (фильтрации трафика).";
+                                
+                                // Эвристика 1: Проверка на служебные/рекламные хосты (Advanced Heuristics)
+                                var heuristic = AnalyzeHeuristicSeverity(host);
+                                if (heuristic.status == TestStatus.Warn)
+                                {
+                                    status = TestStatus.Warn;
+                                    msg += $"\n⚠️ {heuristic.note}";
+                                }
+                                else
+                                {
+                                    // Эвристика 2: Проверяем, есть ли работающие "родственные" сервисы
+                                    bool isRelatedToPassing = TestResults.Any(t => 
+                                        t.Status == TestStatus.Pass && 
+                                        AreHostsRelated(t.Target, host));
+
+                                    if (isRelatedToPassing)
+                                    {
+                                        status = TestStatus.Warn;
+                                        msg += " Связанный сервис доступен, вероятно это частичная блокировка или служебный запрос.";
+                                    }
+                                }
+                            }
+                            
+                            UpdateTestResult(host, status, msg);
                             _lastUpdatedHost = host;
                         }
                     }
@@ -1517,12 +1733,134 @@ namespace ISPAudit.ViewModels
 
         #endregion
 
+        private (TestStatus status, string note) AnalyzeHeuristicSeverity(string host)
+        {
+            host = host.ToLowerInvariant();
+
+            // 1. Microsoft / Windows Infrastructure (Telemetry, Updates, Edge)
+            if (host.EndsWith(".ax-msedge.net") || 
+                host.EndsWith(".windows.net") || 
+                host.EndsWith(".microsoft.com") || 
+                host.EndsWith(".live.com") ||
+                host.EndsWith(".msn.com") ||
+                host.EndsWith(".bing.com") ||
+                host.EndsWith(".office.net"))
+            {
+                return (TestStatus.Warn, "Служебный трафик Microsoft/Windows. Обычно не влияет на работу сторонних приложений.");
+            }
+
+            // 2. Analytics / Ads / Trackers
+            if (host.Contains("google-analytics") || 
+                host.Contains("doubleclick") || 
+                host.Contains("googlesyndication") ||
+                host.Contains("scorecardresearch") ||
+                host.Contains("usercentrics") || // Consent management
+                host.Contains("appsflyer") ||
+                host.Contains("adjust.com"))
+            {
+                return (TestStatus.Warn, "Аналитика/Реклама. Блокировка не критична.");
+            }
+
+            // 3. Generic Cloud Load Balancers (Azure/AWS)
+            // Часто используются как backend, но также часто являются источником ложных срабатываний DPI на служебных запросах
+            if (host.Contains(".cloudapp.azure.com") || 
+                host.EndsWith(".trafficmanager.net") ||
+                host.EndsWith(".azurewebsites.net"))
+            {
+                return (TestStatus.Warn, "Облачный шлюз (Azure). Если приложение работает, это может быть фоновый/служебный запрос.");
+            }
+
+            return (TestStatus.Fail, "");
+        }
+
+        private bool AreHostsRelated(Target passingTarget, string failingHost)
+        {
+            // 1. Проверка по имени сервиса (если известно)
+            string? failingService = TestResults.FirstOrDefault(t => t.Target.Host == failingHost)?.Target.Service;
+            
+            if (failingService == null)
+            {
+                var def = TargetCatalog.TryGetByHost(failingHost);
+                if (def != null) failingService = def.Service;
+            }
+            
+            if (!string.IsNullOrEmpty(failingService) && 
+                !string.IsNullOrEmpty(passingTarget.Service) &&
+                failingService.Equals(passingTarget.Service, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // 2. Эвристика по вхождению имени хоста
+            // Пытаемся найти "ядро" имени успешного хоста (например, "youtube" из "youtube.com")
+            var passingHost = passingTarget.Host;
+            if (System.Net.IPAddress.TryParse(passingHost, out _)) return false;
+
+            var parts = passingHost.Split('.');
+            if (parts.Length >= 2)
+            {
+                // Берем часть перед TLD (google.com -> google, sub.domain.com -> domain)
+                // Это упрощенная логика, но работает для большинства популярных сервисов
+                var coreName = parts.Length > 2 ? parts[parts.Length - 2] : parts[0];
+                
+                if (coreName.Length > 3 && failingHost.Contains(coreName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
         protected virtual void OnPropertyChanged(string propertyName)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        private string? GetTestNetworkAppPath()
+        {
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            
+            // 1. Check next to executable (Release/SingleFile)
+            var path = Path.Combine(baseDir, "TestNetworkApp.exe");
+            if (File.Exists(path)) return path;
+            
+            // 2. Check dev environment structure
+            path = Path.Combine(baseDir, "TestNetworkApp", "bin", "Publish", "TestNetworkApp.exe");
+            if (File.Exists(path)) return path;
+
+            return null;
+        }
+
+        private void UpdateUserMessage(string msg)
+        {
+            // Очистка технических префиксов для пользователя
+            var cleanMsg = msg;
+            
+            // Удаляем префиксы [FlowMonitor], [DNS] и т.д.
+            if (cleanMsg.StartsWith("["))
+            {
+                var closeBracket = cleanMsg.IndexOf(']');
+                if (closeBracket > 0)
+                {
+                    cleanMsg = cleanMsg.Substring(closeBracket + 1).Trim();
+                }
+            }
+
+            // Заменяем технические термины на понятные
+            if (cleanMsg.Contains("FlowMonitor")) cleanMsg = "Анализ сетевого потока...";
+            if (cleanMsg.Contains("WinDivert")) cleanMsg = "Инициализация драйвера перехвата...";
+            if (cleanMsg.Contains("DNS")) cleanMsg = "Проверка DNS запросов...";
+            
+            // Если сообщение слишком техническое (содержит IP:Port), делаем его дружелюбнее
+            if (System.Text.RegularExpressions.Regex.IsMatch(cleanMsg, @"\d+\.\d+\.\d+\.\d+:\d+"))
+            {
+                cleanMsg = "Обнаружено соединение с сервером...";
+            }
+
+            UserMessage = cleanMsg;
         }
     }
 

@@ -35,7 +35,8 @@ namespace IspAudit.Utils
             CancellationToken cancellationToken = default,
             bool enableLiveTesting = false,
             bool enableAutoBypass = false,
-            IspAudit.Bypass.WinDivertBypassManager? bypassManager = null)
+            IspAudit.Bypass.WinDivertBypassManager? bypassManager = null,
+            Func<Task<bool>>? onSilenceDetected = null)
         {
             return await Task.Run(async () =>
             {
@@ -44,6 +45,11 @@ namespace IspAudit.Utils
                 
                 // Коллекция для хранения уникальных соединений
                 var connections = new ConcurrentDictionary<string, ConnectionInfo>();
+                
+                // Время последнего нового соединения
+                DateTime lastNewConnectionTime = DateTime.UtcNow;
+                bool silenceWarningShown = false;
+                const int SilenceTimeoutSeconds = 60;
                 
                 // Инициализация live-testing pipeline (если включен)
                 LiveTestingPipeline? pipeline = null;
@@ -98,6 +104,9 @@ namespace IspAudit.Utils
                     }))
                     {
                         connectionCount++;
+                        lastNewConnectionTime = DateTime.UtcNow; // Сброс таймера тишины
+                        silenceWarningShown = false; // Сброс флага предупреждения
+                        
                         progress?.Report($"[TrafficAnalyzer] Новое соединение #{connectionCount}: {remoteIp}:{remotePort} (proto={protocol}, pid={pid})");
                         
                         // Live testing для нового соединения
@@ -116,25 +125,134 @@ namespace IspAudit.Utils
                 }
                 
                 flowMonitor.OnFlowEvent += OnFlowEvent;
+
+                // Подписываемся на обновление Hostname (для случаев, когда IP один, а домены разные - например Google/YouTube)
+                void OnHostnameUpdated(string ip, string hostname)
+                {
+                    // Ищем соединения с этим IP
+                    foreach (var kvp in connections)
+                    {
+                        if (kvp.Value.RemoteIp.ToString() == ip)
+                        {
+                            // Если hostname изменился, обновляем и отправляем на повторное тестирование
+                            if (kvp.Value.Hostname != hostname)
+                            {
+                                kvp.Value.Hostname = hostname;
+                                progress?.Report($"[TrafficAnalyzer] Hostname обновлен для {ip}: {hostname}");
+
+                                if (pipeline != null)
+                                {
+                                    var host = new IspAudit.Core.Models.HostDiscovered(
+                                        Key: kvp.Key,
+                                        RemoteIp: kvp.Value.RemoteIp,
+                                        RemotePort: kvp.Value.RemotePort,
+                                        Protocol: kvp.Value.Protocol == TransportProtocol.TCP ? IspAudit.Bypass.TransportProtocol.Tcp : IspAudit.Bypass.TransportProtocol.Udp,
+                                        DiscoveredAt: DateTime.UtcNow
+                                    );
+                                    _ = Task.Run(() => pipeline.EnqueueHostAsync(host), cts.Token);
+                                }
+                            }
+                        }
+                    }
+                }
+                dnsParser.OnHostnameUpdated += OnHostnameUpdated;
                 
                 try
                 {
-                    // Status Reporter: периодические обновления
+                    // Status Reporter: периодические обновления и проверка жизни процесса
                     var statusTask = Task.Run(async () =>
                     {
                         int lastCount = 0;
+                        int tick = 0;
                         while (!cts.Token.IsCancellationRequested)
                         {
-                            await Task.Delay(10000, cts.Token).ConfigureAwait(false);
-                            if (connections.Count > lastCount)
+                            // Проверяем каждые 1 секунду
+                            await Task.Delay(1000, cts.Token).ConfigureAwait(false);
+                            tick++;
+
+                            // 1. Проверка завершения процесса
+                            try
                             {
-                                progress?.Report($"Захват активен ({(DateTime.UtcNow - flowMonitor.FlowOpenedUtc!.Value).TotalSeconds:F0}с), соединений: {connections.Count}. Выполните действия в приложении.");
-                                lastCount = connections.Count;
+                                // Пытаемся получить процесс. Если он завершился, HasExited вернет true.
+                                // Если процесс уже исчез из системы, GetProcessById выбросит исключение.
+                                using var proc = System.Diagnostics.Process.GetProcessById(targetPid);
+                                if (proc.HasExited)
+                                {
+                                    progress?.Report($"Процесс (PID={targetPid}) завершился. Остановка захвата.");
+                                    cts.Cancel(); // Отменяем токен, чтобы выйти из ожидания
+                                    break;
+                                }
+                            }
+                            catch (ArgumentException)
+                            {
+                                // Процесс не найден - значит завершился
+                                progress?.Report($"Процесс (PID={targetPid}) не найден. Остановка захвата.");
+                                cts.Cancel();
+                                break;
+                            }
+                            catch
+                            {
+                                // Игнорируем ошибки доступа
+                            }
+
+                            // 2. Репорт статуса (раз в 10 секунд или при изменениях)
+                            if (connections.Count > lastCount || tick % 10 == 0)
+                            {
+                                if (connections.Count > lastCount)
+                                {
+                                    var elapsed = flowMonitor.FlowOpenedUtc.HasValue 
+                                        ? (DateTime.UtcNow - flowMonitor.FlowOpenedUtc.Value).TotalSeconds 
+                                        : 0;
+                                        
+                                    progress?.Report($"Захват активен ({elapsed:F0}с), соединений: {connections.Count}.");
+                                    lastCount = connections.Count;
+                                }
+                            }
+
+                            // 3. Проверка тишины (Silence Detection)
+                            if (onSilenceDetected != null && !silenceWarningShown)
+                            {
+                                var silenceDuration = (DateTime.UtcNow - lastNewConnectionTime).TotalSeconds;
+                                
+                                // Даем минимум 15 секунд на разогрев перед проверкой тишины
+                                var totalElapsed = flowMonitor.FlowOpenedUtc.HasValue 
+                                    ? (DateTime.UtcNow - flowMonitor.FlowOpenedUtc.Value).TotalSeconds 
+                                    : 0;
+
+                                if (totalElapsed > 15 && silenceDuration > SilenceTimeoutSeconds)
+                                {
+                                    silenceWarningShown = true;
+                                    progress?.Report($"[Silence] Нет новых соединений более {SilenceTimeoutSeconds}с. Запрос действия пользователя...");
+                                    
+                                    // Вызываем callback (он должен показать OverlayWindow)
+                                    // Важно: это блокирующий вызов (ждет ответа пользователя)
+                                    bool extend = await onSilenceDetected();
+                                    
+                                    if (extend)
+                                    {
+                                        progress?.Report("[Silence] Пользователь продлил диагностику.");
+                                        lastNewConnectionTime = DateTime.UtcNow;
+                                        silenceWarningShown = false;
+                                    }
+                                    else
+                                    {
+                                        progress?.Report("[Silence] Авто-завершение диагностики.");
+                                        cts.Cancel();
+                                        break;
+                                    }
+                                }
                             }
                         }
                     }, cts.Token);
                     
-                    await statusTask.ConfigureAwait(false);
+                    try 
+                    {
+                        await statusTask.ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Нормальное завершение при отмене токена
+                    }
                 }
                 catch (OperationCanceledException)
                 {
@@ -154,6 +272,7 @@ namespace IspAudit.Utils
                 finally
                 {
                     flowMonitor.OnFlowEvent -= OnFlowEvent;
+                    dnsParser.OnHostnameUpdated -= OnHostnameUpdated;
                     progress?.Report($"[TrafficAnalyzer] Статистика: получено Flow событий={totalFlowEvents}, совпадений PID={targetPidMatches}, уникальных соединений={connections.Count}");
                 }
 

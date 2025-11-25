@@ -524,11 +524,40 @@ GUI переведен на одноступенчатую модель запу
 4.  **ViewModels/MainViewModel.cs**:
     -   В `RunLivePipelineAsync` добавлена логика: если Bypass активен, включаем `UseWatcherMode = true` для `FlowMonitorService`.
 
+### C2. Basic Test Mode Refactoring
+**Статус:** COMPLETED
+**Изменения:**
+1.  **TestNetworkApp**:
+    -   Обновлен список целей (добавлены RuTube, Twitch, GoogleVideo).
+    -   Собран как single-file executable и помещен в папку сборки.
+2.  **MainViewModel**:
+    -   Исправлена логика поиска `TestNetworkApp.exe`.
+    -   Реализовано скрытие "DNS: OK" для IP-целей.
+    -   Реализована поддержка динамического обновления хостнеймов (YouTube fix).
+3.  **TrafficAnalyzer**:
+    -   Добавлена поддержка повторной проверки хостов при обновлении DNS-имени.
+
+### D3. UX Refinements & Advanced Heuristics
+**Статус:** COMPLETED
+**Изменения:**
+1.  **OverlayWindow**:
+    -   Реализован немедленный показ оверлея при старте диагностики.
+    -   Добавлен режим "Silence Prompt" (таймер 60с) при отсутствии активности.
+    -   Добавлена живая статистика (время, соединения) в оверлей.
+2.  **MainViewModel (Heuristics)**:
+    -   Реализован метод `AnalyzeHeuristicSeverity` для фильтрации ложных срабатываний.
+    -   Инфраструктурные домены (Microsoft, Azure, Analytics) теперь получают статус `Warn` вместо `Fail` при ошибках `TLS_DPI`.
+    -   Добавлена проверка "родственных" сервисов (если основной домен работает, субдомены помечаются как `Warn`).
+
 ## План (оставшиеся задачи)
 
 - [ ] **QA & Verification**
   - [ ] Проверить работу в режиме без Bypass (Flow Layer).
   - [ ] Проверить работу в режиме с Bypass (Watcher Mode).
   - [ ] Убедиться, что RST-блокер работает стабильно при активном Watcher.
+  - [ ] Проверить Basic Test Mode:
+    - [ ] YouTube должен определяться корректно.
+    - [ ] IP-адреса не должны показывать "DNS: OK".
+
 
 

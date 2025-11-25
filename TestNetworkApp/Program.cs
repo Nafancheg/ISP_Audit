@@ -16,18 +16,38 @@ namespace TestNetworkApp
             Console.WriteLine($"PID: {Environment.ProcessId}");
             Console.WriteLine("Запуск тестовых сетевых запросов...\n");
 
-            using var client = new HttpClient();
-            client.Timeout = TimeSpan.FromSeconds(10);
+            using var handler = new SocketsHttpHandler
+            {
+                ConnectCallback = async (context, cancellationToken) =>
+                {
+                    var entry = await System.Net.Dns.GetHostEntryAsync(context.DnsEndPoint.Host, cancellationToken);
+                    var ip = Array.Find(entry.AddressList, i => i.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) 
+                             ?? entry.AddressList[0];
+                    
+                    Console.WriteLine($"[DNS] {context.DnsEndPoint.Host} -> {ip}");
+                    
+                    var socket = new System.Net.Sockets.Socket(ip.AddressFamily, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
+                    try
+                    {
+                        await socket.ConnectAsync(ip, context.DnsEndPoint.Port, cancellationToken);
+                        return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch
+                    {
+                        socket.Dispose();
+                        throw;
+                    }
+                }
+            };
+
+            using var client = new HttpClient(handler);
+            client.Timeout = TimeSpan.FromSeconds(2);
 
             var targets = new[]
             {
-                ("https://google.com", "Google"),
                 ("https://youtube.com", "YouTube"),
                 ("https://discord.com", "Discord"),
-                ("https://github.com", "GitHub"),
-                ("https://api.ipify.org?format=json", "IP Check"),
-                ("https://cloudflare.com", "Cloudflare"),
-                ("https://1.1.1.1", "Cloudflare DNS"),
+                ("https://1.1.1.1", "Cloudflare DNS")
             };
 
             Console.WriteLine("Старт одного цикла запросов...\n");
@@ -53,8 +73,8 @@ namespace TestNetworkApp
                     
                     successCount++;
                     
-                    // Небольшая пауза между запросами
-                    await Task.Delay(500);
+                    // Минимальная пауза
+                    await Task.Delay(50);
                 }
                 catch (Exception ex)
                 {
@@ -69,6 +89,9 @@ namespace TestNetworkApp
             Console.WriteLine("\n=== Тестирование завершено ===");
             Console.WriteLine($"Всего успешных: {successCount}");
             Console.WriteLine($"Всего ошибок: {failCount}");
+            
+            // Автоматический выход для использования в пайплайне
+            await Task.Delay(1000); 
         }
     }
 }
