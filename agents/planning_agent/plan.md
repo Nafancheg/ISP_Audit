@@ -224,40 +224,44 @@ graph TD
 ---
 
 ### D1. Диагностика тайминга и шума Flow (Группа D, приоритет: низкий–средний)
-**Статус: ВЫПОЛНЕНО ✅ (22.11.2025)**
+**Статус: ВЫПОЛНЕНО ✅ (25.11.2025)**
 
 **Описание:**
 Добавить лог‑метрики для Flow‑слоя и минимальный сценарий «прогрева»: явный прогрев драйвера Flow через `TestNetworkApp` **до** запуска основной exe‑диагностики, фиксация таймингов открытия handle и первых целевых событий, оценка «шума» (общее/целевое количество flow'ов) и вынос фильтра Flow в конфигурируемую точку.
 
-**Реализация (архитектурный рефакторинг):**
+**Реализация (архитектурный рефакторинг Multi-Layer):**
 
 1. **Извлечение сервисов мониторинга:**
-   - `Utils/FlowMonitorService.cs` — независимый сервис для Flow layer с событиями `OnFlowEvent`
-   - `Utils/NetworkMonitorService.cs` — независимый сервис для Network layer с событиями `OnPacketReceived`
-   - `Utils/DnsParserService.cs` — подписывается на NetworkMonitorService, парсит DNS ответы в кеш
-   - `Utils/PidTrackerService.cs` — динамическое отслеживание PIDs (main + children), интервал 500ms
+   - `Utils/FlowMonitorService.cs` — теперь реализует **Multi-Layer** подход:
+     - **Layer.Flow** (Priority -1000): для установленных соединений (TCP/UDP).
+     - **Layer.Socket** (Priority -1000): для попыток подключения (`SOCKET_CONNECT`), что позволяет видеть заблокированные соединения (SYN-sent, но нет Flow).
+   - `Utils/NetworkMonitorService.cs` — независимый сервис для Network layer (DNS) с событиями `OnPacketReceived`.
+   - `Utils/DnsParserService.cs` — подписывается на NetworkMonitorService, парсит DNS ответы в кеш.
+   - `Utils/PidTrackerService.cs` — динамическое отслеживание PIDs (main + children), интервал 500ms.
 
 2. **Синхронизация готовности:**
-   - Добавлен `TaskCompletionSource<bool>` в FlowMonitorService/NetworkMonitorService
-   - `StartAsync()` теперь ждет открытия WinDivert handle перед возвратом
-   - Гарантирует что warmup запускается **после** открытия слоев
+   - Добавлен `TaskCompletionSource<bool>` в FlowMonitorService/NetworkMonitorService.
+   - `StartAsync()` теперь ждет открытия WinDivert handle перед возвратом.
+   - Гарантирует что warmup запускается **после** открытия слоев.
 
 3. **Метрики и логирование:**
-   - `FlowOpenedUtc` — таймстемп открытия Flow handle
-   - `FirstEventUtc` — таймстемп первого события + дельта в мс
-   - `TotalEventsCount` — счетчик всех Flow событий
-   - Статистика в TrafficAnalyzer: `получено Flow событий=X, совпадений PID=Y, уникальных соединений=Z`
+   - `FlowOpenedUtc` — таймстемп открытия Flow handle.
+   - `FirstEventUtc` — таймстемп первого события + дельта в мс.
+   - `TotalEventsCount` — счетчик всех Flow событий.
+   - Статистика в TrafficAnalyzer: `получено Flow событий=X, совпадений PID=Y, уникальных соединений=Z`.
 
 4. **Прогрев Flow:**
-   - TestNetworkApp запускается **после** открытия FlowMonitor/NetworkMonitor
-   - Его трафик детектируется (~200ms первое событие)
-   - Результаты в логах подтверждают готовность системы
+   - TestNetworkApp запускается **после** открытия FlowMonitor/NetworkMonitor.
+   - Его трафик детектируется (~200ms первое событие).
+   - Результаты в логах подтверждают готовность системы.
 
 5. **Исправление критичных багов:**
-   - **IP byte order**: Добавлен `BitConverter.GetBytes + Array.Reverse` для корректной конверсии uint → IPAddress
-   - **DNS кеш**: Передача через `new ConcurrentDictionary<string, string>(dnsParser.DnsCache)` вместо IReadOnlyDictionary
-   - **PID tracking**: TrafficAnalyzer использует `pidTracker.TrackedPids` напрямую вместо статичной копии
-   - **Многопоточность**: WMI запросы для child PIDs выполняются параллельно через `Task.WhenAll`
+   - **IPv6 Support**: Исправлен парсинг IPv6 адресов (Big-Endian vs Little-Endian) в `FlowMonitorService`. Теперь YouTube (IPv6) детектируется корректно.
+   - **Blocked Connections**: Благодаря `Layer.Socket`, теперь детектируются попытки подключения к заблокированным IP (например, 1.1.1.1), даже если Flow не создается.
+   - **IP byte order**: Добавлен `BitConverter.GetBytes + Array.Reverse` для корректной конверсии uint → IPAddress.
+   - **DNS кеш**: Передача через `new ConcurrentDictionary<string, string>(dnsParser.DnsCache)` вместо IReadOnlyDictionary.
+   - **PID tracking**: TrafficAnalyzer использует `pidTracker.TrackedPids` напрямую вместо статичной копии.
+   - **Многопоточность**: WMI запросы для child PIDs выполняются параллельно через `Task.WhenAll`.
 
 **Результаты тестирования:**
 ```
@@ -279,6 +283,7 @@ graph TD
 - IP адреса корректны (не перевернуты байтами).
 - DNS кеш работает (11/11 resolved из 91 записи).
 - Динамическое отслеживание PIDs с задержкой не более 500ms.
+- **IPv6 и Blocked IPs**: Детектируются корректно благодаря Socket Layer.
 
 **Примечания:**
 - NetworkMonitor сейчас открывается только для DNS (UDP:53) для экономии ресурсов.
