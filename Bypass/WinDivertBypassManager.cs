@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -23,6 +24,11 @@ namespace IspAudit.Bypass
 
     public sealed class WinDivertBypassManager : IDisposable
     {
+        // Centralized Priority Constants
+        private const short PriorityRstBlocker = 0;
+        private const short PriorityRedirector = 0;
+        private const short PriorityTlsFragmenter = 200;
+
         private readonly object _sync = new();
         private WinDivertNative.SafeHandle? _rstHandle;
         private WinDivertNative.SafeHandle? _tlsHandle;
@@ -35,6 +41,9 @@ namespace IspAudit.Bypass
         private Exception? _lastError;
         private IReadOnlyList<RuntimeRedirectRule> _runtimeRedirectRules = Array.Empty<RuntimeRedirectRule>();
         private BypassProfile _profile = BypassProfile.CreateDefault();
+        
+        // State management for "Fake" strategy to avoid spamming
+        private readonly ConcurrentDictionary<ConnectionKey, bool> _processedConnections = new();
 
         public bool IsRstBlockerActive { get; private set; }
 
@@ -174,7 +183,8 @@ namespace IspAudit.Bypass
 
             try
             {
-                await Task.Run(() => Initialize(profile!, cancellationToken), cancellationToken).ConfigureAwait(false);
+                // Use InitializeAsync directly
+                await InitializeAsync(profile!, cancellationToken).ConfigureAwait(false);
                 lock (_sync)
                 {
                     _state = BypassState.Enabled;
@@ -231,6 +241,7 @@ namespace IspAudit.Bypass
                 _cts = null;
                 _runtimeRedirectRules = Array.Empty<RuntimeRedirectRule>();
                 IsRstBlockerActive = false;
+                _processedConnections.Clear(); // Clear state on disable
             }
 
             if (raiseDisablingEvent)
@@ -256,7 +267,7 @@ namespace IspAudit.Bypass
                 }
 
                 var tasks = new List<Task>();
-                if (rstTask != null) tasks.Add(rstTask); // swallow errors later
+                if (rstTask != null) tasks.Add(rstTask);
                 if (tlsTask != null) tasks.Add(tlsTask);
                 if (redirectTask != null) tasks.Add(redirectTask);
 
@@ -425,84 +436,117 @@ namespace IspAudit.Bypass
             }
         }
 
-        private void Initialize(BypassProfile profile, CancellationToken cancellationToken)
+        private async Task InitializeAsync(BypassProfile profile, CancellationToken cancellationToken)
         {
+            // 1. Validation
             if (!NativeLibrary.TryLoad("WinDivert.dll", out var libHandle))
             {
                 throw new DllNotFoundException("WinDivert.dll не найден. Поместите библиотеку рядом с исполняемым файлом.");
             }
-            NativeLibrary.Free(libHandle); // библиотека останется загруженной благодаря DllImport
+            NativeLibrary.Free(libHandle);
 
+            // 2. Configuration Building (Async DNS resolution)
+            var runtimeRedirectRules = await BuildRuntimeRedirectsAsync(profile, cancellationToken).ConfigureAwait(false);
+
+            // 3. Open Handles (Atomic-ish)
+            WinDivertNative.SafeHandle? rstHandle = null;
+            WinDivertNative.SafeHandle? tlsHandle = null;
+            WinDivertNative.SafeHandle? redirectHandle = null;
+
+            try
+            {
+                if (profile.DropTcpRst)
+                {
+                    const string rstFilter = "tcp.Rst == 1";
+                    if (TryOpenWinDivert(rstFilter, WinDivertNative.Layer.Network, PriorityRstBlocker, WinDivertNative.OpenFlags.None, out var h))
+                    {
+                        rstHandle = h;
+                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] RST blocker started with filter: {rstFilter}");
+                    }
+                    else
+                    {
+                        ISPAudit.Utils.DebugLogger.Log("[WinDivert] WARNING: RST blocker failed to open (likely conflict with Flow layer) - continuing without it");
+                    }
+                }
+
+                if (profile.TlsStrategy != TlsBypassStrategy.None)
+                {
+                    if (TryOpenWinDivert("outbound and tcp.DstPort == 443 and tcp.PayloadLength > 0", WinDivertNative.Layer.Network, PriorityTlsFragmenter, WinDivertNative.OpenFlags.None, out var h))
+                    {
+                        tlsHandle = h;
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException("Failed to open WinDivert handle for TLS bypass");
+                    }
+                }
+
+                if (runtimeRedirectRules.Count > 0)
+                {
+                    var redirectFilter = BuildRedirectFilter(runtimeRedirectRules);
+                    if (TryOpenWinDivert(redirectFilter, WinDivertNative.Layer.Network, PriorityRedirector, WinDivertNative.OpenFlags.None, out var h))
+                    {
+                        redirectHandle = h;
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException("Failed to open WinDivert handle for redirects");
+                    }
+                }
+            }
+            catch
+            {
+                rstHandle?.Dispose();
+                tlsHandle?.Dispose();
+                redirectHandle?.Dispose();
+                throw;
+            }
+
+            // 4. Commit State & Start Tasks
             _profile = profile;
-            _runtimeRedirectRules = BuildRuntimeRedirects(profile);
+            _runtimeRedirectRules = runtimeRedirectRules;
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            
+            _rstHandle = rstHandle;
+            _tlsHandle = tlsHandle;
+            _redirectHandle = redirectHandle;
 
             ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Initialize: DropTcpRst={profile.DropTcpRst}, TlsStrategy={profile.TlsStrategy}, Redirects={_runtimeRedirectRules.Count}");
 
-            if (profile.DropTcpRst)
+            if (_rstHandle != null) 
             {
-                // RST blocker: A2 - используем flags=0 (intercept), чтобы избежать конфликта Sniff|Drop с Flow layer
-                // Ловим RST как во входящем, так и в исходящем направлении
-                const string rstFilter = "tcp.Rst == 1";
-
-                if (TryOpenWinDivert(
-                    rstFilter,
-                    WinDivertNative.Layer.Network,
-                    priority: 0,
-                    WinDivertNative.OpenFlags.None, // A2: Changed from Sniff|Drop to None
-                    out _rstHandle))
-                {
-                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] RST blocker started with filter: {rstFilter}");
-                    IsRstBlockerActive = true;
-                    _rstTask = Task.Run(() => PumpPackets(_rstHandle!, _cts.Token), _cts.Token);
-                }
-                else
-                {
-                    // ⚠️ НЕ бросаем exception - graceful degradation
-                    // Если RST blocker не открылся (конфликт с Flow layer) - продолжаем без него
-                    ISPAudit.Utils.DebugLogger.Log("[WinDivert] WARNING: RST blocker failed to open (likely conflict with Flow layer) - continuing without it");
-                    IsRstBlockerActive = false;
-                }
+                IsRstBlockerActive = true;
+                _rstTask = RunWorkerAsync(() => PumpPacketsWorker(_rstHandle, _cts.Token));
             }
             else
             {
                 IsRstBlockerActive = false;
             }
 
-            if (profile.TlsStrategy != TlsBypassStrategy.None)
-            {
-                // TLS bypass: priority = 200 для перехвата РАНЬШЕ Flow layer (priority 0)
-                if (TryOpenWinDivert(
-                    "outbound and tcp.DstPort == 443 and tcp.PayloadLength > 0",
-                    WinDivertNative.Layer.Network,
-                    priority: 200,  // ✅ Ниже чем 500, выше Flow=0
-                    WinDivertNative.OpenFlags.None,
-                    out _tlsHandle))
-                {
-                    _tlsTask = Task.Run(() => RunTlsFragmenter(_tlsHandle!, _cts.Token, profile), _cts.Token);
-                }
-                else
-                {
-                    throw new InvalidOperationException("Failed to open WinDivert handle for TLS bypass");
-                }
-            }
+            if (_tlsHandle != null) 
+                _tlsTask = RunWorkerAsync(() => TlsFragmenterWorker(_tlsHandle, _cts.Token, profile));
+            
+            if (_redirectHandle != null) 
+                _redirectTask = RunWorkerAsync(() => RedirectorWorker(_redirectHandle, _cts.Token, _runtimeRedirectRules));
+        }
 
-            if (_runtimeRedirectRules.Count > 0)
+        private async Task RunWorkerAsync(Action worker)
+        {
+            try
             {
-                // Redirect: default mode (capture + reinject), priority 0
-                var redirectFilter = BuildRedirectFilter(_runtimeRedirectRules);
-                if (TryOpenWinDivert(
-                    redirectFilter,
-                    WinDivertNative.Layer.Network,
-                    priority: 0,
-                    WinDivertNative.OpenFlags.None,
-                    out _redirectHandle))
+                await Task.Run(worker).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Worker task failed: {ex.Message}");
+                lock (_sync)
                 {
-                    _redirectTask = Task.Run(() => RunRedirector(_redirectHandle!, _cts.Token, _runtimeRedirectRules), _cts.Token);
-                }
-                else
-                {
-                    throw new InvalidOperationException("Failed to open WinDivert handle for redirects");
+                    if (_state == BypassState.Enabled)
+                    {
+                        _state = BypassState.Faulted;
+                        _lastError = ex;
+                        OnStateChanged();
+                    }
                 }
             }
         }
@@ -521,7 +565,7 @@ namespace IspAudit.Bypass
             return "outbound and tcp.DstPort == 443 and tcp.PayloadLength > 0";
         }
 
-        private static IReadOnlyList<RuntimeRedirectRule> BuildRuntimeRedirects(BypassProfile profile)
+        private static async Task<IReadOnlyList<RuntimeRedirectRule>> BuildRuntimeRedirectsAsync(BypassProfile profile, CancellationToken token)
         {
             var result = new List<RuntimeRedirectRule>();
             foreach (var rule in profile.RedirectRules.Where(r => r.Enabled))
@@ -534,7 +578,9 @@ namespace IspAudit.Bypass
                     {
                         try
                         {
-                            foreach (var ip in Dns.GetHostAddresses(host))
+                            // Async DNS resolution with timeout
+                            var ips = await ResolveHostAsync(host, token).ConfigureAwait(false);
+                            foreach (var ip in ips)
                             {
                                 if (ip.AddressFamily == address.AddressFamily)
                                 {
@@ -558,6 +604,21 @@ namespace IspAudit.Bypass
             return result;
         }
 
+        private static async Task<IPAddress[]> ResolveHostAsync(string host, CancellationToken token)
+        {
+            try
+            {
+                // Short timeout for DNS to avoid hanging initialization
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                cts.CancelAfter(TimeSpan.FromSeconds(2));
+                return await Dns.GetHostAddressesAsync(host, cts.Token).ConfigureAwait(false);
+            }
+            catch
+            {
+                return Array.Empty<IPAddress>();
+            }
+        }
+
         private static string BuildRedirectFilter(IReadOnlyList<RuntimeRedirectRule> rules)
         {
             var parts = new List<string>();
@@ -578,385 +639,257 @@ namespace IspAudit.Bypass
             return parts.Count == 0 ? "false" : string.Join(" or ", parts);
         }
 
-        private static void PumpPackets(WinDivertNative.SafeHandle handle, CancellationToken token)
+        private void PumpPacketsWorker(WinDivertNative.SafeHandle handle, CancellationToken token)
         {
-            var buffer = new byte[WinDivertNative.MaxPacketSize];
+            var buffer = ArrayPool<byte>.Shared.Rent(WinDivertNative.MaxPacketSize);
             var addr = new WinDivertNative.Address();
             long rstPackets = 0;
 
-            while (!token.IsCancellationRequested)
+            try
             {
-                if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, out var readLen, out addr))
+                while (!token.IsCancellationRequested)
                 {
-                    var error = Marshal.GetLastWin32Error();
-                    if (error == WinDivertNative.ErrorOperationAborted)
+                    if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, out var readLen, out addr))
                     {
-                        ISPAudit.Utils.DebugLogger.Log("[WinDivert] RST blocker: operation aborted");
-                        break;
+                        var error = Marshal.GetLastWin32Error();
+                        if (error == WinDivertNative.ErrorOperationAborted) break;
+                        continue;
                     }
-                    continue;
-                }
 
-                int length = (int)readLen;
-                if (length < 40)
-                {
-                    continue;
-                }
+                    int length = (int)readLen;
+                    var packet = PacketHelper.Parse(buffer, length);
 
-                // Простейший парсер IP+TCP, чтобы вытащить флаги и адреса
-                int version = buffer[0] >> 4;
-                int ipHeaderLength;
-                int tcpHeaderOffset;
-
-                if (version == 4)
-                {
-                    ipHeaderLength = (buffer[0] & 0x0F) * 4;
-                    if (ipHeaderLength < 20 || length < ipHeaderLength + 20) continue;
-                    tcpHeaderOffset = ipHeaderLength;
-                }
-                else if (version == 6)
-                {
-                    ipHeaderLength = 40;
-                    if (length < ipHeaderLength + 20) continue;
-                    tcpHeaderOffset = ipHeaderLength;
-                }
-                else
-                {
-                    continue;
-                }
-
-                byte flags = buffer[tcpHeaderOffset + 13];
-                bool isRst = (flags & 0x04) != 0;
-                if (!isRst)
-                {
-                    continue;
-                }
-
-                rstPackets++;
-                if (rstPackets <= 10 || rstPackets % 50 == 0)
-                {
-                    try
+                    if (packet.IsValid && packet.IsTcp && packet.IsRst)
                     {
-                        IPAddress srcIp;
-                        IPAddress dstIp;
-
-                        if (version == 4)
+                        rstPackets++;
+                        if (rstPackets <= 10 || rstPackets % 50 == 0)
                         {
-                            srcIp = new IPAddress(BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(12, 4)));
-                            dstIp = new IPAddress(BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(16, 4)));
+                            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] RST DROPPED: {packet.SrcIp}:{packet.SrcPort} -> {packet.DstIp}:{packet.DstPort}, total={rstPackets}");
                         }
-                        else
-                        {
-                            srcIp = new IPAddress(buffer.AsSpan(8, 16).ToArray());
-                            dstIp = new IPAddress(buffer.AsSpan(24, 16).ToArray());
-                        }
-
-                        ushort srcPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(tcpHeaderOffset, 2));
-                        ushort dstPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(tcpHeaderOffset + 2, 2));
-
-                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] RST DROPPED: {srcIp}:{srcPort} -> {dstIp}:{dstPort}, total={rstPackets}");
+                        // Drop packet (do not call Send)
                     }
-                    catch
+                    else
                     {
-                        // диагностический лог не должен ронять процесс
+                        // Should not happen with filter "tcp.Rst == 1", but if it does, reinject
+                        WinDivertNative.WinDivertSend(handle, buffer, (uint)length, out _, in addr);
                     }
                 }
-
-                // Пакет НЕ реинжектим: он дропается, так как мы его перехватили (flags=0) и не вызвали Send
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
             }
         }
 
-        private static void RunTlsFragmenter(WinDivertNative.SafeHandle handle, CancellationToken token, BypassProfile profile)
+        private void TlsFragmenterWorker(WinDivertNative.SafeHandle handle, CancellationToken token, BypassProfile profile)
         {
+            var buffer = ArrayPool<byte>.Shared.Rent(WinDivertNative.MaxPacketSize);
             var addr = new WinDivertNative.Address();
-            var buffer = new byte[WinDivertNative.MaxPacketSize];
             int packetsReceived = 0;
             int clientHellosFragmented = 0;
 
             ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS fragmenter started (FirstFragmentSize={profile.TlsFirstFragmentSize}, Threshold={profile.TlsFragmentThreshold})");
 
-            while (!token.IsCancellationRequested)
+            try
             {
-                if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, out var read, out addr))
+                while (!token.IsCancellationRequested)
                 {
-                    var error = Marshal.GetLastWin32Error();
-                    if (error == WinDivertNative.ErrorOperationAborted)
+                    if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, out var read, out addr))
                     {
-                        ISPAudit.Utils.DebugLogger.Log("[WinDivert] TLS fragmenter: operation aborted");
-                        break;
-                    }
-                    continue;
-                }
-
-                packetsReceived++;
-                if (packetsReceived == 1)
-                {
-                    ISPAudit.Utils.DebugLogger.Log("[WinDivert] ✓✓ TLS fragmenter: ПЕРВЫЙ ПАКЕТ ПЕРЕХВАЧЕН");
-                }
-
-                int length = (int)read;
-                
-                // ✅ Диагностика: логируем каждые 10 пакетов
-                if (packetsReceived % 10 == 0)
-                {
-                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Обработано пакетов: {packetsReceived}, ClientHello фрагментировано: {clientHellosFragmented}");
-                }
-                if (!TryParseTcpPacket(buffer, length, out var ipHeaderLength, out var tcpHeaderLength, out var payloadOffset, out var payloadLength, out bool isIpv4))
-                {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
-                    continue;
-                }
-
-                if (!isIpv4)
-                {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
-                    continue;
-                }
-
-                if (payloadLength < profile.TlsFragmentThreshold)
-                {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
-                    continue;
-                }
-
-                if (!IsClientHello(buffer.AsSpan(payloadOffset, payloadLength)))
-                {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
-                    continue;
-                }
-
-                // ✅ ClientHello обнаружен!
-                var srcIp = new IPAddress(BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(12, 4)));
-                var dstIp = new IPAddress(BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(16, 4)));
-                var dstPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(ipHeaderLength + 2, 2));
-                
-                ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ClientHello detected: {srcIp} → {dstIp}:{dstPort}, payloadSize={payloadLength}");
-
-                // 1. FAKE Strategy: Send fake packet with BadSeq
-                if (profile.TlsStrategy == TlsBypassStrategy.Fake || profile.TlsStrategy == TlsBypassStrategy.FakeFragment)
-                {
-                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Sending FAKE packet (BadSeq) for {dstIp}:{dstPort}");
-                    
-                    var fakePacket = new byte[length];
-                    Buffer.BlockCopy(buffer, 0, fakePacket, 0, length);
-                    
-                    // Modify Sequence Number (BadSeq)
-                    // Subtract 10000 from Seq
-                    int seqOffset = ipHeaderLength + 4;
-                    uint seq = BinaryPrimitives.ReadUInt32BigEndian(fakePacket.AsSpan(seqOffset, 4));
-                    BinaryPrimitives.WriteUInt32BigEndian(fakePacket.AsSpan(seqOffset, 4), seq - 10000);
-                    
-                    // Recalculate checksums for fake packet
-                    WinDivertNative.WinDivertHelperCalcChecksums(fakePacket, (uint)length, ref addr, 0);
-                    WinDivertNative.WinDivertSend(handle, fakePacket, (uint)length, out _, in addr);
-                }
-
-                // 2. FRAGMENT Strategy
-                if (profile.TlsStrategy == TlsBypassStrategy.Fragment || profile.TlsStrategy == TlsBypassStrategy.FakeFragment)
-                {
-                    int firstLen = Math.Min(profile.TlsFirstFragmentSize, payloadLength - 1);
-                    int secondLen = payloadLength - firstLen;
-                    if (firstLen <= 0 || secondLen <= 0)
-                    {
-                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Invalid fragment sizes: first={firstLen}, second={secondLen}, skipping fragmentation");
-                        WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
+                        var error = Marshal.GetLastWin32Error();
+                        if (error == WinDivertNative.ErrorOperationAborted) break;
                         continue;
                     }
 
-                    // ✅ Фрагментируем ClientHello
-                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Fragmenting ClientHello: payload={payloadLength} → first={firstLen}, second={secondLen}");
+                    packetsReceived++;
+                    int length = (int)read;
+                    var packet = PacketHelper.Parse(buffer, length);
 
-                    var firstPacket = new byte[ipHeaderLength + tcpHeaderLength + firstLen];
-                    Buffer.BlockCopy(buffer, 0, firstPacket, 0, ipHeaderLength + tcpHeaderLength + firstLen);
-                    AdjustPacketLengths(firstPacket, ipHeaderLength, tcpHeaderLength, firstLen, isIpv4);
-                    WinDivertNative.WinDivertHelperCalcChecksums(firstPacket, (uint)firstPacket.Length, ref addr, 0);
-                    WinDivertNative.WinDivertSend(handle, firstPacket, (uint)firstPacket.Length, out _, in addr);
+                    if (!packet.IsValid || !packet.IsIpv4 || !packet.IsTcp || packet.PayloadLength < profile.TlsFragmentThreshold)
+                    {
+                        WinDivertNative.WinDivertSend(handle, buffer, (uint)length, out _, in addr);
+                        continue;
+                    }
 
-                    var secondPacket = new byte[ipHeaderLength + tcpHeaderLength + secondLen];
-                    Buffer.BlockCopy(buffer, 0, secondPacket, 0, ipHeaderLength + tcpHeaderLength);
-                    Buffer.BlockCopy(buffer, payloadOffset + firstLen, secondPacket, ipHeaderLength + tcpHeaderLength, secondLen);
-                    IncrementTcpSequence(secondPacket, ipHeaderLength, (uint)firstLen);
-                    AdjustPacketLengths(secondPacket, ipHeaderLength, tcpHeaderLength, secondLen, isIpv4);
-                    WinDivertNative.WinDivertHelperCalcChecksums(secondPacket, (uint)secondPacket.Length, ref addr, 0);
-                    WinDivertNative.WinDivertSend(handle, secondPacket, (uint)secondPacket.Length, out _, in addr);
+                    if (!IsClientHello(buffer.AsSpan(packet.PayloadOffset, packet.PayloadLength)))
+                    {
+                        WinDivertNative.WinDivertSend(handle, buffer, (uint)length, out _, in addr);
+                        continue;
+                    }
 
-                    clientHellosFragmented++;
-                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ✓ ClientHello fragmented successfully (total fragmented: {clientHellosFragmented})");
+                    // ClientHello detected
+                    var connectionKey = new ConnectionKey(packet.SrcIpInt, packet.DstIpInt, packet.SrcPort, packet.DstPort);
+                    bool isNewConnection = _processedConnections.TryAdd(connectionKey, true);
+
+                    if (packetsReceived % 10 == 0)
+                    {
+                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ClientHello detected: {packet.SrcIp} → {packet.DstIp}:{packet.DstPort}, New={isNewConnection}");
+                    }
+
+                    // Strategy Execution
+                    bool handled = false;
+
+                    // 1. FAKE Strategy (Only once per connection)
+                    if ((profile.TlsStrategy == TlsBypassStrategy.Fake || profile.TlsStrategy == TlsBypassStrategy.FakeFragment) && isNewConnection)
+                    {
+                        SendFakePacket(handle, buffer, length, packet, ref addr);
+                    }
+
+                    // 2. FRAGMENT Strategy
+                    if (profile.TlsStrategy == TlsBypassStrategy.Fragment || profile.TlsStrategy == TlsBypassStrategy.FakeFragment)
+                    {
+                        if (SendFragmentedPacket(handle, buffer, length, packet, ref addr, profile))
+                        {
+                            clientHellosFragmented++;
+                            handled = true;
+                        }
+                    }
+
+                    if (!handled)
+                    {
+                        // If not fragmented (e.g. Fake only, or fragmentation failed), send original
+                        WinDivertNative.WinDivertSend(handle, buffer, (uint)length, out _, in addr);
+                    }
                 }
-                else
-                {
-                    // If only Fake (no fragment), send original packet as is
-                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
-                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
             }
         }
 
-        private static void RunRedirector(WinDivertNative.SafeHandle handle, CancellationToken token, IReadOnlyList<RuntimeRedirectRule> rules)
+        private void SendFakePacket(WinDivertNative.SafeHandle handle, byte[] originalBuffer, int length, in PacketHelper.PacketInfo packet, ref WinDivertNative.Address addr)
         {
-            var buffer = new byte[WinDivertNative.MaxPacketSize];
+            // Rent a buffer for the fake packet
+            var fakeBuffer = ArrayPool<byte>.Shared.Rent(length);
+            try
+            {
+                Buffer.BlockCopy(originalBuffer, 0, fakeBuffer, 0, length);
+                
+                // Modify Sequence Number (BadSeq): Seq - 10000
+                int seqOffset = packet.IpHeaderLength + 4;
+                uint seq = BinaryPrimitives.ReadUInt32BigEndian(fakeBuffer.AsSpan(seqOffset, 4));
+                BinaryPrimitives.WriteUInt32BigEndian(fakeBuffer.AsSpan(seqOffset, 4), seq - 10000);
+                
+                WinDivertNative.WinDivertHelperCalcChecksums(fakeBuffer, (uint)length, ref addr, 0);
+                WinDivertNative.WinDivertSend(handle, fakeBuffer, (uint)length, out _, in addr);
+                
+                ISPAudit.Utils.DebugLogger.Log($"[WinDivert] FAKE packet sent for {packet.DstIp}:{packet.DstPort}");
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(fakeBuffer);
+            }
+        }
+
+        private bool SendFragmentedPacket(WinDivertNative.SafeHandle handle, byte[] originalBuffer, int length, in PacketHelper.PacketInfo packet, ref WinDivertNative.Address addr, BypassProfile profile)
+        {
+            int firstLen = Math.Min(profile.TlsFirstFragmentSize, packet.PayloadLength - 1);
+            int secondLen = packet.PayloadLength - firstLen;
+            
+            if (firstLen <= 0 || secondLen <= 0) return false;
+
+            // Rent buffers for fragments
+            // Note: We need slightly larger buffers for headers + payload
+            int headerLen = packet.IpHeaderLength + packet.TcpHeaderLength;
+            var firstBuffer = ArrayPool<byte>.Shared.Rent(headerLen + firstLen);
+            var secondBuffer = ArrayPool<byte>.Shared.Rent(headerLen + secondLen);
+
+            try
+            {
+                // First Fragment
+                Buffer.BlockCopy(originalBuffer, 0, firstBuffer, 0, headerLen); // Headers
+                Buffer.BlockCopy(originalBuffer, packet.PayloadOffset, firstBuffer, headerLen, firstLen); // Payload 1
+                AdjustPacketLengths(firstBuffer, packet.IpHeaderLength, packet.TcpHeaderLength, firstLen, packet.IsIpv4);
+                WinDivertNative.WinDivertHelperCalcChecksums(firstBuffer, (uint)(headerLen + firstLen), ref addr, 0);
+                WinDivertNative.WinDivertSend(handle, firstBuffer, (uint)(headerLen + firstLen), out _, in addr);
+
+                // Second Fragment
+                Buffer.BlockCopy(originalBuffer, 0, secondBuffer, 0, headerLen); // Headers
+                Buffer.BlockCopy(originalBuffer, packet.PayloadOffset + firstLen, secondBuffer, headerLen, secondLen); // Payload 2
+                IncrementTcpSequence(secondBuffer, packet.IpHeaderLength, (uint)firstLen);
+                AdjustPacketLengths(secondBuffer, packet.IpHeaderLength, packet.TcpHeaderLength, secondLen, packet.IsIpv4);
+                WinDivertNative.WinDivertHelperCalcChecksums(secondBuffer, (uint)(headerLen + secondLen), ref addr, 0);
+                WinDivertNative.WinDivertSend(handle, secondBuffer, (uint)(headerLen + secondLen), out _, in addr);
+
+                return true;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(firstBuffer);
+                ArrayPool<byte>.Shared.Return(secondBuffer);
+            }
+        }
+
+        private void RedirectorWorker(WinDivertNative.SafeHandle handle, CancellationToken token, IReadOnlyList<RuntimeRedirectRule> rules)
+        {
+            var buffer = ArrayPool<byte>.Shared.Rent(WinDivertNative.MaxPacketSize);
             var addr = new WinDivertNative.Address();
 
-            while (!token.IsCancellationRequested)
+            try
             {
-                if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, out var read, out addr))
+                while (!token.IsCancellationRequested)
                 {
-                    var error = Marshal.GetLastWin32Error();
-                    if (error == WinDivertNative.ErrorOperationAborted)
+                    if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, out var read, out addr))
                     {
-                        break;
+                        var error = Marshal.GetLastWin32Error();
+                        if (error == WinDivertNative.ErrorOperationAborted) break;
+                        continue;
                     }
-                    continue;
+
+                    int length = (int)read;
+                    var packet = PacketHelper.Parse(buffer, length);
+
+                    if (!packet.IsValid)
+                    {
+                        WinDivertNative.WinDivertSend(handle, buffer, (uint)length, out _, in addr);
+                        continue;
+                    }
+
+                    var rule = rules.FirstOrDefault(r => r.Rule.Protocol == (packet.IsTcp ? TransportProtocol.Tcp : TransportProtocol.Udp) && r.Rule.Port == packet.DstPort);
+                    
+                    if (rule == null)
+                    {
+                        WinDivertNative.WinDivertSend(handle, buffer, (uint)length, out _, in addr);
+                        continue;
+                    }
+
+                    if (rule.AllowedDestinations.Count > 0 && !rule.AllowedDestinations.Contains(packet.DstIp))
+                    {
+                        WinDivertNative.WinDivertSend(handle, buffer, (uint)length, out _, in addr);
+                        continue;
+                    }
+
+                    if (packet.DstIp.AddressFamily != rule.RedirectAddress.AddressFamily)
+                    {
+                        WinDivertNative.WinDivertSend(handle, buffer, (uint)length, out _, in addr);
+                        continue;
+                    }
+
+                    // Apply Redirect
+                    if (rule.RedirectAddress.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        var bytes = rule.RedirectAddress.GetAddressBytes();
+                        Buffer.BlockCopy(bytes, 0, buffer, 16, 4);
+                    }
+                    else if (rule.RedirectAddress.AddressFamily == AddressFamily.InterNetworkV6)
+                    {
+                        var bytes = rule.RedirectAddress.GetAddressBytes();
+                        Buffer.BlockCopy(bytes, 0, buffer, 24, 16);
+                    }
+
+                    // Update Port
+                    // Transport offset is IpHeaderLength
+                    BinaryPrimitives.WriteUInt16BigEndian(buffer.AsSpan(packet.IpHeaderLength + 2, 2), rule.Rule.RedirectPort);
+
+                    WinDivertNative.WinDivertHelperCalcChecksums(buffer, (uint)length, ref addr, 0);
+                    WinDivertNative.WinDivertSend(handle, buffer, (uint)length, out _, in addr);
                 }
-
-                int length = (int)read;
-                if (!TryParsePacket(buffer, length, out var protocol, out var ipHeaderLength, out var transportOffset, out var isIpv4))
-                {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
-                    continue;
-                }
-
-                ushort dstPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(transportOffset + 2, 2));
-                var rule = rules.FirstOrDefault(r => r.Rule.Protocol == protocol && r.Rule.Port == dstPort);
-                if (rule == null)
-                {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
-                    continue;
-                }
-
-                IPAddress destination = isIpv4
-                    ? new IPAddress(BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(16, 4)))
-                    : new IPAddress(buffer.AsSpan(24, 16).ToArray());
-
-                if (rule.AllowedDestinations.Count > 0 && !rule.AllowedDestinations.Contains(destination))
-                {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
-                    continue;
-                }
-
-                if (destination.AddressFamily != rule.RedirectAddress.AddressFamily)
-                {
-                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
-                    continue;
-                }
-
-                if (rule.RedirectAddress.AddressFamily == AddressFamily.InterNetwork)
-                {
-                    var bytes = rule.RedirectAddress.GetAddressBytes();
-                    Buffer.BlockCopy(bytes, 0, buffer, 16, 4);
-                }
-                else if (rule.RedirectAddress.AddressFamily == AddressFamily.InterNetworkV6)
-                {
-                    var bytes = rule.RedirectAddress.GetAddressBytes();
-                    Buffer.BlockCopy(bytes, 0, buffer, 24, 16);
-                }
-
-                BinaryPrimitives.WriteUInt16BigEndian(buffer.AsSpan(transportOffset + 2, 2), rule.Rule.RedirectPort);
-
-                WinDivertNative.WinDivertHelperCalcChecksums(buffer, (uint)length, ref addr, 0);
-                WinDivertNative.WinDivertSend(handle, buffer, (uint)length, out _, in addr);
             }
-        }
-
-        private static bool TryParseTcpPacket(byte[] buffer, int length, out int ipHeaderLength, out int tcpHeaderLength, out int payloadOffset, out int payloadLength, out bool isIpv4)
-        {
-            ipHeaderLength = tcpHeaderLength = payloadOffset = payloadLength = 0;
-            isIpv4 = false;
-            if (length < 40) return false;
-            int version = buffer[0] >> 4;
-            if (version == 4)
+            finally
             {
-                isIpv4 = true;
-                ipHeaderLength = (buffer[0] & 0x0F) * 4;
-                if (ipHeaderLength < 20 || length < ipHeaderLength + 20) return false;
-                tcpHeaderLength = ((buffer[ipHeaderLength + 12] >> 4) & 0xF) * 4;
-                if (tcpHeaderLength < 20) return false;
+                ArrayPool<byte>.Shared.Return(buffer);
             }
-            else if (version == 6)
-            {
-                isIpv4 = false;
-                ipHeaderLength = 40;
-                if (length < ipHeaderLength + 20) return false;
-                tcpHeaderLength = ((buffer[ipHeaderLength + 12] >> 4) & 0xF) * 4;
-                if (tcpHeaderLength < 20) return false;
-            }
-            else
-            {
-                return false;
-            }
-
-            payloadOffset = ipHeaderLength + tcpHeaderLength;
-            if (payloadOffset > length) return false;
-            payloadLength = length - payloadOffset;
-            return true;
-        }
-
-        private static bool TryParsePacket(byte[] buffer, int length, out TransportProtocol protocol, out int ipHeaderLength, out int transportOffset, out bool isIpv4)
-        {
-            protocol = TransportProtocol.Tcp;
-            ipHeaderLength = transportOffset = 0;
-            isIpv4 = false;
-
-            int version = buffer[0] >> 4;
-            if (version == 4)
-            {
-                isIpv4 = true;
-                ipHeaderLength = (buffer[0] & 0x0F) * 4;
-                if (length < ipHeaderLength + 8) return false;
-                int protocolNumber = buffer[9];
-                if (protocolNumber == 6)
-                {
-                    protocol = TransportProtocol.Tcp;
-                }
-                else if (protocolNumber == 17)
-                {
-                    protocol = TransportProtocol.Udp;
-                }
-                else
-                {
-                    return false;
-                }
-            }
-            else if (version == 6)
-            {
-                isIpv4 = false;
-                ipHeaderLength = 40;
-                if (length < ipHeaderLength + 8) return false;
-                int nextHeader = buffer[6];
-                if (nextHeader == 6)
-                {
-                    protocol = TransportProtocol.Tcp;
-                }
-                else if (nextHeader == 17)
-                {
-                    protocol = TransportProtocol.Udp;
-                }
-                else
-                {
-                    return false;
-                }
-            }
-            else
-            {
-                return false;
-            }
-
-            transportOffset = ipHeaderLength;
-            return true;
-        }
-
-        private static ConnectionKey CreateConnectionKey(byte[] buffer, int ipHeaderLength, int tcpHeaderLength, bool isIpv4)
-        {
-            if (!isIpv4)
-            {
-                return ConnectionKey.Empty;
-            }
-
-            var srcIp = BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(12, 4));
-            var dstIp = BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(16, 4));
-            var srcPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(ipHeaderLength, 2));
-            var dstPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(ipHeaderLength + 2, 2));
-
-            return new ConnectionKey(srcIp, dstIp, srcPort, dstPort);
         }
 
         private static bool IsClientHello(ReadOnlySpan<byte> payload)
@@ -1033,6 +966,111 @@ namespace IspAudit.Bypass
             public override int GetHashCode()
             {
                 return HashCode.Combine(SrcIp, DstIp, SrcPort, DstPort);
+            }
+        }
+
+        // Unified Packet Parsing Helper
+        private static class PacketHelper
+        {
+            public readonly struct PacketInfo
+            {
+                public readonly bool IsValid;
+                public readonly bool IsIpv4;
+                public readonly bool IsTcp;
+                public readonly bool IsUdp;
+                public readonly bool IsRst;
+                public readonly int IpHeaderLength;
+                public readonly int TcpHeaderLength;
+                public readonly int PayloadOffset;
+                public readonly int PayloadLength;
+                public readonly IPAddress SrcIp;
+                public readonly IPAddress DstIp;
+                public readonly uint SrcIpInt; // For ConnectionKey
+                public readonly uint DstIpInt; // For ConnectionKey
+                public readonly ushort SrcPort;
+                public readonly ushort DstPort;
+
+                public PacketInfo(bool isValid, bool isIpv4, bool isTcp, bool isUdp, bool isRst, int ipHeaderLen, int tcpHeaderLen, int payloadOffset, int payloadLen, IPAddress src, IPAddress dst, uint srcInt, uint dstInt, ushort srcPort, ushort dstPort)
+                {
+                    IsValid = isValid;
+                    IsIpv4 = isIpv4;
+                    IsTcp = isTcp;
+                    IsUdp = isUdp;
+                    IsRst = isRst;
+                    IpHeaderLength = ipHeaderLen;
+                    TcpHeaderLength = tcpHeaderLen;
+                    PayloadOffset = payloadOffset;
+                    PayloadLength = payloadLen;
+                    SrcIp = src;
+                    DstIp = dst;
+                    SrcIpInt = srcInt;
+                    DstIpInt = dstInt;
+                    SrcPort = srcPort;
+                    DstPort = dstPort;
+                }
+            }
+
+            public static PacketInfo Parse(byte[] buffer, int length)
+            {
+                if (length < 20) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, IPAddress.None, IPAddress.None, 0, 0, 0, 0);
+
+                int version = buffer[0] >> 4;
+                bool isIpv4 = version == 4;
+                int ipHeaderLength = 0;
+                int protocol = 0;
+                uint srcIpInt = 0;
+                uint dstIpInt = 0;
+                IPAddress srcIp = IPAddress.None;
+                IPAddress dstIp = IPAddress.None;
+
+                if (isIpv4)
+                {
+                    ipHeaderLength = (buffer[0] & 0x0F) * 4;
+                    if (length < ipHeaderLength) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, IPAddress.None, IPAddress.None, 0, 0, 0, 0);
+                    protocol = buffer[9];
+                    srcIpInt = BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(12, 4));
+                    dstIpInt = BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(16, 4));
+                    srcIp = new IPAddress(srcIpInt);
+                    dstIp = new IPAddress(dstIpInt);
+                }
+                else
+                {
+                    ipHeaderLength = 40;
+                    if (length < ipHeaderLength) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, IPAddress.None, IPAddress.None, 0, 0, 0, 0);
+                    protocol = buffer[6]; // NextHeader
+                    srcIp = new IPAddress(buffer.AsSpan(8, 16).ToArray());
+                    dstIp = new IPAddress(buffer.AsSpan(24, 16).ToArray());
+                }
+
+                bool isTcp = protocol == 6;
+                bool isUdp = protocol == 17;
+                int tcpHeaderLength = 0;
+                int payloadOffset = 0;
+                int payloadLength = 0;
+                ushort srcPort = 0;
+                ushort dstPort = 0;
+                bool isRst = false;
+
+                if (isTcp)
+                {
+                    if (length < ipHeaderLength + 20) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, IPAddress.None, IPAddress.None, 0, 0, 0, 0);
+                    srcPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(ipHeaderLength, 2));
+                    dstPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(ipHeaderLength + 2, 2));
+                    tcpHeaderLength = ((buffer[ipHeaderLength + 12] >> 4) & 0xF) * 4;
+                    payloadOffset = ipHeaderLength + tcpHeaderLength;
+                    payloadLength = length - payloadOffset;
+                    isRst = (buffer[ipHeaderLength + 13] & 0x04) != 0;
+                }
+                else if (isUdp)
+                {
+                    if (length < ipHeaderLength + 8) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, IPAddress.None, IPAddress.None, 0, 0, 0, 0);
+                    srcPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(ipHeaderLength, 2));
+                    dstPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(ipHeaderLength + 2, 2));
+                    payloadOffset = ipHeaderLength + 8;
+                    payloadLength = length - payloadOffset;
+                }
+
+                return new PacketInfo(true, isIpv4, isTcp, isUdp, isRst, ipHeaderLength, tcpHeaderLength, payloadOffset, payloadLength, srcIp, dstIp, srcIpInt, dstIpInt, srcPort, dstPort);
             }
         }
     }
