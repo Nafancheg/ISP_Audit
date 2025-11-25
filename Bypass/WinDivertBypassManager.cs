@@ -702,6 +702,9 @@ namespace IspAudit.Bypass
             }
         }
 
+        private static readonly ITlsStrategy _fakeStrategy = new FakeStrategy();
+        private static readonly ITlsStrategy _fragmentStrategy = new FragmentStrategy();
+
         private void TlsFragmenterWorker(WinDivertNative.SafeHandle handle, CancellationToken token, BypassProfile profile)
         {
             var buffer = ArrayPool<byte>.Shared.Rent(WinDivertNative.MaxPacketSize);
@@ -711,11 +714,11 @@ namespace IspAudit.Bypass
             var strategies = new List<ITlsStrategy>();
             if (profile.TlsStrategy == TlsBypassStrategy.Fake || profile.TlsStrategy == TlsBypassStrategy.FakeFragment)
             {
-                strategies.Add(new FakeStrategy());
+                strategies.Add(_fakeStrategy);
             }
             if (profile.TlsStrategy == TlsBypassStrategy.Fragment || profile.TlsStrategy == TlsBypassStrategy.FakeFragment)
             {
-                strategies.Add(new FragmentStrategy());
+                strategies.Add(_fragmentStrategy);
             }
 
             ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS fragmenter started (Strategies={strategies.Count})");
@@ -1027,11 +1030,29 @@ namespace IspAudit.Bypass
                 
                 private readonly uint _srcIpInt;
                 private readonly uint _dstIpInt;
-                private readonly byte[]? _srcIpBytes;
-                private readonly byte[]? _dstIpBytes;
+                private readonly byte[]? _backingBuffer;
+                private readonly int _srcIpOffset;
+                private readonly int _dstIpOffset;
 
-                public IPAddress SrcIp => IsIpv4 ? new IPAddress(_srcIpInt) : new IPAddress(_srcIpBytes ?? Array.Empty<byte>());
-                public IPAddress DstIp => IsIpv4 ? new IPAddress(_dstIpInt) : new IPAddress(_dstIpBytes ?? Array.Empty<byte>());
+                public IPAddress SrcIp
+                {
+                    get
+                    {
+                        if (IsIpv4) return new IPAddress(_srcIpInt);
+                        if (_backingBuffer == null) return IPAddress.None;
+                        return new IPAddress(new ReadOnlySpan<byte>(_backingBuffer, _srcIpOffset, 16));
+                    }
+                }
+
+                public IPAddress DstIp
+                {
+                    get
+                    {
+                        if (IsIpv4) return new IPAddress(_dstIpInt);
+                        if (_backingBuffer == null) return IPAddress.None;
+                        return new IPAddress(new ReadOnlySpan<byte>(_backingBuffer, _dstIpOffset, 16));
+                    }
+                }
 
                 public readonly uint SrcIpInt => _srcIpInt;
                 public readonly uint DstIpInt => _dstIpInt;
@@ -1039,7 +1060,7 @@ namespace IspAudit.Bypass
                 public readonly ushort SrcPort;
                 public readonly ushort DstPort;
 
-                public PacketInfo(bool isValid, bool isIpv4, bool isTcp, bool isUdp, bool isRst, int ipHeaderLen, int tcpHeaderLen, int payloadOffset, int payloadLen, uint srcInt, uint dstInt, byte[]? srcBytes, byte[]? dstBytes, ushort srcPort, ushort dstPort)
+                public PacketInfo(bool isValid, bool isIpv4, bool isTcp, bool isUdp, bool isRst, int ipHeaderLen, int tcpHeaderLen, int payloadOffset, int payloadLen, uint srcInt, uint dstInt, byte[]? backingBuffer, int srcOffset, int dstOffset, ushort srcPort, ushort dstPort)
                 {
                     IsValid = isValid;
                     IsIpv4 = isIpv4;
@@ -1052,8 +1073,9 @@ namespace IspAudit.Bypass
                     PayloadLength = payloadLen;
                     _srcIpInt = srcInt;
                     _dstIpInt = dstInt;
-                    _srcIpBytes = srcBytes;
-                    _dstIpBytes = dstBytes;
+                    _backingBuffer = backingBuffer;
+                    _srcIpOffset = srcOffset;
+                    _dstIpOffset = dstOffset;
                     SrcPort = srcPort;
                     DstPort = dstPort;
                 }
@@ -1061,7 +1083,7 @@ namespace IspAudit.Bypass
 
             public static PacketInfo Parse(byte[] buffer, int length)
             {
-                if (length < 20) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, 0, 0, null, null, 0, 0);
+                if (length < 20) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, 0, 0, null, 0, 0, 0, 0);
 
                 int version = buffer[0] >> 4;
                 bool isIpv4 = version == 4;
@@ -1069,13 +1091,13 @@ namespace IspAudit.Bypass
                 int protocol = 0;
                 uint srcIpInt = 0;
                 uint dstIpInt = 0;
-                byte[]? srcIpBytes = null;
-                byte[]? dstIpBytes = null;
+                int srcIpOffset = 0;
+                int dstIpOffset = 0;
 
                 if (isIpv4)
                 {
                     ipHeaderLength = (buffer[0] & 0x0F) * 4;
-                    if (length < ipHeaderLength) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, 0, 0, null, null, 0, 0);
+                    if (length < ipHeaderLength) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, 0, 0, null, 0, 0, 0, 0);
                     protocol = buffer[9];
                     srcIpInt = BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(12, 4));
                     dstIpInt = BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(16, 4));
@@ -1083,10 +1105,10 @@ namespace IspAudit.Bypass
                 else
                 {
                     ipHeaderLength = 40;
-                    if (length < ipHeaderLength) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, 0, 0, null, null, 0, 0);
+                    if (length < ipHeaderLength) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, 0, 0, null, 0, 0, 0, 0);
                     protocol = buffer[6]; // NextHeader
-                    srcIpBytes = buffer.AsSpan(8, 16).ToArray();
-                    dstIpBytes = buffer.AsSpan(24, 16).ToArray();
+                    srcIpOffset = 8;
+                    dstIpOffset = 24;
                 }
 
                 bool isTcp = protocol == 6;
@@ -1100,7 +1122,7 @@ namespace IspAudit.Bypass
 
                 if (isTcp)
                 {
-                    if (length < ipHeaderLength + 20) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, 0, 0, null, null, 0, 0);
+                    if (length < ipHeaderLength + 20) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, 0, 0, null, 0, 0, 0, 0);
                     srcPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(ipHeaderLength, 2));
                     dstPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(ipHeaderLength + 2, 2));
                     tcpHeaderLength = ((buffer[ipHeaderLength + 12] >> 4) & 0xF) * 4;
@@ -1110,27 +1132,28 @@ namespace IspAudit.Bypass
                 }
                 else if (isUdp)
                 {
-                    if (length < ipHeaderLength + 8) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, 0, 0, null, null, 0, 0);
+                    if (length < ipHeaderLength + 8) return new PacketInfo(false, false, false, false, false, 0, 0, 0, 0, 0, 0, null, 0, 0, 0, 0);
                     srcPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(ipHeaderLength, 2));
                     dstPort = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(ipHeaderLength + 2, 2));
                     payloadOffset = ipHeaderLength + 8;
                     payloadLength = length - payloadOffset;
                 }
 
-                return new PacketInfo(true, isIpv4, isTcp, isUdp, isRst, ipHeaderLength, tcpHeaderLength, payloadOffset, payloadLength, srcIpInt, dstIpInt, srcIpBytes, dstIpBytes, srcPort, dstPort);
+                return new PacketInfo(true, isIpv4, isTcp, isUdp, isRst, ipHeaderLength, tcpHeaderLength, payloadOffset, payloadLength, srcIpInt, dstIpInt, buffer, srcIpOffset, dstIpOffset, srcPort, dstPort);
             }
         }
 
-        private async void CleanupWorker(CancellationToken token)
+        private void CleanupWorker(CancellationToken token)
         {
             try
             {
                 while (!token.IsCancellationRequested)
                 {
-                    await Task.Delay(TimeSpan.FromMinutes(1), token).ConfigureAwait(false);
+                    // Synchronous wait to match Action signature (avoiding async void)
+                    if (token.WaitHandle.WaitOne(TimeSpan.FromMinutes(1))) break;
 
                     long now = Environment.TickCount64;
-                    long expiration = TimeSpan.FromMinutes(5).Milliseconds; // 5 minutes TTL
+                    long expiration = (long)TimeSpan.FromMinutes(5).TotalMilliseconds; // 5 minutes TTL
 
                     var keysToRemove = new List<ConnectionKey>();
                     foreach (var kvp in _processedConnections)
