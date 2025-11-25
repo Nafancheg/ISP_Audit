@@ -61,13 +61,14 @@ namespace IspAudit.Core.Modules
                         break;
 
                     case "TLS_FRAGMENT":
-                        _progress?.Report($"[BYPASS] Применяю комбинированный bypass (TLS_FRAGMENT + DROP_RST) для {host}...");
+                    case "TLS_FAKE_FRAGMENT":
+                        _progress?.Report($"[BYPASS] Применяю комбинированный bypass ({blocked.BypassStrategy} + DROP_RST) для {host}...");
                         
                         if (_bypassManager != null)
                         {
-                            // ✅ СНАЧАЛА активируем TLS_FRAGMENT (настраивает профиль фрагментации)
-                            await _bypassManager.ApplyBypassStrategyAsync("TLS_FRAGMENT", ip, port).ConfigureAwait(false);
-                            _progress?.Report($"✓ TLS_FRAGMENT активен (ультра-фрагментация 2 байта)");
+                            // ✅ СНАЧАЛА активируем TLS стратегию (настраивает профиль)
+                            await _bypassManager.ApplyBypassStrategyAsync(blocked.BypassStrategy, ip, port).ConfigureAwait(false);
+                            _progress?.Report($"✓ {blocked.BypassStrategy} активен");
                             
                             // ✅ ЗАТЕМ активируем DROP_RST (добавляет RST blocking к текущему профилю)
                             await _bypassManager.ApplyBypassStrategyAsync("DROP_RST", ip, port).ConfigureAwait(false);
@@ -94,12 +95,12 @@ namespace IspAudit.Core.Modules
                             }
                             else
                             {
-                                _progress?.Report($"✗ Комбинированный bypass (TLS_FRAGMENT + DROP_RST) не помог. Блокировка не обходится.");
+                                _progress?.Report($"✗ Комбинированный bypass ({blocked.BypassStrategy} + DROP_RST) не помог. Блокировка не обходится.");
                             }
                         }
                         else
                         {
-                            _progress?.Report($"⚠ TLS_FRAGMENT bypass требует прав администратора (WinDivert)");
+                            _progress?.Report($"⚠ {blocked.BypassStrategy} bypass требует прав администратора (WinDivert)");
                         }
                         break;
 

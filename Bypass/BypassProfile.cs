@@ -7,6 +7,14 @@ using System.Text.Json;
 
 namespace IspAudit.Bypass
 {
+    public enum TlsBypassStrategy
+    {
+        None,
+        Fragment,
+        Fake,
+        FakeFragment
+    }
+
     /// <summary>
     /// Настройки обхода блокировок для WinDivert.
     /// </summary>
@@ -23,6 +31,11 @@ namespace IspAudit.Bypass
         public bool DropTcpRst { get; init; } = true;
 
         public bool FragmentTlsClientHello { get; init; } = true;
+        
+        /// <summary>
+        /// Стратегия обхода для TLS (HTTPS).
+        /// </summary>
+        public TlsBypassStrategy TlsStrategy { get; init; } = TlsBypassStrategy.Fragment;
 
         /// <summary>
         /// Размер первой части ClientHello после фрагментации.
@@ -67,6 +80,7 @@ namespace IspAudit.Bypass
                 {
                     DropTcpRst = doc.DropTcpRst,
                     FragmentTlsClientHello = doc.FragmentTlsClientHello,
+                    TlsStrategy = doc.TlsStrategy,
                     TlsFirstFragmentSize = doc.TlsFirstFragmentSize > 0 ? doc.TlsFirstFragmentSize : 64,
                     TlsFragmentThreshold = doc.TlsFragmentThreshold > 0 ? doc.TlsFragmentThreshold : 128,
                     RedirectRules = doc.RedirectRules?
@@ -117,6 +131,7 @@ namespace IspAudit.Bypass
             {
                 DropTcpRst = true,
                 FragmentTlsClientHello = true,
+                TlsStrategy = TlsBypassStrategy.Fragment,
                 TlsFirstFragmentSize = 64,
                 TlsFragmentThreshold = 128,
                 RedirectRules = new[] { defaultRule, defaultTcpRule }
@@ -127,6 +142,7 @@ namespace IspAudit.Bypass
         {
             public bool DropTcpRst { get; set; } = true;
             public bool FragmentTlsClientHello { get; set; } = true;
+            public TlsBypassStrategy TlsStrategy { get; set; } = TlsBypassStrategy.Fragment;
             public int TlsFirstFragmentSize { get; set; } = 64;
             public int TlsFragmentThreshold { get; set; } = 128;
             public List<BypassRedirectRuleDocument>? RedirectRules { get; set; }

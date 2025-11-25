@@ -34,14 +34,14 @@ namespace IspAudit.Core.Modules
             }
             else if (tested.BlockageType == "TLS_DPI")
             {
-                strategy = "TLS_FRAGMENT";
-                action = $"DPI блокировка TLS: фрагментация ClientHello для {tested.Hostname ?? tested.Host.RemoteIp.ToString()}";
+                strategy = "TLS_FAKE_FRAGMENT";
+                action = $"DPI блокировка TLS: fake-пакеты + фрагментация ClientHello для {tested.Hostname ?? tested.Host.RemoteIp.ToString()}";
             }
             else if (tested.BlockageType == "TLS_TIMEOUT" && tested.TcpOk)
             {
                 // TCP работает, но TLS таймаут - вероятно DPI
-                strategy = "TLS_FRAGMENT";
-                action = $"TLS таймаут (возможно DPI): фрагментация для {tested.Hostname ?? tested.Host.RemoteIp.ToString()}";
+                strategy = "TLS_FAKE_FRAGMENT";
+                action = $"TLS таймаут (возможно DPI): fake-пакеты + фрагментация для {tested.Hostname ?? tested.Host.RemoteIp.ToString()}";
             }
             else if (tested.BlockageType == "TCP_TIMEOUT")
             {

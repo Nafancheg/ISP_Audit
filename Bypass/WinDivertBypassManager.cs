@@ -294,39 +294,39 @@ namespace IspAudit.Bypass
         }
 
         /// <summary>
-        /// Динамическое включение TLS fragmentation для конкретного хоста
+        /// Динамическое включение TLS bypass для конкретного хоста
         /// </summary>
-        public async Task EnableTlsFragmentationAsync(System.Net.IPAddress targetIp, int targetPort = 443)
+        public async Task EnableTlsBypassAsync(System.Net.IPAddress targetIp, int targetPort = 443, TlsBypassStrategy strategy = TlsBypassStrategy.Fragment)
         {
-            // ✅ Всегда активируем TLS fragmentation (глобальный HTTPS фильтр работает для всех хостов)
+            // ✅ Всегда активируем TLS bypass (глобальный HTTPS фильтр работает для всех хостов)
             lock (_sync)
             {
-                // Если TLS fragmenter уже активен - ничего не делаем
-                if (_state == BypassState.Enabled && _profile.FragmentTlsClientHello && _tlsHandle != null && !_tlsHandle.IsInvalid)
+                // Если TLS bypass уже активен с той же стратегией - ничего не делаем
+                if (_state == BypassState.Enabled && _profile.TlsStrategy == strategy && _tlsHandle != null && !_tlsHandle.IsInvalid)
                 {
-                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS fragmentation already active (global HTTPS filter covers {targetIp}:{targetPort})");
+                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS bypass ({strategy}) already active");
                     return;
                 }
             }
 
-            // Нужно включить TLS fragmentation
-            var currentProfile = _profile;
+            // Нужно включить TLS bypass
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Enabling TLS bypass: {strategy} for {targetIp}:{targetPort}");
             
-            // Если уже что-то запущено - перезапускаем ТОЛЬКО с TLS fragmenter
+            // Если уже что-то запущено - перезапускаем
             if (_state == BypassState.Enabled)
             {
-                ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Restarting bypass with TLS fragmentation for {targetIp}:{targetPort}");
                 await DisableAsync().ConfigureAwait(false);
             }
 
-            // Запускаем ТОЛЬКО TLS fragmentation (БЕЗ RST blocker - он конфликтует с Flow layer)
+            // Запускаем ТОЛЬКО TLS bypass (БЕЗ RST blocker - он конфликтует с Flow layer)
             var profile = new BypassProfile
             {
                 DropTcpRst = false,  // ⚠ НЕ включать RST blocker (конфликт с TrafficAnalyzer Flow layer)
-                FragmentTlsClientHello = true,
-                TlsFirstFragmentSize = 2,  // ✅ УЛЬТРА-ЭКСТРЕМАЛЬНАЯ фрагментация (2 байта - разделяет TLS Record Type от версии)
+                FragmentTlsClientHello = strategy == TlsBypassStrategy.Fragment || strategy == TlsBypassStrategy.FakeFragment,
+                TlsStrategy = strategy,
+                TlsFirstFragmentSize = 2,  // ✅ УЛЬТРА-ЭКСТРЕМАЛЬНАЯ фрагментация
                 TlsFragmentThreshold = 16,
-                RedirectRules = Array.Empty<BypassRedirectRule>()  // Очищаем redirects
+                RedirectRules = Array.Empty<BypassRedirectRule>()
             };
             await EnableAsync(profile).ConfigureAwait(false);
         }
@@ -384,37 +384,34 @@ namespace IspAudit.Bypass
                 case "TLS_FRAGMENT":
                     if (targetIp != null)
                     {
-                        await EnableTlsFragmentationAsync(targetIp, targetPort).ConfigureAwait(false);
+                        await EnableTlsBypassAsync(targetIp, targetPort, TlsBypassStrategy.Fragment).ConfigureAwait(false);
                     }
                     else
                     {
-                        // Общая TLS fragmentation для всех HTTPS (БЕЗ RST blocker)
-                        ISPAudit.Utils.DebugLogger.Log("[WinDivert] Enabling global TLS fragmentation");
-                        
-                        // Если уже активен - не перезапускаем
-                        lock (_sync)
-                        {
-                            if (_state == BypassState.Enabled && _profile.FragmentTlsClientHello && _tlsHandle != null && !_tlsHandle.IsInvalid)
-                            {
-                                ISPAudit.Utils.DebugLogger.Log("[WinDivert] TLS fragmentation already active globally");
-                                return;
-                            }
-                        }
-                        
-                        if (_state == BypassState.Enabled)
-                        {
-                            await DisableAsync().ConfigureAwait(false);
-                        }
-                        
-                        var profile = new BypassProfile
-                        {
-                            DropTcpRst = false,  // ✅ БЕЗ RST blocker
-                            FragmentTlsClientHello = true,
-                            TlsFirstFragmentSize = 64,
-                            TlsFragmentThreshold = 128,
-                            RedirectRules = Array.Empty<BypassRedirectRule>()
-                        };
-                        await EnableAsync(profile).ConfigureAwait(false);
+                        // Общая TLS fragmentation
+                        await EnableTlsBypassAsync(IPAddress.Any, 443, TlsBypassStrategy.Fragment).ConfigureAwait(false);
+                    }
+                    break;
+
+                case "TLS_FAKE":
+                    if (targetIp != null)
+                    {
+                        await EnableTlsBypassAsync(targetIp, targetPort, TlsBypassStrategy.Fake).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await EnableTlsBypassAsync(IPAddress.Any, 443, TlsBypassStrategy.Fake).ConfigureAwait(false);
+                    }
+                    break;
+
+                case "TLS_FAKE_FRAGMENT":
+                    if (targetIp != null)
+                    {
+                        await EnableTlsBypassAsync(targetIp, targetPort, TlsBypassStrategy.FakeFragment).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await EnableTlsBypassAsync(IPAddress.Any, 443, TlsBypassStrategy.FakeFragment).ConfigureAwait(false);
                     }
                     break;
 
@@ -440,7 +437,7 @@ namespace IspAudit.Bypass
             _runtimeRedirectRules = BuildRuntimeRedirects(profile);
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Initialize: DropTcpRst={profile.DropTcpRst}, FragmentTls={profile.FragmentTlsClientHello}, Redirects={_runtimeRedirectRules.Count}");
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Initialize: DropTcpRst={profile.DropTcpRst}, TlsStrategy={profile.TlsStrategy}, Redirects={_runtimeRedirectRules.Count}");
 
             if (profile.DropTcpRst)
             {
@@ -472,10 +469,9 @@ namespace IspAudit.Bypass
                 IsRstBlockerActive = false;
             }
 
-            if (profile.FragmentTlsClientHello)
+            if (profile.TlsStrategy != TlsBypassStrategy.None)
             {
-                // TLS fragmenter: priority = 1000 для перехвата РАНЬШЕ Flow layer (priority 0)
-                // ИСПРАВЛЕНО: было -1 (НИЖЕ приоритет), теперь 1000 (ВЫШЕ приоритет)
+                // TLS bypass: priority = 200 для перехвата РАНЬШЕ Flow layer (priority 0)
                 if (TryOpenWinDivert(
                     "outbound and tcp.DstPort == 443 and tcp.PayloadLength > 0",
                     WinDivertNative.Layer.Network,
@@ -487,7 +483,7 @@ namespace IspAudit.Bypass
                 }
                 else
                 {
-                    throw new InvalidOperationException("Failed to open WinDivert handle for TLS fragmentation");
+                    throw new InvalidOperationException("Failed to open WinDivert handle for TLS bypass");
                 }
             }
 
@@ -736,34 +732,62 @@ namespace IspAudit.Bypass
                 
                 ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ClientHello detected: {srcIp} → {dstIp}:{dstPort}, payloadSize={payloadLength}");
 
-                int firstLen = Math.Min(profile.TlsFirstFragmentSize, payloadLength - 1);
-                int secondLen = payloadLength - firstLen;
-                if (firstLen <= 0 || secondLen <= 0)
+                // 1. FAKE Strategy: Send fake packet with BadSeq
+                if (profile.TlsStrategy == TlsBypassStrategy.Fake || profile.TlsStrategy == TlsBypassStrategy.FakeFragment)
                 {
-                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Invalid fragment sizes: first={firstLen}, second={secondLen}, skipping fragmentation");
-                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
-                    continue;
+                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Sending FAKE packet (BadSeq) for {dstIp}:{dstPort}");
+                    
+                    var fakePacket = new byte[length];
+                    Buffer.BlockCopy(buffer, 0, fakePacket, 0, length);
+                    
+                    // Modify Sequence Number (BadSeq)
+                    // Subtract 10000 from Seq
+                    int seqOffset = ipHeaderLength + 4;
+                    uint seq = BinaryPrimitives.ReadUInt32BigEndian(fakePacket.AsSpan(seqOffset, 4));
+                    BinaryPrimitives.WriteUInt32BigEndian(fakePacket.AsSpan(seqOffset, 4), seq - 10000);
+                    
+                    // Recalculate checksums for fake packet
+                    WinDivertNative.WinDivertHelperCalcChecksums(fakePacket, (uint)length, ref addr, 0);
+                    WinDivertNative.WinDivertSend(handle, fakePacket, (uint)length, out _, in addr);
                 }
 
-                // ✅ Фрагментируем ClientHello
-                ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Fragmenting ClientHello: payload={payloadLength} → first={firstLen}, second={secondLen}");
+                // 2. FRAGMENT Strategy
+                if (profile.TlsStrategy == TlsBypassStrategy.Fragment || profile.TlsStrategy == TlsBypassStrategy.FakeFragment)
+                {
+                    int firstLen = Math.Min(profile.TlsFirstFragmentSize, payloadLength - 1);
+                    int secondLen = payloadLength - firstLen;
+                    if (firstLen <= 0 || secondLen <= 0)
+                    {
+                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Invalid fragment sizes: first={firstLen}, second={secondLen}, skipping fragmentation");
+                        WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
+                        continue;
+                    }
 
-                var firstPacket = new byte[ipHeaderLength + tcpHeaderLength + firstLen];
-                Buffer.BlockCopy(buffer, 0, firstPacket, 0, ipHeaderLength + tcpHeaderLength + firstLen);
-                AdjustPacketLengths(firstPacket, ipHeaderLength, tcpHeaderLength, firstLen, isIpv4);
-                WinDivertNative.WinDivertHelperCalcChecksums(firstPacket, (uint)firstPacket.Length, ref addr, 0);
-                WinDivertNative.WinDivertSend(handle, firstPacket, (uint)firstPacket.Length, out _, in addr);
+                    // ✅ Фрагментируем ClientHello
+                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Fragmenting ClientHello: payload={payloadLength} → first={firstLen}, second={secondLen}");
 
-                var secondPacket = new byte[ipHeaderLength + tcpHeaderLength + secondLen];
-                Buffer.BlockCopy(buffer, 0, secondPacket, 0, ipHeaderLength + tcpHeaderLength);
-                Buffer.BlockCopy(buffer, payloadOffset + firstLen, secondPacket, ipHeaderLength + tcpHeaderLength, secondLen);
-                IncrementTcpSequence(secondPacket, ipHeaderLength, (uint)firstLen);
-                AdjustPacketLengths(secondPacket, ipHeaderLength, tcpHeaderLength, secondLen, isIpv4);
-                WinDivertNative.WinDivertHelperCalcChecksums(secondPacket, (uint)secondPacket.Length, ref addr, 0);
-                WinDivertNative.WinDivertSend(handle, secondPacket, (uint)secondPacket.Length, out _, in addr);
+                    var firstPacket = new byte[ipHeaderLength + tcpHeaderLength + firstLen];
+                    Buffer.BlockCopy(buffer, 0, firstPacket, 0, ipHeaderLength + tcpHeaderLength + firstLen);
+                    AdjustPacketLengths(firstPacket, ipHeaderLength, tcpHeaderLength, firstLen, isIpv4);
+                    WinDivertNative.WinDivertHelperCalcChecksums(firstPacket, (uint)firstPacket.Length, ref addr, 0);
+                    WinDivertNative.WinDivertSend(handle, firstPacket, (uint)firstPacket.Length, out _, in addr);
 
-                clientHellosFragmented++;
-                ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ✓ ClientHello fragmented successfully (total fragmented: {clientHellosFragmented})");
+                    var secondPacket = new byte[ipHeaderLength + tcpHeaderLength + secondLen];
+                    Buffer.BlockCopy(buffer, 0, secondPacket, 0, ipHeaderLength + tcpHeaderLength);
+                    Buffer.BlockCopy(buffer, payloadOffset + firstLen, secondPacket, ipHeaderLength + tcpHeaderLength, secondLen);
+                    IncrementTcpSequence(secondPacket, ipHeaderLength, (uint)firstLen);
+                    AdjustPacketLengths(secondPacket, ipHeaderLength, tcpHeaderLength, secondLen, isIpv4);
+                    WinDivertNative.WinDivertHelperCalcChecksums(secondPacket, (uint)secondPacket.Length, ref addr, 0);
+                    WinDivertNative.WinDivertSend(handle, secondPacket, (uint)secondPacket.Length, out _, in addr);
+
+                    clientHellosFragmented++;
+                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ✓ ClientHello fragmented successfully (total fragmented: {clientHellosFragmented})");
+                }
+                else
+                {
+                    // If only Fake (no fragment), send original packet as is
+                    WinDivertNative.WinDivertSend(handle, buffer, read, out _, in addr);
+                }
             }
         }
 
