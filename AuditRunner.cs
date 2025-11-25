@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using IspAudit.Bypass;
 using IspAudit.Output;
 using IspAudit.Tests;
 
@@ -9,7 +10,11 @@ namespace IspAudit
 {
     public static class AuditRunner
     {
-        public static async Task<RunReport> RunAsync(Config config, IProgress<IspAudit.Tests.TestProgress>? progress = null, System.Threading.CancellationToken ct = default)
+        public static async Task<RunReport> RunAsync(
+            Config config, 
+            IProgress<IspAudit.Tests.TestProgress>? progress = null, 
+            System.Threading.CancellationToken ct = default,
+            WinDivertBypassManager? bypassManager = null)
         {
             var targetDefinitions = config.ResolveTargets();
 
@@ -27,6 +32,13 @@ namespace IspAudit
             var traceTest = new TracerouteTest(config);
             var udpRunner = new Tests.UdpProbeRunner(config);
             var rst = new RstHeuristic(config);
+
+            // Initialize Coordinator if needed
+            BypassCoordinator? coordinator = null;
+            if (config.EnableAutoBypass && bypassManager != null)
+            {
+                coordinator = new BypassCoordinator(bypassManager);
+            }
 
             // Определяем режим: если указаны конкретные хосты через --targets, пропускаем глобальные тесты
             bool isSingleHostMode = config.Targets.Count > 0;
@@ -62,145 +74,46 @@ namespace IspAudit
                 foreach (var def in targetDefinitions)
                 {
                     ct.ThrowIfCancellationRequested();
-                    var profile = TargetServiceProfiles.Resolve(def.Service);
                     
-                    // Приоритет портов:
-                    // 1. def.Ports (из профиля JSON или снифа) — всегда первый приоритет
-                    // 2. config.Ports (глобальный фоллбэк если Ports не указаны)
-                    var portsToUse = def.Ports?.Any() == true ? def.Ports : config.Ports;
-                    
-                    var targetReport = new TargetReport
-                    {
-                        host = def.Host,
-                        display_name = def.Name,
-                        service = string.IsNullOrWhiteSpace(def.Service) ? profile.DisplayName : def.Service,
-                        dns_enabled = config.EnableDns && profile.RunDns,
-                        tcp_enabled = config.EnableTcp && profile.RunTcp,
-                        http_enabled = config.EnableHttp && profile.RunHttp,
-                        trace_enabled = config.EnableTrace && profile.RunTrace && !config.NoTrace,
-                        tcp_ports_checked = profile.RunTcp ? portsToUse.Distinct().OrderBy(p => p).ToList() : new List<int>()
-                    };
+                    // Run initial test
+                    var targetReport = await TestTargetAsync(def, config, dnsTest, tcpTest, httpTest, traceTest, progress, ct).ConfigureAwait(false);
 
-                    if (targetReport.dns_enabled)
+                    // Auto-fix logic
+                    if (coordinator != null && IsTargetBroken(targetReport))
                     {
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, $"{def.Name}: старт"));
-                        var dnsRes = await dnsTest.ResolveAsync(def.Host).ConfigureAwait(false);
-                        targetReport.system_dns = dnsRes.SystemV4;
-                        targetReport.doh = dnsRes.DohV4;
-                        targetReport.dns_status = dnsRes.Status.ToString();
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, $"{def.Name}: завершено", true, targetReport.dns_status));
-                    }
-                    else
-                    {
-                        targetReport.dns_status = "SKIPPED";
-                        var message = config.EnableDns ? "пропущено: не требуется для этой цели" : "пропущено: тест отключён";
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, $"{def.Name}: пропущено", true, message));
-                    }
-
-                    // Early-exit: если DNS полностью провалился (и System и DoH пусты), пропустить TCP/HTTP/Trace
-                    bool dnsCompleteFail = targetReport.dns_enabled &&
-                        targetReport.system_dns.Count == 0 &&
-                        targetReport.doh.Count == 0;
-
-                    if (dnsCompleteFail)
-                    {
-                        // Проверяем, является ли цель критичной и имеет ли fallback IP
-                        var targetProfile = Config.ActiveProfile?.Targets.FirstOrDefault(t => t.Host == def.Host);
-                        bool isCritical = targetProfile?.Critical ?? false;
-                        string? fallbackIp = targetProfile?.FallbackIp;
-
-                        if (isCritical && !string.IsNullOrWhiteSpace(fallbackIp))
+                        progress?.Report(new Tests.TestProgress(Tests.TestKind.INFO, $"{def.Name}: попытка авто-исправления..."));
+                        
+                        var targetModel = new ISPAudit.Models.Target 
+                        { 
+                            Host = def.Host, 
+                            Name = def.Name, 
+                            FallbackIp = def.FallbackIp ?? "" 
+                        };
+                        
+                        try
                         {
-                            // Критичная цель с fallback IP → добавляем fallback IP и продолжаем тестирование
-                            targetReport.system_dns.Add(fallbackIp);
-                            progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS,
-                                $"{def.Name}: DNS не вернул адресов, используем fallback IP {fallbackIp}",
-                                null,
-                                $"fallback: {fallbackIp}"));
-                        }
-                        else
-                        {
-                            // Некритичная цель ИЛИ нет fallback IP → пропускаем тестирование
-                            string reason = !isCritical 
-                                ? "домен недоступен (некритичная цель)" 
-                                : "домен недоступен (нет fallback IP)";
+                            var fixResult = await coordinator.AutoFixAsync(targetModel, targetReport, async (t) => 
+                            {
+                                // Retest callback
+                                // We suppress progress reporting during retest to avoid spamming UI
+                                return await TestTargetAsync(def, config, dnsTest, tcpTest, httpTest, traceTest, null, ct).ConfigureAwait(false);
+                            }, ct).ConfigureAwait(false);
                             
-                            progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS,
-                                $"{def.Name}: DNS не вернул адресов, пропускаем TCP/HTTP/Trace",
-                                false,
-                                reason));
-
-                            targetReport.tcp_enabled = false;
-                            targetReport.http_enabled = false;
-                            targetReport.trace_enabled = false;
+                            if (fixResult.Success)
+                            {
+                                targetReport = fixResult.FinalReport!;
+                                targetReport.bypass_strategy = fixResult.Strategy;
+                                progress?.Report(new Tests.TestProgress(Tests.TestKind.INFO, $"{def.Name}: ИСПРАВЛЕНО ({fixResult.Strategy})", true));
+                            }
+                            else
+                            {
+                                progress?.Report(new Tests.TestProgress(Tests.TestKind.INFO, $"{def.Name}: авто-исправление не помогло: {fixResult.Message}", false));
+                            }
                         }
-                    }
-
-                    if (targetReport.tcp_enabled)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TCP, $"{def.Name}: старт"));
-                        targetReport.tcp = await tcpTest.CheckAsync(def.Host, targetReport.system_dns, portsToUse).ConfigureAwait(false);
-                        bool ok = targetReport.tcp.Exists(r => r.open);
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TCP, $"{def.Name}: завершено", ok, ok?"open найден":"все закрыто"));
-                    }
-                    else
-                    {
-                        var message = config.EnableTcp ? "пропущено: тест TCP не требуется" : "пропущено: тест отключён";
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TCP, $"{def.Name}: пропущено", true, message));
-                    }
-
-                    if (targetReport.http_enabled)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{def.Name}: старт"));
-                        targetReport.http = await httpTest.CheckAsync(def.Host).ConfigureAwait(false);
-                        
-                        // Проверяем ТОЛЬКО успешность получения ответа (не смотрим на статус-код)
-                        // 4xx/5xx — это НЕ сетевая проблема, это бизнес-логика сервера
-                        bool ok = targetReport.http.Exists(h => h.success);
-                        
-                        // Проверяем на блок-страницу
-                        bool hasBlockPage = targetReport.http.Exists(h => h.is_block_page == true);
-                        
-                        string message;
-                        if (hasBlockPage)
-                            message = "обнаружена блокировка";
-                        else if (ok)
-                            message = "соединение установлено";
-                        else
-                            message = "ошибки/таймаут";
-                        
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{def.Name}: завершено", ok && !hasBlockPage, message));
-                    }
-                    else
-                    {
-                        var message = config.EnableHttp ? "пропущено: HTTPS не применяется" : "пропущено: тест отключён";
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{def.Name}: пропущено", true, message));
-                    }
-
-                    if (targetReport.trace_enabled)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{def.Name}: старт"));
-                        var hopProgress = new System.Progress<string>(line =>
+                        catch (Exception ex)
                         {
-                            progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{def.Name}: hop", null, line));
-                        });
-                        targetReport.traceroute = await traceTest.RunAsync(def.Host, hopProgress, ct).ConfigureAwait(false);
-                        bool ok = targetReport.traceroute.hops.Count > 0;
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{def.Name}: завершено", ok));
-                    }
-                    else
-                    {
-                        string message;
-                        if (!config.EnableTrace)
-                            message = "пропущено: тест отключён";
-                        else if (config.NoTrace)
-                            message = "пропущено: трассировка отключена в настройках";
-                        else
-                            message = "пропущено: не требуется для этой цели";
-                        progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{def.Name}: пропущено", true, message));
+                            progress?.Report(new Tests.TestProgress(Tests.TestKind.INFO, $"{def.Name}: ошибка авто-исправления: {ex.Message}", false));
+                        }
                     }
 
                     run.targets[def.Name] = targetReport;
@@ -306,6 +219,165 @@ namespace IspAudit
             }
             run.summary = ReportWriter.BuildSummary(run, config);
             return run;
+        }
+
+        private static async Task<TargetReport> TestTargetAsync(
+            TargetDefinition def, 
+            Config config, 
+            DnsTest dnsTest, 
+            TcpTest tcpTest, 
+            HttpTest httpTest, 
+            TracerouteTest traceTest, 
+            IProgress<IspAudit.Tests.TestProgress>? progress, 
+            System.Threading.CancellationToken ct)
+        {
+            var profile = TargetServiceProfiles.Resolve(def.Service);
+            var portsToUse = def.Ports?.Any() == true ? def.Ports : config.Ports;
+            
+            var targetReport = new TargetReport
+            {
+                host = def.Host,
+                display_name = def.Name,
+                service = string.IsNullOrWhiteSpace(def.Service) ? profile.DisplayName : def.Service,
+                dns_enabled = config.EnableDns && profile.RunDns,
+                tcp_enabled = config.EnableTcp && profile.RunTcp,
+                http_enabled = config.EnableHttp && profile.RunHttp,
+                trace_enabled = config.EnableTrace && profile.RunTrace && !config.NoTrace,
+                tcp_ports_checked = profile.RunTcp ? portsToUse.Distinct().OrderBy(p => p).ToList() : new List<int>()
+            };
+
+            if (targetReport.dns_enabled)
+            {
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, $"{def.Name}: старт"));
+                var dnsRes = await dnsTest.ResolveAsync(def.Host).ConfigureAwait(false);
+                targetReport.system_dns = dnsRes.SystemV4;
+                targetReport.doh = dnsRes.DohV4;
+                targetReport.dns_status = dnsRes.Status.ToString();
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, $"{def.Name}: завершено", true, targetReport.dns_status));
+            }
+            else
+            {
+                targetReport.dns_status = "SKIPPED";
+                var message = config.EnableDns ? "пропущено: не требуется для этой цели" : "пропущено: тест отключён";
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS, $"{def.Name}: пропущено", true, message));
+            }
+
+            // Early-exit: если DNS полностью провалился (и System и DoH пусты), пропустить TCP/HTTP/Trace
+            bool dnsCompleteFail = targetReport.dns_enabled &&
+                targetReport.system_dns.Count == 0 &&
+                targetReport.doh.Count == 0;
+
+            if (dnsCompleteFail)
+            {
+                // Проверяем, является ли цель критичной и имеет ли fallback IP
+                var targetProfile = Config.ActiveProfile?.Targets.FirstOrDefault(t => t.Host == def.Host);
+                bool isCritical = targetProfile?.Critical ?? false;
+                string? fallbackIp = targetProfile?.FallbackIp;
+
+                if (isCritical && !string.IsNullOrWhiteSpace(fallbackIp))
+                {
+                    // Критичная цель с fallback IP → добавляем fallback IP и продолжаем тестирование
+                    targetReport.system_dns.Add(fallbackIp);
+                    progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS,
+                        $"{def.Name}: DNS не вернул адресов, используем fallback IP {fallbackIp}",
+                        null,
+                        $"fallback: {fallbackIp}"));
+                }
+                else
+                {
+                    // Некритичная цель ИЛИ нет fallback IP → пропускаем тестирование
+                    string reason = !isCritical 
+                        ? "домен недоступен (некритичная цель)" 
+                        : "домен недоступен (нет fallback IP)";
+                    
+                    progress?.Report(new Tests.TestProgress(Tests.TestKind.DNS,
+                        $"{def.Name}: DNS не вернул адресов, пропускаем TCP/HTTP/Trace",
+                        false,
+                        reason));
+
+                    targetReport.tcp_enabled = false;
+                    targetReport.http_enabled = false;
+                    targetReport.trace_enabled = false;
+                }
+            }
+
+            if (targetReport.tcp_enabled)
+            {
+                ct.ThrowIfCancellationRequested();
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.TCP, $"{def.Name}: старт"));
+                targetReport.tcp = await tcpTest.CheckAsync(def.Host, targetReport.system_dns, portsToUse).ConfigureAwait(false);
+                bool ok = targetReport.tcp.Exists(r => r.open);
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.TCP, $"{def.Name}: завершено", ok, ok?"open найден":"все закрыто"));
+            }
+            else
+            {
+                var message = config.EnableTcp ? "пропущено: тест TCP не требуется" : "пропущено: тест отключён";
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.TCP, $"{def.Name}: пропущено", true, message));
+            }
+
+            if (targetReport.http_enabled)
+            {
+                ct.ThrowIfCancellationRequested();
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{def.Name}: старт"));
+                targetReport.http = await httpTest.CheckAsync(def.Host).ConfigureAwait(false);
+                
+                // Проверяем ТОЛЬКО успешность получения ответа (не смотрим на статус-код)
+                // 4xx/5xx — это НЕ сетевая проблема, это бизнес-логика сервера
+                bool ok = targetReport.http.Exists(h => h.success);
+                
+                // Проверяем на блок-страницу
+                bool hasBlockPage = targetReport.http.Exists(h => h.is_block_page == true);
+                
+                string message;
+                if (hasBlockPage)
+                    message = "обнаружена блокировка";
+                else if (ok)
+                    message = "соединение установлено";
+                else
+                    message = "ошибки/таймаут";
+                
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{def.Name}: завершено", ok && !hasBlockPage, message));
+            }
+            else
+            {
+                var message = config.EnableHttp ? "пропущено: HTTPS не применяется" : "пропущено: тест отключён";
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.HTTP, $"{def.Name}: пропущено", true, message));
+            }
+
+            if (targetReport.trace_enabled)
+            {
+                ct.ThrowIfCancellationRequested();
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{def.Name}: старт"));
+                var hopProgress = new System.Progress<string>(line =>
+                {
+                    progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{def.Name}: hop", null, line));
+                });
+                targetReport.traceroute = await traceTest.RunAsync(def.Host, hopProgress, ct).ConfigureAwait(false);
+                bool ok = targetReport.traceroute.hops.Count > 0;
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{def.Name}: завершено", ok));
+            }
+            else
+            {
+                string message;
+                if (!config.EnableTrace)
+                    message = "пропущено: тест отключён";
+                else if (config.NoTrace)
+                    message = "пропущено: трассировка отключена в настройках";
+                else
+                    message = "пропущено: не требуется для этой цели";
+                progress?.Report(new Tests.TestProgress(Tests.TestKind.TRACEROUTE, $"{def.Name}: пропущено", true, message));
+            }
+
+            return targetReport;
+        }
+
+        private static bool IsTargetBroken(TargetReport report)
+        {
+            // Check if target is broken and needs fixing
+            bool tcpBroken = report.tcp_enabled && !report.tcp.Any(t => t.open);
+            bool httpBroken = report.http_enabled && report.http.Any(h => !h.success || h.is_block_page == true);
+            
+            return tcpBroken || httpBroken;
         }
     }
 }

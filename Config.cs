@@ -36,6 +36,7 @@ namespace IspAudit
         public bool EnableTrace { get; set; } = false; // Отключено по умолчанию - медленный и редко полезный для пользователей
         public bool EnableUdp { get; set; } = true;
         public bool EnableRst { get; set; } = false; // Отключено по умолчанию - сложная эвристика, мало информативна
+        public bool EnableAutoBypass { get; set; } = false; // Автоматическое применение обхода блокировок
 
         public static Config Default() => new Config();
 
@@ -66,6 +67,9 @@ namespace IspAudit
                         break;
                     case "--rst":
                         cfg.EnableRst = true;
+                        break;
+                    case "--auto-bypass":
+                        cfg.EnableAutoBypass = true;
                         break;
                     case "--report":
                         if (i + 1 >= args.Length) { error = "--report требует указания пути к файлу"; break; }

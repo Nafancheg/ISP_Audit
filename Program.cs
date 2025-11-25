@@ -129,6 +129,12 @@ namespace IspAudit
             Console.WriteLine();
 
             // Run tests via audit runner
+            IspAudit.Bypass.WinDivertBypassManager? bypassManager = null;
+            if (config.EnableAutoBypass)
+            {
+                bypassManager = new IspAudit.Bypass.WinDivertBypassManager();
+            }
+
             var run = await AuditRunner.RunAsync(new Config
             {
                 Targets = targets,
@@ -141,10 +147,16 @@ namespace IspAudit
                 TcpTimeoutSeconds = config.TcpTimeoutSeconds,
                 UdpTimeoutSeconds = config.UdpTimeoutSeconds,
                 Ports = new List<int>(config.Ports),
-                UdpProbes = config.UdpProbes.Select(p => p.Copy()).ToList()
-            }).ConfigureAwait(false);
+                UdpProbes = config.UdpProbes.Select(p => p.Copy()).ToList(),
+                EnableAutoBypass = config.EnableAutoBypass
+            }, null, default, bypassManager).ConfigureAwait(false);
             run.cli = string.Join(' ', args);
             run.ext_ip = extIp;
+
+            if (bypassManager != null)
+            {
+                await bypassManager.DisableAsync();
+            }
 
             // Console pretty output
             ReportWriter.PrintHuman(run, config);

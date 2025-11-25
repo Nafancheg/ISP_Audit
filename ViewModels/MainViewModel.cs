@@ -542,6 +542,33 @@ namespace ISPAudit.ViewModels
                 {
                     // НЕ СБРАСЫВАЕМ статус в Idle - оставляем предыдущий результат
                 }
+                else if (progress.Status.Contains("ИСПРАВЛЕНО"))
+                {
+                    // Формат: "Target: ИСПРАВЛЕНО (Strategy)"
+                    testResult.Status = TestStatus.Pass;
+                    
+                    var msg = progress.Message ?? progress.Status;
+                    testResult.Details += $"[{DateTime.Now:HH:mm:ss}] ✅ {msg}\n";
+                    
+                    // Пытаемся извлечь стратегию из скобок
+                    var openParen = msg.IndexOf('(');
+                    var closeParen = msg.IndexOf(')');
+                    if (openParen > 0 && closeParen > openParen)
+                    {
+                        testResult.BypassStrategy = msg.Substring(openParen + 1, closeParen - openParen - 1);
+                    }
+                    
+                    Log($"[✓] {targetName}: Auto-Fix Success ({testResult.BypassStrategy})");
+                }
+                else if (progress.Status.Contains("авто-исправление"))
+                {
+                    // Сообщения о попытках или неудачах
+                    testResult.Details += $"[{DateTime.Now:HH:mm:ss}] ℹ️ {progress.Status.Split(':')[1].Trim()}\n";
+                    if (progress.Success == false)
+                    {
+                        Log($"[!] {targetName}: Auto-Fix Failed");
+                    }
+                }
 
                 // Обновление счетчиков
                 OnPropertyChanged(nameof(PassCount));

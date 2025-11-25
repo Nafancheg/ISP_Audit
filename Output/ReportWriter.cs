@@ -63,6 +63,7 @@ namespace IspAudit.Output
         public bool http_enabled { get; set; } = true;
         public bool trace_enabled { get; set; } = true;
         public List<int> tcp_ports_checked { get; set; } = new();
+        public string? bypass_strategy { get; set; } // Strategy used to fix this target
     }
 
     public static class ReportWriter
@@ -367,7 +368,7 @@ namespace IspAudit.Output
                 && kv.Value.tcp_enabled 
                 && !kv.Value.tcp.Any(r => r.open));
 
-            // AWS endpoints недоступны (проверяем в targets)
+            // AWS endpoints недоступны (проверяем in targets)
             var awsTargets = run.targets.Where(kv => 
                 kv.Value.service?.Contains("AWS", StringComparison.OrdinalIgnoreCase) == true).ToList();
             bool allAwsUnavailable = awsTargets.Count > 0 && awsTargets.All(kv =>
