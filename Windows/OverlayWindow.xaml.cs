@@ -23,7 +23,7 @@ namespace ISPAudit.Windows
             {
                 var desktop = SystemParameters.WorkArea;
                 double width = double.IsNaN(this.Width) ? 320 : this.Width;
-                double height = double.IsNaN(this.Height) ? 140 : this.Height;
+                double height = double.IsNaN(this.Height) ? 180 : this.Height;
                 
                 this.Left = desktop.Right - width - 20;
                 this.Top = desktop.Bottom - height - 20;
@@ -40,6 +40,12 @@ namespace ISPAudit.Windows
         public void UpdateStatus(string status)
         {
             StatusText.Text = status;
+        }
+
+        public void UpdateStats(int connections, int events)
+        {
+            ConnectionsText.Text = connections.ToString();
+            EventsText.Text = events.ToString();
         }
 
         public Task<bool> ShowSilencePromptAsync(int timeoutSeconds)

@@ -19,10 +19,9 @@
 
 ### Exe-сценарий (WinDivert-based)
 **Stage 1: Анализ трафика**
-- Захват TCP/UDP пакетов через WinDivert NETWORK layer
-- Port caching (GetExtendedTcpTable/UDP каждые 2 секунды)
-- DNS packet parsing (port 53 responses) для hostname resolution
-- TLS SNI extraction (port 443 ClientHello)
+- **Flow Layer**: Мониторинг установленных соединений (PID mapping)
+- **Socket Layer**: Отслеживание попыток подключения (connect) для выявления заблокированных IP
+- **Network Layer**: Захват DNS-пакетов и TLS ClientHello для определения хостнеймов
 - Гибридное определение hostname: DNS cache → SNI → Reverse DNS
 - Генерация профиля с захваченными целями
 
@@ -141,9 +140,11 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
 
 ### Компоненты
 
-**TrafficAnalyzer.cs** (WinDivert NETWORK layer):
-- Захват outbound TCP/UDP пакетов через WinDivert 2.2.0
-- Port → PID mapping через GetExtendedTcpTable/GetExtendedUdpTable (кэш обновляется каждые 2с)
+**TrafficAnalyzer.cs** (WinDivert FLOW + SOCKET + NETWORK layers):
+- **Flow Layer (-1000)**: Событийный мониторинг успешных соединений (FLOW_ESTABLISHED) с привязкой к PID
+- **Socket Layer (-1000)**: Перехват событий `connect()` (SOCKET_CONNECT) для детекции попыток связи с недоступными хостами
+- **Network Layer (0)**: Анализ содержимого пакетов (DNS responses, TLS ClientHello) для обогащения данных
+- **Fallback**: Использование IP Helper API (GetExtendedTcpTable) в режиме Bypass для предотвращения конфликтов
 - DNS response parsing (UDP port 53) → IP→hostname маппинг
 - TLS SNI extraction (TCP port 443 ClientHello) → hostname из HTTPS
 - Reverse DNS fallback для IP без DNS/SNI данных
@@ -495,9 +496,10 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
 - Сборка single‑file win‑x64 + workflow GitHub Actions — есть.
 
 ## Ограничения и безопасность
-
 - WinDivert требует прав администратора (kernel driver)
-- NETWORK layer используется вместо SOCKET (SOCKET + Sniff = ERROR_INVALID_PARAMETER 87)
+- Используется 3-слойная архитектура WinDivert (FLOW/SOCKET/NETWORK) для максимального покрытия
+- В режиме Bypass включается гибридный режим (IP Helper вместо FLOW/SOCKET) для устранения конфликтов
+- Port caching уменьшает overhead GetExtendedTcpTable (вызов каждые 2с вместо per-packet)ключения
 - Port caching уменьшает overhead GetExtendedTcpTable (вызов каждые 2с вместо per-packet)
 - DNS парсинг работает только для uncached queries (если DNS закэширован системой → не видим)
 - SNI extraction работает только для TLS 1.0-1.3 ClientHello (не для encrypted SNI/ECH)
@@ -521,8 +523,8 @@ GitHub Actions workflow: `.github/workflows/build.yml` — собирает `ISP
 ## Известные проблемы
 
 1. **ERROR_INVALID_PARAMETER (87)** при запуске WinDivert
-   - Причина: SOCKET layer + Sniff flag несовместимы
-   - Решение: используется NETWORK layer ✅
+   - Причина: SOCKET layer + Sniff flag требовали правильной комбинации флагов
+   - Решение: используется `Sniff | RecvOnly` для SOCKET layer ✅
 
 2. **"захвачено событий - 0"**
    - Причина: GetExtendedTcpTable вызов per-packet слишком медленный

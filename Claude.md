@@ -112,7 +112,7 @@ Workflow `.github/workflows/build.yml` автоматически собирае
   - **WinDivert Socket Layer**: Для отслеживания *попыток* соединения (`connect()`), даже если они блокируются.
   - Приоритет драйвера `-1000` (мониторинг не влияет на прохождение трафика).
 - **DnsParserService.cs**: Сниффинг DNS-трафика (UDP 53) для сопоставления IP-адресов с доменными именами.
-- **TrafficAnalyzer.cs**: Оркестратор захвата трафика. Объединяет данные от FlowMonitor, DnsParser и PidTracker для построения профиля целей.
+- **TrafficAnalyzer.cs**: Оркестратор захвата трафика. Использует все 3 слоя WinDivert (Flow/Socket/Network) для построения полного профиля целей. Объединяет данные от FlowMonitor, DnsParser и PidTracker.
 
 ## Важные файлы данных
 

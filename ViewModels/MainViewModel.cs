@@ -1006,12 +1006,27 @@ namespace ISPAudit.ViewModels
                         // Обновляем статус в оверлее
                         if (msg.Contains("Захват активен"))
                         {
-                            // Пример: "Захват активен (10с), соединений: 5."
-                            overlay.UpdateStatus(msg);
+                            overlay.UpdateStatus("Мониторинг активности...");
                         }
                         else if (msg.Contains("Обнаружено соединение"))
                         {
-                            overlay.UpdateStatus("Обнаружено новое соединение...");
+                            overlay.UpdateStatus("Анализ нового соединения...");
+                        }
+                        else if (msg.StartsWith("✓ "))
+                        {
+                             overlay.UpdateStatus("Соединение успешно проверено");
+                        }
+                        else if (msg.StartsWith("❌ "))
+                        {
+                             overlay.UpdateStatus("Обнаружена проблема соединения!");
+                        }
+                        else if (msg.Contains("Запуск приложения"))
+                        {
+                             overlay.UpdateStatus("Запуск целевого приложения...");
+                        }
+                        else if (msg.Contains("Анализ трафика"))
+                        {
+                             overlay.UpdateStatus("Анализ сетевого трафика...");
                         }
                     });
                 });
@@ -1031,6 +1046,7 @@ namespace ISPAudit.ViewModels
                         System.Windows.Application.Current?.Dispatcher.Invoke(() => 
                         {
                             ConnectionsDiscovered = uniqueConnections.Count;
+                            overlay.UpdateStats(ConnectionsDiscovered, FlowEventsCount);
                         });
                     }
 
@@ -1040,6 +1056,7 @@ namespace ISPAudit.ViewModels
                         System.Windows.Application.Current?.Dispatcher.Invoke(() => 
                         {
                             FlowEventsCount = count;
+                            overlay.UpdateStats(ConnectionsDiscovered, FlowEventsCount);
                         });
                     }
                 };
