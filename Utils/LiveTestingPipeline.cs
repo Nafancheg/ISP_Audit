@@ -157,7 +157,8 @@ namespace IspAudit.Utils
                     if (_config.EnableAutoBypass && blocked.BypassStrategy != "NONE" && blocked.BypassStrategy != "UNKNOWN")
                     {
                         _progress?.Report($"   → Применяю bypass для {host}...");
-                        await _bypassEnforcer.ApplyBypassAsync(blocked, ct).ConfigureAwait(false);
+                        // Fire and forget - Enforcer handles serialization internally
+                        _ = Task.Run(() => _bypassEnforcer.ApplyBypassAsync(blocked, ct), ct);
                     }
                 }
                 catch (Exception ex)

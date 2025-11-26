@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
+using System.Net;
 using IspAudit.Core.Interfaces;
 using IspAudit.Core.Models;
 using IspAudit.Bypass;
@@ -13,6 +14,7 @@ namespace IspAudit.Core.Modules
         private readonly IspAudit.Bypass.WinDivertBypassManager? _bypassManager;
         private readonly IHostTester _tester;
         private readonly IProgress<string>? _progress;
+        private readonly SemaphoreSlim _bypassLock = new(1, 1);
 
         public WinDivertBypassEnforcer(
             IspAudit.Bypass.WinDivertBypassManager? bypassManager,
@@ -26,6 +28,15 @@ namespace IspAudit.Core.Modules
 
         public async Task ApplyBypassAsync(HostBlocked blocked, CancellationToken ct)
         {
+            var ip = blocked.TestResult.Host.RemoteIp;
+            if (ip.Equals(IPAddress.Any) || ip.Equals(IPAddress.None) || ip.ToString() == "0.0.0.0")
+            {
+                _progress?.Report($"⚠ Пропуск bypass для некорректного IP: {ip}");
+                return;
+            }
+
+            // Ensure sequential execution of bypass strategies
+            await _bypassLock.WaitAsync(ct).ConfigureAwait(false);
             try
             {
                 // 1. Try the recommended strategy first
@@ -54,6 +65,10 @@ namespace IspAudit.Core.Modules
             catch (Exception ex)
             {
                 _progress?.Report($"[BYPASS] Ошибка применения bypass: {ex.Message}");
+            }
+            finally
+            {
+                _bypassLock.Release();
             }
         }
 
