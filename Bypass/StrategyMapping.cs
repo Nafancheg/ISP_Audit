@@ -76,8 +76,9 @@ namespace IspAudit.Bypass
             // 1. Analyze TLS/HTTP issues (TCP OK, but TLS Failed)
             if (result.TcpOk && !result.TlsOk)
             {
-                AddTlsStrategies(rec);
+                // Prioritize DROP_RST as it's faster and often sufficient for RST injection on TLS ClientHello
                 rec.AddApplicable("DROP_RST");
+                AddTlsStrategies(rec);
             }
 
             // 2. Analyze TCP issues (TCP Failed)
