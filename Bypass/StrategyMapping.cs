@@ -7,10 +7,26 @@ namespace IspAudit.Bypass
 {
     public class StrategyRecommendation
     {
-        public List<string> Applicable { get; set; } = new();  // WinDivert может применить
-        public List<string> Manual { get; set; } = new();      // Требуют действий пользователя
+        // Use HashSet internally to prevent duplicates while maintaining insertion order (mostly)
+        // Actually HashSet doesn't guarantee order, but we want priority.
+        // So let's use List and check Contains before adding.
+        private readonly List<string> _applicable = new();
+        private readonly List<string> _manual = new();
+
+        public List<string> Applicable => _applicable;
+        public List<string> Manual => _manual;
         
-        public List<string> GetAll() => Applicable.Concat(Manual).Distinct().ToList();
+        public void AddApplicable(string strategy)
+        {
+            if (!_applicable.Contains(strategy)) _applicable.Add(strategy);
+        }
+
+        public void AddManual(string strategy)
+        {
+            if (!_manual.Contains(strategy)) _manual.Add(strategy);
+        }
+
+        public List<string> GetAll() => _applicable.Concat(_manual).Distinct().ToList();
     }
 
     public static class StrategyMapping
@@ -22,7 +38,7 @@ namespace IspAudit.Bypass
             // 0. Analyze DNS issues
             if (target.dns_status == "DNS_FILTERED" || target.dns_status == "DNS_BOGUS")
             {
-                rec.Manual.Add("DOH");
+                rec.AddManual("DOH");
             }
 
             // 1. Analyze HTTP/TLS issues
@@ -31,9 +47,7 @@ namespace IspAudit.Bypass
 
             if (httpFailed && tcpOpen)
             {
-                rec.Applicable.Add("TLS_FRAGMENT");
-                rec.Applicable.Add("TLS_FAKE");
-                rec.Applicable.Add("TLS_FAKE_FRAGMENT");
+                AddTlsStrategies(rec);
             }
 
             // 2. Analyze TCP issues
@@ -56,16 +70,14 @@ namespace IspAudit.Bypass
             // 0. Analyze DNS issues
             if (result.DnsStatus == "DNS_FILTERED" || result.DnsStatus == "DNS_BOGUS")
             {
-                rec.Manual.Add("DOH");
+                rec.AddManual("DOH");
             }
 
             // 1. Analyze TLS/HTTP issues (TCP OK, but TLS Failed)
             if (result.TcpOk && !result.TlsOk)
             {
-                rec.Applicable.Add("TLS_FRAGMENT");
-                rec.Applicable.Add("TLS_FAKE");
-                rec.Applicable.Add("TLS_FAKE_FRAGMENT");
-                rec.Applicable.Add("DROP_RST");
+                AddTlsStrategies(rec);
+                rec.AddApplicable("DROP_RST");
             }
 
             // 2. Analyze TCP issues (TCP Failed)
@@ -78,32 +90,39 @@ namespace IspAudit.Bypass
             return rec;
         }
 
+        private static void AddTlsStrategies(StrategyRecommendation rec)
+        {
+            rec.AddApplicable("TLS_FRAGMENT");
+            rec.AddApplicable("TLS_FAKE");
+            rec.AddApplicable("TLS_FAKE_FRAGMENT");
+        }
+
         private static void AnalyzeTcpFailure(StrategyRecommendation rec, long minElapsed, string? blockageType)
         {
             if (blockageType == "PORT_CLOSED") return;
 
             bool isTimeout = blockageType == "TCP_TIMEOUT" || minElapsed > 2000;
-            bool isRst = blockageType == "TCP_RST" || (minElapsed > 0 && minElapsed < 200);
+            // If minElapsed is 0, it could be a very fast local failure (e.g. interface down) or instant RST.
+            // We treat 0 as potential RST too, just to be safe.
+            bool isRst = blockageType == "TCP_RST" || minElapsed < 200;
 
             if (isRst)
             {
-                rec.Applicable.Add("DROP_RST");
+                rec.AddApplicable("DROP_RST");
             }
             else if (isTimeout)
             {
-                rec.Manual.Add("PROXY");
+                rec.AddManual("PROXY");
             }
             else
             {
                 // Intermediate timing or unknown -> Try DROP_RST just in case
-                rec.Applicable.Add("DROP_RST");
+                rec.AddApplicable("DROP_RST");
             }
 
             // Fallback: sometimes TCP "fails" but it's actually TLS-level block (DPI drops packet)
             // Add TLS strategies with lower priority
-            rec.Applicable.Add("TLS_FRAGMENT");
-            rec.Applicable.Add("TLS_FAKE");
-            rec.Applicable.Add("TLS_FAKE_FRAGMENT");
+            AddTlsStrategies(rec);
         }
     }
 }

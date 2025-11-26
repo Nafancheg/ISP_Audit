@@ -62,7 +62,14 @@ namespace IspAudit.Bypass
 
             if (strategies.Count == 0)
             {
-                return new FixResult { Success = false, Message = "No applicable strategies available" };
+                // Only manual strategies or none
+                return new FixResult 
+                { 
+                    Success = false, 
+                    Message = rec.Manual.Count > 0 
+                        ? $"Требуется ручное вмешательство: {string.Join(", ", rec.Manual)}"
+                        : "Нет доступных стратегий"
+                };
             }
 
             ISPAudit.Utils.DebugLogger.Log($"[Coordinator] Auto-fix strategies for {target.Host}: {string.Join(", ", strategies)}");
@@ -131,7 +138,13 @@ namespace IspAudit.Bypass
 
             if (strategies.Count == 0)
             {
-                return new FixResult { Success = false, Message = "No applicable strategies available" };
+                return new FixResult 
+                { 
+                    Success = false, 
+                    Message = rec.Manual.Count > 0 
+                        ? $"Требуется ручное вмешательство: {string.Join(", ", rec.Manual)}"
+                        : "Нет доступных стратегий"
+                };
             }
 
             // 3. Try loop
