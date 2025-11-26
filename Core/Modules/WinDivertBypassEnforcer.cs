@@ -15,6 +15,7 @@ namespace IspAudit.Core.Modules
         private readonly IHostTester _tester;
         private readonly IProgress<string>? _progress;
         private readonly SemaphoreSlim _bypassLock = new(1, 1);
+        private static string? _globalWorkingStrategy;
 
         public WinDivertBypassEnforcer(
             IspAudit.Bypass.WinDivertBypassManager? bypassManager,
@@ -39,9 +40,23 @@ namespace IspAudit.Core.Modules
             await _bypassLock.WaitAsync(ct).ConfigureAwait(false);
             try
             {
+                // 0. Optimization: Try globally working strategy first if it exists
+                if (_globalWorkingStrategy != null && _globalWorkingStrategy != blocked.BypassStrategy && IsTechnicalStrategy(_globalWorkingStrategy))
+                {
+                    _progress?.Report($"[BYPASS] Пробую ранее успешную стратегию: {_globalWorkingStrategy}...");
+                    if (await ApplySingleStrategyAsync(_globalWorkingStrategy, blocked, ct).ConfigureAwait(false))
+                    {
+                        return;
+                    }
+                }
+
                 // 1. Try the recommended strategy first
                 bool success = await ApplySingleStrategyAsync(blocked.BypassStrategy, blocked, ct).ConfigureAwait(false);
-                if (success) return;
+                if (success) 
+                {
+                    if (IsTechnicalStrategy(blocked.BypassStrategy)) _globalWorkingStrategy = blocked.BypassStrategy;
+                    return;
+                }
 
                 // 2. If failed, try other strategies from StrategyMapping
                 if (_bypassManager != null && IsTechnicalStrategy(blocked.BypassStrategy))
@@ -52,13 +67,18 @@ namespace IspAudit.Core.Modules
                     foreach (var strategy in strategies)
                     {
                         if (strategy == blocked.BypassStrategy) continue; // Already tried
+                        if (strategy == _globalWorkingStrategy) continue; // Already tried in step 0
 
                         _progress?.Report($"[BYPASS] Пробую альтернативную стратегию: {strategy}...");
                         // Report in a format that MainViewModel parses to update the UI state
                         _progress?.Report($"   → Стратегия: {strategy}");
                         
                         success = await ApplySingleStrategyAsync(strategy, blocked, ct).ConfigureAwait(false);
-                        if (success) return;
+                        if (success) 
+                        {
+                            _globalWorkingStrategy = strategy;
+                            return;
+                        }
                     }
                 }
             }
