@@ -42,6 +42,7 @@ namespace IspAudit.Utils
             {
                 _bypassManager = bypassManager;
             }
+            // Если менеджер не передан, но нужен auto-bypass - создаем локальный (но это плохой сценарий для персистентности)
             else if (_config.EnableAutoBypass && IspAudit.Bypass.WinDivertBypassManager.HasAdministratorRights)
             {
                 _bypassManager = new IspAudit.Bypass.WinDivertBypassManager();
@@ -184,9 +185,14 @@ namespace IspAudit.Utils
             Task.WhenAll(_workers).GetAwaiter().GetResult();
             _cts.Dispose();
             
-            // Отключаем bypass manager если был создан
-            _bypassManager?.DisableAsync().GetAwaiter().GetResult();
-            _bypassManager?.Dispose();
+            // НЕ отключаем bypass manager здесь, если он был передан извне (MainViewModel)
+            // MainViewModel сам управляет его жизненным циклом
+            if (_bypassManager != null && _config.EnableAutoBypass && IspAudit.Bypass.WinDivertBypassManager.HasAdministratorRights)
+            {
+                 // Если мы создали его сами (в конструкторе), то мы его и чистим
+                 // Но в текущей архитектуре MainViewModel передает его нам
+                 // Поэтому здесь мы ничего не делаем с _bypassManager, если он пришел извне
+            }
         }
     }
 }
