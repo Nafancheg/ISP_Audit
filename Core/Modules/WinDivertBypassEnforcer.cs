@@ -35,7 +35,9 @@ namespace IspAudit.Core.Modules
                 // 2. If failed, try other strategies from StrategyMapping
                 if (_bypassManager != null && IsTechnicalStrategy(blocked.BypassStrategy))
                 {
-                    var strategies = StrategyMapping.GetStrategiesFor(blocked.TestResult);
+                    var rec = StrategyMapping.GetStrategiesFor(blocked.TestResult);
+                    var strategies = rec.Applicable; // Only try applicable strategies automatically
+
                     foreach (var strategy in strategies)
                     {
                         if (strategy == blocked.BypassStrategy) continue; // Already tried

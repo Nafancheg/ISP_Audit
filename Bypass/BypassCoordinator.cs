@@ -29,7 +29,7 @@ namespace IspAudit.Bypass
 
         public List<string> SuggestFixes(TargetReport report)
         {
-            return StrategyMapping.GetStrategiesFor(report);
+            return StrategyMapping.GetStrategiesFor(report).GetAll();
         }
 
         public async Task<FixResult> AutoFixAsync(
@@ -57,10 +57,12 @@ namespace IspAudit.Bypass
             }
 
             // 2. Get strategies
-            var strategies = StrategyMapping.GetStrategiesFor(initialReport);
+            var rec = StrategyMapping.GetStrategiesFor(initialReport);
+            var strategies = rec.Applicable; // Only try applicable strategies automatically
+
             if (strategies.Count == 0)
             {
-                return new FixResult { Success = false, Message = "No strategies available" };
+                return new FixResult { Success = false, Message = "No applicable strategies available" };
             }
 
             ISPAudit.Utils.DebugLogger.Log($"[Coordinator] Auto-fix strategies for {target.Host}: {string.Join(", ", strategies)}");
@@ -124,10 +126,12 @@ namespace IspAudit.Bypass
             }
 
             // 2. Get strategies
-            var strategies = StrategyMapping.GetStrategiesFor(initialResult);
+            var rec = StrategyMapping.GetStrategiesFor(initialResult);
+            var strategies = rec.Applicable; // Only try applicable strategies automatically
+
             if (strategies.Count == 0)
             {
-                return new FixResult { Success = false, Message = "No strategies available" };
+                return new FixResult { Success = false, Message = "No applicable strategies available" };
             }
 
             // 3. Try loop
