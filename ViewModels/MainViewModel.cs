@@ -1667,6 +1667,19 @@ namespace ISPAudit.ViewModels
                         }
                     }
                 }
+                // ✅ НОВОЕ: Захват информационных сообщений от Enforcer'а
+                else if ((msg.StartsWith("[BYPASS]") || msg.StartsWith("ℹ") || msg.StartsWith("⚠")) && !string.IsNullOrEmpty(_lastUpdatedHost))
+                {
+                    var result = TestResults.FirstOrDefault(t => t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
+                    if (result != null)
+                    {
+                        // Добавляем сообщение в детали, если его там еще нет
+                        if (!result.Details.Contains(msg))
+                        {
+                            result.Details += $"\n{msg}";
+                        }
+                    }
+                }
             }
             catch { }
         }
