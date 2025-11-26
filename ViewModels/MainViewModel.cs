@@ -770,15 +770,9 @@ namespace ISPAudit.ViewModels
                         // Маппинг стратегий
                         if (strategy == "TCP_RST_DROP") strategy = "DROP_RST";
                         
-                        // Получаем IP цели
+                        // Variant A: Global bypass (pass null as IP)
+                        // We ignore the specific target IP to ensure the bypass works for all IPs (CDNs, etc.)
                         System.Net.IPAddress? targetIp = null;
-                        if (result.Target != null)
-                        {
-                            try {
-                                var addresses = System.Net.Dns.GetHostAddresses(result.Target.Host);
-                                targetIp = addresses.FirstOrDefault();
-                            } catch {}
-                        }
 
                         await _bypassManager.ApplyBypassStrategyAsync(strategy, targetIp);
                         

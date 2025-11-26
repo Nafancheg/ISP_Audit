@@ -173,7 +173,15 @@ namespace IspAudit.Bypass
         {
             try
             {
-                await _manager.ApplyBypassStrategyAsync(strategy, ip).ConfigureAwait(false);
+                // Variant A: Global bypass for technical strategies
+                if (IsTechnicalStrategy(strategy))
+                {
+                    await _manager.ApplyBypassStrategyAsync(strategy, null).ConfigureAwait(false);
+                }
+                else
+                {
+                    await _manager.ApplyBypassStrategyAsync(strategy, ip).ConfigureAwait(false);
+                }
             }
             catch (Exception ex)
             {
@@ -208,6 +216,12 @@ namespace IspAudit.Bypass
 
             try
             {
+                // Variant A: Global bypass for technical strategies
+                if (IsTechnicalStrategy(strategy))
+                {
+                    ip = null;
+                }
+
                 await _manager.ApplyBypassStrategyAsync(strategy, ip).ConfigureAwait(false);
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("администратора"))
@@ -219,6 +233,11 @@ namespace IspAudit.Bypass
             {
                 ISPAudit.Utils.DebugLogger.Log($"[Coordinator] Failed to apply strategy '{strategy}': {ex.Message}");
             }
+        }
+
+        private bool IsTechnicalStrategy(string strategy)
+        {
+            return strategy != "DOH" && strategy != "PROXY" && strategy != "ROUTER_REDIRECT" && strategy != "NONE" && strategy != "UNKNOWN";
         }
 
         private bool IsFixed(TargetReport report)

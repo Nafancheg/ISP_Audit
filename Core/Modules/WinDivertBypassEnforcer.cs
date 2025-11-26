@@ -110,8 +110,9 @@ namespace IspAudit.Core.Modules
                     
                     if (_bypassManager != null)
                     {
-                        await _bypassManager.ApplyBypassStrategyAsync("DROP_RST", ip, port).ConfigureAwait(false);
-                        _progress?.Report($"✓ DROP_RST bypass активен для {ip}:{port}");
+                        // Variant A: Global bypass (pass null as IP)
+                        await _bypassManager.ApplyBypassStrategyAsync("DROP_RST", null, port).ConfigureAwait(false);
+                        _progress?.Report($"✓ DROP_RST bypass активен (Global)");
                         
                         // Ретест: проверяем что bypass работает
                         _progress?.Report($"[BYPASS] Проверяю эффективность bypass для {ip}:{port}...");
@@ -143,11 +144,12 @@ namespace IspAudit.Core.Modules
                     if (_bypassManager != null)
                     {
                         // ✅ СНАЧАЛА активируем TLS стратегию (настраивает профиль)
-                        await _bypassManager.ApplyBypassStrategyAsync(strategy, ip, port).ConfigureAwait(false);
-                        _progress?.Report($"✓ {strategy} активен");
+                        // Variant A: Global bypass (pass null as IP)
+                        await _bypassManager.ApplyBypassStrategyAsync(strategy, null, port).ConfigureAwait(false);
+                        _progress?.Report($"✓ {strategy} активен (Global)");
                         
                         // ✅ ЗАТЕМ активируем DROP_RST (добавляет RST blocking к текущему профилю)
-                        await _bypassManager.ApplyBypassStrategyAsync("DROP_RST", ip, port).ConfigureAwait(false);
+                        await _bypassManager.ApplyBypassStrategyAsync("DROP_RST", null, port).ConfigureAwait(false);
                         _progress?.Report($"✓ DROP_RST активен (защита от RST injection)");
                         
                         // ✅ Принудительно сбрасываем все TCP соединения к цели
