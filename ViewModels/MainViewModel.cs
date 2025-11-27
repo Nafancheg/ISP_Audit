@@ -301,7 +301,14 @@ namespace ISPAudit.ViewModels
         public bool IsTlsFakeActive => ActiveStrategyKey == "TLS_FAKE" && IsBypassActive;
         public bool IsFakeFragmentActive => ActiveStrategyKey == "TLS_FAKE_FRAGMENT" && IsBypassActive;
         public bool IsDropRstActive => ActiveStrategyKey == "DROP_RST" && IsBypassActive;
-        public bool IsDoHActive => ActiveStrategyKey == "DOH";
+        
+        // DoH может быть включен независимо от bypass стратегии
+        private bool _isDoHEnabled = false;
+        public bool IsDoHActive
+        {
+            get => _isDoHEnabled || ActiveStrategyKey == "DOH";
+            private set { _isDoHEnabled = value; OnPropertyChanged(nameof(IsDoHActive)); }
+        }
 
         /// <summary>
         /// Показывать ли панель управления bypass (только при admin правах)
@@ -500,7 +507,7 @@ namespace ISPAudit.ViewModels
         }
 
         /// <summary>
-        /// Инициализация bypass при запуске приложения
+        /// Инициализация bypass и DoH при запуске приложения
         /// </summary>
         private async void InitializeBypassOnStartupAsync()
         {
@@ -528,10 +535,42 @@ namespace ISPAudit.ViewModels
                     CurrentBypassStrategy = "TLS Fragment + DROP RST";
                     Log("[Bypass] Bypass enabled on startup: TLS Fragment + DROP RST");
                 });
+
+                // Сразу включаем DoH (DNS-over-HTTPS через Cloudflare)
+                Log("[DoH] Enabling DNS-over-HTTPS on startup...");
+                await ApplyDoHOnStartupAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 Log($"[Bypass] Failed to initialize bypass on startup: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Применение DoH при запуске (без отключения bypass)
+        /// </summary>
+        private async Task ApplyDoHOnStartupAsync()
+        {
+            try
+            {
+                var (success, fix, error) = await FixService.ApplyDnsFixAsync().ConfigureAwait(false);
+                
+                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    if (success)
+                    {
+                        IsDoHActive = true;
+                        Log("[DoH] DoH enabled on startup: Cloudflare 1.1.1.1");
+                    }
+                    else
+                    {
+                        Log($"[DoH] Failed to enable DoH on startup: {error}");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Log($"[DoH] Error enabling DoH on startup: {ex.Message}");
             }
         }
 
