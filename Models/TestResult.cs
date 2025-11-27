@@ -83,6 +83,11 @@ namespace ISPAudit.Models
         {
             get
             {
+                if (!string.IsNullOrEmpty(BypassStrategy) && BypassStrategy != "NONE" && BypassStrategy != "UNKNOWN")
+                {
+                    return $"Обход: {BypassStrategy}";
+                }
+
                 return Status switch
                 {
                     TestStatus.Idle => "Ожидание",

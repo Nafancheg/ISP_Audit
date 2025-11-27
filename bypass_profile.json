@@ -1,7 +1,0 @@
-{
-  "dropTcpRst": true,
-  "fragmentTlsClientHello": true,
-  "tlsFirstFragmentSize": 64,
-  "tlsFragmentThreshold": 128,
-  "redirectRules": []
-}

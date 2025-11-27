@@ -76,9 +76,17 @@ namespace IspAudit.Bypass
             // 1. Analyze TLS/HTTP issues (TCP OK, but TLS Failed)
             if (result.TcpOk && !result.TlsOk)
             {
-                // Prioritize DROP_RST as it's faster and often sufficient for RST injection on TLS ClientHello
-                rec.AddApplicable("DROP_RST");
-                AddTlsStrategies(rec);
+                // DPI обычно блокирует на уровне TLS ClientHello
+                // Приоритет стратегий:
+                // 1. Disorder — путает DPI, ожидающий последовательные пакеты
+                // 2. Fragment — простая фрагментация SNI
+                // 3. FakeFragment — с FAKE пакетом (может мешать некоторым сервисам!)
+                // 4. DROP_RST — фолбэк если DPI использует RST
+                rec.AddApplicable("TLS_DISORDER");        // Disorder — обратный порядок фрагментов
+                rec.AddApplicable("TLS_FRAGMENT");        // Только фрагментация
+                rec.AddApplicable("TLS_FAKE_DISORDER");   // Fake + Disorder
+                rec.AddApplicable("TLS_FAKE_FRAGMENT");   // Fake + Fragment
+                rec.AddApplicable("DROP_RST");            // Фолбэк если DPI использует RST
             }
 
             // 2. Analyze TCP issues (TCP Failed)
@@ -93,8 +101,11 @@ namespace IspAudit.Bypass
 
         private static void AddTlsStrategies(StrategyRecommendation rec)
         {
+            // Disorder стратегии — наиболее эффективны против современного DPI
+            rec.AddApplicable("TLS_DISORDER");
+            rec.AddApplicable("TLS_FAKE_DISORDER");
+            // Fragment стратегии — классический подход
             rec.AddApplicable("TLS_FRAGMENT");
-            rec.AddApplicable("TLS_FAKE");
             rec.AddApplicable("TLS_FAKE_FRAGMENT");
         }
 

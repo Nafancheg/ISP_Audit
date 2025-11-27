@@ -93,6 +93,15 @@ namespace IspAudit.Utils
                     
                     targetPidMatches++;
                     
+                    // ✅ Фильтрация невалидных IP адресов (0.0.0.0, 127.x.x.x, etc.)
+                    if (remoteIp.Equals(IPAddress.Any) || 
+                        remoteIp.Equals(IPAddress.None) || 
+                        remoteIp.Equals(IPAddress.Loopback) ||
+                        remotePort == 0)
+                    {
+                        return; // Пропускаем невалидные соединения
+                    }
+                    
                     var key = $"{remoteIp}:{remotePort}:{protocol}";
                     
                     if (connections.TryAdd(key, new ConnectionInfo
@@ -170,29 +179,36 @@ namespace IspAudit.Utils
                             await Task.Delay(1000, cts.Token).ConfigureAwait(false);
                             tick++;
 
-                            // 1. Проверка завершения процесса
-                            try
+                            // 1. Проверка активности процессов (поддержка Launcher-паттерна)
+                            // Вместо проверки одного targetPid, проверяем, жив ли хоть один из отслеживаемых процессов
+                            bool anyAlive = false;
+                            var currentTrackedPids = pidTracker.TrackedPids.ToList(); // Snapshot
+                            
+                            // Если список пуст, проверяем исходный targetPid (на всякий случай)
+                            if (currentTrackedPids.Count == 0) currentTrackedPids.Add(targetPid);
+
+                            foreach (var pid in currentTrackedPids)
                             {
-                                // Пытаемся получить процесс. Если он завершился, HasExited вернет true.
-                                // Если процесс уже исчез из системы, GetProcessById выбросит исключение.
-                                using var proc = System.Diagnostics.Process.GetProcessById(targetPid);
-                                if (proc.HasExited)
+                                try
                                 {
-                                    progress?.Report($"Процесс (PID={targetPid}) завершился. Остановка захвата.");
-                                    cts.Cancel(); // Отменяем токен, чтобы выйти из ожидания
-                                    break;
+                                    using var proc = System.Diagnostics.Process.GetProcessById(pid);
+                                    if (!proc.HasExited)
+                                    {
+                                        anyAlive = true;
+                                        break;
+                                    }
+                                }
+                                catch
+                                {
+                                    // Процесс недоступен или завершен
                                 }
                             }
-                            catch (ArgumentException)
+
+                            if (!anyAlive)
                             {
-                                // Процесс не найден - значит завершился
-                                progress?.Report($"Процесс (PID={targetPid}) не найден. Остановка захвата.");
+                                progress?.Report($"Все отслеживаемые процессы ({currentTrackedPids.Count}) завершились. Остановка захвата.");
                                 cts.Cancel();
                                 break;
-                            }
-                            catch
-                            {
-                                // Игнорируем ошибки доступа
                             }
 
                             // 2. Репорт статуса (раз в 10 секунд или при изменениях)
@@ -1037,29 +1053,20 @@ namespace IspAudit.Utils
                 progress?.Report($"  • {hostname} ({fallbackIp}): порты {string.Join(", ", portsUsed)} ({string.Join(", ", protocols)})");
             }
 
-            // 2. Добавляем неудачные DNS запросы (если их еще нет в списке)
+            // 2. DNS failed запросы — НЕ добавляем в профиль как отдельные цели
+            // DNS сниффер видит только запросы, но не всегда видит ответы (DoH, системный кэш)
+            // Если хост реально нужен приложению, он появится в списке соединений
             if (failedDnsRequests != null && failedDnsRequests.Count > 0)
             {
-                progress?.Report($"Обработка {failedDnsRequests.Count} сбойных DNS-запросов...");
-                foreach (var fail in failedDnsRequests.Values)
+                // Только логируем для информации, НЕ создаём карточки
+                progress?.Report($"[DNS] Пропущено {failedDnsRequests.Count} DNS запросов без ответа (возможно DoH или кэш):");
+                foreach (var fail in failedDnsRequests.Values.Take(5)) // Показываем только первые 5
                 {
-                    // Пропускаем, если этот хост уже есть в успешных (возможно, был временный сбой, но потом соединение прошло)
-                    if (targets.Any(t => t.Host.Equals(fail.Hostname, StringComparison.OrdinalIgnoreCase)))
-                        continue;
-
-                    var target = new TargetDefinition
-                    {
-                        Name = fail.Hostname,
-                        Host = fail.Hostname,
-                        Service = "dns-failed", // Маркер для UI
-                        Critical = false,
-                        FallbackIp = "", // IP неизвестен
-                        Ports = new List<int>(), // Порты неизвестны (скорее всего 80/443)
-                        Protocols = new List<string>()
-                    };
-                    
-                    targets.Add(target);
-                    progress?.Report($"  • {fail.Hostname} (DNS FAIL: {fail.Error})");
+                    progress?.Report($"  • {fail.Hostname}");
+                }
+                if (failedDnsRequests.Count > 5)
+                {
+                    progress?.Report($"  ... и ещё {failedDnsRequests.Count - 5}");
                 }
             }
 

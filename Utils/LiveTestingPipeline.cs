@@ -131,6 +131,8 @@ namespace IspAudit.Utils
 
         /// <summary>
         /// Worker 3: Обновление UI с результатами
+        /// УПРОЩЁННАЯ ВЕРСИЯ: bypass уже включен preemptive, не переключаем стратегии на лету.
+        /// Если хост не работает — показываем рекомендацию VPN.
         /// </summary>
         private async Task UiWorker(CancellationToken ct)
         {
@@ -152,14 +154,28 @@ namespace IspAudit.Utils
                     var checks = $"DNS:{(blocked.TestResult.DnsOk ? "✓" : "✗")} TCP:{(blocked.TestResult.TcpOk ? "✓" : "✗")} TLS:{(blocked.TestResult.TlsOk ? "✓" : "✗")}";
                     
                     _progress?.Report($"❌ {details} | {checks} | {blocked.TestResult.BlockageType}");
-                    _progress?.Report($"   → Стратегия: {blocked.BypassStrategy}");
                     
-                    // Если включен auto-bypass - применяем стратегию
-                    if (_config.EnableAutoBypass && blocked.BypassStrategy != "NONE" && blocked.BypassStrategy != "UNKNOWN")
+                    // УПРОЩЕНИЕ: bypass уже включен при старте (preemptive).
+                    // Если хост всё равно не работает — это значит что текущая стратегия не помогает.
+                    // НЕ пытаемся переключать стратегии на лету (это создавало хаос).
+                    
+                    // Показываем рекомендацию в зависимости от типа блокировки
+                    if (blocked.TestResult.BlockageType == "DNS_FILTERED" || blocked.TestResult.BlockageType == "DNS_BOGUS")
                     {
-                        _progress?.Report($"   → Применяю bypass для {host}...");
-                        // Fire and forget - Enforcer handles serialization internally
-                        _ = Task.Run(() => _bypassEnforcer.ApplyBypassAsync(blocked, ct), ct);
+                        _progress?.Report($"   → Рекомендация: Измените DNS на DoH (1.1.1.1 или 8.8.8.8)");
+                    }
+                    else if (blocked.TestResult.BlockageType == "TCP_RST" || blocked.TestResult.BlockageType == "TCP_TIMEOUT")
+                    {
+                        _progress?.Report($"   → Рекомендация: Используйте VPN для обхода блокировки");
+                    }
+                    else if (blocked.TestResult.BlockageType?.Contains("TLS") == true)
+                    {
+                        // TLS блокировка при активном bypass = bypass не помогает для этого хоста
+                        _progress?.Report($"   → Текущий обход не эффективен для {host}. Рекомендация: VPN");
+                    }
+                    else
+                    {
+                        _progress?.Report($"   → Рекомендация: Проверьте сеть или используйте VPN");
                     }
                 }
                 catch (Exception ex)

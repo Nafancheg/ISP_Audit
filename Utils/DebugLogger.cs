@@ -1,8 +1,13 @@
 using System;
 using System.IO;
+using System.Linq;
 
 namespace ISPAudit.Utils
 {
+    /// <summary>
+    /// Единый логгер для всего приложения.
+    /// Пишет в Logs/isp_audit_vm_*.log — тот же файл что и MainViewModel.
+    /// </summary>
     public static class DebugLogger
     {
         private static readonly object _lock = new object();
@@ -10,14 +15,34 @@ namespace ISPAudit.Utils
 
         static DebugLogger()
         {
-            _logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debug_trace.log");
+            // Используем ту же директорию и паттерн что MainViewModel
+            var logsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
             
-            // Очистка файла при старте
             try
             {
-                File.WriteAllText(_logPath, $"=== DEBUG TRACE START: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ===\n");
+                Directory.CreateDirectory(logsDir);
+
+                // Ищем существующий лог текущей сессии (последний по времени создания)
+                var existingLogs = Directory.GetFiles(logsDir, "isp_audit_vm_*.log");
+                if (existingLogs.Length > 0)
+                {
+                    // Используем самый новый существующий файл
+                    _logPath = existingLogs
+                        .OrderByDescending(File.GetCreationTimeUtc)
+                        .First();
+                }
+                else
+                {
+                    // Создаём новый файл если нет существующих
+                    var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                    _logPath = Path.Combine(logsDir, $"isp_audit_vm_{timestamp}.log");
+                }
             }
-            catch { /* Игнорируем ошибки */ }
+            catch
+            {
+                // Фолбэк
+                _logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debug_trace.log");
+            }
         }
 
         public static void Log(string message)
@@ -36,5 +61,10 @@ namespace ISPAudit.Utils
             }
             catch { /* Игнорируем ошибки */ }
         }
+        
+        /// <summary>
+        /// Путь к текущему файлу логов.
+        /// </summary>
+        public static string CurrentLogPath => _logPath;
     }
 }

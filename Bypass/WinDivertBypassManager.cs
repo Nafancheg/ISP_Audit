@@ -58,6 +58,7 @@ namespace IspAudit.Bypass
         public int ActiveConnections => _processedConnections.Count;
 
         public bool IsRstBlockerActive { get; private set; }
+        public bool IsGlobalMode => _profile.TargetIp == null;
 
         // Диагностика WinDivert handles
         private static void LogHandleState(string operation, string filter, int priority, WinDivertNative.OpenFlags flags)
@@ -323,7 +324,7 @@ namespace IspAudit.Bypass
         /// <summary>
         /// Динамическое включение TLS bypass для конкретного хоста
         /// </summary>
-        public async Task EnableTlsBypassAsync(System.Net.IPAddress targetIp, int targetPort = 443, TlsBypassStrategy strategy = TlsBypassStrategy.Fragment)
+        public async Task EnableTlsBypassAsync(System.Net.IPAddress? targetIp, int targetPort = 443, TlsBypassStrategy strategy = TlsBypassStrategy.Fragment)
         {
             // ✅ Всегда активируем TLS bypass (глобальный HTTPS фильтр работает для всех хостов)
             lock (_sync)
@@ -337,7 +338,7 @@ namespace IspAudit.Bypass
             }
 
             // Нужно включить TLS bypass
-            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Enabling TLS bypass: {strategy} for {targetIp}:{targetPort}");
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Enabling TLS bypass: {strategy} for {(targetIp?.ToString() ?? "Global")}:{targetPort}");
             
             // Если уже что-то запущено - перезапускаем
             if (_state == BypassState.Enabled)
@@ -349,10 +350,11 @@ namespace IspAudit.Bypass
             var profile = new BypassProfile
             {
                 DropTcpRst = false,  // ⚠ НЕ включать RST blocker (конфликт с TrafficAnalyzer Flow layer)
-                FragmentTlsClientHello = strategy == TlsBypassStrategy.Fragment || strategy == TlsBypassStrategy.FakeFragment,
+                FragmentTlsClientHello = strategy != TlsBypassStrategy.None && strategy != TlsBypassStrategy.Fake,
                 TlsStrategy = strategy,
                 TlsFirstFragmentSize = 2,  // ✅ УЛЬТРА-ЭКСТРЕМАЛЬНАЯ фрагментация
                 TlsFragmentThreshold = 16,
+                TargetIp = targetIp,
                 RedirectRules = Array.Empty<BypassRedirectRule>()
             };
             await EnableAsync(profile).ConfigureAwait(false);
@@ -363,6 +365,7 @@ namespace IspAudit.Bypass
         /// </summary>
         public async Task EnableRstBlockingAsync()
         {
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] EnableRstBlockingAsync called. Current state={_state}, DropTcpRst={_profile.DropTcpRst}");
             lock (_sync)
             {
                 if (_state == BypassState.Enabled && _profile.DropTcpRst && _rstHandle != null && !_rstHandle.IsInvalid)
@@ -398,47 +401,112 @@ namespace IspAudit.Bypass
         /// </summary>
         public async Task ApplyBypassStrategyAsync(string strategy, System.Net.IPAddress? targetIp = null, int targetPort = 443)
         {
-            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ApplyBypassStrategyAsync: strategy={strategy}, target={targetIp}:{targetPort}");
+            System.Diagnostics.Debug.WriteLine($"[WinDivert-TRACE] ApplyBypassStrategyAsync ENTERED: {strategy}");
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ApplyBypassStrategyAsync ENTERED: strategy={strategy}, target={targetIp}:{targetPort}");
 
             switch (strategy)
             {
                 case "DROP_RST":
                     // ⚠️ RST blocker может конфликтовать с TrafficAnalyzer Flow layer
                     ISPAudit.Utils.DebugLogger.Log("[WinDivert] DROP_RST strategy requested - may conflict with Flow layer");
+                    ISPAudit.Utils.DebugLogger.Log("[WinDivert] DROP_RST case entered");
                     await EnableRstBlockingAsync().ConfigureAwait(false);
+                    ISPAudit.Utils.DebugLogger.Log("[WinDivert] EnableRstBlockingAsync completed");
                     break;
 
                 case "TLS_FRAGMENT":
-                    if (targetIp != null)
+                    try
                     {
-                        await EnableTlsBypassAsync(targetIp, targetPort, TlsBypassStrategy.Fragment).ConfigureAwait(false);
+                        // Try Global First
+                        await EnableTlsBypassAsync(null, 443, TlsBypassStrategy.Fragment).ConfigureAwait(false);
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        // Общая TLS fragmentation
-                        await EnableTlsBypassAsync(IPAddress.Any, 443, TlsBypassStrategy.Fragment).ConfigureAwait(false);
+                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Global TLS bypass failed: {ex.Message}. Falling back to targeted.");
+                        if (targetIp != null)
+                        {
+                            await EnableTlsBypassAsync(targetIp, targetPort, TlsBypassStrategy.Fragment).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            throw;
+                        }
                     }
                     break;
 
                 case "TLS_FAKE":
-                    if (targetIp != null)
+                    try
                     {
-                        await EnableTlsBypassAsync(targetIp, targetPort, TlsBypassStrategy.Fake).ConfigureAwait(false);
+                        await EnableTlsBypassAsync(null, 443, TlsBypassStrategy.Fake).ConfigureAwait(false);
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        await EnableTlsBypassAsync(IPAddress.Any, 443, TlsBypassStrategy.Fake).ConfigureAwait(false);
+                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Global TLS bypass failed: {ex.Message}. Falling back to targeted.");
+                        if (targetIp != null)
+                        {
+                            await EnableTlsBypassAsync(targetIp, targetPort, TlsBypassStrategy.Fake).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            throw;
+                        }
                     }
                     break;
 
                 case "TLS_FAKE_FRAGMENT":
-                    if (targetIp != null)
+                    try
                     {
-                        await EnableTlsBypassAsync(targetIp, targetPort, TlsBypassStrategy.FakeFragment).ConfigureAwait(false);
+                        await EnableTlsBypassAsync(null, 443, TlsBypassStrategy.FakeFragment).ConfigureAwait(false);
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        await EnableTlsBypassAsync(IPAddress.Any, 443, TlsBypassStrategy.FakeFragment).ConfigureAwait(false);
+                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Global TLS bypass failed: {ex.Message}. Falling back to targeted.");
+                        if (targetIp != null)
+                        {
+                            await EnableTlsBypassAsync(targetIp, targetPort, TlsBypassStrategy.FakeFragment).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            throw;
+                        }
+                    }
+                    break;
+
+                case "TLS_DISORDER":
+                    try
+                    {
+                        await EnableTlsBypassAsync(null, 443, TlsBypassStrategy.Disorder).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Global TLS bypass failed: {ex.Message}. Falling back to targeted.");
+                        if (targetIp != null)
+                        {
+                            await EnableTlsBypassAsync(targetIp, targetPort, TlsBypassStrategy.Disorder).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            throw;
+                        }
+                    }
+                    break;
+
+                case "TLS_FAKE_DISORDER":
+                    try
+                    {
+                        await EnableTlsBypassAsync(null, 443, TlsBypassStrategy.FakeDisorder).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Global TLS bypass failed: {ex.Message}. Falling back to targeted.");
+                        if (targetIp != null)
+                        {
+                            await EnableTlsBypassAsync(targetIp, targetPort, TlsBypassStrategy.FakeDisorder).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            throw;
+                        }
                     }
                     break;
 
@@ -461,16 +529,16 @@ namespace IspAudit.Bypass
             }
             NativeLibrary.Free(libHandle);
 
-            // 2. Configuration Building (Async DNS resolution)
+            // 2. Prepare Rules
             var runtimeRedirectRules = await BuildRuntimeRedirectsAsync(profile, cancellationToken).ConfigureAwait(false);
 
-            // 3. Open Handles (Atomic-ish)
             WinDivertNative.SafeHandle? rstHandle = null;
             WinDivertNative.SafeHandle? tlsHandle = null;
             WinDivertNative.SafeHandle? redirectHandle = null;
 
             try
             {
+                // 3. Open Handles
                 if (profile.DropTcpRst)
                 {
                     const string rstFilter = "tcp.Rst == 1";
@@ -487,7 +555,8 @@ namespace IspAudit.Bypass
 
                 if (profile.TlsStrategy != TlsBypassStrategy.None)
                 {
-                    if (TryOpenWinDivert("outbound and tcp.DstPort == 443 and tcp.PayloadLength > 0", WinDivertNative.Layer.Network, PriorityTlsFragmenter, WinDivertNative.OpenFlags.None, out var h))
+                    var filter = BuildTlsFragmentFilter(profile.TargetIp, 443);
+                    if (TryOpenWinDivert(filter, WinDivertNative.Layer.Network, PriorityTlsFragmenter, WinDivertNative.OpenFlags.None, out var h))
                     {
                         tlsHandle = h;
                     }
@@ -704,6 +773,7 @@ namespace IspAudit.Bypass
 
         private static readonly ITlsStrategy _fakeStrategy = new FakeStrategy();
         private static readonly ITlsStrategy _fragmentStrategy = new FragmentStrategy();
+        private static readonly ITlsStrategy _disorderStrategy = new DisorderStrategy();
 
         private void TlsFragmenterWorker(WinDivertNative.SafeHandle handle, CancellationToken token, BypassProfile profile)
         {
@@ -712,7 +782,9 @@ namespace IspAudit.Bypass
             
             // Initialize strategies
             var strategies = new List<ITlsStrategy>();
-            if (profile.TlsStrategy == TlsBypassStrategy.Fake || profile.TlsStrategy == TlsBypassStrategy.FakeFragment)
+            if (profile.TlsStrategy == TlsBypassStrategy.Fake || 
+                profile.TlsStrategy == TlsBypassStrategy.FakeFragment ||
+                profile.TlsStrategy == TlsBypassStrategy.FakeDisorder)
             {
                 strategies.Add(_fakeStrategy);
             }
@@ -720,8 +792,12 @@ namespace IspAudit.Bypass
             {
                 strategies.Add(_fragmentStrategy);
             }
+            if (profile.TlsStrategy == TlsBypassStrategy.Disorder || profile.TlsStrategy == TlsBypassStrategy.FakeDisorder)
+            {
+                strategies.Add(_disorderStrategy);
+            }
 
-            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS fragmenter started (Strategies={strategies.Count})");
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS fragmenter started (Strategies={strategies.Count}, Type={profile.TlsStrategy})");
 
             try
             {
@@ -755,10 +831,7 @@ namespace IspAudit.Bypass
                     bool isNewConnection = !_processedConnections.ContainsKey(connectionKey);
                     _processedConnections[connectionKey] = Environment.TickCount64; // Update timestamp
 
-                    if (isNewConnection)
-                    {
-                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] ClientHello detected: {packet.SrcIp} → {packet.DstIp}:{packet.DstPort}");
-                    }
+                    // Убран избыточный лог — ClientHello детектится слишком часто
 
                     bool handled = false;
                     foreach (var strategy in strategies)
@@ -790,6 +863,11 @@ namespace IspAudit.Bypass
 
         private class FakeStrategy : ITlsStrategy
         {
+            // TTL для FAKE пакета — должен дойти до DPI провайдера, но НЕ до сервера
+            // Типичное расстояние до DPI: 4-10 хопов. Используем TTL=8.
+            // TTL=3 оказался слишком мал — пакет не доходил до DPI.
+            private const byte FakeTtl = 8;
+            
             public bool Process(WinDivertNative.SafeHandle handle, byte[] buffer, int length, in PacketHelper.PacketInfo packet, ref WinDivertNative.Address addr, BypassProfile profile, bool isNewConnection)
             {
                 if (!isNewConnection) return false;
@@ -800,15 +878,27 @@ namespace IspAudit.Bypass
                 {
                     Buffer.BlockCopy(buffer, 0, fakeBuffer, 0, length);
                     
-                    // Modify Sequence Number (BadSeq): Seq - 10000
+                    // 1. Модифицируем Sequence Number (BadSeq): Seq - 10000
                     int seqOffset = packet.IpHeaderLength + 4;
                     uint seq = BinaryPrimitives.ReadUInt32BigEndian(fakeBuffer.AsSpan(seqOffset, 4));
                     BinaryPrimitives.WriteUInt32BigEndian(fakeBuffer.AsSpan(seqOffset, 4), seq - 10000);
                     
+                    // 2. Устанавливаем низкий TTL чтобы пакет не дошел до сервера
+                    // TTL находится в byte 8 для IPv4
+                    if (packet.IsIpv4)
+                    {
+                        fakeBuffer[8] = FakeTtl;
+                    }
+                    // Для IPv6 Hop Limit в byte 7
+                    else
+                    {
+                        fakeBuffer[7] = FakeTtl;
+                    }
+                    
                     WinDivertNative.WinDivertHelperCalcChecksums(fakeBuffer, (uint)length, ref addr, 0);
                     WinDivertNative.WinDivertSend(handle, fakeBuffer, (uint)length, out _, in addr);
                     
-                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] FAKE packet sent for {packet.DstIp}:{packet.DstPort}");
+                    // Логируем только если включен verbose режим (убрал избыточный лог)
                     return true;
                 }
                 finally
@@ -822,10 +912,30 @@ namespace IspAudit.Bypass
         {
             public bool Process(WinDivertNative.SafeHandle handle, byte[] buffer, int length, in PacketHelper.PacketInfo packet, ref WinDivertNative.Address addr, BypassProfile profile, bool isNewConnection)
             {
-                int firstLen = Math.Min(profile.TlsFirstFragmentSize, packet.PayloadLength - 1);
+                // Пытаемся найти SNI в ClientHello и резать именно там
+                int sniSplitOffset = FindSniSplitOffsetStatic(buffer, packet.PayloadOffset, packet.PayloadLength);
+                
+                int firstLen;
+                bool sniFound = sniSplitOffset > 0;
+                if (sniFound)
+                {
+                    // Нашли SNI — режем посередине hostname
+                    firstLen = sniSplitOffset;
+                }
+                else
+                {
+                    // SNI не найден — используем fallback размер (минимум 64 байта чтобы дойти до SNI области)
+                    firstLen = Math.Min(Math.Max(profile.TlsFirstFragmentSize, 64), packet.PayloadLength - 1);
+                }
+                
                 int secondLen = packet.PayloadLength - firstLen;
                 
-                if (firstLen <= 0 || secondLen <= 0) return false;
+                // Убран избыточный лог — выводим только результат фрагментации
+                
+                if (firstLen <= 0 || secondLen <= 0)
+                {
+                    return false;
+                }
 
                 // Rent buffers for fragments
                 // Note: We need slightly larger buffers for headers + payload
@@ -850,6 +960,12 @@ namespace IspAudit.Bypass
                     WinDivertNative.WinDivertHelperCalcChecksums(secondBuffer, (uint)(headerLen + secondLen), ref addr, 0);
                     WinDivertNative.WinDivertSend(handle, secondBuffer, (uint)(headerLen + secondLen), out _, in addr);
 
+                    // Логируем только первую фрагментацию для каждого хоста (isNewConnection)
+                    if (isNewConnection)
+                    {
+                        string method = sniFound ? "SNI-split" : "fallback";
+                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] FRAGMENTED ({method}): {packet.DstIp}:{packet.DstPort} → [{firstLen}+{secondLen}] bytes");
+                    }
                     return true;
                 }
                 finally
@@ -857,6 +973,200 @@ namespace IspAudit.Bypass
                     ArrayPool<byte>.Shared.Return(firstBuffer);
                     ArrayPool<byte>.Shared.Return(secondBuffer);
                 }
+            }
+            
+            /// <summary>
+            /// Находит оптимальную точку разреза внутри SNI extension в TLS ClientHello.
+            /// Возвращает offset относительно начала payload (payloadOffset), где нужно резать.
+            /// Если SNI не найден — возвращает 0.
+            /// </summary>
+            public static int FindSniSplitOffsetStatic(byte[] buffer, int payloadOffset, int payloadLength)
+            {
+                // TLS Record Header: 5 bytes
+                // [0] Content Type (0x16 = Handshake)
+                // [1-2] Version (0x0301, 0x0303)
+                // [3-4] Record Length
+                
+                if (payloadLength < 10) return 0;
+                
+                int pos = payloadOffset;
+                int end = payloadOffset + payloadLength;
+                
+                // Проверяем Content Type = Handshake (0x16)
+                if (buffer[pos] != 0x16) return 0;
+                pos += 5; // Skip TLS Record Header
+                
+                // Handshake Header: 4 bytes
+                // [0] Handshake Type (0x01 = ClientHello)
+                // [1-3] Length (24-bit)
+                if (pos + 4 > end) return 0;
+                if (buffer[pos] != 0x01) return 0; // Not ClientHello
+                pos += 4; // Skip Handshake Header
+                
+                // ClientHello structure:
+                // [0-1] Version
+                // [2-33] Random (32 bytes)
+                // [34] Session ID Length
+                // [34+1..] Session ID
+                // [...] Cipher Suites Length (2 bytes) + Cipher Suites
+                // [...] Compression Methods Length (1 byte) + Compression Methods
+                // [...] Extensions Length (2 bytes) + Extensions
+                
+                if (pos + 34 > end) return 0;
+                pos += 2; // Skip version
+                pos += 32; // Skip random
+                
+                // Session ID
+                if (pos + 1 > end) return 0;
+                int sessionIdLen = buffer[pos];
+                pos += 1 + sessionIdLen;
+                
+                // Cipher Suites
+                if (pos + 2 > end) return 0;
+                int cipherSuitesLen = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(pos, 2));
+                pos += 2 + cipherSuitesLen;
+                
+                // Compression Methods
+                if (pos + 1 > end) return 0;
+                int compressionMethodsLen = buffer[pos];
+                pos += 1 + compressionMethodsLen;
+                
+                // Extensions Length
+                if (pos + 2 > end) return 0;
+                int extensionsLen = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(pos, 2));
+                pos += 2;
+                int extensionsEnd = pos + extensionsLen;
+                if (extensionsEnd > end) extensionsEnd = end;
+                
+                // Ищем SNI extension (type = 0x0000)
+                while (pos + 4 <= extensionsEnd)
+                {
+                    int extType = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(pos, 2));
+                    int extLen = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(pos + 2, 2));
+                    
+                    if (extType == 0x0000) // SNI extension
+                    {
+                        // SNI Extension structure:
+                        // [0-1] SNI List Length
+                        // [2] SNI Type (0x00 = hostname)
+                        // [3-4] Hostname Length
+                        // [5..] Hostname
+                        
+                        int sniStart = pos + 4;
+                        if (sniStart + 5 > end) return 0;
+                        
+                        int sniListLen = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(sniStart, 2));
+                        if (sniListLen < 3) return 0;
+                        
+                        int hostnameLen = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(sniStart + 3, 2));
+                        int hostnameStart = sniStart + 5;
+                        
+                        if (hostnameStart + hostnameLen > end) return 0;
+                        if (hostnameLen < 4) return 0; // Слишком короткое имя
+                        
+                        // Режем посередине hostname
+                        int splitPoint = hostnameStart + (hostnameLen / 2);
+                        int relativeOffset = splitPoint - payloadOffset;
+                        
+                        return relativeOffset;
+                    }
+                    
+                    pos += 4 + extLen;
+                }
+                
+                return 0; // SNI не найден
+            }
+        }
+
+        /// <summary>
+        /// DisorderStrategy: отправляет фрагменты в ОБРАТНОМ порядке.
+        /// Сначала второй фрагмент (без начала SNI), затем первый (с началом SNI).
+        /// DPI, ожидающий пакеты по порядку, будет сбит с толку.
+        /// </summary>
+        private class DisorderStrategy : ITlsStrategy
+        {
+            public bool Process(WinDivertNative.SafeHandle handle, byte[] buffer, int length, in PacketHelper.PacketInfo packet, ref WinDivertNative.Address addr, BypassProfile profile, bool isNewConnection)
+            {
+                // Находим SNI для оптимальной точки разреза
+                int sniSplitOffset = FragmentStrategy.FindSniSplitOffsetStatic(buffer, packet.PayloadOffset, packet.PayloadLength);
+                
+                int firstLen;
+                bool sniFound = sniSplitOffset > 0;
+                if (sniFound)
+                {
+                    firstLen = sniSplitOffset;
+                }
+                else
+                {
+                    firstLen = Math.Min(Math.Max(profile.TlsFirstFragmentSize, 64), packet.PayloadLength - 1);
+                }
+                
+                int secondLen = packet.PayloadLength - firstLen;
+                
+                if (firstLen <= 0 || secondLen <= 0)
+                {
+                    return false;
+                }
+
+                int headerLen = packet.IpHeaderLength + packet.TcpHeaderLength;
+                var firstBuffer = ArrayPool<byte>.Shared.Rent(headerLen + firstLen);
+                var secondBuffer = ArrayPool<byte>.Shared.Rent(headerLen + secondLen);
+
+                try
+                {
+                    // === DISORDER: Отправляем ВТОРОЙ фрагмент ПЕРВЫМ ===
+                    
+                    // Second Fragment (отправляем ПЕРВЫМ!)
+                    Buffer.BlockCopy(buffer, 0, secondBuffer, 0, headerLen);
+                    Buffer.BlockCopy(buffer, packet.PayloadOffset + firstLen, secondBuffer, headerLen, secondLen);
+                    IncrementTcpSequence(secondBuffer, packet.IpHeaderLength, (uint)firstLen);
+                    AdjustPacketLengths(secondBuffer, packet.IpHeaderLength, packet.TcpHeaderLength, secondLen, packet.IsIpv4);
+                    WinDivertNative.WinDivertHelperCalcChecksums(secondBuffer, (uint)(headerLen + secondLen), ref addr, 0);
+                    WinDivertNative.WinDivertSend(handle, secondBuffer, (uint)(headerLen + secondLen), out _, in addr);
+
+                    // First Fragment (отправляем ВТОРЫМ!)
+                    Buffer.BlockCopy(buffer, 0, firstBuffer, 0, headerLen);
+                    Buffer.BlockCopy(buffer, packet.PayloadOffset, firstBuffer, headerLen, firstLen);
+                    AdjustPacketLengths(firstBuffer, packet.IpHeaderLength, packet.TcpHeaderLength, firstLen, packet.IsIpv4);
+                    WinDivertNative.WinDivertHelperCalcChecksums(firstBuffer, (uint)(headerLen + firstLen), ref addr, 0);
+                    WinDivertNative.WinDivertSend(handle, firstBuffer, (uint)(headerLen + firstLen), out _, in addr);
+
+                    if (isNewConnection)
+                    {
+                        string method = sniFound ? "SNI-disorder" : "disorder-fallback";
+                        ISPAudit.Utils.DebugLogger.Log($"[WinDivert] DISORDERED ({method}): {packet.DstIp}:{packet.DstPort} → [{secondLen}+{firstLen}] bytes (reversed)");
+                    }
+                    return true;
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(firstBuffer);
+                    ArrayPool<byte>.Shared.Return(secondBuffer);
+                }
+            }
+            
+            private static void AdjustPacketLengths(byte[] packet, int ipHeaderLength, int tcpHeaderLength, int payloadLength, bool isIpv4)
+            {
+                if (isIpv4)
+                {
+                    ushort total = (ushort)(ipHeaderLength + tcpHeaderLength + payloadLength);
+                    packet[2] = (byte)(total >> 8);
+                    packet[3] = (byte)(total & 0xFF);
+                }
+                else
+                {
+                    ushort payload = (ushort)(tcpHeaderLength + payloadLength);
+                    packet[4] = (byte)(payload >> 8);
+                    packet[5] = (byte)(payload & 0xFF);
+                }
+            }
+
+            private static void IncrementTcpSequence(byte[] packet, int ipHeaderLength, uint delta)
+            {
+                int offset = ipHeaderLength + 4;
+                uint sequence = BinaryPrimitives.ReadUInt32BigEndian(packet.AsSpan(offset, 4));
+                sequence += delta;
+                BinaryPrimitives.WriteUInt32BigEndian(packet.AsSpan(offset, 4), sequence);
             }
         }
 
@@ -1038,7 +1348,14 @@ namespace IspAudit.Bypass
                 {
                     get
                     {
-                        if (IsIpv4) return new IPAddress(_srcIpInt);
+                        if (IsIpv4)
+                        {
+                            // IPAddress(uint) ожидает little-endian, но _srcIpInt в big-endian
+                            // Используем byte[] конструктор для корректного отображения
+                            var bytes = new byte[4];
+                            BinaryPrimitives.WriteUInt32BigEndian(bytes, _srcIpInt);
+                            return new IPAddress(bytes);
+                        }
                         if (_backingBuffer == null) return IPAddress.None;
                         return new IPAddress(new ReadOnlySpan<byte>(_backingBuffer, _srcIpOffset, 16));
                     }
@@ -1048,7 +1365,14 @@ namespace IspAudit.Bypass
                 {
                     get
                     {
-                        if (IsIpv4) return new IPAddress(_dstIpInt);
+                        if (IsIpv4)
+                        {
+                            // IPAddress(uint) ожидает little-endian, но _dstIpInt в big-endian
+                            // Используем byte[] конструктор для корректного отображения
+                            var bytes = new byte[4];
+                            BinaryPrimitives.WriteUInt32BigEndian(bytes, _dstIpInt);
+                            return new IPAddress(bytes);
+                        }
                         if (_backingBuffer == null) return IPAddress.None;
                         return new IPAddress(new ReadOnlySpan<byte>(_backingBuffer, _dstIpOffset, 16));
                     }
@@ -1183,6 +1507,107 @@ namespace IspAudit.Bypass
             {
                 ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Cleanup worker error: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Включает комбинированный bypass (TLS + RST) в одном профиле
+        /// Перегрузка с типизированным TlsBypassStrategy и настраиваемым размером фрагмента
+        /// </summary>
+        public async Task EnableCombinedBypassAsync(TlsBypassStrategy tlsStrategy, int tlsFirstFragmentSize, bool dropRst, IPAddress? targetIp, int targetPort = 443)
+        {
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Enabling Combined Bypass: {tlsStrategy} + DROP_RST={dropRst}, Target={(targetIp?.ToString() ?? "Global")}, FragSize={tlsFirstFragmentSize}");
+
+            lock (_sync)
+            {
+                // Проверка: уже активен с такими же настройками?
+                if (_state == BypassState.Enabled && 
+                    _profile.TlsStrategy == tlsStrategy && 
+                    _profile.TlsFirstFragmentSize == tlsFirstFragmentSize &&
+                    _profile.DropTcpRst == dropRst &&
+                    Equals(_profile.TargetIp, targetIp))
+                {
+                    ISPAudit.Utils.DebugLogger.Log("[WinDivert] Combined bypass already active with same settings");
+                    return;
+                }
+            }
+
+            // 2. Отключаем если нужно
+            if (_state == BypassState.Enabled)
+            {
+                await DisableAsync().ConfigureAwait(false);
+            }
+
+            // 3. Создаем комбинированный профиль
+            var profile = new BypassProfile
+            {
+                DropTcpRst = dropRst,
+                FragmentTlsClientHello = tlsStrategy != TlsBypassStrategy.None,
+                TlsStrategy = tlsStrategy,
+                TlsFirstFragmentSize = tlsFirstFragmentSize,
+                TlsFragmentThreshold = 16,
+                TargetIp = targetIp,
+                RedirectRules = Array.Empty<BypassRedirectRule>()
+            };
+
+            // 4. Включаем
+            await EnableAsync(profile).ConfigureAwait(false);
+            
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Combined bypass enabled: {tlsStrategy} + DROP_RST={dropRst}, Global={targetIp == null}, FragSize={tlsFirstFragmentSize}");
+        }
+
+        /// <summary>
+        /// Включает комбинированный bypass (TLS + RST) в одном профиле
+        /// </summary>
+        public async Task EnableCombinedBypassAsync(string tlsStrategyStr, bool dropRst, IPAddress? targetIp, int targetPort = 443)
+        {
+            // 1. Parse strategy
+            TlsBypassStrategy tlsStrategy = TlsBypassStrategy.None;
+            switch (tlsStrategyStr)
+            {
+                case "TLS_FRAGMENT": tlsStrategy = TlsBypassStrategy.Fragment; break;
+                case "TLS_FAKE": tlsStrategy = TlsBypassStrategy.Fake; break;
+                case "TLS_FAKE_FRAGMENT": tlsStrategy = TlsBypassStrategy.FakeFragment; break;
+                case "TLS_DISORDER": tlsStrategy = TlsBypassStrategy.Disorder; break;
+                case "TLS_FAKE_DISORDER": tlsStrategy = TlsBypassStrategy.FakeDisorder; break;
+            }
+
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Enabling Combined Bypass: {tlsStrategy} + DROP_RST={dropRst}, Target={(targetIp?.ToString() ?? "Global")}");
+
+            lock (_sync)
+            {
+                // Check if already active with same settings
+                if (_state == BypassState.Enabled && 
+                    _profile.TlsStrategy == tlsStrategy && 
+                    _profile.DropTcpRst == dropRst &&
+                    Equals(_profile.TargetIp, targetIp))
+                {
+                    ISPAudit.Utils.DebugLogger.Log("[WinDivert] Combined bypass already active with same settings");
+                    return;
+                }
+            }
+
+            // 2. Disable if needed
+            if (_state == BypassState.Enabled)
+            {
+                await DisableAsync().ConfigureAwait(false);
+            }
+
+            // 3. Create combined profile
+            var profile = new BypassProfile
+            {
+                DropTcpRst = dropRst,
+                FragmentTlsClientHello = tlsStrategy != TlsBypassStrategy.None,
+                TlsStrategy = tlsStrategy,
+                TlsFirstFragmentSize = 2, // Extreme fragmentation
+                TlsFragmentThreshold = 16,
+                TargetIp = targetIp,
+                RedirectRules = Array.Empty<BypassRedirectRule>()
+            };
+
+            // 4. Enable
+            await EnableAsync(profile).ConfigureAwait(false);
+            
+            ISPAudit.Utils.DebugLogger.Log($"[WinDivert] Combined bypass enabled: {tlsStrategy} + DROP_RST={dropRst}, Global={targetIp == null}");
         }
     }
 }
