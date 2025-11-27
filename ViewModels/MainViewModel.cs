@@ -266,6 +266,7 @@ namespace ISPAudit.ViewModels
         #region Bypass Control Panel (Пульт управления стратегиями)
         
         private string _currentBypassStrategy = "TLS_FRAGMENT + DROP_RST";
+        private string _activeStrategyKey = "FULL"; // Ключ активной стратегии для подсветки кнопок
         
         /// <summary>
         /// Текущая активная стратегия bypass (для отображения в UI)
@@ -275,6 +276,31 @@ namespace ISPAudit.ViewModels
             get => _currentBypassStrategy;
             set { _currentBypassStrategy = value; OnPropertyChanged(nameof(CurrentBypassStrategy)); }
         }
+
+        /// <summary>
+        /// Ключ активной стратегии для подсветки кнопок в UI
+        /// </summary>
+        public string ActiveStrategyKey
+        {
+            get => _activeStrategyKey;
+            set 
+            { 
+                _activeStrategyKey = value; 
+                OnPropertyChanged(nameof(ActiveStrategyKey));
+                OnPropertyChanged(nameof(IsFullActive));
+                OnPropertyChanged(nameof(IsTlsFragmentActive));
+                OnPropertyChanged(nameof(IsTlsFakeActive));
+                OnPropertyChanged(nameof(IsFakeFragmentActive));
+                OnPropertyChanged(nameof(IsDropRstActive));
+            }
+        }
+
+        // Свойства для подсветки активной кнопки
+        public bool IsFullActive => ActiveStrategyKey == "FULL" && IsBypassActive;
+        public bool IsTlsFragmentActive => ActiveStrategyKey == "TLS_FRAGMENT" && IsBypassActive;
+        public bool IsTlsFakeActive => ActiveStrategyKey == "TLS_FAKE" && IsBypassActive;
+        public bool IsFakeFragmentActive => ActiveStrategyKey == "TLS_FAKE_FRAGMENT" && IsBypassActive;
+        public bool IsDropRstActive => ActiveStrategyKey == "DROP_RST" && IsBypassActive;
 
         /// <summary>
         /// Показывать ли панель управления bypass (только при admin правах)
@@ -362,6 +388,7 @@ namespace ISPAudit.ViewModels
                         // Полный комбо: TLS Fragment + DROP RST (рекомендуемый)
                         profile = BypassProfile.CreateDefault();
                         CurrentBypassStrategy = "TLS Fragment + DROP RST";
+                        strategy = "FULL"; // нормализуем для ActiveStrategyKey
                         break;
                 }
 
@@ -370,6 +397,7 @@ namespace ISPAudit.ViewModels
                 System.Windows.Application.Current?.Dispatcher.Invoke(() =>
                 {
                     IsBypassActive = true;
+                    ActiveStrategyKey = strategy;
                     UpdateUserMessage($"✓ Bypass стратегия: {CurrentBypassStrategy}");
                 });
                 
@@ -397,6 +425,7 @@ namespace ISPAudit.ViewModels
                     System.Windows.Application.Current?.Dispatcher.Invoke(() =>
                     {
                         IsBypassActive = false;
+                        ActiveStrategyKey = "";
                         CurrentBypassStrategy = "Выключен";
                         UpdateUserMessage("Bypass отключен");
                     });
@@ -1357,8 +1386,13 @@ namespace ISPAudit.ViewModels
                         Log("[Bypass] Preemptive bypass enabled successfully");
                         ((IProgress<string>?)progress)?.Report("✓ Bypass активирован (TLS-фрагментация + DROP_RST)");
                         
-                        // Обновляем UI badge
-                        System.Windows.Application.Current?.Dispatcher.Invoke(() => IsBypassActive = true);
+                        // Обновляем UI badge и подсветку кнопки
+                        System.Windows.Application.Current?.Dispatcher.Invoke(() => 
+                        {
+                            IsBypassActive = true;
+                            ActiveStrategyKey = "FULL";
+                            CurrentBypassStrategy = "TLS Fragment + DROP RST";
+                        });
                     }
                     catch (Exception ex)
                     {
