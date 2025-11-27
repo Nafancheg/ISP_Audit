@@ -236,11 +236,20 @@
                             </StackPanel>
                         </Border>
                         
-                        <!-- Strategy Buttons Grid -->
-                        <UniformGrid Rows="1" Columns="7" Margin="0,0,0,0">
+                        <!-- WinDivert Strategy Buttons (5 стратегий + выкл) -->
+                        <Grid Margin="0,0,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
                             <!-- FULL (Recommended) -->
-                            <Button Command="{Binding SetBypassStrategyCommand}" CommandParameter="FULL"
-                                    Padding="12,10" FontSize="12" FontWeight="SemiBold" Cursor="Hand" Margin="0,0,6,0"
+                            <Button Grid.Column="0" Command="{Binding SetBypassStrategyCommand}" CommandParameter="FULL"
+                                    Height="36" FontSize="12" FontWeight="SemiBold" Cursor="Hand" Margin="0,0,4,0"
                                     ToolTip="Рекомендуемый: TLS Fragment + DROP RST&#x0a;Покрывает 90% блокировок">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
@@ -257,8 +266,8 @@
                             </Button>
                             
                             <!-- TLS Fragment -->
-                            <Button Command="{Binding SetBypassStrategyCommand}" CommandParameter="TLS_FRAGMENT"
-                                    Padding="12,10" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,6,0"
+                            <Button Grid.Column="1" Command="{Binding SetBypassStrategyCommand}" CommandParameter="TLS_FRAGMENT"
+                                    Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
                                     ToolTip="Фрагментация TLS ClientHello&#x0a;Обход SNI-фильтрации">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
@@ -275,8 +284,8 @@
                             </Button>
                             
                             <!-- TLS Fake -->
-                            <Button Command="{Binding SetBypassStrategyCommand}" CommandParameter="TLS_FAKE"
-                                    Padding="12,10" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,6,0"
+                            <Button Grid.Column="2" Command="{Binding SetBypassStrategyCommand}" CommandParameter="TLS_FAKE"
+                                    Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
                                     ToolTip="Fake TTL пакет&#x0a;Обход active probing">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
@@ -293,8 +302,8 @@
                             </Button>
                             
                             <!-- Fake + Fragment -->
-                            <Button Command="{Binding SetBypassStrategyCommand}" CommandParameter="TLS_FAKE_FRAGMENT"
-                                    Padding="12,10" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,6,0"
+                            <Button Grid.Column="3" Command="{Binding SetBypassStrategyCommand}" CommandParameter="TLS_FAKE_FRAGMENT"
+                                    Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
                                     ToolTip="Комбинация Fake + Fragment&#x0a;Агрессивный обход">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
@@ -311,8 +320,8 @@
                             </Button>
                             
                             <!-- DROP RST -->
-                            <Button Command="{Binding SetBypassStrategyCommand}" CommandParameter="DROP_RST"
-                                    Padding="12,10" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,6,0"
+                            <Button Grid.Column="4" Command="{Binding SetBypassStrategyCommand}" CommandParameter="DROP_RST"
+                                    Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,8,0"
                                     ToolTip="Блокировка TCP RST пакетов&#x0a;Защита от разрыва соединений">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
@@ -327,28 +336,10 @@
                                     </Style>
                                 </Button.Style>
                             </Button>
-
-                            <!-- DoH (DNS-over-HTTPS) -->
-                            <Button Command="{Binding SetBypassStrategyCommand}" CommandParameter="DOH"
-                                    Padding="12,10" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,6,0"
-                                    ToolTip="DNS-over-HTTPS (Cloudflare)&#x0a;Защита DNS запросов от перехвата">
-                                <Button.Style>
-                                    <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
-                                        <Setter Property="Content" Value="🔒 DoH"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsDoHActive}" Value="True">
-                                                <Setter Property="Background" Value="#3B82F6"/>
-                                                <Setter Property="Foreground" Value="White"/>
-                                                <Setter Property="BorderBrush" Value="#2563EB"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Button.Style>
-                            </Button>
                             
                             <!-- Disable -->
-                            <Button Command="{Binding DisableBypassCommand}"
-                                    Padding="12,10" FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                            <Button Grid.Column="5" Command="{Binding DisableBypassCommand}"
+                                    Height="36" Width="80" FontSize="12" FontWeight="SemiBold" Cursor="Hand"
                                     ToolTip="Отключить bypass">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
@@ -359,7 +350,7 @@
                                     </Style>
                                 </Button.Style>
                             </Button>
-                        </UniformGrid>
+                        </Grid>
                     </StackPanel>
                 </Border>
             </StackPanel>
