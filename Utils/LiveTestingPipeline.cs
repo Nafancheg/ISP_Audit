@@ -152,15 +152,12 @@ namespace IspAudit.Utils
                     var checks = $"DNS:{(blocked.TestResult.DnsOk ? "✓" : "✗")} TCP:{(blocked.TestResult.TcpOk ? "✓" : "✗")} TLS:{(blocked.TestResult.TlsOk ? "✓" : "✗")}";
                     
                     _progress?.Report($"❌ {details} | {checks} | {blocked.TestResult.BlockageType}");
-                    _progress?.Report($"   → Стратегия: {blocked.BypassStrategy}");
+                    _progress?.Report($"   → Рекомендуемая стратегия: {blocked.BypassStrategy}");
                     
-                    // Если включен auto-bypass - применяем стратегию
-                    if (_config.EnableAutoBypass && blocked.BypassStrategy != "NONE" && blocked.BypassStrategy != "UNKNOWN")
-                    {
-                        _progress?.Report($"   → Применяю bypass для {host}...");
-                        // Fire and forget - Enforcer handles serialization internally
-                        _ = Task.Run(() => _bypassEnforcer.ApplyBypassAsync(blocked, ct), ct);
-                    }
+                    // ⚠️ НЕ переключаем bypass динамически!
+                    // Bypass (TLS_DISORDER + DROP_RST) уже активирован при старте.
+                    // Динамическое переключение стратегий ломает работающие соединения,
+                    // т.к. bypass глобальный, а тесты параллельные.
                 }
                 catch (Exception ex)
                 {

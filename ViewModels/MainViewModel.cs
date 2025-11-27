@@ -1178,6 +1178,29 @@ namespace ISPAudit.ViewModels
                     _bypassManager.StateChanged += (s, e) => System.Windows.Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
                 }
 
+                // 🔥 Преимптивное включение bypass СРАЗУ при старте
+                // TLS_DISORDER (фрагментация) + DROP_RST — покрывает 90%+ блокировок российских DPI
+                // Включаем ОДИН РАЗ и НЕ переключаем в рантайме (глобальный bypass + параллельные тесты = хаос)
+                if (EnableAutoBypass && WinDivertBypassManager.HasAdministratorRights)
+                {
+                    Log("[Bypass] Preemptive bypass: enabling TLS_DISORDER + DROP_RST...");
+                    ((IProgress<string>)progress)?.Report("[Bypass] Включаю TLS-фрагментацию + блокировку RST...");
+                    
+                    // Профиль по умолчанию уже содержит DropTcpRst=true и TlsStrategy=Fragment
+                    var bypassProfile = BypassProfile.CreateDefault();
+                    try
+                    {
+                        await _bypassManager.EnableAsync(bypassProfile, _cts.Token).ConfigureAwait(false);
+                        Log("[Bypass] Preemptive bypass enabled successfully");
+                        ((IProgress<string>)progress)?.Report("✓ Bypass активирован (TLS-фрагментация + DROP_RST)");
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"[Bypass] Failed to enable preemptive bypass: {ex.Message}");
+                        ((IProgress<string>)progress)?.Report($"⚠️ Не удалось активировать bypass: {ex.Message}");
+                    }
+                }
+
                 // Запуск анализатора с Live Testing (НОВАЯ ВЕРСИЯ — использует сервисы)
                 // Блокирует до завершения захвата (таймаут или отмена)
                 var profile = await TrafficAnalyzer.AnalyzeProcessTrafficAsync(
