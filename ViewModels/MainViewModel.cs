@@ -1194,7 +1194,7 @@ namespace ISPAudit.ViewModels
                 if (WinDivertBypassManager.HasAdministratorRights)
                 {
                     Log("[Bypass] Preemptive bypass: enabling TLS_DISORDER + DROP_RST...");
-                    ((IProgress<string>)progress)?.Report("[Bypass] Включаю TLS-фрагментацию + блокировку RST...");
+                    ((IProgress<string>?)progress)?.Report("[Bypass] Включаю TLS-фрагментацию + блокировку RST...");
                     
                     // Профиль по умолчанию уже содержит DropTcpRst=true и TlsStrategy=Fragment
                     var bypassProfile = BypassProfile.CreateDefault();
@@ -1202,7 +1202,7 @@ namespace ISPAudit.ViewModels
                     {
                         await _bypassManager.EnableAsync(bypassProfile, _cts.Token).ConfigureAwait(false);
                         Log("[Bypass] Preemptive bypass enabled successfully");
-                        ((IProgress<string>)progress)?.Report("✓ Bypass активирован (TLS-фрагментация + DROP_RST)");
+                        ((IProgress<string>?)progress)?.Report("✓ Bypass активирован (TLS-фрагментация + DROP_RST)");
                         
                         // Обновляем UI badge
                         System.Windows.Application.Current?.Dispatcher.Invoke(() => IsBypassActive = true);
@@ -1210,7 +1210,7 @@ namespace ISPAudit.ViewModels
                     catch (Exception ex)
                     {
                         Log($"[Bypass] Failed to enable preemptive bypass: {ex.Message}");
-                        ((IProgress<string>)progress)?.Report($"⚠️ Не удалось активировать bypass: {ex.Message}");
+                        ((IProgress<string>?)progress)?.Report($"⚠️ Не удалось активировать bypass: {ex.Message}");
                     }
                 }
 
@@ -1231,7 +1231,7 @@ namespace ISPAudit.ViewModels
                     {
                         // Callback for silence detection (auto-stop feature)
                         // Must return Task<bool>: true to continue, false to stop
-                        var task = System.Windows.Application.Current.Dispatcher.Invoke(() => 
+                        var task = System.Windows.Application.Current!.Dispatcher.Invoke(() => 
                         {
                             // Используем уже существующий оверлей
                             return overlay.ShowSilencePromptAsync(60);
@@ -1700,13 +1700,14 @@ namespace ISPAudit.ViewModels
                 // ✅ НОВОЕ: Захват информационных сообщений от Enforcer'а
                 else if ((msg.StartsWith("[BYPASS]") || msg.StartsWith("ℹ") || msg.StartsWith("⚠")) && !string.IsNullOrEmpty(_lastUpdatedHost))
                 {
-                    var result = TestResults.FirstOrDefault(t => t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
+                    var hostToFind = _lastUpdatedHost; // Локальная копия для thread-safety
+                    var result = TestResults.FirstOrDefault(t => t.Target.Host == hostToFind || t.Target.Name == hostToFind);
                     if (result != null)
                     {
                         // Добавляем сообщение в детали, если его там еще нет
-                        if (!result.Details.Contains(msg))
+                        if (result.Details == null || !result.Details.Contains(msg))
                         {
-                            result.Details += $"\n{msg}";
+                            result.Details = (result.Details ?? "") + $"\n{msg}";
                         }
                     }
                 }
