@@ -270,6 +270,55 @@ namespace ISPAudit.ViewModels
         private bool _isFakeEnabled = false;
         private bool _isDropRstEnabled = false;
         private bool _isDoHEnabled = false;
+        private string _compatibilityWarning = "";
+        
+        /// <summary>
+        /// Предупреждение о несовместимости стратегий
+        /// </summary>
+        public string CompatibilityWarning
+        {
+            get => _compatibilityWarning;
+            private set { _compatibilityWarning = value; OnPropertyChanged(nameof(CompatibilityWarning)); OnPropertyChanged(nameof(HasCompatibilityWarning)); }
+        }
+        
+        /// <summary>
+        /// Есть ли предупреждение о несовместимости
+        /// </summary>
+        public bool HasCompatibilityWarning => !string.IsNullOrEmpty(CompatibilityWarning);
+        
+        /// <summary>
+        /// Проверка совместимости выбранных опций
+        /// </summary>
+        private void CheckCompatibility()
+        {
+            var warnings = new List<string>();
+            
+            // Fragment + Fake = агрессивная комбинация, может вызвать проблемы
+            if (IsFragmentEnabled && IsFakeEnabled)
+            {
+                warnings.Add("⚠️ Fragment + Fake — агрессивная комбинация, может вызвать нестабильность");
+            }
+            
+            // VPN + Bypass = возможный конфликт
+            if (IsVpnDetected && (IsFragmentEnabled || IsFakeEnabled || IsDropRstEnabled))
+            {
+                warnings.Add("⚠️ VPN + Bypass — возможен конфликт, bypass может быть не нужен");
+            }
+            
+            // DoH без других опций — только DNS защита, DPI всё ещё работает
+            if (IsDoHEnabled && !IsFragmentEnabled && !IsFakeEnabled && !IsDropRstEnabled)
+            {
+                warnings.Add("ℹ️ Только DoH — защищает DNS, но DPI может блокировать трафик");
+            }
+            
+            // Только DROP RST без Fragment/Fake — частичная защита
+            if (IsDropRstEnabled && !IsFragmentEnabled && !IsFakeEnabled)
+            {
+                warnings.Add("ℹ️ Только DROP RST — защита от RST-инъекций, но SNI виден DPI");
+            }
+            
+            CompatibilityWarning = warnings.Count > 0 ? string.Join("\n", warnings) : "";
+        }
         
         /// <summary>
         /// TLS Fragment включен
@@ -283,6 +332,7 @@ namespace ISPAudit.ViewModels
                 {
                     _isFragmentEnabled = value; 
                     OnPropertyChanged(nameof(IsFragmentEnabled));
+                    CheckCompatibility();
                     _ = ApplyBypassOptionsAsync();
                 }
             }
@@ -300,6 +350,7 @@ namespace ISPAudit.ViewModels
                 {
                     _isFakeEnabled = value; 
                     OnPropertyChanged(nameof(IsFakeEnabled));
+                    CheckCompatibility();
                     _ = ApplyBypassOptionsAsync();
                 }
             }
@@ -317,6 +368,7 @@ namespace ISPAudit.ViewModels
                 {
                     _isDropRstEnabled = value; 
                     OnPropertyChanged(nameof(IsDropRstEnabled));
+                    CheckCompatibility();
                     _ = ApplyBypassOptionsAsync();
                 }
             }
@@ -334,6 +386,7 @@ namespace ISPAudit.ViewModels
                 {
                     _isDoHEnabled = value; 
                     OnPropertyChanged(nameof(IsDoHEnabled));
+                    CheckCompatibility();
                     if (value)
                     {
                         _ = ApplyDoHAsync();
@@ -526,6 +579,9 @@ namespace ISPAudit.ViewModels
                 OnPropertyChanged(nameof(IsFragmentEnabled));
                 OnPropertyChanged(nameof(IsDropRstEnabled));
                 OnPropertyChanged(nameof(IsDoHEnabled));
+                
+                // Проверяем совместимость после включения опций
+                CheckCompatibility();
                 
                 // Применяем WinDivert bypass
                 await ApplyBypassOptionsAsync().ConfigureAwait(false);

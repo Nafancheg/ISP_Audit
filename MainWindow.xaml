@@ -228,12 +228,20 @@
 
                         <!-- VPN Warning -->
                         <Border Background="#FEF3C7" BorderBrush="#FCD34D" BorderThickness="1" CornerRadius="6" 
-                                Padding="10,6" Margin="0,0,0,12"
+                                Padding="10,6" Margin="0,0,0,8"
                                 Visibility="{Binding IsVpnDetected, Converter={StaticResource BoolToVisibilityConverter}}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="🔒" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding VpnWarningText}" FontSize="12" Foreground="#92400E" VerticalAlignment="Center" TextWrapping="Wrap"/>
                             </StackPanel>
+                        </Border>
+                        
+                        <!-- Compatibility Warning (несовместимость стратегий) -->
+                        <Border Background="#FEF9C3" BorderBrush="#FDE047" BorderThickness="1" CornerRadius="6" 
+                                Padding="10,6" Margin="0,0,0,12"
+                                Visibility="{Binding HasCompatibilityWarning, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Text="{Binding CompatibilityWarning}" FontSize="11" Foreground="#854D0E" 
+                                       VerticalAlignment="Center" TextWrapping="Wrap" LineHeight="18"/>
                         </Border>
                         
                         <!-- Независимые toggle-кнопки bypass (1 опция = 1 кнопка) -->
