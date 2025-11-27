@@ -263,51 +263,108 @@ namespace ISPAudit.ViewModels
             set { _isBypassActive = value; OnPropertyChanged(nameof(IsBypassActive)); }
         }
 
-        #region Bypass Control Panel (Пульт управления стратегиями)
+        #region Bypass Control Panel (Независимые toggle-опции)
         
-        private string _currentBypassStrategy = "TLS_FRAGMENT + DROP_RST";
-        private string _activeStrategyKey = "FULL"; // Ключ активной стратегии для подсветки кнопок
+        // Независимые флаги для каждой опции bypass
+        private bool _isFragmentEnabled = false;
+        private bool _isFakeEnabled = false;
+        private bool _isDropRstEnabled = false;
+        private bool _isDoHEnabled = false;
         
         /// <summary>
-        /// Текущая активная стратегия bypass (для отображения в UI)
+        /// TLS Fragment включен
         /// </summary>
-        public string CurrentBypassStrategy
+        public bool IsFragmentEnabled
         {
-            get => _currentBypassStrategy;
-            set { _currentBypassStrategy = value; OnPropertyChanged(nameof(CurrentBypassStrategy)); }
-        }
-
-        /// <summary>
-        /// Ключ активной стратегии для подсветки кнопок в UI
-        /// </summary>
-        public string ActiveStrategyKey
-        {
-            get => _activeStrategyKey;
+            get => _isFragmentEnabled;
             set 
             { 
-                _activeStrategyKey = value; 
-                OnPropertyChanged(nameof(ActiveStrategyKey));
-                OnPropertyChanged(nameof(IsFullActive));
-                OnPropertyChanged(nameof(IsTlsFragmentActive));
-                OnPropertyChanged(nameof(IsTlsFakeActive));
-                OnPropertyChanged(nameof(IsFakeFragmentActive));
-                OnPropertyChanged(nameof(IsDropRstActive));
+                if (_isFragmentEnabled != value)
+                {
+                    _isFragmentEnabled = value; 
+                    OnPropertyChanged(nameof(IsFragmentEnabled));
+                    _ = ApplyBypassOptionsAsync();
+                }
             }
         }
 
-        // Свойства для подсветки активной кнопки
-        public bool IsFullActive => ActiveStrategyKey == "FULL" && IsBypassActive;
-        public bool IsTlsFragmentActive => ActiveStrategyKey == "TLS_FRAGMENT" && IsBypassActive;
-        public bool IsTlsFakeActive => ActiveStrategyKey == "TLS_FAKE" && IsBypassActive;
-        public bool IsFakeFragmentActive => ActiveStrategyKey == "TLS_FAKE_FRAGMENT" && IsBypassActive;
-        public bool IsDropRstActive => ActiveStrategyKey == "DROP_RST" && IsBypassActive;
-        
-        // DoH может быть включен независимо от bypass стратегии
-        private bool _isDoHEnabled = false;
-        public bool IsDoHActive
+        /// <summary>
+        /// TLS Fake включен
+        /// </summary>
+        public bool IsFakeEnabled
         {
-            get => _isDoHEnabled || ActiveStrategyKey == "DOH";
-            private set { _isDoHEnabled = value; OnPropertyChanged(nameof(IsDoHActive)); }
+            get => _isFakeEnabled;
+            set 
+            { 
+                if (_isFakeEnabled != value)
+                {
+                    _isFakeEnabled = value; 
+                    OnPropertyChanged(nameof(IsFakeEnabled));
+                    _ = ApplyBypassOptionsAsync();
+                }
+            }
+        }
+
+        /// <summary>
+        /// DROP RST включен
+        /// </summary>
+        public bool IsDropRstEnabled
+        {
+            get => _isDropRstEnabled;
+            set 
+            { 
+                if (_isDropRstEnabled != value)
+                {
+                    _isDropRstEnabled = value; 
+                    OnPropertyChanged(nameof(IsDropRstEnabled));
+                    _ = ApplyBypassOptionsAsync();
+                }
+            }
+        }
+
+        /// <summary>
+        /// DoH (DNS-over-HTTPS) включен
+        /// </summary>
+        public bool IsDoHEnabled
+        {
+            get => _isDoHEnabled;
+            set 
+            { 
+                if (_isDoHEnabled != value)
+                {
+                    _isDoHEnabled = value; 
+                    OnPropertyChanged(nameof(IsDoHEnabled));
+                    if (value)
+                    {
+                        _ = ApplyDoHAsync();
+                    }
+                }
+            }
+        }
+
+        // Свойства для обратной совместимости с UI (подсветка кнопок)
+        public bool IsTlsFragmentActive => IsFragmentEnabled && IsBypassActive;
+        public bool IsTlsFakeActive => IsFakeEnabled && IsBypassActive;
+        public bool IsDropRstActive => IsDropRstEnabled && IsBypassActive;
+        public bool IsDoHActive => IsDoHEnabled;
+        
+        // Убираем комбо-стратегии — теперь всё независимо
+        public bool IsFullActive => false; // больше не используется
+        public bool IsFakeFragmentActive => false; // больше не используется
+
+        /// <summary>
+        /// Текущая активная стратегия bypass (для отображения в UI badge)
+        /// </summary>
+        public string CurrentBypassStrategy
+        {
+            get
+            {
+                var parts = new List<string>();
+                if (IsFragmentEnabled) parts.Add("Fragment");
+                if (IsFakeEnabled) parts.Add("Fake");
+                if (IsDropRstEnabled) parts.Add("DROP RST");
+                return parts.Count > 0 ? string.Join(" + ", parts) : "Выключен";
+            }
         }
 
         /// <summary>
@@ -315,64 +372,17 @@ namespace ISPAudit.ViewModels
         /// </summary>
         public bool ShowBypassPanel => WinDivertBypassManager.HasAdministratorRights;
 
-        // Команды для переключения стратегий
-        public ICommand SetBypassStrategyCommand { get; private set; } = null!;
-        public ICommand DisableBypassCommand { get; private set; } = null!;
+        // Команды для toggle-кнопок
+        public ICommand ToggleFragmentCommand { get; private set; } = null!;
+        public ICommand ToggleFakeCommand { get; private set; } = null!;
+        public ICommand ToggleDropRstCommand { get; private set; } = null!;
+        public ICommand ToggleDoHCommand { get; private set; } = null!;
+        public ICommand DisableAllBypassCommand { get; private set; } = null!;
 
         /// <summary>
-        /// Применение DoH стратегии (системный DNS fix)
+        /// Применить текущие настройки bypass (вызывается при изменении любого флага)
         /// </summary>
-        private async Task ApplyDoHStrategyAsync()
-        {
-            try
-            {
-                Log("[Bypass Panel] Applying DoH strategy (Cloudflare DNS + DoH)...");
-                
-                // Сначала отключаем WinDivert bypass если активен
-                if (_bypassManager != null && _bypassManager.State == BypassState.Enabled)
-                {
-                    await _bypassManager.DisableAsync().ConfigureAwait(false);
-                }
-
-                // Применяем DNS fix
-                var (success, fix, error) = await FixService.ApplyDnsFixAsync();
-                
-                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                {
-                    if (success)
-                    {
-                        IsBypassActive = false; // WinDivert не активен
-                        ActiveStrategyKey = "DOH";
-                        CurrentBypassStrategy = "DoH (Cloudflare)";
-                        UpdateUserMessage("✓ DoH активирован: DNS через Cloudflare 1.1.1.1");
-                        Log("[Bypass Panel] DoH strategy applied successfully");
-                        
-                        // Обновляем свойства для UI
-                        OnPropertyChanged(nameof(IsDoHActive));
-                        OnPropertyChanged(nameof(IsFullActive));
-                        OnPropertyChanged(nameof(IsTlsFragmentActive));
-                        OnPropertyChanged(nameof(IsTlsFakeActive));
-                        OnPropertyChanged(nameof(IsFakeFragmentActive));
-                        OnPropertyChanged(nameof(IsDropRstActive));
-                    }
-                    else
-                    {
-                        UpdateUserMessage($"⚠️ Ошибка DoH: {error}");
-                        Log($"[Bypass Panel] DoH strategy failed: {error}");
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                Log($"[Bypass Panel] DoH strategy error: {ex.Message}");
-                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                {
-                    UpdateUserMessage($"⚠️ Ошибка DoH: {ex.Message}");
-                });
-            }
-        }
-
-        private async Task SetBypassStrategyAsync(string strategy)
+        private async Task ApplyBypassOptionsAsync()
         {
             if (_bypassManager == null)
             {
@@ -382,130 +392,114 @@ namespace ISPAudit.ViewModels
 
             try
             {
-                Log($"[Bypass Panel] Switching to strategy: {strategy}");
-                
-                // Сначала отключаем текущий bypass
+                // Если ничего не включено — отключаем bypass
+                if (!IsFragmentEnabled && !IsFakeEnabled && !IsDropRstEnabled)
+                {
+                    if (_bypassManager.State == BypassState.Enabled)
+                    {
+                        await _bypassManager.DisableAsync().ConfigureAwait(false);
+                    }
+                    System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        IsBypassActive = false;
+                        OnPropertyChanged(nameof(CurrentBypassStrategy));
+                        OnPropertyChanged(nameof(IsTlsFragmentActive));
+                        OnPropertyChanged(nameof(IsTlsFakeActive));
+                        OnPropertyChanged(nameof(IsDropRstActive));
+                        Log("[Bypass] All options disabled");
+                    });
+                    return;
+                }
+
+                // Отключаем перед переконфигурацией
                 if (_bypassManager.State == BypassState.Enabled)
                 {
                     await _bypassManager.DisableAsync().ConfigureAwait(false);
                 }
 
-                // Создаём профиль в зависимости от стратегии
-                BypassProfile profile;
-                switch (strategy)
+                // Собираем профиль из текущих флагов
+                var tlsStrategy = TlsBypassStrategy.None;
+                if (IsFragmentEnabled && IsFakeEnabled)
+                    tlsStrategy = TlsBypassStrategy.FakeFragment;
+                else if (IsFakeEnabled)
+                    tlsStrategy = TlsBypassStrategy.Fake;
+                else if (IsFragmentEnabled)
+                    tlsStrategy = TlsBypassStrategy.Fragment;
+
+                var profile = new BypassProfile
                 {
-                    case "TLS_FRAGMENT":
-                        profile = new BypassProfile
-                        {
-                            DropTcpRst = false,
-                            FragmentTlsClientHello = true,
-                            TlsStrategy = TlsBypassStrategy.Fragment,
-                            TlsFirstFragmentSize = 2,
-                            TlsFragmentThreshold = 16,
-                            RedirectRules = Array.Empty<BypassRedirectRule>()
-                        };
-                        CurrentBypassStrategy = "TLS Fragment";
-                        break;
-
-                    case "TLS_FAKE":
-                        profile = new BypassProfile
-                        {
-                            DropTcpRst = false,
-                            FragmentTlsClientHello = true,
-                            TlsStrategy = TlsBypassStrategy.Fake,
-                            TlsFirstFragmentSize = 2,
-                            TlsFragmentThreshold = 16,
-                            RedirectRules = Array.Empty<BypassRedirectRule>()
-                        };
-                        CurrentBypassStrategy = "TLS Fake";
-                        break;
-
-                    case "TLS_FAKE_FRAGMENT":
-                        profile = new BypassProfile
-                        {
-                            DropTcpRst = false,
-                            FragmentTlsClientHello = true,
-                            TlsStrategy = TlsBypassStrategy.FakeFragment,
-                            TlsFirstFragmentSize = 2,
-                            TlsFragmentThreshold = 16,
-                            RedirectRules = Array.Empty<BypassRedirectRule>()
-                        };
-                        CurrentBypassStrategy = "TLS Fake + Fragment";
-                        break;
-
-                    case "DROP_RST":
-                        profile = new BypassProfile
-                        {
-                            DropTcpRst = true,
-                            FragmentTlsClientHello = false,
-                            TlsStrategy = TlsBypassStrategy.None,
-                            RedirectRules = Array.Empty<BypassRedirectRule>()
-                        };
-                        CurrentBypassStrategy = "DROP RST";
-                        break;
-
-                    case "DOH":
-                        // DoH стратегия - применяет системный DNS fix (Cloudflare 1.1.1.1 + DoH)
-                        // Не требует WinDivert bypass, но меняет системные настройки DNS
-                        await ApplyDoHStrategyAsync();
-                        return; // выходим, т.к. DoH не использует BypassManager
-
-                    case "FULL":
-                    default:
-                        // Полный комбо: TLS Fragment + DROP RST (рекомендуемый)
-                        profile = BypassProfile.CreateDefault();
-                        CurrentBypassStrategy = "TLS Fragment + DROP RST";
-                        strategy = "FULL"; // нормализуем для ActiveStrategyKey
-                        break;
-                }
+                    DropTcpRst = IsDropRstEnabled,
+                    FragmentTlsClientHello = IsFragmentEnabled || IsFakeEnabled,
+                    TlsStrategy = tlsStrategy,
+                    TlsFirstFragmentSize = 2,
+                    TlsFragmentThreshold = 16,
+                    RedirectRules = Array.Empty<BypassRedirectRule>()
+                };
 
                 await _bypassManager.EnableAsync(profile).ConfigureAwait(false);
-                
+
                 System.Windows.Application.Current?.Dispatcher.Invoke(() =>
                 {
                     IsBypassActive = true;
-                    ActiveStrategyKey = strategy;
-                    UpdateUserMessage($"✓ Bypass стратегия: {CurrentBypassStrategy}");
+                    OnPropertyChanged(nameof(CurrentBypassStrategy));
+                    OnPropertyChanged(nameof(IsTlsFragmentActive));
+                    OnPropertyChanged(nameof(IsTlsFakeActive));
+                    OnPropertyChanged(nameof(IsDropRstActive));
+                    Log($"[Bypass] Options applied: {CurrentBypassStrategy}");
                 });
-                
-                Log($"[Bypass Panel] Strategy {strategy} enabled successfully");
             }
             catch (Exception ex)
             {
-                Log($"[Bypass Panel] Failed to set strategy {strategy}: {ex.Message}");
+                Log($"[Bypass] Error applying options: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Применить DoH (DNS-over-HTTPS через Cloudflare)
+        /// </summary>
+        private async Task ApplyDoHAsync()
+        {
+            try
+            {
+                Log("[DoH] Applying DNS-over-HTTPS (Cloudflare)...");
+                var (success, fix, error) = await FixService.ApplyDnsFixAsync().ConfigureAwait(false);
+                
                 System.Windows.Application.Current?.Dispatcher.Invoke(() =>
                 {
-                    UpdateUserMessage($"⚠️ Ошибка bypass: {ex.Message}");
+                    if (success)
+                    {
+                        Log("[DoH] DoH enabled: Cloudflare 1.1.1.1");
+                    }
+                    else
+                    {
+                        Log($"[DoH] Failed: {error}");
+                        _isDoHEnabled = false;
+                        OnPropertyChanged(nameof(IsDoHEnabled));
+                        OnPropertyChanged(nameof(IsDoHActive));
+                    }
                 });
             }
-        }
-
-        private async Task DisableBypassAsync()
-        {
-            if (_bypassManager != null && _bypassManager.State == BypassState.Enabled)
+            catch (Exception ex)
             {
-                try
-                {
-                    Log("[Bypass Panel] Disabling bypass...");
-                    await _bypassManager.DisableAsync().ConfigureAwait(false);
-                    
-                    System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                    {
-                        IsBypassActive = false;
-                        ActiveStrategyKey = "";
-                        CurrentBypassStrategy = "Выключен";
-                        UpdateUserMessage("Bypass отключен");
-                    });
-                    
-                    Log("[Bypass Panel] Bypass disabled");
-                }
-                catch (Exception ex)
-                {
-                    Log($"[Bypass Panel] Failed to disable bypass: {ex.Message}");
-                }
+                Log($"[DoH] Error: {ex.Message}");
             }
         }
 
+        /// <summary>
+        /// Отключить все опции bypass
+        /// </summary>
+        private async Task DisableAllBypassAsync()
+        {
+            _isFragmentEnabled = false;
+            _isFakeEnabled = false;
+            _isDropRstEnabled = false;
+            
+            OnPropertyChanged(nameof(IsFragmentEnabled));
+            OnPropertyChanged(nameof(IsFakeEnabled));
+            OnPropertyChanged(nameof(IsDropRstEnabled));
+            
+            await ApplyBypassOptionsAsync().ConfigureAwait(false);
+        }
         /// <summary>
         /// Инициализация bypass и DoH при запуске приложения
         /// </summary>
@@ -524,53 +518,26 @@ namespace ISPAudit.ViewModels
                 _bypassManager = new WinDivertBypassManager();
                 _bypassManager.StateChanged += (s, e) => System.Windows.Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
                 
-                // Используем FULL стратегию по умолчанию
-                var bypassProfile = BypassProfile.CreateDefault();
-                await _bypassManager.EnableAsync(bypassProfile).ConfigureAwait(false);
+                // Включаем Fragment + DROP RST + DoH при старте (3 независимые опции)
+                _isFragmentEnabled = true;
+                _isDropRstEnabled = true;
+                _isDoHEnabled = true;
                 
-                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                {
-                    IsBypassActive = true;
-                    ActiveStrategyKey = "FULL";
-                    CurrentBypassStrategy = "TLS Fragment + DROP RST";
-                    Log("[Bypass] Bypass enabled on startup: TLS Fragment + DROP RST");
-                });
-
-                // Сразу включаем DoH (DNS-over-HTTPS через Cloudflare)
-                Log("[DoH] Enabling DNS-over-HTTPS on startup...");
-                await ApplyDoHOnStartupAsync().ConfigureAwait(false);
+                OnPropertyChanged(nameof(IsFragmentEnabled));
+                OnPropertyChanged(nameof(IsDropRstEnabled));
+                OnPropertyChanged(nameof(IsDoHEnabled));
+                
+                // Применяем WinDivert bypass
+                await ApplyBypassOptionsAsync().ConfigureAwait(false);
+                
+                // Применяем DoH
+                await ApplyDoHAsync().ConfigureAwait(false);
+                
+                Log("[Bypass] Startup complete: Fragment + DROP RST + DoH");
             }
             catch (Exception ex)
             {
                 Log($"[Bypass] Failed to initialize bypass on startup: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Применение DoH при запуске (без отключения bypass)
-        /// </summary>
-        private async Task ApplyDoHOnStartupAsync()
-        {
-            try
-            {
-                var (success, fix, error) = await FixService.ApplyDnsFixAsync().ConfigureAwait(false);
-                
-                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                {
-                    if (success)
-                    {
-                        IsDoHActive = true;
-                        Log("[DoH] DoH enabled on startup: Cloudflare 1.1.1.1");
-                    }
-                    else
-                    {
-                        Log($"[DoH] Failed to enable DoH on startup: {error}");
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                Log($"[DoH] Error enabling DoH on startup: {ex.Message}");
             }
         }
 
@@ -725,9 +692,12 @@ namespace ISPAudit.ViewModels
             RollbackFixCommand = new RelayCommand(async param => await RollbackFixAsync(param as AppliedFix), _ => true);
             RollbackAllCommand = new RelayCommand(async _ => await RollbackAllFixesAsync(), _ => HasActiveFixes);
 
-            // Bypass Control Panel Commands
-            SetBypassStrategyCommand = new RelayCommand(async param => await SetBypassStrategyAsync(param?.ToString() ?? "FULL"), _ => ShowBypassPanel);
-            DisableBypassCommand = new RelayCommand(async _ => await DisableBypassAsync(), _ => ShowBypassPanel && IsBypassActive);
+            // Bypass Control Panel Commands (независимые toggle-кнопки)
+            ToggleFragmentCommand = new RelayCommand(_ => { IsFragmentEnabled = !IsFragmentEnabled; }, _ => ShowBypassPanel);
+            ToggleFakeCommand = new RelayCommand(_ => { IsFakeEnabled = !IsFakeEnabled; }, _ => ShowBypassPanel);
+            ToggleDropRstCommand = new RelayCommand(_ => { IsDropRstEnabled = !IsDropRstEnabled; }, _ => ShowBypassPanel);
+            ToggleDoHCommand = new RelayCommand(_ => { IsDoHEnabled = !IsDoHEnabled; }, _ => ShowBypassPanel);
+            DisableAllBypassCommand = new RelayCommand(async _ => await DisableAllBypassAsync(), _ => ShowBypassPanel && (IsFragmentEnabled || IsFakeEnabled || IsDropRstEnabled));
 
             // Exe Scenario Commands
             BrowseExeCommand = new RelayCommand(_ => BrowseExe(), _ => !IsRunning);
@@ -1573,12 +1543,15 @@ namespace ISPAudit.ViewModels
                         Log("[Bypass] Preemptive bypass enabled successfully");
                         ((IProgress<string>?)progress)?.Report("✓ Bypass активирован (TLS-фрагментация + DROP_RST)");
                         
-                        // Обновляем UI badge и подсветку кнопки
+                        // Обновляем UI badge и подсветку кнопок
                         System.Windows.Application.Current?.Dispatcher.Invoke(() => 
                         {
                             IsBypassActive = true;
-                            ActiveStrategyKey = "FULL";
-                            CurrentBypassStrategy = "TLS Fragment + DROP RST";
+                            _isFragmentEnabled = true;
+                            _isDropRstEnabled = true;
+                            OnPropertyChanged(nameof(IsFragmentEnabled));
+                            OnPropertyChanged(nameof(IsDropRstEnabled));
+                            OnPropertyChanged(nameof(CurrentBypassStrategy));
                         });
                     }
                     catch (Exception ex)
