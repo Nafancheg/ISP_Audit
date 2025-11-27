@@ -200,6 +200,15 @@
                             
                             <!-- Status Badge -->
                             <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <!-- DoH Active Badge -->
+                                <Border Background="#DBEAFE" CornerRadius="6" Padding="10,4" Margin="0,0,8,0"
+                                        Visibility="{Binding IsDoHActive, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="🔒" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <TextBlock Text="DoH (Cloudflare)" FontWeight="SemiBold" FontSize="12" Foreground="#1E40AF"/>
+                                    </StackPanel>
+                                </Border>
+                                <!-- Bypass Active Badge -->
                                 <Border Background="#DCFCE7" CornerRadius="6" Padding="10,4"
                                         Visibility="{Binding IsBypassActive, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <StackPanel Orientation="Horizontal">
@@ -216,9 +225,19 @@
                                 </Border>
                             </StackPanel>
                         </Grid>
+
+                        <!-- VPN Warning -->
+                        <Border Background="#FEF3C7" BorderBrush="#FCD34D" BorderThickness="1" CornerRadius="6" 
+                                Padding="10,6" Margin="0,0,0,12"
+                                Visibility="{Binding IsVpnDetected, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🔒" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding VpnWarningText}" FontSize="12" Foreground="#92400E" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
                         
                         <!-- Strategy Buttons Grid -->
-                        <UniformGrid Rows="1" Columns="6" Margin="0,0,0,0">
+                        <UniformGrid Rows="1" Columns="7" Margin="0,0,0,0">
                             <!-- FULL (Recommended) -->
                             <Button Command="{Binding SetBypassStrategyCommand}" CommandParameter="FULL"
                                     Padding="12,10" FontSize="12" FontWeight="SemiBold" Cursor="Hand" Margin="0,0,6,0"
@@ -300,6 +319,24 @@
                                         <Setter Property="Content" Value="DROP RST"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsDropRstActive}" Value="True">
+                                                <Setter Property="Background" Value="#3B82F6"/>
+                                                <Setter Property="Foreground" Value="White"/>
+                                                <Setter Property="BorderBrush" Value="#2563EB"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+
+                            <!-- DoH (DNS-over-HTTPS) -->
+                            <Button Command="{Binding SetBypassStrategyCommand}" CommandParameter="DOH"
+                                    Padding="12,10" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,6,0"
+                                    ToolTip="DNS-over-HTTPS (Cloudflare)&#x0a;Защита DNS запросов от перехвата">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                                        <Setter Property="Content" Value="🔒 DoH"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsDoHActive}" Value="True">
                                                 <Setter Property="Background" Value="#3B82F6"/>
                                                 <Setter Property="Foreground" Value="White"/>
                                                 <Setter Property="BorderBrush" Value="#2563EB"/>

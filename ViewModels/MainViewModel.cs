@@ -301,6 +301,7 @@ namespace ISPAudit.ViewModels
         public bool IsTlsFakeActive => ActiveStrategyKey == "TLS_FAKE" && IsBypassActive;
         public bool IsFakeFragmentActive => ActiveStrategyKey == "TLS_FAKE_FRAGMENT" && IsBypassActive;
         public bool IsDropRstActive => ActiveStrategyKey == "DROP_RST" && IsBypassActive;
+        public bool IsDoHActive => ActiveStrategyKey == "DOH";
 
         /// <summary>
         /// Показывать ли панель управления bypass (только при admin правах)
@@ -310,6 +311,59 @@ namespace ISPAudit.ViewModels
         // Команды для переключения стратегий
         public ICommand SetBypassStrategyCommand { get; private set; } = null!;
         public ICommand DisableBypassCommand { get; private set; } = null!;
+
+        /// <summary>
+        /// Применение DoH стратегии (системный DNS fix)
+        /// </summary>
+        private async Task ApplyDoHStrategyAsync()
+        {
+            try
+            {
+                Log("[Bypass Panel] Applying DoH strategy (Cloudflare DNS + DoH)...");
+                
+                // Сначала отключаем WinDivert bypass если активен
+                if (_bypassManager != null && _bypassManager.State == BypassState.Enabled)
+                {
+                    await _bypassManager.DisableAsync().ConfigureAwait(false);
+                }
+
+                // Применяем DNS fix
+                var (success, fix, error) = await FixService.ApplyDnsFixAsync();
+                
+                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    if (success)
+                    {
+                        IsBypassActive = false; // WinDivert не активен
+                        ActiveStrategyKey = "DOH";
+                        CurrentBypassStrategy = "DoH (Cloudflare)";
+                        UpdateUserMessage("✓ DoH активирован: DNS через Cloudflare 1.1.1.1");
+                        Log("[Bypass Panel] DoH strategy applied successfully");
+                        
+                        // Обновляем свойства для UI
+                        OnPropertyChanged(nameof(IsDoHActive));
+                        OnPropertyChanged(nameof(IsFullActive));
+                        OnPropertyChanged(nameof(IsTlsFragmentActive));
+                        OnPropertyChanged(nameof(IsTlsFakeActive));
+                        OnPropertyChanged(nameof(IsFakeFragmentActive));
+                        OnPropertyChanged(nameof(IsDropRstActive));
+                    }
+                    else
+                    {
+                        UpdateUserMessage($"⚠️ Ошибка DoH: {error}");
+                        Log($"[Bypass Panel] DoH strategy failed: {error}");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Log($"[Bypass Panel] DoH strategy error: {ex.Message}");
+                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    UpdateUserMessage($"⚠️ Ошибка DoH: {ex.Message}");
+                });
+            }
+        }
 
         private async Task SetBypassStrategyAsync(string strategy)
         {
@@ -383,6 +437,12 @@ namespace ISPAudit.ViewModels
                         CurrentBypassStrategy = "DROP RST";
                         break;
 
+                    case "DOH":
+                        // DoH стратегия - применяет системный DNS fix (Cloudflare 1.1.1.1 + DoH)
+                        // Не требует WinDivert bypass, но меняет системные настройки DNS
+                        await ApplyDoHStrategyAsync();
+                        return; // выходим, т.к. DoH не использует BypassManager
+
                     case "FULL":
                     default:
                         // Полный комбо: TLS Fragment + DROP RST (рекомендуемый)
@@ -436,6 +496,88 @@ namespace ISPAudit.ViewModels
                 {
                     Log($"[Bypass Panel] Failed to disable bypass: {ex.Message}");
                 }
+            }
+        }
+
+        /// <summary>
+        /// Инициализация bypass при запуске приложения
+        /// </summary>
+        private async void InitializeBypassOnStartupAsync()
+        {
+            if (!WinDivertBypassManager.HasAdministratorRights)
+            {
+                Log("[Bypass] No admin rights - bypass not available");
+                return;
+            }
+
+            try
+            {
+                Log("[Bypass] Initializing bypass on application startup...");
+                
+                _bypassManager = new WinDivertBypassManager();
+                _bypassManager.StateChanged += (s, e) => System.Windows.Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
+                
+                // Используем FULL стратегию по умолчанию
+                var bypassProfile = BypassProfile.CreateDefault();
+                await _bypassManager.EnableAsync(bypassProfile).ConfigureAwait(false);
+                
+                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    IsBypassActive = true;
+                    ActiveStrategyKey = "FULL";
+                    CurrentBypassStrategy = "TLS Fragment + DROP RST";
+                    Log("[Bypass] Bypass enabled on startup: TLS Fragment + DROP RST");
+                });
+            }
+            catch (Exception ex)
+            {
+                Log($"[Bypass] Failed to initialize bypass on startup: {ex.Message}");
+            }
+        }
+
+        private bool _isVpnDetected = false;
+        private string _vpnWarningText = "";
+
+        /// <summary>
+        /// Обнаружен ли VPN
+        /// </summary>
+        public bool IsVpnDetected
+        {
+            get => _isVpnDetected;
+            set { _isVpnDetected = value; OnPropertyChanged(nameof(IsVpnDetected)); }
+        }
+
+        /// <summary>
+        /// Текст предупреждения о VPN
+        /// </summary>
+        public string VpnWarningText
+        {
+            get => _vpnWarningText;
+            set { _vpnWarningText = value; OnPropertyChanged(nameof(VpnWarningText)); }
+        }
+
+        /// <summary>
+        /// Проверка наличия VPN при запуске
+        /// </summary>
+        private void CheckVpnStatus()
+        {
+            try
+            {
+                if (NetUtils.LikelyVpnActive())
+                {
+                    IsVpnDetected = true;
+                    VpnWarningText = "🔒 Обнаружен VPN — bypass может быть не нужен или конфликтовать с VPN";
+                    Log("[VPN] VPN detected - bypass may conflict");
+                }
+                else
+                {
+                    IsVpnDetected = false;
+                    VpnWarningText = "";
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[VPN] Error checking VPN status: {ex.Message}");
             }
         }
 
@@ -554,6 +696,12 @@ namespace ISPAudit.ViewModels
             
             // Load Fix History on startup
             LoadFixHistory();
+            
+            // 🔥 Инициализация Bypass при запуске приложения (если есть admin права)
+            InitializeBypassOnStartupAsync();
+            
+            // Проверка VPN
+            CheckVpnStatus();
             
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             Log("ШАГ 1: ЗАВЕРШЁН. UI должен показывать:");
