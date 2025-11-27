@@ -72,8 +72,6 @@ namespace IspAudit
             ["voice-tcp"] = new ServiceTestProfile("voice-tcp", "Голосовой чат (TCP)", runDns: true, runTcp: true, runHttp: false, runTrace: false),
             ["voice-udp"] = new ServiceTestProfile("voice-udp", "Голосовой чат (UDP)", runDns: true, runTcp: false, runHttp: false, runTrace: false),
             ["dns"] = new ServiceTestProfile("dns", "DNS", runDns: true, runTcp: false, runHttp: false, runTrace: false),
-            // DNS-failed: хосты с неудавшимся DNS резолвом — не тестируем TCP/HTTP (нет IP)
-            ["dns-failed"] = new ServiceTestProfile("dns-failed", "DNS не отвечает", runDns: false, runTcp: false, runHttp: false, runTrace: false),
             ["unknown-tcp"] = new ServiceTestProfile("unknown-tcp", "Неизвестный (TCP)", runDns: true, runTcp: true, runHttp: false, runTrace: false),
             ["unknown-udp"] = new ServiceTestProfile("unknown-udp", "Неизвестный (UDP)", runDns: true, runTcp: false, runHttp: false, runTrace: false),
             ["unknown"] = new ServiceTestProfile("unknown", "Неизвестный", runDns: true, runTcp: true, runHttp: false, runTrace: false),

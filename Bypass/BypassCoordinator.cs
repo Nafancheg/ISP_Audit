@@ -173,22 +173,8 @@ namespace IspAudit.Bypass
         {
             try
             {
-                ISPAudit.Utils.DebugLogger.Log($"[Coordinator] ApplyStrategyLiveAsync: strategy={strategy}, ip={ip}");
-                
-                // TLS стратегии требуют EnableCombinedBypassAsync
-                if (strategy == "TLS_FRAGMENT" || strategy == "TLS_FAKE" || strategy == "TLS_FAKE_FRAGMENT")
-                {
-                    // Используем комбинированный bypass (TLS + RST)
-                    await _manager.EnableCombinedBypassAsync(strategy, dropRst: true, targetIp: null, targetPort: 443).ConfigureAwait(false);
-                    ISPAudit.Utils.DebugLogger.Log($"[Coordinator] EnableCombinedBypassAsync completed for {strategy}");
-                }
-                else if (strategy == "DROP_RST")
-                {
-                    // Только RST blocking
-                    await _manager.ApplyBypassStrategyAsync(strategy, null).ConfigureAwait(false);
-                    ISPAudit.Utils.DebugLogger.Log($"[Coordinator] ApplyBypassStrategyAsync completed for DROP_RST");
-                }
-                else if (IsTechnicalStrategy(strategy))
+                // Variant A: Global bypass for technical strategies
+                if (IsTechnicalStrategy(strategy))
                 {
                     await _manager.ApplyBypassStrategyAsync(strategy, null).ConfigureAwait(false);
                 }
@@ -230,26 +216,13 @@ namespace IspAudit.Bypass
 
             try
             {
-                ISPAudit.Utils.DebugLogger.Log($"[Coordinator] ApplyStrategyAsync: strategy={strategy}, target={target.Host}, ip={ip}");
-                
-                // TLS стратегии требуют EnableCombinedBypassAsync
-                if (strategy == "TLS_FRAGMENT" || strategy == "TLS_FAKE" || strategy == "TLS_FAKE_FRAGMENT")
+                // Variant A: Global bypass for technical strategies
+                if (IsTechnicalStrategy(strategy))
                 {
-                    await _manager.EnableCombinedBypassAsync(strategy, dropRst: true, targetIp: null, targetPort: 443).ConfigureAwait(false);
-                    ISPAudit.Utils.DebugLogger.Log($"[Coordinator] EnableCombinedBypassAsync completed for {strategy}");
+                    ip = null;
                 }
-                else if (strategy == "DROP_RST")
-                {
-                    await _manager.ApplyBypassStrategyAsync(strategy, null).ConfigureAwait(false);
-                }
-                else if (IsTechnicalStrategy(strategy))
-                {
-                    await _manager.ApplyBypassStrategyAsync(strategy, null).ConfigureAwait(false);
-                }
-                else
-                {
-                    await _manager.ApplyBypassStrategyAsync(strategy, ip).ConfigureAwait(false);
-                }
+
+                await _manager.ApplyBypassStrategyAsync(strategy, ip).ConfigureAwait(false);
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("администратора"))
             {

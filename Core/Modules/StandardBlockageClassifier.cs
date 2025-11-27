@@ -13,13 +13,6 @@ namespace IspAudit.Core.Modules
             // Use StrategyMapping to get recommendations
             var rec = StrategyMapping.GetStrategiesFor(tested);
             
-            // Логируем только проблемные хосты (не OK)
-            bool hasIssue = !tested.TcpOk || !tested.TlsOk || !string.IsNullOrEmpty(tested.BlockageType);
-            if (hasIssue)
-            {
-                ISPAudit.Utils.DebugLogger.Log($"[Classifier] {tested.Hostname ?? tested.Host.RemoteIp.ToString()}:{tested.Host.RemotePort} | TCP:{(tested.TcpOk ? "✓" : "✗")} TLS:{(tested.TlsOk ? "✓" : "✗")} | {tested.BlockageType} | Strategies: [{string.Join(", ", rec.Applicable)}]");
-            }
-            
             string strategy;
             string action;
             

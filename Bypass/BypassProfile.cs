@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
+using System.Text.Json;
 
 namespace IspAudit.Bypass
 {
@@ -10,111 +12,171 @@ namespace IspAudit.Bypass
         None,
         Fragment,
         Fake,
-        FakeFragment,
-        /// <summary>
-        /// Disorder: отправляет фрагменты в обратном порядке (сначала второй, потом первый).
-        /// Эффективно против DPI, который ожидает пакеты строго по порядку.
-        /// </summary>
-        Disorder,
-        /// <summary>
-        /// FakeDisorder: FAKE пакет + Disorder фрагментация.
-        /// Комбинация для особо сложных DPI (Google).
-        /// </summary>
-        FakeDisorder
+        FakeFragment
     }
 
     /// <summary>
     /// Настройки обхода блокировок для WinDivert.
-    /// Профиль создаётся программно на основе результатов диагностики (DiagnosisCache).
-    /// Статический файл bypass_profile.json удалён — у каждого провайдера свои методы блокировки.
     /// </summary>
     public sealed class BypassProfile
     {
-        private static readonly Lazy<BypassProfile> _default = new(() => BuildDefault());
+        private const string ProfileFileName = "bypass_profile.json";
+
+        private static readonly Lazy<BypassProfile> _default = new(() =>
+        {
+            var fromFile = TryLoadFromFile();
+            return fromFile ?? BuildFallback();
+        });
 
         public bool DropTcpRst { get; init; } = true;
 
         public bool FragmentTlsClientHello { get; init; } = true;
         
         /// <summary>
-        /// Целевой IP для фильтрации (null = глобальный режим).
-        /// </summary>
-        public IPAddress? TargetIp { get; init; }
-
-        /// <summary>
         /// Стратегия обхода для TLS (HTTPS).
-        /// Выбирается динамически на основе диагностики.
         /// </summary>
         public TlsBypassStrategy TlsStrategy { get; init; } = TlsBypassStrategy.Fragment;
 
         /// <summary>
         /// Размер первой части ClientHello после фрагментации.
-        /// Используется только если TlsStrategy = Fragment и SNI не найден.
         /// </summary>
         public int TlsFirstFragmentSize { get; init; } = 64;
 
         /// <summary>
         /// Минимальный размер ClientHello, при котором выполняется фрагментация.
         /// </summary>
-        public int TlsFragmentThreshold { get; init; } = 16;
+        public int TlsFragmentThreshold { get; init; } = 128;
 
         public IReadOnlyList<BypassRedirectRule> RedirectRules { get; init; } = Array.Empty<BypassRedirectRule>();
 
-        /// <summary>
-        /// Получить профиль по умолчанию (Fragment + DROP_RST).
-        /// Для конкретных хостов используйте CreateForStrategy().
-        /// </summary>
         public static BypassProfile CreateDefault() => _default.Value;
 
-        /// <summary>
-        /// Создать профиль с конкретной TLS стратегией (для применения после диагностики).
-        /// </summary>
-        public static BypassProfile CreateForStrategy(TlsBypassStrategy strategy, bool dropRst = true, IPAddress? targetIp = null)
+        private static BypassProfile? TryLoadFromFile()
         {
-            return new BypassProfile
+            try
             {
-                DropTcpRst = dropRst,
-                FragmentTlsClientHello = strategy != TlsBypassStrategy.None,
-                TlsStrategy = strategy,
-                TlsFirstFragmentSize = 64,
-                TlsFragmentThreshold = 16,
-                TargetIp = targetIp,
-                RedirectRules = Array.Empty<BypassRedirectRule>()
-            };
+                var baseDir = AppContext.BaseDirectory;
+                var candidate = Path.Combine(baseDir, ProfileFileName);
+                if (!File.Exists(candidate))
+                {
+                    candidate = Path.Combine(Directory.GetCurrentDirectory(), ProfileFileName);
+                    if (!File.Exists(candidate)) return null;
+                }
+
+                var json = File.ReadAllText(candidate);
+                if (string.IsNullOrWhiteSpace(json)) return null;
+
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    ReadCommentHandling = JsonCommentHandling.Skip,
+                };
+                options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+
+                var doc = JsonSerializer.Deserialize<BypassProfileDocument>(json, options);
+                if (doc == null) return null;
+
+                return new BypassProfile
+                {
+                    DropTcpRst = doc.DropTcpRst,
+                    FragmentTlsClientHello = doc.FragmentTlsClientHello,
+                    TlsStrategy = doc.TlsStrategy,
+                    TlsFirstFragmentSize = doc.TlsFirstFragmentSize > 0 ? doc.TlsFirstFragmentSize : 64,
+                    TlsFragmentThreshold = doc.TlsFragmentThreshold > 0 ? doc.TlsFragmentThreshold : 128,
+                    RedirectRules = doc.RedirectRules?
+                        .Select(r => r.ToRule())
+                        .Where(r => r != null)!
+                        .Cast<BypassRedirectRule>()
+                        .ToList()
+                        ?? new List<BypassRedirectRule>()
+                };
+            }
+            catch
+            {
+                return null;
+            }
         }
 
-        /// <summary>
-        /// Создать профиль из строкового имени стратегии (для интеграции с кэшем).
-        /// </summary>
-        public static BypassProfile CreateFromStrategyName(string strategyName, bool dropRst = true, IPAddress? targetIp = null)
+        private static BypassProfile BuildFallback()
         {
-            var strategy = strategyName switch
+            var gameHosts = TargetCatalog.Targets
+                .Where(t => t.Service.Contains("Игровые сервера", StringComparison.OrdinalIgnoreCase))
+                .Select(t => t.Host)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var defaultRule = new BypassRedirectRule
             {
-                "TLS_FRAGMENT" => TlsBypassStrategy.Fragment,
-                "TLS_FAKE" => TlsBypassStrategy.Fake,
-                "TLS_FAKE_FRAGMENT" => TlsBypassStrategy.FakeFragment,
-                "TLS_DISORDER" => TlsBypassStrategy.Disorder,
-                "TLS_FAKE_DISORDER" => TlsBypassStrategy.FakeDisorder,
-                "DROP_RST" => TlsBypassStrategy.None, // Только RST blocking
-                _ => TlsBypassStrategy.Fragment
+                Name = "Игровые UDP порты",
+                Protocol = TransportProtocol.Udp,
+                Port = 64090,
+                RedirectIp = "127.0.0.1",
+                RedirectPort = 64090,
+                Enabled = false,
+                Hosts = gameHosts,
             };
 
-            return CreateForStrategy(strategy, dropRst, targetIp);
-        }
+            var defaultTcpRule = new BypassRedirectRule
+            {
+                Name = "Игровые TCP порты",
+                Protocol = TransportProtocol.Tcp,
+                Port = 64090,
+                RedirectIp = "127.0.0.1",
+                RedirectPort = 64090,
+                Enabled = false,
+                Hosts = gameHosts,
+            };
 
-        private static BypassProfile BuildDefault()
-        {
-            // Профиль по умолчанию: Fragment + DROP_RST
-            // Конкретная стратегия выбирается при диагностике
             return new BypassProfile
             {
                 DropTcpRst = true,
                 FragmentTlsClientHello = true,
                 TlsStrategy = TlsBypassStrategy.Fragment,
                 TlsFirstFragmentSize = 64,
-                TlsFragmentThreshold = 16,
-                RedirectRules = Array.Empty<BypassRedirectRule>()
+                TlsFragmentThreshold = 128,
+                RedirectRules = new[] { defaultRule, defaultTcpRule }
             };
+        }
+
+        private sealed class BypassProfileDocument
+        {
+            public bool DropTcpRst { get; set; } = true;
+            public bool FragmentTlsClientHello { get; set; } = true;
+            public TlsBypassStrategy TlsStrategy { get; set; } = TlsBypassStrategy.Fragment;
+            public int TlsFirstFragmentSize { get; set; } = 64;
+            public int TlsFragmentThreshold { get; set; } = 128;
+            public List<BypassRedirectRuleDocument>? RedirectRules { get; set; }
+        }
+
+        private sealed class BypassRedirectRuleDocument
+        {
+            public string? Name { get; set; }
+            public TransportProtocol Protocol { get; set; } = TransportProtocol.Tcp;
+            public ushort Port { get; set; }
+            public string? RedirectIp { get; set; }
+            public ushort RedirectPort { get; set; }
+            public bool Enabled { get; set; } = true;
+            public List<string>? Hosts { get; set; }
+
+            public BypassRedirectRule? ToRule()
+            {
+                if (string.IsNullOrWhiteSpace(RedirectIp) || Port == 0)
+                {
+                    return null;
+                }
+
+                return new BypassRedirectRule
+                {
+                    Name = string.IsNullOrWhiteSpace(Name) ? $"Rule:{Protocol}:{Port}" : Name!,
+                    Protocol = Protocol,
+                    Port = Port,
+                    RedirectIp = RedirectIp!,
+                    RedirectPort = RedirectPort == 0 ? Port : RedirectPort,
+                    Enabled = Enabled,
+                    Hosts = Hosts?.Where(h => !string.IsNullOrWhiteSpace(h)).Select(h => h.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                        ?? new List<string>()
+                };
+            }
         }
     }
 }

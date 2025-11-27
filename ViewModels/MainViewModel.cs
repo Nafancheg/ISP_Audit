@@ -180,10 +180,6 @@ namespace ISPAudit.ViewModels
             }
         }
 
-        public string BypassModeText => _bypassManager?.IsGlobalMode == true 
-            ? "🌐 Глобальный обход (все приложения)" 
-            : "🎯 Точечный обход";
-
         public string FlowModeText
         {
             get => _flowModeText;
@@ -236,7 +232,7 @@ namespace ISPAudit.ViewModels
             }
         }
         private bool _enableLiveTesting = true; // Live testing enabled by default
-        private bool _enableAutoBypass = true; // Preemptive bypass всегда включен (не переключается на лету)
+        private bool _enableAutoBypass = false; // Auto-bypass disabled by default (C2 requirement)
         private bool _isBasicTestMode = false;  // Basic Test Mode (TestNetworkApp only)
 
         // Monitoring Services (D1 refactoring)
@@ -269,8 +265,6 @@ namespace ISPAudit.ViewModels
 
         private void UpdateBypassWarning()
         {
-            OnPropertyChanged(nameof(BypassModeText)); // Update mode text
-
             if (_bypassManager != null && _bypassManager.State == BypassState.Enabled)
             {
                 // A3: Check if we expected RST blocking (DROP_RST strategy) but didn't get it
@@ -776,15 +770,9 @@ namespace ISPAudit.ViewModels
                         // Маппинг стратегий
                         if (strategy == "TCP_RST_DROP") strategy = "DROP_RST";
                         
-                        // Получаем IP цели
+                        // Variant A: Global bypass (pass null as IP)
+                        // We ignore the specific target IP to ensure the bypass works for all IPs (CDNs, etc.)
                         System.Net.IPAddress? targetIp = null;
-                        if (result.Target != null)
-                        {
-                            try {
-                                var addresses = System.Net.Dns.GetHostAddresses(result.Target.Host);
-                                targetIp = addresses.FirstOrDefault();
-                            } catch {}
-                        }
 
                         await _bypassManager.ApplyBypassStrategyAsync(strategy, targetIp);
                         
@@ -940,7 +928,22 @@ namespace ISPAudit.ViewModels
             }
         }
 
+        private async Task RunBasicServicesTestAsync()
+        {
+            var testAppPath = GetTestNetworkAppPath();
+            
+            if (string.IsNullOrEmpty(testAppPath))
+            {
+                System.Windows.MessageBox.Show("Не удалось найти TestNetworkApp.exe", "Ошибка", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                return;
+            }
 
+            ExePath = testAppPath;
+            Log($"[BasicTest] Selected TestNetworkApp: {ExePath}");
+            
+            // Запускаем диагностику
+            await RunLivePipelineAsync();
+        }
 
         private async Task RunLivePipelineAsync()
         {
@@ -1113,9 +1116,31 @@ namespace ISPAudit.ViewModels
                 };
                 await _dnsParser.StartAsync().ConfigureAwait(false);
                 
-                // Шаг 2: Warmup (Удален по требованию)
-                // Тестирование базовых сервисов теперь выполняется только через режим "Basic Test Mode" (чекбокс)
-                Log("[Warmup] Skipping warmup step (disabled by design)");
+                // Шаг 2: Warmup через TestNetworkApp (его трафик попадет в сервисы)
+                // Если мы в Basic Test Mode, то TestNetworkApp - это и есть цель, поэтому Warmup не нужен (мы его запустим на шаге 3)
+                if (!IsBasicTestMode)
+                {
+                    try
+                    {
+                        Log("[Warmup] Starting TestNetworkApp for Flow warmup...");
+                        await WarmupFlowWithTestNetworkAppAsync(
+                            _flowMonitor, 
+                            _dnsParser, 
+                            progress, 
+                            _cts.Token, 
+                            EnableAutoBypass, 
+                            _bypassManager
+                        ).ConfigureAwait(false);
+                    }
+                    catch (Exception warmupEx)
+                    {
+                        Log($"[Warmup] Error (non-critical): {warmupEx.Message}");
+                    }
+                }
+                else
+                {
+                    Log("[Warmup] Skipping warmup step because Basic Test Mode is active");
+                }
                 
                 // Шаг 3: Запуск целевого процесса
                 DiagnosticStatus = "Запуск целевого приложения...";
@@ -1151,51 +1176,6 @@ namespace ISPAudit.ViewModels
                 {
                     _bypassManager = new WinDivertBypassManager();
                     _bypassManager.StateChanged += (s, e) => System.Windows.Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
-                }
-
-                // PREEMPTIVE BYPASS: Включаем bypass СРАЗУ при запуске мониторинга (до первого соединения)
-                // Это критично для googlevideo.com — браузер пробует подключиться раньше чем LiveTesting обнаружит блокировку
-                if (EnableAutoBypass && WinDivertBypassManager.HasAdministratorRights)
-                {
-                    Log("[Preemptive] Включаю bypass заранее (до первого соединения)...");
-                    DiagnosticStatus = "Активация preemptive bypass...";
-                    try
-                    {
-                        // Используем метод CreateDefault() который корректно парсит JSON с enum
-                        var bypassProfile = BypassProfile.CreateDefault();
-                        
-                        // Включаем комбинированный bypass сразу (TLS + RST)
-                        await _bypassManager.EnableCombinedBypassAsync(
-                            tlsStrategy: bypassProfile.TlsStrategy,
-                            tlsFirstFragmentSize: bypassProfile.TlsFirstFragmentSize,
-                            dropRst: bypassProfile.DropTcpRst,
-                            targetIp: null, // Глобальный режим — все хосты
-                            targetPort: 443
-                        ).ConfigureAwait(false);
-                        
-                        Log($"[Preemptive] ✓ Bypass включён заранее: TLS={bypassProfile.TlsStrategy}, FragSize={bypassProfile.TlsFirstFragmentSize}, DropRST={bypassProfile.DropTcpRst}");
-                    }
-                    catch (Exception ex)
-                    {
-                        // Фолбэк: дефолтные настройки bypass при ошибке загрузки профиля
-                        Log($"[Preemptive] ⚠ Ошибка загрузки профиля: {ex.Message}, использую defaults");
-                        try
-                        {
-                            await _bypassManager.EnableCombinedBypassAsync(
-                                tlsStrategy: TlsBypassStrategy.FakeFragment,
-                                tlsFirstFragmentSize: 2,
-                                dropRst: true,
-                                targetIp: null,
-                                targetPort: 443
-                            ).ConfigureAwait(false);
-                            
-                            Log("[Preemptive] ✓ Bypass включён заранее (defaults): TLS=FakeFragment, FragSize=2, DropRST=True");
-                        }
-                        catch (Exception ex2)
-                        {
-                            Log($"[Preemptive] ✗ Не удалось включить bypass: {ex2.Message}");
-                        }
-                    }
                 }
 
                 // Запуск анализатора с Live Testing (НОВАЯ ВЕРСИЯ — использует сервисы)
@@ -1325,6 +1305,102 @@ namespace ISPAudit.ViewModels
         private System.Collections.Concurrent.ConcurrentDictionary<string, Target> _resolvedIpMap = new();
 
         private System.Collections.Concurrent.ConcurrentDictionary<string, bool> _pendingResolutions = new();
+
+        /// <summary>
+        /// Прогревает Flow-слой и проводит предварительную диагностику через TestNetworkApp.
+        /// </summary>
+        private async Task WarmupFlowWithTestNetworkAppAsync(
+            FlowMonitorService flowMonitor,
+            DnsParserService dnsParser,
+            IProgress<string> progress,
+            CancellationToken cancellationToken,
+            bool enableAutoBypass,
+            WinDivertBypassManager? bypassManager)
+        {
+            try
+            {
+                var testAppPath = GetTestNetworkAppPath();
+                if (string.IsNullOrEmpty(testAppPath))
+                {
+                    Log($"[Warmup] TestNetworkApp not found, skipping warmup");
+                    return;
+                }
+
+                Log($"[Warmup] Starting TestNetworkApp: {testAppPath}");
+
+                using var process = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = testAppPath,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+
+                if (!process.Start())
+                {
+                    Log("[Warmup] Failed to start TestNetworkApp");
+                    return;
+                }
+
+                // Создаем временный PidTracker для тестового процесса
+                var warmupPidTracker = new PidTrackerService(process.Id, progress);
+                await warmupPidTracker.StartAsync(cancellationToken).ConfigureAwait(false);
+
+                try
+                {
+                    Log("[Warmup] Запуск предварительной диагностики...");
+                    
+                    // Запускаем анализатор параллельно с процессом
+                    using var warmupCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    
+                    var analyzerTask = TrafficAnalyzer.AnalyzeProcessTrafficAsync(
+                        process.Id,
+                        null, // Без таймаута, управляем вручную
+                        flowMonitor,
+                        warmupPidTracker,
+                        dnsParser,
+                        progress,
+                        warmupCts.Token,
+                        enableLiveTesting: true, // Всегда включаем тесты для диагностики
+                        enableAutoBypass: enableAutoBypass,
+                        bypassManager: bypassManager
+                    );
+
+                    // Ждем завершения тестового приложения
+                    await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                    Log($"[Warmup] TestNetworkApp finished with code {process.ExitCode}");
+
+                    // Даем немного времени на завершение тестов (2 секунды)
+                    try { await Task.Delay(2000, cancellationToken); } catch { }
+
+                    // Останавливаем анализатор
+                    warmupCts.Cancel();
+                    try { await analyzerTask; } catch (OperationCanceledException) { }
+
+                    // Проверка результатов предварительной диагностики
+                    System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        var failedTests = TestResults.Where(t => t.Status == TestStatus.Fail).ToList();
+                        if (failedTests.Count > 0)
+                        {
+                            var names = string.Join(", ", failedTests.Select(t => t.Target.Name).Distinct());
+                            Log($"[Warmup] ⚠️ Базовые сервисы недоступны: {names}");
+                            // Не прерываем работу модальными окнами, результаты видны в списке
+                        }
+                    });
+                }
+                finally
+                {
+                    await warmupPidTracker.StopAsync().ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[Warmup] Error: {ex.Message}");
+            }
+        }
 
         private async Task ResolveUnknownHostAsync(string ip)
         {
@@ -1530,43 +1606,72 @@ namespace ISPAudit.ViewModels
                         var hostPort = match.Groups[1].Value.Trim();
                         var host = hostPort.Split(':')[0]; // Отсекаем порт если есть
                         
-                        // Используем UpdateTestResult для умного обновления
-                        UpdateTestResult(host, TestStatus.Pass, msg);
+                        // Находим существующий результат чтобы дополнить лог, а не затереть
+                        var existing = TestResults.FirstOrDefault(t => t.Target.Host == host || t.Target.Name == host);
+                        var newDetails = msg;
+                        if (existing != null && !string.IsNullOrEmpty(existing.Details))
+                        {
+                            newDetails = existing.Details + "\n" + msg;
+                        }
+                        
+                        UpdateTestResult(host, TestStatus.Pass, newDetails);
                         _lastUpdatedHost = host;
                     }
                 }
                 else if (msg.StartsWith("✗ ") && !string.IsNullOrEmpty(_lastUpdatedHost))
                 {
                     // Неудачный bypass: "✗ Комбинированный bypass ... не помог"
-                    var existing = FindTestResult(_lastUpdatedHost);
+                    var existing = TestResults.FirstOrDefault(t => t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
                     if (existing != null)
                     {
-                        UpdateTestResult(existing.Target.Host, existing.Status, msg);
+                        existing.Details += "\n" + msg;
+                        // Статус остается Fail
                     }
                 }
-                // УПРОЩЕНО: Обработка рекомендаций (Требуется VPN, DoH и т.д.)
-                else if ((msg.Contains("→ Рекомендация:") || msg.Contains("Рекомендуется VPN") || msg.Contains("текущий bypass не эффективен")) && !string.IsNullOrEmpty(_lastUpdatedHost))
+                else if (msg.Contains("→ Стратегия:") && !string.IsNullOrEmpty(_lastUpdatedHost))
                 {
-                    var result = FindTestResult(_lastUpdatedHost);
-                    if (result != null)
+                    // Формат: "   → Стратегия: TLS_FRAGMENT"
+                    var parts = msg.Split(':');
+                    if (parts.Length >= 2)
                     {
-                        // Показываем кнопку "Fix" с рекомендацией
-                        result.Fixable = true;
-                        result.FixType = FixType.Manual;
-                        result.FixInstructions = msg.Contains("DoH") 
-                            ? "Рекомендуется настроить DoH (1.1.1.1 или 8.8.8.8) в системных настройках DNS"
-                            : "Рекомендуется использовать VPN для обхода блокировки";
-                        
-                        UpdateTestResult(result.Target.Host, result.Status, msg);
+                        var strategy = parts[1].Trim();
+                        var result = TestResults.FirstOrDefault(t => t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
+                        if (result != null)
+                        {
+                            result.BypassStrategy = strategy;
+                            
+                            // ROUTER_REDIRECT (Fake IP) - это не ошибка, а информация об особенности сети (клиент в VPN/туннеле)
+                            if (strategy == "ROUTER_REDIRECT")
+                            {
+                                result.Status = TestStatus.Warn;
+                                result.Details = result.Details?.Replace("Блокировка", "Информация: Fake IP (VPN/туннель)") ?? "Fake IP обнаружен";
+                                Log($"[UI] ROUTER_REDIRECT → Status=Warn для {_lastUpdatedHost}");
+                            }
+                            // Если есть стратегия обхода (настоящая блокировка), значит можно исправить
+                            else if (strategy != "NONE" && strategy != "UNKNOWN")
+                            {
+                                result.Fixable = true;
+                                result.FixType = FixType.Bypass;
+                                result.FixInstructions = $"Применить стратегию обхода: {strategy}";
+                                
+                                // Принудительное обновление биндинга ShowFixButton
+                                result.OnPropertyChanged(nameof(result.ShowFixButton));
+                                Log($"[UI] ShowFixButton=True для {_lastUpdatedHost}: {strategy}");
+                            }
+                        }
                     }
                 }
-                // Информационные сообщения от Enforcer'а
+                // ✅ НОВОЕ: Захват информационных сообщений от Enforcer'а
                 else if ((msg.StartsWith("[BYPASS]") || msg.StartsWith("ℹ") || msg.StartsWith("⚠")) && !string.IsNullOrEmpty(_lastUpdatedHost))
                 {
-                    var result = FindTestResult(_lastUpdatedHost);
+                    var result = TestResults.FirstOrDefault(t => t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
                     if (result != null)
                     {
-                        UpdateTestResult(result.Target.Host, result.Status, msg);
+                        // Добавляем сообщение в детали, если его там еще нет
+                        if (!result.Details.Contains(msg))
+                        {
+                            result.Details += $"\n{msg}";
+                        }
                     }
                 }
             }
@@ -1575,30 +1680,11 @@ namespace ISPAudit.ViewModels
 
         private void UpdateTestResult(string host, TestStatus status, string details)
         {
-            // 1. Поиск существующего результата
-            var existing = FindTestResult(host);
-
+            var existing = TestResults.FirstOrDefault(t => t.Target.Host == host || t.Target.Name == host);
             if (existing != null)
             {
                 existing.Status = status;
-                
-                // Умное обновление деталей
-                if (existing.Details == null || !existing.Details.Contains(details))
-                {
-                    if (string.IsNullOrEmpty(existing.Details))
-                        existing.Details = details;
-                    else
-                    {
-                        // Если сообщение короткое (статус), добавляем его. 
-                        // Если это дубликат последнего сообщения - пропускаем.
-                        var lastLine = existing.Details.Split('\n').LastOrDefault();
-                        if (lastLine != details)
-                        {
-                            existing.Details += $"\n{details}";
-                        }
-                    }
-                }
-
+                existing.Details = details;
                 if (status == TestStatus.Fail)
                 {
                     existing.Error = details;
@@ -1606,12 +1692,11 @@ namespace ISPAudit.ViewModels
             }
             else
             {
-                // Создание нового результата
                 // Пытаемся найти цель в каталоге для получения метаданных (FallbackIp и т.д.)
                 // Сначала ищем по имени/хосту
                 var knownTarget = TargetCatalog.Targets.FirstOrDefault(t => 
-                    string.Equals(t?.Host, host, StringComparison.OrdinalIgnoreCase) || 
-                    string.Equals(t?.Name, host, StringComparison.OrdinalIgnoreCase));
+                    t.Host.Equals(host, StringComparison.OrdinalIgnoreCase) || 
+                    t.Name.Equals(host, StringComparison.OrdinalIgnoreCase));
 
                 Target target;
                 if (knownTarget != null)
@@ -1626,9 +1711,9 @@ namespace ISPAudit.ViewModels
                     };
                 }
                 // Если не нашли по имени, ищем в кэше разрешенных IP
-                else if (_resolvedIpMap.TryGetValue(host, out var resolvedT))
+                else if (_resolvedIpMap.TryGetValue(host, out var resolvedTarget))
                 {
-                    target = resolvedT;
+                    target = resolvedTarget;
                 }
                 else
                 {
@@ -1742,15 +1827,7 @@ namespace ISPAudit.ViewModels
         private bool AreHostsRelated(Target passingTarget, string failingHost)
         {
             // 1. Проверка по имени сервиса (если известно)
-            string? failingService = null;
-            
-            // Safe access to TestResults to avoid CS8602
-            var currentResults = TestResults;
-            if (currentResults != null)
-            {
-                var failingResult = currentResults.FirstOrDefault(t => t?.Target?.Host == failingHost);
-                failingService = failingResult?.Target?.Service;
-            }
+            string? failingService = TestResults.FirstOrDefault(t => t.Target.Host == failingHost)?.Target.Service;
             
             if (failingService == null)
             {
@@ -1835,20 +1912,6 @@ namespace ISPAudit.ViewModels
             }
 
             UserMessage = cleanMsg;
-        }
-
-        private TestResult? FindTestResult(string host)
-        {
-            // 1. Прямой поиск по хосту или имени
-            var existing = TestResults.FirstOrDefault(t => t?.Target?.Host == host || t?.Target?.Name == host);
-
-            // 2. Если не нашли и это IP - пробуем найти через карту разрешенных IP
-            if (existing == null && _resolvedIpMap.TryGetValue(host, out var resolvedTarget))
-            {
-                existing = TestResults.FirstOrDefault(t => t?.Target?.Name == resolvedTarget.Name);
-            }
-            
-            return existing;
         }
     }
 

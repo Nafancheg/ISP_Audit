@@ -25,7 +25,9 @@
     <None Include="game_targets.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <!-- bypass_profile.json удалён — стратегии теперь кэшируются в diagnosis_cache.json -->
+    <None Include="bypass_profile.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <!-- WinDivert native libraries (x64 only, Windows 10/11) -->
