@@ -232,8 +232,9 @@ namespace ISPAudit.ViewModels
             }
         }
         private bool _enableLiveTesting = true; // Live testing enabled by default
-        private bool _enableAutoBypass = false; // Auto-bypass disabled by default (C2 requirement)
+        private bool _enableAutoBypass = true;  // Auto-bypass always enabled (preemptive TLS+RST at startup)
         private bool _isBasicTestMode = false;  // Basic Test Mode (TestNetworkApp only)
+        private bool _isBypassActive = false;   // Показывает активен ли bypass в данный момент
 
         // Monitoring Services (D1 refactoring)
         private FlowMonitorService? _flowMonitor;
@@ -251,6 +252,15 @@ namespace ISPAudit.ViewModels
         {
             get => _enableAutoBypass;
             set { _enableAutoBypass = value; OnPropertyChanged(nameof(EnableAutoBypass)); }
+        }
+
+        /// <summary>
+        /// Показывает активен ли bypass в данный момент (для UI badge)
+        /// </summary>
+        public bool IsBypassActive
+        {
+            get => _isBypassActive;
+            set { _isBypassActive = value; OnPropertyChanged(nameof(IsBypassActive)); }
         }
 
         public bool IsBasicTestMode
@@ -1178,10 +1188,10 @@ namespace ISPAudit.ViewModels
                     _bypassManager.StateChanged += (s, e) => System.Windows.Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
                 }
 
-                // 🔥 Преимптивное включение bypass СРАЗУ при старте
+                // 🔥 Преимптивное включение bypass СРАЗУ при старте (если есть admin права)
                 // TLS_DISORDER (фрагментация) + DROP_RST — покрывает 90%+ блокировок российских DPI
                 // Включаем ОДИН РАЗ и НЕ переключаем в рантайме (глобальный bypass + параллельные тесты = хаос)
-                if (EnableAutoBypass && WinDivertBypassManager.HasAdministratorRights)
+                if (WinDivertBypassManager.HasAdministratorRights)
                 {
                     Log("[Bypass] Preemptive bypass: enabling TLS_DISORDER + DROP_RST...");
                     ((IProgress<string>)progress)?.Report("[Bypass] Включаю TLS-фрагментацию + блокировку RST...");
@@ -1193,6 +1203,9 @@ namespace ISPAudit.ViewModels
                         await _bypassManager.EnableAsync(bypassProfile, _cts.Token).ConfigureAwait(false);
                         Log("[Bypass] Preemptive bypass enabled successfully");
                         ((IProgress<string>)progress)?.Report("✓ Bypass активирован (TLS-фрагментация + DROP_RST)");
+                        
+                        // Обновляем UI badge
+                        System.Windows.Application.Current?.Dispatcher.Invoke(() => IsBypassActive = true);
                     }
                     catch (Exception ex)
                     {

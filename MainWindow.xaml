@@ -166,18 +166,8 @@
                                   IsEnabled="{Binding IsStart}"
                                   AutomationProperties.AutomationId="BasicTestCheckbox"/>
 
-                        <!-- Options -->
-                        <StackPanel Margin="0,8,0,0">
-                            <CheckBox Content="Включить режим обхода (Auto Bypass)"
-                                      IsChecked="{Binding EnableAutoBypass}"
-                                      IsEnabled="{Binding IsStart}"
-                                      ToolTip="Автоматически применять стратегии обхода (TLS Fragment, RST Drop) при обнаружении блокировок"
-                                      AutomationProperties.AutomationId="AutoBypassCheckbox"/>
-                            <TextBlock Text="Включает активный обход DPI. Используйте с осторожностью." 
-                                       Style="{StaticResource CaptionStyle}" 
-                                       Margin="24,2,0,0" 
-                                       Foreground="{StaticResource MutedBrush}"/>
-                        </StackPanel>
+                        <!-- Auto Bypass Options - СКРЫТО: bypass включается автоматически при старте
+                             Переключение стратегий будет реализовано отдельно -->
                     </StackPanel>
 
                     <!-- Start Button (Unified) -->
@@ -229,12 +219,12 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <TextBlock Text="Выполняется диагностика..." Style="{StaticResource H2Style}" VerticalAlignment="Center"/>
                             
-                            <!-- Auto Bypass Badge -->
-                            <Border Background="#FEF3F2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="4" Margin="12,0,0,0" Padding="6,2"
+                            <!-- Bypass Badge - показывает что bypass активен -->
+                            <Border Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="4" Margin="12,0,0,0" Padding="6,2"
                                     VerticalAlignment="Center"
-                                    Visibility="{Binding EnableAutoBypass, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    Visibility="{Binding IsBypassActive, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="🛡️ Auto Bypass" Foreground="#B91C1C" FontWeight="SemiBold" FontSize="11"/>
+                                    <TextBlock Text="🛡️ Bypass Active" Foreground="#166534" FontWeight="SemiBold" FontSize="11"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
