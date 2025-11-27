@@ -263,6 +263,155 @@ namespace ISPAudit.ViewModels
             set { _isBypassActive = value; OnPropertyChanged(nameof(IsBypassActive)); }
         }
 
+        #region Bypass Control Panel (Пульт управления стратегиями)
+        
+        private string _currentBypassStrategy = "TLS_FRAGMENT + DROP_RST";
+        
+        /// <summary>
+        /// Текущая активная стратегия bypass (для отображения в UI)
+        /// </summary>
+        public string CurrentBypassStrategy
+        {
+            get => _currentBypassStrategy;
+            set { _currentBypassStrategy = value; OnPropertyChanged(nameof(CurrentBypassStrategy)); }
+        }
+
+        /// <summary>
+        /// Показывать ли панель управления bypass (только при admin правах)
+        /// </summary>
+        public bool ShowBypassPanel => WinDivertBypassManager.HasAdministratorRights;
+
+        // Команды для переключения стратегий
+        public ICommand SetBypassStrategyCommand { get; private set; } = null!;
+        public ICommand DisableBypassCommand { get; private set; } = null!;
+
+        private async Task SetBypassStrategyAsync(string strategy)
+        {
+            if (_bypassManager == null)
+            {
+                _bypassManager = new WinDivertBypassManager();
+                _bypassManager.StateChanged += (s, e) => System.Windows.Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
+            }
+
+            try
+            {
+                Log($"[Bypass Panel] Switching to strategy: {strategy}");
+                
+                // Сначала отключаем текущий bypass
+                if (_bypassManager.State == BypassState.Enabled)
+                {
+                    await _bypassManager.DisableAsync().ConfigureAwait(false);
+                }
+
+                // Создаём профиль в зависимости от стратегии
+                BypassProfile profile;
+                switch (strategy)
+                {
+                    case "TLS_FRAGMENT":
+                        profile = new BypassProfile
+                        {
+                            DropTcpRst = false,
+                            FragmentTlsClientHello = true,
+                            TlsStrategy = TlsBypassStrategy.Fragment,
+                            TlsFirstFragmentSize = 2,
+                            TlsFragmentThreshold = 16,
+                            RedirectRules = Array.Empty<BypassRedirectRule>()
+                        };
+                        CurrentBypassStrategy = "TLS Fragment";
+                        break;
+
+                    case "TLS_FAKE":
+                        profile = new BypassProfile
+                        {
+                            DropTcpRst = false,
+                            FragmentTlsClientHello = true,
+                            TlsStrategy = TlsBypassStrategy.Fake,
+                            TlsFirstFragmentSize = 2,
+                            TlsFragmentThreshold = 16,
+                            RedirectRules = Array.Empty<BypassRedirectRule>()
+                        };
+                        CurrentBypassStrategy = "TLS Fake";
+                        break;
+
+                    case "TLS_FAKE_FRAGMENT":
+                        profile = new BypassProfile
+                        {
+                            DropTcpRst = false,
+                            FragmentTlsClientHello = true,
+                            TlsStrategy = TlsBypassStrategy.FakeFragment,
+                            TlsFirstFragmentSize = 2,
+                            TlsFragmentThreshold = 16,
+                            RedirectRules = Array.Empty<BypassRedirectRule>()
+                        };
+                        CurrentBypassStrategy = "TLS Fake + Fragment";
+                        break;
+
+                    case "DROP_RST":
+                        profile = new BypassProfile
+                        {
+                            DropTcpRst = true,
+                            FragmentTlsClientHello = false,
+                            TlsStrategy = TlsBypassStrategy.None,
+                            RedirectRules = Array.Empty<BypassRedirectRule>()
+                        };
+                        CurrentBypassStrategy = "DROP RST";
+                        break;
+
+                    case "FULL":
+                    default:
+                        // Полный комбо: TLS Fragment + DROP RST (рекомендуемый)
+                        profile = BypassProfile.CreateDefault();
+                        CurrentBypassStrategy = "TLS Fragment + DROP RST";
+                        break;
+                }
+
+                await _bypassManager.EnableAsync(profile).ConfigureAwait(false);
+                
+                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    IsBypassActive = true;
+                    UpdateUserMessage($"✓ Bypass стратегия: {CurrentBypassStrategy}");
+                });
+                
+                Log($"[Bypass Panel] Strategy {strategy} enabled successfully");
+            }
+            catch (Exception ex)
+            {
+                Log($"[Bypass Panel] Failed to set strategy {strategy}: {ex.Message}");
+                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    UpdateUserMessage($"⚠️ Ошибка bypass: {ex.Message}");
+                });
+            }
+        }
+
+        private async Task DisableBypassAsync()
+        {
+            if (_bypassManager != null && _bypassManager.State == BypassState.Enabled)
+            {
+                try
+                {
+                    Log("[Bypass Panel] Disabling bypass...");
+                    await _bypassManager.DisableAsync().ConfigureAwait(false);
+                    
+                    System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        IsBypassActive = false;
+                        CurrentBypassStrategy = "Выключен";
+                        UpdateUserMessage("Bypass отключен");
+                    });
+                    
+                    Log("[Bypass Panel] Bypass disabled");
+                }
+                catch (Exception ex)
+                {
+                    Log($"[Bypass Panel] Failed to disable bypass: {ex.Message}");
+                }
+            }
+        }
+
+        #endregion
+
         public bool IsBasicTestMode
         {
             get => _isBasicTestMode;
@@ -365,6 +514,10 @@ namespace ISPAudit.ViewModels
             FixCommand = new RelayCommand(async param => await ApplyFixAsync(param as TestResult), _ => true);
             RollbackFixCommand = new RelayCommand(async param => await RollbackFixAsync(param as AppliedFix), _ => true);
             RollbackAllCommand = new RelayCommand(async _ => await RollbackAllFixesAsync(), _ => HasActiveFixes);
+
+            // Bypass Control Panel Commands
+            SetBypassStrategyCommand = new RelayCommand(async param => await SetBypassStrategyAsync(param?.ToString() ?? "FULL"), _ => ShowBypassPanel);
+            DisableBypassCommand = new RelayCommand(async _ => await DisableBypassAsync(), _ => ShowBypassPanel && IsBypassActive);
 
             // Exe Scenario Commands
             BrowseExeCommand = new RelayCommand(_ => BrowseExe(), _ => !IsRunning);
