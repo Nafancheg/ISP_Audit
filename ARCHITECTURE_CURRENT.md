@@ -203,22 +203,21 @@ Bypass включается ДО проверки VPN. Если VPN активе
 
 **ПРОБЛЕМА: LoadFixHistory() — что это?**  
 Загружает "историю исправлений". Каких исправлений? Откуда? Зачем?  
-**ОТВЕТ:** Проверил `Models/FixHistory.cs`:
-- `FixHistoryManager.Load()` — загружает из `%APPDATA%\ISP_Audit\fix_history.json`
-- Хранит `AppliedFix` записи: тип исправления (DNS, Firewall, Hosts, Bypass), время, оригинальные настройки для rollback
-- Используется для кнопки "Откатить изменения"
+**ОТВЕТ:** Проверил связи:
+- `Models/FixHistory.cs` — существует, содержит `FixHistoryManager` и `AppliedFix`
+- `MainViewModel.cs` — содержит `LoadFixHistory()`, `ActiveFixes`, `RollbackFixCommand`, `RollbackAllCommand`
+- **UI (MainWindow.xaml)** — НЕТ привязок к `ActiveFixes` или `RollbackFix`!
 
-```csharp
-public enum FixType {
-    DnsChange,    // Смена DNS серверов + DoH
-    FirewallRule, // Правила Windows Firewall
-    HostsFile,    // Изменение hosts файла
-    Bypass        // WinDivert обход
-}
-```
-**Решение:** Функционал полезный, оставить. Но нужно проверить:
-- [ ] Работает ли rollback реально?
-- [ ] Показывается ли история пользователю где-то в UI?
+**Вывод: Это МЁРТВЫЙ КОД!** Вкладка "откат изменений" была удалена из UI, но код остался в ViewModel.  
+**Решение:** Удалить:
+- [ ] `Models/FixHistory.cs` — весь файл
+- [ ] В `MainViewModel.cs`:
+  - `ActiveFixes` property
+  - `HasActiveFixes`, `ActiveFixesMessage`
+  - `RollbackFixCommand`, `RollbackAllCommand`
+  - `LoadFixHistory()` метод
+  - `RollbackFixAsync()`, `RollbackAllFixesAsync()` методы
+- [ ] Ссылки на `FixType` enum (проверить использование)
 
 **ПРОБЛЕМА: Нет предупреждения без админа**  
 Если нет прав админа — bypass просто не включается, кнопки неактивны, но пользователь не понимает почему.  
@@ -1156,6 +1155,7 @@ ISP_Audit/
 
 - [ ] Удалить CLI код: `AuditRunner.cs`, `Config.ParseArgs()`, `RunCliAsync()`
 - [ ] Удалить `Output/` папку (CLI legacy)
+- [ ] **Удалить FixHistory (мёртвый код):** `Models/FixHistory.cs`, `LoadFixHistory()`, `ActiveFixes`, `RollbackFixCommand` и т.д.
 - [ ] Решить: интегрировать `BypassCoordinator` или удалить **→ ИНТЕГРИРОВАТЬ (блок 9)**
 - [ ] Решить: исправить `WinDivertBypassEnforcer` или удалить **→ ИСПОЛЬЗОВАТЬ (блок 9)**
 - [ ] Консолидировать папки моделей (`Models/` + `Core/Models/`) — низкий приоритет
@@ -1219,9 +1219,10 @@ bool looksVpn = type == NetworkInterfaceType.Tunnel
    - [ ] Тестировать на YouTube, Discord
 
 2. **Мёртвый код занимает место** (Блок 14)  
-   `BypassCoordinator`, `WinDivertBypassEnforcer` написаны, но не интегрированы. CLI legacy код.  
+   `BypassCoordinator`, `WinDivertBypassEnforcer` написаны, но не интегрированы. CLI legacy код. **FixHistory** — UI удалён, код остался.  
    **ПЛАН:**
    - [ ] Удалить CLI: `AuditRunner.cs`, `Config.ParseArgs()`, `Output/`
+   - [ ] Удалить FixHistory: `Models/FixHistory.cs`, связанный код в MainViewModel
    - [ ] Интегрировать `BypassCoordinator` и `WinDivertBypassEnforcer` в pipeline (см. п.1)
 
 ### Важные (улучшение UX)
