@@ -11,12 +11,11 @@ namespace IspAudit.Utils
     /// <summary>
     /// Сервис для мониторинга сетевой активности.
     /// Поддерживает два режима:
-    /// 1. WinDivert Flow Layer (событийная модель, высокая точность)
-    /// 2. TcpConnectionWatcher (polling модель, совместимость с RST blocker)
+    /// 1. WinDivert Socket Layer — основной режим (событийная модель, Sniff+RecvOnly — не конфликтует с bypass)
+    /// 2. TcpConnectionWatcher — fallback (polling через IP Helper API, для систем без WinDivert)
     /// </summary>
     public class FlowMonitorService : IDisposable
     {
-        private WinDivertNative.SafeHandle? _handle;
         private WinDivertNative.SafeHandle? _socketHandle;
         private Task? _monitorTask;
         private Task? _socketMonitorTask;
@@ -48,7 +47,9 @@ namespace IspAudit.Utils
         }
 
         /// <summary>
-        /// Запускает мониторинг Flow layer в фоновом режиме.
+        /// Запускает мониторинг в фоновом режиме.
+        /// Socket Layer — основной режим (Sniff+RecvOnly — не конфликтует с bypass).
+        /// Watcher Mode — fallback для систем без WinDivert.
         /// </summary>
         public Task StartAsync(CancellationToken cancellationToken = default)
         {
@@ -62,15 +63,16 @@ namespace IspAudit.Utils
 
             if (UseWatcherMode)
             {
+                // Watcher mode: polling через IP Helper API (fallback для систем без WinDivert)
                 _monitorTask = Task.Run(() => RunWatcherLoop(_cts.Token), _cts.Token);
             }
             else
             {
-                _monitorTask = Task.Run(() => RunMonitorLoop(_cts.Token), _cts.Token);
+                // Socket Layer: событийная модель через WinDivert (основной режим)
                 _socketMonitorTask = Task.Run(() => RunSocketMonitorLoop(_cts.Token), _cts.Token);
             }
             
-            // Ждем, пока WinDivert откроется (или Watcher запустится)
+            // Ждём, пока выбранный режим откроется
             return _readySignal.Task;
         }
 
@@ -130,7 +132,11 @@ namespace IspAudit.Utils
                 _socketHandle = WinDivertNative.Open(socketFilter, WinDivertNative.Layer.Socket, -1000, 
                     WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.RecvOnly);
                 
-                _progress?.Report($"[FlowMonitor] ✓ Socket layer открыт");
+                FlowOpenedUtc = DateTime.UtcNow;
+                _progress?.Report($"[FlowMonitor] ✓ Socket layer открыт (Utc={FlowOpenedUtc:O})");
+                
+                // Сигнализируем готовность (теперь Socket Layer — основной режим)
+                _readySignal.TrySetResult(true);
                 
                 var addr = new WinDivertNative.Address();
 
@@ -201,115 +207,15 @@ namespace IspAudit.Utils
                     // Передаем событие подписчикам (используем тот же event, так как это тоже "поток")
                     int count = Interlocked.Increment(ref _totalEventsCount);
                     
-                    OnFlowEvent?.Invoke(count, pid, protocol, remoteIp, remotePort, localPort);
-                }
-            }
-            catch (Exception ex)
-            {
-                _progress?.Report($"[FlowMonitor] Socket Layer Error: {ex.Message}");
-            }
-            finally
-            {
-                _socketHandle?.Dispose();
-                _socketHandle = null;
-            }
-        }
-
-        private void RunMonitorLoop(CancellationToken token)
-        {
-            try
-            {
-                _progress?.Report("[FlowMonitor] Открытие WinDivert Flow layer...");
-                
-                const string flowFilter = "true"; // Слушаем все Flow события в системе
-                // A1: Используем низкий приоритет (-1000), чтобы не конфликтовать с Network слоем (RST blocker)
-                _handle = WinDivertNative.Open(flowFilter, WinDivertNative.Layer.Flow, -1000, 
-                    WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.RecvOnly);
-                
-                FlowOpenedUtc = DateTime.UtcNow;
-                _progress?.Report($"[FlowMonitor] ✓ Flow layer открыт (Utc={FlowOpenedUtc:O})");
-                
-                // Сигнализируем, что готовы принимать события
-                _readySignal.TrySetResult(true);
-
-                var addr = new WinDivertNative.Address();
-
-                while (!token.IsCancellationRequested)
-                {
-                    if (!WinDivertNative.WinDivertRecv(_handle, IntPtr.Zero, 0, out var _, out addr))
-                    {
-                        var error = Marshal.GetLastWin32Error();
-                        if (error == WinDivertNative.ErrorNoData || error == WinDivertNative.ErrorOperationAborted)
-                        {
-                            break;
-                        }
-                        
-                        Thread.Sleep(50);
-                        continue;
-                    }
-
-                    int count = Interlocked.Increment(ref _totalEventsCount);
-                    
                     if (count == 1)
                     {
                         FirstEventUtc = DateTime.UtcNow;
-                        var delta = (FirstEventUtc.Value - FlowOpenedUtc.Value).TotalMilliseconds;
+                        var delta = (FirstEventUtc.Value - FlowOpenedUtc!.Value).TotalMilliseconds;
                         _progress?.Report($"[FlowMonitor] Первое событие через {delta:F0}ms");
                     }
-
-                    // Обрабатываем только события FLOW_ESTABLISHED
-                    if (addr.Event != WinDivertNative.WINDIVERT_EVENT_FLOW_ESTABLISHED)
-                        continue;
-
-                    // Пропускаем loopback
-                    if (addr.Loopback)
-                        continue;
-
-                    var pid = (int)addr.Data.Flow.ProcessId;
-                    var protocol = addr.Data.Flow.Protocol;
                     
-                    IPAddress remoteIp;
-                    if (addr.IPv6)
-                    {
-                        var parts = new uint[] 
-                        { 
-                            addr.Data.Flow.RemoteAddr1, 
-                            addr.Data.Flow.RemoteAddr2, 
-                            addr.Data.Flow.RemoteAddr3, 
-                            addr.Data.Flow.RemoteAddr4 
-                        };
-                        
-                        var bytes = new byte[16];
-                        for (int i = 0; i < 4; i++)
-                        {
-                            var b = BitConverter.GetBytes(parts[i]);
-                            if (BitConverter.IsLittleEndian)
-                            {
-                                Array.Reverse(b);
-                            }
-                            Array.Copy(b, 0, bytes, i * 4, 4);
-                        }
-                        remoteIp = new IPAddress(bytes);
-                    }
-                    else
-                    {
-                        uint remoteAddrRaw = addr.Data.Flow.RemoteAddr1;
-                        var ipBytes = BitConverter.GetBytes(remoteAddrRaw);
-                        if (BitConverter.IsLittleEndian)
-                        {
-                            Array.Reverse(ipBytes);
-                        }
-                        remoteIp = new IPAddress(ipBytes);
-                    }
-
-                    var remotePort = addr.Data.Flow.RemotePort;
-                    var localPort = addr.Data.Flow.LocalPort;
-
-                    // Передаем событие подписчикам
                     OnFlowEvent?.Invoke(count, pid, protocol, remoteIp, remotePort, localPort);
                 }
-
-                _progress?.Report($"[FlowMonitor] Завершение. Обработано событий: {_totalEventsCount}");
             }
             catch (System.ComponentModel.Win32Exception wx)
             {
@@ -327,13 +233,12 @@ namespace IspAudit.Utils
             catch (Exception ex)
             {
                 _readySignal.TrySetException(ex);
-                _progress?.Report($"[FlowMonitor] Критическая ошибка: {ex.Message}");
+                _progress?.Report($"[FlowMonitor] Socket Layer Error: {ex.Message}");
             }
             finally
             {
-                _progress?.Report("[FlowMonitor] Закрытие Flow layer");
-                _handle?.Dispose();
-                _handle = null;
+                _socketHandle?.Dispose();
+                _socketHandle = null;
                 _isRunning = false;
             }
         }

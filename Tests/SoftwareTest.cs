@@ -3,7 +3,7 @@ using System.IO;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
-using IspAudit.Output;
+using IspAudit.Core.Models;
 using Microsoft.Win32;
 
 namespace ISP_Audit.Tests;

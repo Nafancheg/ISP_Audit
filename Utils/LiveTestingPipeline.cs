@@ -4,6 +4,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using IspAudit.Bypass;
 using IspAudit.Core.Interfaces;
 using IspAudit.Core.Models;
 using IspAudit.Core.Modules;
@@ -30,7 +31,7 @@ namespace IspAudit.Utils
         // Modules
         private readonly IHostTester _tester;
         private readonly IBlockageClassifier _classifier;
-        private readonly IBypassEnforcer _bypassEnforcer;
+        private readonly BypassCoordinator? _coordinator; // Главный координатор bypass-стратегий
         
         public LiveTestingPipeline(PipelineConfig config, IProgress<string>? progress = null, IspAudit.Bypass.WinDivertBypassManager? bypassManager = null, DnsParserService? dnsParser = null)
         {
@@ -51,7 +52,13 @@ namespace IspAudit.Utils
             // Инициализация модулей
             _tester = new StandardHostTester(progress, dnsParser?.DnsCache);
             _classifier = new StandardBlockageClassifier();
-            _bypassEnforcer = new WinDivertBypassEnforcer(_bypassManager, _tester, progress);
+            
+            // BypassCoordinator — главный "мозг" управления bypass-стратегиями
+            // Содержит логику: кеширование работающих стратегий, перебор, ретест
+            if (_bypassManager != null)
+            {
+                _coordinator = new BypassCoordinator(_bypassManager);
+            }
             
             // Создаем unbounded каналы для передачи данных между воркерами
             _snifferQueue = Channel.CreateUnbounded<HostDiscovered>();
@@ -130,7 +137,7 @@ namespace IspAudit.Utils
         }
 
         /// <summary>
-        /// Worker 3: Обновление UI и применение bypass стратегий
+        /// Worker 3: Обновление UI и применение bypass стратегий через BypassCoordinator
         /// </summary>
         private async Task UiWorker(CancellationToken ct)
         {
@@ -154,18 +161,38 @@ namespace IspAudit.Utils
                     _progress?.Report($"❌ {details} | {checks} | {blocked.TestResult.BlockageType}");
                     _progress?.Report($"   → Рекомендуемая стратегия: {blocked.BypassStrategy}");
                     
-                    // Применяем bypass динамически если:
+                    // Применяем bypass динамически через BypassCoordinator если:
                     // 1. Стратегия не NONE (есть что применять)
                     // 2. Auto-bypass включен в конфигурации
-                    // 3. Bypass manager доступен и не в состоянии Faulted
+                    // 3. Координатор доступен
+                    // 4. Bypass manager не в состоянии Faulted
                     if (blocked.BypassStrategy != "NONE" && 
                         _config.EnableAutoBypass && 
+                        _coordinator != null &&
                         _bypassManager != null &&
-                        _bypassManager.State != IspAudit.Bypass.BypassState.Faulted)
+                        _bypassManager.State != BypassState.Faulted)
                     {
-                        // WinDivertBypassEnforcer использует внутренний семафор для сериализации
-                        // и сам проверяет эффективность bypass через ретест
-                        await _bypassEnforcer.ApplyBypassAsync(blocked, ct).ConfigureAwait(false);
+                        _progress?.Report($"[BYPASS] Координатор применяет стратегию для {host}...");
+                        
+                        // BypassCoordinator.AutoFixLiveAsync — главный метод:
+                        // - Проверяет кеш работающих стратегий
+                        // - Перебирает стратегии по приоритету
+                        // - Выполняет ретест после каждой
+                        // - Кеширует успешную стратегию
+                        var fixResult = await _coordinator.AutoFixLiveAsync(
+                            blocked.TestResult,
+                            async (testedHost) => await _tester.TestHostAsync(testedHost.Host, ct).ConfigureAwait(false),
+                            ct
+                        ).ConfigureAwait(false);
+                        
+                        if (fixResult.Success)
+                        {
+                            _progress?.Report($"✓✓ BYPASS УСПЕХ: {fixResult.Strategy} работает для {host}");
+                        }
+                        else
+                        {
+                            _progress?.Report($"✗ BYPASS НЕ ПОМОГ: {fixResult.Message}");
+                        }
                     }
                 }
                 catch (Exception ex)

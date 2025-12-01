@@ -6,7 +6,7 @@ using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Threading.Tasks;
-using IspAudit.Output;
+using IspAudit.Core.Models;
 
 namespace ISP_Audit.Tests;
 

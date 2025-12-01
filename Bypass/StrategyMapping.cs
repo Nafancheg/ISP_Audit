@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using IspAudit.Output;
 using IspAudit.Core.Models;
 
 namespace IspAudit.Bypass

@@ -1250,18 +1250,11 @@ namespace ISPAudit.ViewModels
                     }
                 };
 
-                // A4: If Bypass is active OR AutoBypass is enabled, use Watcher mode (IP Helper API) to avoid WinDivert conflict
-                bool isBypassActive = (_bypassManager != null && _bypassManager.State == BypassState.Enabled) || EnableAutoBypass;
-                if (isBypassActive)
-                {
-                    Log($"[Pipeline] Bypass/AutoBypass active: Switching FlowMonitor to Watcher mode (IP Helper API). AutoBypass={EnableAutoBypass}");
-                    _flowMonitor.UseWatcherMode = true;
-                    FlowModeText = "Watcher (IP Helper)";
-                }
-                else
-                {
-                    FlowModeText = "WinDivert (Driver)";
-                }
+                // Socket Layer всегда работает параллельно с bypass (Sniff+RecvOnly не конфликтует)
+                // Flow Layer и Watcher временно отключены для тестирования
+                _flowMonitor.UseWatcherMode = false;
+                FlowModeText = "Socket Layer";
+                Log($"[Pipeline] FlowMonitor: Socket Layer only (Flow/Watcher disabled)");
                 
                 await _flowMonitor.StartAsync(_cts.Token).ConfigureAwait(false);
                 

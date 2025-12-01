@@ -5,7 +5,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using ISPAudit.Models;
-using IspAudit.Output;
+using IspAudit.Core.Models;
 
 namespace IspAudit.Bypass
 {

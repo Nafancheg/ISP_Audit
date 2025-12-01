@@ -6,7 +6,7 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Text.Json;
 using System.Threading.Tasks;
-using IspAudit.Output;
+using IspAudit.Core.Models;
 
 namespace ISP_Audit.Tests;
 
