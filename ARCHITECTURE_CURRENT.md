@@ -990,6 +990,45 @@ enum TlsBypassStrategy {
 }
 ```
 
+### Сравнение с GoodbyeDPI/Zapret
+
+**ISP_Audit реализует МИНИМУМ методов обхода по сравнению с аналогами:**
+
+| Метод | ISP_Audit | GoodbyeDPI | Zapret |
+|-------|-----------|------------|--------|
+| **TCP RST drop** | ✅ | ✅ | ✅ |
+| **TLS Fragment (порядок 1→2)** | ✅ | ✅ | ✅ multisplit |
+| **TLS Disorder (порядок 2→1)** | ✅ | ✅ --reverse-frag | ✅ multidisorder |
+| **Fake пакет (short TTL)** | ✅ (базово) | ✅ --set-ttl, --auto-ttl | ✅ fake с autottl |
+| **Fake + фрагментация** | ✅ | ✅ | ✅ fakedsplit/fakeddisorder |
+| **Bad checksum** | ❌ | ✅ --wrong-chksum | ✅ badsum fooling |
+| **Bad sequence** | ❌ | ✅ --wrong-seq | ✅ badseq fooling |
+| **MD5 signature** | ❌ | ❌ | ✅ md5sig fooling |
+| **Split по SNI** | ❌ | ✅ --frag-by-sni | ✅ midsld marker |
+| **HTTP Host tricks** | ❌ | ✅ -r,-s,-m,-a | ✅ hostcase,hostspell |
+| **Window size манипуляции** | ❌ | ❌ | ✅ --wssize |
+| **QUIC obfuscation** | ❌ | ✅ -q | ✅ udplen, fake |
+| **IPv6 hop-by-hop** | ❌ | ❌ | ✅ hopbyhop, destopt |
+| **IP фрагментация** | ❌ | ❌ | ✅ ipfrag1, ipfrag2 |
+| **Множественные стратегии** | ❌ | ❌ (пресеты -1..-9) | ✅ --new профили |
+| **Hostlist фильтрация** | ❌ | ✅ --blacklist | ✅ --hostlist |
+| **Auto-hostlist** | ❌ | ❌ | ✅ --hostlist-auto |
+| **Timestamp fooling** | ❌ | ❌ | ✅ ts fooling |
+| **Datanoack** | ❌ | ❌ | ✅ datanoack fooling |
+| **Sequence overlap** | ❌ | ❌ | ✅ seqovl |
+| **SYN data** | ❌ | ❌ | ✅ syndata |
+| **DNS redirect** | ❌ | ✅ --dns-addr | ✅ dnscrypt |
+
+**Выводы:**
+1. ISP_Audit покрывает ~20% методов обхода от Zapret
+2. Нет HTTP-специфичных трюков (Host header manipulation)
+3. Нет продвинутых fooling методов (badchksum, badseq, md5sig)
+4. Нет QUIC обхода
+5. Нет hostlist — применяется глобально ко всему HTTPS
+6. Нет множественных стратегий для разных хостов
+
+**Рекомендация:** Для серьёзного обхода DPI — интегрировать с GoodbyeDPI/Zapret или значительно расширить `WinDivertBypassManager`.
+
 ### Внутренние Worker'ы
 
 1. **RstBlockerWorker** (приоритет 0) — перехватывает TCP RST пакеты от провайдера, не пропускает их
