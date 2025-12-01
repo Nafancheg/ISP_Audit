@@ -1029,6 +1029,95 @@ enum TlsBypassStrategy {
 
 **Рекомендация:** Для серьёзного обхода DPI — интегрировать с GoodbyeDPI/Zapret или значительно расширить `WinDivertBypassManager`.
 
+### Сравнение методов ДЕТЕКЦИИ блокировок
+
+**ISP_Audit vs Zapret autohostlist — качество детекции**
+
+| Метод детекции | ISP_Audit | Zapret | Важность |
+|----------------|-----------|--------|----------|
+| **TCP RST (socket error)** | ✅ SocketError.ConnectionReset | ✅ | 🔴 Критическая |
+| **TCP RST (анализ пакета TH_RST)** | ❌ | ✅ packet inspection | 🔴 Критическая |
+| **TCP Retransmissions** | ❌ | ✅ req_retrans_counter | 🔴 **ГЛАВНЫЙ** |
+| **Timeout heuristic** | ⚠️ 3с fixed | ✅ динамический | 🟡 Средняя |
+| **HTTP redirect detect** | ❌ | ✅ IsHttpReply() | 🔴 Критическая |
+| **HTTP redirect domain compare** | ❌ | ✅ HttpReplyLooksLikeDPIRedirect() | 🟡 Средняя |
+| **TLS handshake fail** | ✅ AuthenticationException | ✅ | 🔴 Критическая |
+| **Fail counter + time window** | ❌ | ✅ fail_threshold/fail_time | 🟡 Средняя |
+| **Fake IP detection** | ⚠️ только 198.18.x.x | ✅ полный | 🟡 Средняя |
+| **QUIC block detect** | ❌ | ✅ | 🟢 Новая |
+| **Client timeout (no server reply)** | ❌ | ✅ hup_out() | 🟢 Дополнительная |
+
+**Как ISP_Audit определяет блокировку (StandardHostTester.cs):**
+```csharp
+// 1. Socket exception → простой способ (работает для явных RST/refused)
+catch (SocketException ex) {
+    if (ex.SocketErrorCode == ConnectionReset) blockageType = "TCP_RST";
+    if (ex.SocketErrorCode == ConnectionRefused) blockageType = "PORT_CLOSED";
+}
+
+// 2. Timeout race → неточный способ
+var completedTask = await Task.WhenAny(connectTask, Task.Delay(3000));
+if (completedTask != connectTask) blockageType = "TCP_TIMEOUT";
+
+// 3. TLS exception → точный способ
+catch (AuthenticationException) { blockageType = "TLS_DPI"; }
+```
+
+**Как Zapret определяет блокировку (nfqws/desync.c):**
+```c
+// 1. Retransmissions — ГЛАВНЫЙ индикатор
+if (ctrack->req_retrans_counter >= threshold) {
+    // Клиент переотправляет запрос = DPI заблокировал
+    auto_hostlist_failed(hostname);
+}
+
+// 2. RST packet inspection
+if (dis->tcp->th_flags & TH_RST) {
+    DLOG("incoming RST detected for hostname %s\n", hostname);
+    bFail = true;
+}
+
+// 3. HTTP redirect analysis
+if (IsHttpReply(payload, len)) {
+    bFail = HttpReplyLooksLikeDPIRedirect(payload, len, hostname);
+    // Проверяет: редирект на другой SLD = DPI заглушка
+}
+
+// 4. Fail counter с временным окном
+fail_counter->counter++;
+if (fail_counter->counter >= fail_threshold) {
+    // N фейлов за M секунд = точно блокировка
+    add_to_autohostlist(hostname);
+}
+```
+
+**Проблемы детекции ISP_Audit:**
+
+1. ❌ **Нет анализа retransmissions** — главный сигнал DPI! Клиент переотправляет запрос потому что ответ не пришёл. ISP_Audit этого не видит.
+
+2. ❌ **Нет HTTP redirect detection** — провайдеры/РКН часто редиректят на страницу-заглушку. ISP_Audit не анализирует HTTP ответы.
+
+3. ❌ **Нет сравнения доменов** — если редирект на `blocked.isp.ru` вместо `youtube.com` — это DPI. ISP_Audit не проверяет.
+
+4. ⚠️ **Примитивный timing** — `minElapsed < 200ms = RST`, `> 2000ms = timeout`. Грубая эвристика, не учитывает сетевые условия.
+
+5. ❌ **Нет fail counter** — Zapret требует 3 фейла за 60 секунд чтобы считать хост заблокированным. ISP_Audit считает с первого раза — много false positives.
+
+6. ❌ **Нет packet-level анализа** — ISP_Audit работает на уровне сокетов, не видит сами RST пакеты (только SocketException). Не может отличить RST от провайдера vs RST от сервера.
+
+**Вывод: Детекция блокировок в ISP_Audit — НА АВОСЬ** ❌
+
+Текущая реализация полагается на:
+- Socket exceptions (работает только для явных RST/refused)
+- Фиксированные timeouts (3 секунды для всего)
+- Грубые timing heuristics
+
+**Рекомендация:** Для качественной детекции нужно:
+1. Добавить retransmission tracking (через WinDivert Sniff)
+2. Анализировать HTTP ответы на предмет редиректов
+3. Реализовать fail counter с временным окном
+4. Использовать packet-level RST detection вместо socket exceptions
+
 ### Внутренние Worker'ы
 
 1. **RstBlockerWorker** (приоритет 0) — перехватывает TCP RST пакеты от провайдера, не пропускает их
