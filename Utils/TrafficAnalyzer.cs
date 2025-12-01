@@ -159,7 +159,7 @@ namespace IspAudit.Utils
                 
                 try
                 {
-                    // Status Reporter: периодические обновления и проверка жизни процесса
+                    // Status Reporter: периодические обновления и проверка жизни процессов
                     var statusTask = Task.Run(async () =>
                     {
                         int lastCount = 0;
@@ -170,29 +170,28 @@ namespace IspAudit.Utils
                             await Task.Delay(1000, cts.Token).ConfigureAwait(false);
                             tick++;
 
-                            // 1. Проверка завершения процесса
-                            try
+                            // 1. Проверка что хотя бы один из отслеживаемых процессов жив
+                            // Используем PidTracker который отслеживает все связанные процессы
+                            bool anyAlive = false;
+                            foreach (var pid in pidTracker.TrackedPids.ToList())
                             {
-                                // Пытаемся получить процесс. Если он завершился, HasExited вернет true.
-                                // Если процесс уже исчез из системы, GetProcessById выбросит исключение.
-                                using var proc = System.Diagnostics.Process.GetProcessById(targetPid);
-                                if (proc.HasExited)
+                                try
                                 {
-                                    progress?.Report($"Процесс (PID={targetPid}) завершился. Остановка захвата.");
-                                    cts.Cancel(); // Отменяем токен, чтобы выйти из ожидания
-                                    break;
+                                    using var proc = System.Diagnostics.Process.GetProcessById(pid);
+                                    if (!proc.HasExited)
+                                    {
+                                        anyAlive = true;
+                                        break;
+                                    }
                                 }
+                                catch { /* Процесс не найден — игнорируем */ }
                             }
-                            catch (ArgumentException)
+                            
+                            if (!anyAlive && pidTracker.TrackedPids.Count > 0)
                             {
-                                // Процесс не найден - значит завершился
-                                progress?.Report($"Процесс (PID={targetPid}) не найден. Остановка захвата.");
+                                progress?.Report($"Все отслеживаемые процессы ({pidTracker.TrackedPids.Count}) завершились. Остановка захвата.");
                                 cts.Cancel();
                                 break;
-                            }
-                            catch
-                            {
-                                // Игнорируем ошибки доступа
                             }
 
                             // 2. Репорт статуса (раз в 10 секунд или при изменениях)

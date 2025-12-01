@@ -148,20 +148,12 @@ namespace ISPAudit.ViewModels
         public string RunningStatusText => $"Диагностика: {CurrentTest} из {TotalTargets}";
         public string StartButtonText => IsRunning ? "Остановить диагностику" : "Начать диагностику";
 
-        // Fix System Properties
-        public ObservableCollection<AppliedFix> ActiveFixes { get; set; } = new();
-        public bool HasActiveFixes => ActiveFixes.Count > 0;
-        public string ActiveFixesMessage => $"Активны исправления системы ({ActiveFixes.Count})";
-
         public ICommand StartCommand { get; }
         public ICommand CancelCommand { get; }
         public ICommand SetStateCommand { get; }
 
         public ICommand ReportCommand { get; }
         public ICommand DetailsCommand { get; }
-        public ICommand FixCommand { get; }
-        public ICommand RollbackFixCommand { get; }
-        public ICommand RollbackAllCommand { get; }
         
         // Exe Scenario Properties
         private bool _isDiagnosticRunning = false;
@@ -267,6 +259,7 @@ namespace ISPAudit.ViewModels
         
         // Независимые флаги для каждой опции bypass
         private bool _isFragmentEnabled = false;
+        private bool _isDisorderEnabled = false;
         private bool _isFakeEnabled = false;
         private bool _isDropRstEnabled = false;
         private bool _isDoHEnabled = false;
@@ -293,26 +286,32 @@ namespace ISPAudit.ViewModels
         {
             var warnings = new List<string>();
             
-            // Fragment + Fake = агрессивная комбинация, может вызвать проблемы
-            if (IsFragmentEnabled && IsFakeEnabled)
+            // Fragment + Disorder = взаимоисключающие (обе фрагментируют, но по-разному)
+            if (IsFragmentEnabled && IsDisorderEnabled)
             {
-                warnings.Add("⚠️ Fragment + Fake — агрессивная комбинация, может вызвать нестабильность");
+                warnings.Add("⚠️ Fragment + Disorder — выберите одну из стратегий фрагментации");
+            }
+            
+            // Fake без фрагментации — менее эффективно
+            if (IsFakeEnabled && !IsFragmentEnabled && !IsDisorderEnabled)
+            {
+                warnings.Add("ℹ️ Fake без фрагментации — рекомендуется добавить Fragment или Disorder");
             }
             
             // VPN + Bypass = возможный конфликт
-            if (IsVpnDetected && (IsFragmentEnabled || IsFakeEnabled || IsDropRstEnabled))
+            if (IsVpnDetected && (IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled || IsDropRstEnabled))
             {
                 warnings.Add("⚠️ VPN + Bypass — возможен конфликт, bypass может быть не нужен");
             }
             
             // DoH без других опций — только DNS защита, DPI всё ещё работает
-            if (IsDoHEnabled && !IsFragmentEnabled && !IsFakeEnabled && !IsDropRstEnabled)
+            if (IsDoHEnabled && !IsFragmentEnabled && !IsDisorderEnabled && !IsFakeEnabled && !IsDropRstEnabled)
             {
                 warnings.Add("ℹ️ Только DoH — защищает DNS, но DPI может блокировать трафик");
             }
             
-            // Только DROP RST без Fragment/Fake — частичная защита
-            if (IsDropRstEnabled && !IsFragmentEnabled && !IsFakeEnabled)
+            // Только DROP RST без фрагментации — частичная защита
+            if (IsDropRstEnabled && !IsFragmentEnabled && !IsDisorderEnabled && !IsFakeEnabled)
             {
                 warnings.Add("ℹ️ Только DROP RST — защита от RST-инъекций, но SNI виден DPI");
             }
@@ -321,7 +320,7 @@ namespace ISPAudit.ViewModels
         }
         
         /// <summary>
-        /// TLS Fragment включен
+        /// TLS Fragment включен (фрагменты в правильном порядке)
         /// </summary>
         public bool IsFragmentEnabled
         {
@@ -330,8 +329,38 @@ namespace ISPAudit.ViewModels
             { 
                 if (_isFragmentEnabled != value)
                 {
-                    _isFragmentEnabled = value; 
+                    _isFragmentEnabled = value;
+                    // Fragment и Disorder взаимоисключающие
+                    if (value && _isDisorderEnabled)
+                    {
+                        _isDisorderEnabled = false;
+                        OnPropertyChanged(nameof(IsDisorderEnabled));
+                    }
                     OnPropertyChanged(nameof(IsFragmentEnabled));
+                    CheckCompatibility();
+                    _ = ApplyBypassOptionsAsync();
+                }
+            }
+        }
+
+        /// <summary>
+        /// TLS Disorder включен (фрагменты в ОБРАТНОМ порядке)
+        /// </summary>
+        public bool IsDisorderEnabled
+        {
+            get => _isDisorderEnabled;
+            set 
+            { 
+                if (_isDisorderEnabled != value)
+                {
+                    _isDisorderEnabled = value;
+                    // Fragment и Disorder взаимоисключающие
+                    if (value && _isFragmentEnabled)
+                    {
+                        _isFragmentEnabled = false;
+                        OnPropertyChanged(nameof(IsFragmentEnabled));
+                    }
+                    OnPropertyChanged(nameof(IsDisorderEnabled));
                     CheckCompatibility();
                     _ = ApplyBypassOptionsAsync();
                 }
@@ -395,8 +424,9 @@ namespace ISPAudit.ViewModels
             }
         }
 
-        // Свойства для обратной совместимости с UI (подсветка кнопок)
+        // Свойства для подсветки кнопок в UI
         public bool IsTlsFragmentActive => IsFragmentEnabled && IsBypassActive;
+        public bool IsTlsDisorderActive => IsDisorderEnabled && IsBypassActive;
         public bool IsTlsFakeActive => IsFakeEnabled && IsBypassActive;
         public bool IsDropRstActive => IsDropRstEnabled && IsBypassActive;
         public bool IsDoHActive => IsDoHEnabled;
@@ -414,6 +444,7 @@ namespace ISPAudit.ViewModels
             {
                 var parts = new List<string>();
                 if (IsFragmentEnabled) parts.Add("Fragment");
+                if (IsDisorderEnabled) parts.Add("Disorder");
                 if (IsFakeEnabled) parts.Add("Fake");
                 if (IsDropRstEnabled) parts.Add("DROP RST");
                 return parts.Count > 0 ? string.Join(" + ", parts) : "Выключен";
@@ -427,6 +458,7 @@ namespace ISPAudit.ViewModels
 
         // Команды для toggle-кнопок
         public ICommand ToggleFragmentCommand { get; private set; } = null!;
+        public ICommand ToggleDisorderCommand { get; private set; } = null!;
         public ICommand ToggleFakeCommand { get; private set; } = null!;
         public ICommand ToggleDropRstCommand { get; private set; } = null!;
         public ICommand ToggleDoHCommand { get; private set; } = null!;
@@ -446,7 +478,7 @@ namespace ISPAudit.ViewModels
             try
             {
                 // Если ничего не включено — отключаем bypass
-                if (!IsFragmentEnabled && !IsFakeEnabled && !IsDropRstEnabled)
+                if (!IsFragmentEnabled && !IsDisorderEnabled && !IsFakeEnabled && !IsDropRstEnabled)
                 {
                     if (_bypassManager.State == BypassState.Enabled)
                     {
@@ -457,6 +489,7 @@ namespace ISPAudit.ViewModels
                         IsBypassActive = false;
                         OnPropertyChanged(nameof(CurrentBypassStrategy));
                         OnPropertyChanged(nameof(IsTlsFragmentActive));
+                        OnPropertyChanged(nameof(IsTlsDisorderActive));
                         OnPropertyChanged(nameof(IsTlsFakeActive));
                         OnPropertyChanged(nameof(IsDropRstActive));
                         Log("[Bypass] All options disabled");
@@ -471,9 +504,14 @@ namespace ISPAudit.ViewModels
                 }
 
                 // Собираем профиль из текущих флагов
+                // Приоритет: Disorder > Fragment (взаимоисключающие)
                 var tlsStrategy = TlsBypassStrategy.None;
-                if (IsFragmentEnabled && IsFakeEnabled)
+                if (IsDisorderEnabled && IsFakeEnabled)
+                    tlsStrategy = TlsBypassStrategy.FakeDisorder;
+                else if (IsFragmentEnabled && IsFakeEnabled)
                     tlsStrategy = TlsBypassStrategy.FakeFragment;
+                else if (IsDisorderEnabled)
+                    tlsStrategy = TlsBypassStrategy.Disorder;
                 else if (IsFakeEnabled)
                     tlsStrategy = TlsBypassStrategy.Fake;
                 else if (IsFragmentEnabled)
@@ -482,7 +520,7 @@ namespace ISPAudit.ViewModels
                 var profile = new BypassProfile
                 {
                     DropTcpRst = IsDropRstEnabled,
-                    FragmentTlsClientHello = IsFragmentEnabled || IsFakeEnabled,
+                    FragmentTlsClientHello = IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled,
                     TlsStrategy = tlsStrategy,
                     TlsFirstFragmentSize = 2,
                     TlsFragmentThreshold = 16,
@@ -496,6 +534,7 @@ namespace ISPAudit.ViewModels
                     IsBypassActive = true;
                     OnPropertyChanged(nameof(CurrentBypassStrategy));
                     OnPropertyChanged(nameof(IsTlsFragmentActive));
+                    OnPropertyChanged(nameof(IsTlsDisorderActive));
                     OnPropertyChanged(nameof(IsTlsFakeActive));
                     OnPropertyChanged(nameof(IsDropRstActive));
                     Log($"[Bypass] Options applied: {CurrentBypassStrategy}");
@@ -515,7 +554,7 @@ namespace ISPAudit.ViewModels
             try
             {
                 Log("[DoH] Applying DNS-over-HTTPS (Cloudflare)...");
-                var (success, fix, error) = await FixService.ApplyDnsFixAsync().ConfigureAwait(false);
+                var (success, error) = await FixService.ApplyDnsFixAsync().ConfigureAwait(false);
                 
                 System.Windows.Application.Current?.Dispatcher.Invoke(() =>
                 {
@@ -544,10 +583,12 @@ namespace ISPAudit.ViewModels
         private async Task DisableAllBypassAsync()
         {
             _isFragmentEnabled = false;
+            _isDisorderEnabled = false;
             _isFakeEnabled = false;
             _isDropRstEnabled = false;
             
             OnPropertyChanged(nameof(IsFragmentEnabled));
+            OnPropertyChanged(nameof(IsDisorderEnabled));
             OnPropertyChanged(nameof(IsFakeEnabled));
             OnPropertyChanged(nameof(IsDropRstEnabled));
             
@@ -659,13 +700,8 @@ namespace ISPAudit.ViewModels
         {
             if (_bypassManager != null && _bypassManager.State == BypassState.Enabled)
             {
-                // A3: Check if we expected RST blocking (DROP_RST strategy) but didn't get it
-                bool rstExpected = ActiveFixes.Any(f => f.Type == FixType.Bypass && 
-                    f.OriginalSettings != null && 
-                    f.OriginalSettings.ContainsKey("Strategy") && 
-                    (f.OriginalSettings["Strategy"] == "DROP_RST" || f.OriginalSettings["Strategy"] == "TCP_RST_DROP"));
-                
-                if (rstExpected && !_bypassManager.IsRstBlockerActive)
+                // Проверяем, активен ли RST blocker когда включён DROP_RST
+                if (IsDropRstEnabled && !_bypassManager.IsRstBlockerActive)
                 {
                     BypassWarningText = "⚠️ Обход активен без RST-защиты (возможны разрывы)";
                 }
@@ -742,25 +778,18 @@ namespace ISPAudit.ViewModels
 
             ReportCommand = new RelayCommand(_ => GenerateReport(), _ => IsDone);
             DetailsCommand = new RelayCommand(param => ShowDetailsDialog(param as TestResult), _ => true);
-            
-            // Fix Commands
-            FixCommand = new RelayCommand(async param => await ApplyFixAsync(param as TestResult), _ => true);
-            RollbackFixCommand = new RelayCommand(async param => await RollbackFixAsync(param as AppliedFix), _ => true);
-            RollbackAllCommand = new RelayCommand(async _ => await RollbackAllFixesAsync(), _ => HasActiveFixes);
 
             // Bypass Control Panel Commands (независимые toggle-кнопки)
             ToggleFragmentCommand = new RelayCommand(_ => { IsFragmentEnabled = !IsFragmentEnabled; }, _ => ShowBypassPanel);
+            ToggleDisorderCommand = new RelayCommand(_ => { IsDisorderEnabled = !IsDisorderEnabled; }, _ => ShowBypassPanel);
             ToggleFakeCommand = new RelayCommand(_ => { IsFakeEnabled = !IsFakeEnabled; }, _ => ShowBypassPanel);
             ToggleDropRstCommand = new RelayCommand(_ => { IsDropRstEnabled = !IsDropRstEnabled; }, _ => ShowBypassPanel);
             ToggleDoHCommand = new RelayCommand(_ => { IsDoHEnabled = !IsDoHEnabled; }, _ => ShowBypassPanel);
-            DisableAllBypassCommand = new RelayCommand(async _ => await DisableAllBypassAsync(), _ => ShowBypassPanel && (IsFragmentEnabled || IsFakeEnabled || IsDropRstEnabled));
+            DisableAllBypassCommand = new RelayCommand(async _ => await DisableAllBypassAsync(), _ => ShowBypassPanel && (IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled || IsDropRstEnabled));
 
             // Exe Scenario Commands
             BrowseExeCommand = new RelayCommand(_ => BrowseExe(), _ => !IsRunning);
             // TestBasicServicesCommand = new RelayCommand(async _ => await RunBasicServicesTestAsync(), _ => !IsRunning);
-            
-            // Load Fix History on startup
-            LoadFixHistory();
             
             // 🔥 Инициализация Bypass при запуске приложения (если есть admin права)
             InitializeBypassOnStartupAsync();
@@ -802,14 +831,7 @@ namespace ISPAudit.ViewModels
                         Status = t.Status.ToString(),
                         Details = t.Details,
                         Error = t.Error,
-                        BypassStrategy = t.BypassStrategy,
-                        FixApplied = t.FixType != FixType.None
-                    }).ToList(),
-                    ActiveFixes = ActiveFixes.Select(f => new 
-                    {
-                        Type = f.Type.ToString(),
-                        Description = f.Description,
-                        AppliedAt = f.AppliedAt
+                        BypassStrategy = t.BypassStrategy
                     }).ToList()
                 };
 
@@ -928,12 +950,6 @@ namespace ISPAudit.ViewModels
                     {
                         testResult.Status = TestStatus.Fail;
                         testResult.Error = progress.Message ?? "Ошибка";
-                        
-                        // Определяем FixType на основе типа теста и сообщения
-                        var fixInfo = DetermineFixType(progress.Kind, progress.Message);
-                        testResult.FixType = fixInfo.fixType;
-                        testResult.FixInstructions = fixInfo.instructions;
-                        
                         Log($"[✗] {targetName} [{progress.Kind}]: {testResult.Error}");
                     }
                     else
@@ -993,54 +1009,6 @@ namespace ISPAudit.ViewModels
                 return status.Substring(0, colonIndex).Trim();
             }
             return null;
-        }
-
-        private (FixType fixType, string? instructions) DetermineFixType(TestKind kind, string? message)
-        {
-            if (string.IsNullOrEmpty(message))
-                return (FixType.None, null);
-
-            var msgLower = message.ToLowerInvariant();
-
-            // DNS проблемы → DNS fix
-            if (kind == TestKind.DNS)
-            {
-                if (msgLower.Contains("dns_filtered") || msgLower.Contains("dns_bogus") || 
-                    msgLower.Contains("заблокирован") || msgLower.Contains("не разрешается"))
-                {
-                    return (FixType.DnsChange, "Изменить DNS на Cloudflare (1.1.1.1) с поддержкой DoH");
-                }
-            }
-
-            // Firewall проблемы → Firewall fix
-            if (kind == TestKind.FIREWALL)
-            {
-                if (msgLower.Contains("заблокирован") || msgLower.Contains("blocked") || msgLower.Contains("порт"))
-                {
-                    return (FixType.FirewallRule, "Добавить правило Windows Firewall для разрешения портов");
-                }
-            }
-
-            // ISP проблемы → Manual (VPN)
-            if (kind == TestKind.ISP)
-            {
-                if (msgLower.Contains("dpi") || msgLower.Contains("cgnat") || 
-                    msgLower.Contains("блокировка") || msgLower.Contains("провайдер"))
-                {
-                    return (FixType.Manual, "Рекомендуется использовать VPN для обхода блокировок провайдера. DPI и CGNAT требуют изменения сетевой конфигурации на уровне провайдера.");
-                }
-            }
-
-            // TCP проблемы с портами → Firewall fix
-            if (kind == TestKind.TCP)
-            {
-                if (msgLower.Contains("недоступен") || msgLower.Contains("timeout") || msgLower.Contains("порт"))
-                {
-                    return (FixType.FirewallRule, "Проверить Windows Firewall и добавить исключения для портов");
-                }
-            }
-
-            return (FixType.None, null);
         }
 
         private void InitializeTestResults()
@@ -1107,211 +1075,6 @@ namespace ISPAudit.ViewModels
                 Log($"[ShowDetailsDialog] EXCEPTION: {ex.Message}");
             }
         }
-
-        #region Fix System Methods
-
-        private void LoadFixHistory()
-        {
-            try
-            {
-                var fixes = FixHistoryManager.Load();
-                ActiveFixes.Clear();
-                foreach (var fix in fixes)
-                {
-                    ActiveFixes.Add(fix);
-                }
-                OnPropertyChanged(nameof(HasActiveFixes));
-                OnPropertyChanged(nameof(ActiveFixesMessage));
-                Log($"[FixHistory] Loaded {fixes.Count} active fixes");
-            }
-            catch (Exception ex)
-            {
-                Log($"[FixHistory] ERROR loading: {ex.Message}");
-            }
-        }
-
-        private async Task ApplyFixAsync(TestResult? result)
-        {
-            if (result == null) return;
-
-            try
-            {
-                Log($"[ApplyFix] Starting for: {result.Target?.Name}, FixType: {result.FixType}");
-                
-                AppliedFix? appliedFix = null;
-                string error = string.Empty;
-                bool success = false;
-
-                switch (result.FixType)
-                {
-                    case FixType.DnsChange:
-                        (success, appliedFix, error) = await FixService.ApplyDnsFixAsync();
-                        break;
-                    
-                    case FixType.FirewallRule:
-                        // TODO: Получить порты из TestResult
-                        var ports = new[] { 8000, 8001, 8002, 8003 };
-                        (success, appliedFix, error) = await FixService.ApplyFirewallFixAsync(ports, "ISP_Audit_Fix");
-                        break;
-                    
-                    case FixType.Manual:
-                        // Показать инструкции пользователю
-                        System.Windows.MessageBox.Show(
-                            result.FixInstructions ?? "Необходимо ручное исправление",
-                            "Инструкции по исправлению",
-                            System.Windows.MessageBoxButton.OK,
-                            System.Windows.MessageBoxImage.Information
-                        );
-                        return;
-
-                    case FixType.Bypass:
-                        if (_bypassManager == null) 
-                        {
-                            _bypassManager = new WinDivertBypassManager();
-                            _bypassManager.StateChanged += (s, e) => System.Windows.Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
-                        }
-                        
-                        var strategy = result.BypassStrategy ?? "UNKNOWN";
-                        // Маппинг стратегий
-                        if (strategy == "TCP_RST_DROP") strategy = "DROP_RST";
-                        
-                        // Variant A: Global bypass (pass null as IP)
-                        // We ignore the specific target IP to ensure the bypass works for all IPs (CDNs, etc.)
-                        System.Net.IPAddress? targetIp = null;
-
-                        await _bypassManager.ApplyBypassStrategyAsync(strategy, targetIp);
-                        
-                        appliedFix = new AppliedFix 
-                        { 
-                            Type = FixType.Bypass, 
-                            Description = $"WinDivert Bypass: {strategy} for {result.Target?.Host ?? "Unknown"}",
-                            OriginalSettings = new Dictionary<string, string> { { "Strategy", strategy } }
-                        };
-                        success = true;
-                        
-                        // Update warning immediately
-                        System.Windows.Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
-                        break;
-                    
-                    default:
-                        Log($"[ApplyFix] Unknown FixType: {result.FixType}");
-                        return;
-                }
-
-                if (success && appliedFix != null)
-                {
-                    ActiveFixes.Add(appliedFix);
-                    OnPropertyChanged(nameof(HasActiveFixes));
-                    OnPropertyChanged(nameof(ActiveFixesMessage));
-                    Log($"[ApplyFix] SUCCESS: {appliedFix.Description}");
-                    
-                    // Обновляем UI результата
-                    result.Status = TestStatus.Warn; 
-                    result.Details += $"\n[Fix] Исправление применено: {appliedFix.Description}";
-                    
-                    System.Windows.MessageBox.Show(
-                        $"Исправление применено успешно:\n{appliedFix.Description}",
-                        "Успех",
-                        System.Windows.MessageBoxButton.OK,
-                        System.Windows.MessageBoxImage.Information
-                    );
-                }
-                else
-                {
-                    Log($"[ApplyFix] FAILED: {error}");
-                    System.Windows.MessageBox.Show(
-                        $"Ошибка применения исправления:\n{error}",
-                        "Ошибка",
-                        System.Windows.MessageBoxButton.OK,
-                        System.Windows.MessageBoxImage.Error
-                    );
-                }
-            }
-            catch (Exception ex)
-            {
-                Log($"[ApplyFix] EXCEPTION: {ex.Message}");
-            }
-        }
-
-        private async Task RollbackFixAsync(AppliedFix? fix)
-        {
-            if (fix == null) return;
-
-            try
-            {
-                Log($"[RollbackFix] Starting for: {fix.Description}");
-                
-                bool success = false;
-                string error = string.Empty;
-
-                switch (fix.Type)
-                {
-                    case FixType.DnsChange:
-                        (success, error) = await FixService.RollbackDnsFixAsync(fix);
-                        break;
-                    
-                    case FixType.FirewallRule:
-                        (success, error) = await FixService.RollbackFirewallFixAsync(fix);
-                        break;
-
-                    case FixType.Bypass:
-                        if (_bypassManager != null)
-                        {
-                            await _bypassManager.DisableAsync();
-                            success = true;
-                        }
-                        break;
-                    
-                    default:
-                        Log($"[RollbackFix] Unknown FixType: {fix.Type}");
-                        return;
-                }
-
-                if (success)
-                {
-                    ActiveFixes.Remove(fix);
-                    OnPropertyChanged(nameof(HasActiveFixes));
-                    OnPropertyChanged(nameof(ActiveFixesMessage));
-                    Log($"[RollbackFix] SUCCESS: {fix.Description}");
-                }
-                else
-                {
-                    Log($"[RollbackFix] FAILED: {error}");
-                    System.Windows.MessageBox.Show(
-                        $"Ошибка отката исправления:\n{error}",
-                        "Ошибка",
-                        System.Windows.MessageBoxButton.OK,
-                        System.Windows.MessageBoxImage.Error
-                    );
-                }
-            }
-            catch (Exception ex)
-            {
-                Log($"[RollbackFix] EXCEPTION: {ex.Message}");
-            }
-        }
-
-        private async Task RollbackAllFixesAsync()
-        {
-            try
-            {
-                Log($"[RollbackAll] Starting for {ActiveFixes.Count} fixes");
-                
-                var fixesToRollback = ActiveFixes.ToList();
-                foreach (var fix in fixesToRollback)
-                {
-                    await RollbackFixAsync(fix);
-                }
-                
-                Log($"[RollbackAll] Completed");
-            }
-            catch (Exception ex)
-            {
-                Log($"[RollbackAll] EXCEPTION: {ex.Message}");
-            }
-        }
-
-        #endregion
 
         #region Exe Scenario - Stage Methods
 
@@ -1521,33 +1284,7 @@ namespace ISPAudit.ViewModels
                 };
                 await _dnsParser.StartAsync().ConfigureAwait(false);
                 
-                // Шаг 2: Warmup через TestNetworkApp (его трафик попадет в сервисы)
-                // Если мы в Basic Test Mode, то TestNetworkApp - это и есть цель, поэтому Warmup не нужен (мы его запустим на шаге 3)
-                if (!IsBasicTestMode)
-                {
-                    try
-                    {
-                        Log("[Warmup] Starting TestNetworkApp for Flow warmup...");
-                        await WarmupFlowWithTestNetworkAppAsync(
-                            _flowMonitor, 
-                            _dnsParser, 
-                            progress, 
-                            _cts.Token, 
-                            EnableAutoBypass, 
-                            _bypassManager
-                        ).ConfigureAwait(false);
-                    }
-                    catch (Exception warmupEx)
-                    {
-                        Log($"[Warmup] Error (non-critical): {warmupEx.Message}");
-                    }
-                }
-                else
-                {
-                    Log("[Warmup] Skipping warmup step because Basic Test Mode is active");
-                }
-                
-                // Шаг 3: Запуск целевого процесса
+                // Шаг 2: Запуск целевого процесса (warmup убран)
                 DiagnosticStatus = "Запуск целевого приложения...";
                 Log($"[Pipeline] Starting process: {targetExePath}");
                 using var process = new System.Diagnostics.Process
@@ -2086,16 +1823,10 @@ namespace ISPAudit.ViewModels
                                 result.Details = result.Details?.Replace("Блокировка", "Информация: Fake IP (VPN/туннель)") ?? "Fake IP обнаружен";
                                 Log($"[UI] ROUTER_REDIRECT → Status=Warn для {_lastUpdatedHost}");
                             }
-                            // Если есть стратегия обхода (настоящая блокировка), значит можно исправить
+                            // Если есть стратегия обхода, сохраняем для отображения
                             else if (strategy != "NONE" && strategy != "UNKNOWN")
                             {
-                                result.Fixable = true;
-                                result.FixType = FixType.Bypass;
-                                result.FixInstructions = $"Применить стратегию обхода: {strategy}";
-                                
-                                // Принудительное обновление биндинга ShowFixButton
-                                result.OnPropertyChanged(nameof(result.ShowFixButton));
-                                Log($"[UI] ShowFixButton=True для {_lastUpdatedHost}: {strategy}");
+                                Log($"[UI] Bypass strategy for {_lastUpdatedHost}: {strategy}");
                             }
                         }
                     }

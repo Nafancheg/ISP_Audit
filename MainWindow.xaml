@@ -25,102 +25,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Header: Fix Status Bar (Collapsible) -->
-        <Border Grid.Row="0" 
-                x:Name="FixStatusBar"
-                Background="#FEF3F2" 
-                BorderBrush="#FEE2E2"
-                BorderThickness="1"
-                CornerRadius="8" 
-                Padding="12,8"
-                Margin="0,0,0,12"
-                Visibility="{Binding HasActiveFixes, Converter={StaticResource BoolToVisibilityConverter}}"
-                AutomationProperties.AutomationId="FixStatusBar">
-            <!-- Будет показываться через ViewModel когда есть активные фиксы -->
-            <StackPanel>
-                <!-- A3: Bypass Warning -->
-                <Border Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1" CornerRadius="6" Margin="0,0,0,12" Padding="12,8"
-                        Visibility="{Binding BypassWarningText, Converter={StaticResource StringToVisibilityConverter}}">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="⚠️" Foreground="#DC2626" Margin="0,0,8,0" FontWeight="Bold"/>
-                        <TextBlock Text="{Binding BypassWarningText}" Foreground="#B91C1C" FontWeight="Medium"/>
-                    </StackPanel>
-                </Border>
-
-                <!-- Compact Header (always visible) -->
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    
-                    <!-- Warning Icon + Title + Count -->
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="⚠️" FontSize="18" Margin="0,0,12,0"/>
-                        <TextBlock Text="{Binding ActiveFixesMessage}" 
-                                   Style="{StaticResource BodyStyle}" 
-                                   FontWeight="SemiBold" 
-                                   Foreground="{StaticResource FailBrush}"
-                                   AutomationProperties.AutomationId="ActiveFixesMessage"/>
-                    </StackPanel>
-                    
-                    <!-- Expand/Collapse Button -->
-                    <Button Grid.Column="2"
-                            x:Name="ToggleFixDetailsButton"
-                            Content="▼ Подробнее"
-                            Padding="12,6"
-                            FontSize="12"
-                            Margin="0,0,12,0"
-                            Style="{StaticResource SecondaryButtonStyle}"
-                            Click="ToggleFixDetails_Click"
-                            AutomationProperties.AutomationId="ToggleFixDetailsButton"/>
-                    
-                    <!-- Rollback All Button -->
-                    <Button Grid.Column="3"
-                            Content="Откатить всё"
-                            Style="{StaticResource SecondaryButtonStyle}"
-                            Command="{Binding RollbackAllCommand}"
-                            Padding="14,6"
-                            AutomationProperties.AutomationId="RollbackAllButton"/>
-                </Grid>
-                
-                <!-- Expandable Fix List -->
-                <StackPanel x:Name="FixDetailsList" 
-                            Visibility="Collapsed" 
-                            Margin="0,16,0,0"
-                            AutomationProperties.AutomationId="FixDetailsList">
-                    <ItemsControl ItemsSource="{Binding ActiveFixes}"
-                                  AutomationProperties.AutomationId="ActiveFixesItemsControl">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" 
-                                               Text="{Binding Description, StringFormat='• {0}'}"
-                                               Style="{StaticResource BodyStyle}" 
-                                               Foreground="#374151" 
-                                               FontWeight="Medium"/>
-                                    <Button Grid.Column="1" 
-                                            Content="Откатить" 
-                                            Padding="12,4"
-                                            FontSize="12"
-                                            Margin="12,0,0,0"
-                                            Style="{StaticResource SecondaryButtonStyle}"
-                                            Command="{Binding DataContext.RollbackFixCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}"
-                                            AutomationProperties.AutomationId="RollbackFixButton"/>
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </StackPanel>
-        </Border>
+        <!-- Fix Status Bar убрана - статус виден по кнопкам Bypass Control -->
 
         <!-- Scenario Selector -->
         <Border Grid.Row="1" 
@@ -198,7 +103,7 @@
                                 <TextBlock Text="Bypass Control" FontWeight="Bold" FontSize="14" Foreground="#1F2937" VerticalAlignment="Center"/>
                             </StackPanel>
                             
-                            <!-- Status Badge -->
+                            <!-- Status Badges -->
                             <StackPanel Grid.Column="1" Orientation="Horizontal">
                                 <!-- DoH Active Badge -->
                                 <Border Background="#DBEAFE" CornerRadius="6" Padding="10,4" Margin="0,0,8,0"
@@ -214,13 +119,6 @@
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="●" Foreground="#22C55E" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                         <TextBlock Text="{Binding CurrentBypassStrategy}" FontWeight="SemiBold" FontSize="12" Foreground="#166534"/>
-                                    </StackPanel>
-                                </Border>
-                                <Border Background="#FEE2E2" CornerRadius="6" Padding="10,4"
-                                        Visibility="{Binding IsBypassActive, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="●" Foreground="#EF4444" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBlock Text="Выключен" FontWeight="SemiBold" FontSize="12" Foreground="#991B1B"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
@@ -251,13 +149,14 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             
                             <!-- Fragment -->
                             <Button Grid.Column="0" Command="{Binding ToggleFragmentCommand}"
                                     Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
-                                    ToolTip="TLS Fragment&#x0a;Фрагментация ClientHello для обхода SNI-фильтрации">
+                                    ToolTip="TLS Fragment&#x0a;Фрагментация ClientHello (обычный порядок)">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
                                         <Setter Property="Content" Value="Fragment"/>
@@ -272,8 +171,26 @@
                                 </Button.Style>
                             </Button>
                             
+                            <!-- Disorder (фрагменты в обратном порядке) -->
+                            <Button Grid.Column="1" Command="{Binding ToggleDisorderCommand}"
+                                    Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
+                                    ToolTip="TLS Disorder&#x0a;Фрагменты в ОБРАТНОМ порядке&#x0a;(сначала 2-й, потом 1-й) — эффективнее против DPI">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                                        <Setter Property="Content" Value="Disorder"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsDisorderEnabled}" Value="True">
+                                                <Setter Property="Background" Value="#8B5CF6"/>
+                                                <Setter Property="Foreground" Value="White"/>
+                                                <Setter Property="BorderBrush" Value="#7C3AED"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            
                             <!-- Fake -->
-                            <Button Grid.Column="1" Command="{Binding ToggleFakeCommand}"
+                            <Button Grid.Column="2" Command="{Binding ToggleFakeCommand}"
                                     Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
                                     ToolTip="TLS Fake&#x0a;Fake TTL пакет для обхода active probing">
                                 <Button.Style>
@@ -291,7 +208,7 @@
                             </Button>
                             
                             <!-- DROP RST -->
-                            <Button Grid.Column="2" Command="{Binding ToggleDropRstCommand}"
+                            <Button Grid.Column="3" Command="{Binding ToggleDropRstCommand}"
                                     Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
                                     ToolTip="DROP RST&#x0a;Блокировка TCP RST пакетов от провайдера">
                                 <Button.Style>
@@ -309,7 +226,7 @@
                             </Button>
                             
                             <!-- DoH -->
-                            <Button Grid.Column="3" Command="{Binding ToggleDoHCommand}"
+                            <Button Grid.Column="4" Command="{Binding ToggleDoHCommand}"
                                     Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,8,0"
                                     ToolTip="DoH (DNS-over-HTTPS)&#x0a;Защита DNS через Cloudflare 1.1.1.1">
                                 <Button.Style>
@@ -327,7 +244,7 @@
                             </Button>
                             
                             <!-- Выключить всё -->
-                            <Button Grid.Column="4" Command="{Binding DisableAllBypassCommand}"
+                            <Button Grid.Column="5" Command="{Binding DisableAllBypassCommand}"
                                     Height="36" Width="80" FontSize="12" FontWeight="SemiBold" Cursor="Hand"
                                     ToolTip="Отключить все опции bypass">
                                 <Button.Style>
@@ -618,22 +535,6 @@
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
-
-                            <!-- Actions -->
-                            <DataGridTemplateColumn Header="Действия" Width="100" MinWidth="100">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Button Content="Исправить"
-                                                Command="{Binding DataContext.FixCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                CommandParameter="{Binding}"
-                                                Visibility="{Binding ShowFixButton, Converter={StaticResource BoolToVisibilityConverter}}"
-                                                Style="{StaticResource PrimaryButtonStyle}"
-                                                Padding="8,4"
-                                                FontSize="11"
-                                                HorizontalAlignment="Stretch"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>

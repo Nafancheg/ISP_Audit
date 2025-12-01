@@ -11,8 +11,10 @@ namespace IspAudit.Bypass
     {
         None,
         Fragment,
+        Disorder,      // Фрагменты в обратном порядке (второй, потом первый)
         Fake,
-        FakeFragment
+        FakeFragment,
+        FakeDisorder   // Fake + Disorder
     }
 
     /// <summary>

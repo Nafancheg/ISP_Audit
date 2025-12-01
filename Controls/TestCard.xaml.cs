@@ -19,8 +19,6 @@ namespace ISPAudit.Controls
             set => SetValue(TestResultProperty, value);
         }
 
-        public event RoutedEventHandler? FixClicked;
-
         public TestCard()
         {
             InitializeComponent();
@@ -84,7 +82,6 @@ namespace ISPAudit.Controls
                     statusText.Visibility = Visibility.Collapsed;
                 }
 
-                fixButton.Visibility = TestResult.ShowFixButton ? Visibility.Visible : Visibility.Collapsed;
                 detailsButton.Visibility = TestResult.ShowDetailsButton ? Visibility.Visible : Visibility.Collapsed;
             }
             catch (Exception ex)
@@ -104,11 +101,6 @@ namespace ISPAudit.Controls
                 TestStatus.Warn => (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource("WarnBrush"),
                 _ => (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource("MutedBrush")
             };
-        }
-
-        private void FixButton_Click(object sender, RoutedEventArgs e)
-        {
-            FixClicked?.Invoke(this, e);
         }
 
         private void DetailsButton_Click(object sender, RoutedEventArgs e)

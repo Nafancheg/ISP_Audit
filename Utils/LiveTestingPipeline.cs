@@ -130,7 +130,7 @@ namespace IspAudit.Utils
         }
 
         /// <summary>
-        /// Worker 3: Обновление UI с результатами
+        /// Worker 3: Обновление UI и применение bypass стратегий
         /// </summary>
         private async Task UiWorker(CancellationToken ct)
         {
@@ -154,10 +154,19 @@ namespace IspAudit.Utils
                     _progress?.Report($"❌ {details} | {checks} | {blocked.TestResult.BlockageType}");
                     _progress?.Report($"   → Рекомендуемая стратегия: {blocked.BypassStrategy}");
                     
-                    // ⚠️ НЕ переключаем bypass динамически!
-                    // Bypass (TLS_DISORDER + DROP_RST) уже активирован при старте.
-                    // Динамическое переключение стратегий ломает работающие соединения,
-                    // т.к. bypass глобальный, а тесты параллельные.
+                    // Применяем bypass динамически если:
+                    // 1. Стратегия не NONE (есть что применять)
+                    // 2. Auto-bypass включен в конфигурации
+                    // 3. Bypass manager доступен и не в состоянии Faulted
+                    if (blocked.BypassStrategy != "NONE" && 
+                        _config.EnableAutoBypass && 
+                        _bypassManager != null &&
+                        _bypassManager.State != IspAudit.Bypass.BypassState.Faulted)
+                    {
+                        // WinDivertBypassEnforcer использует внутренний семафор для сериализации
+                        // и сам проверяет эффективность bypass через ретест
+                        await _bypassEnforcer.ApplyBypassAsync(blocked, ct).ConfigureAwait(false);
+                    }
                 }
                 catch (Exception ex)
                 {

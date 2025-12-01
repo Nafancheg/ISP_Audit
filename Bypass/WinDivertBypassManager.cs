@@ -704,6 +704,7 @@ namespace IspAudit.Bypass
 
         private static readonly ITlsStrategy _fakeStrategy = new FakeStrategy();
         private static readonly ITlsStrategy _fragmentStrategy = new FragmentStrategy();
+        private static readonly ITlsStrategy _disorderStrategy = new DisorderStrategy();
 
         private void TlsFragmenterWorker(WinDivertNative.SafeHandle handle, CancellationToken token, BypassProfile profile)
         {
@@ -712,13 +713,17 @@ namespace IspAudit.Bypass
             
             // Initialize strategies
             var strategies = new List<ITlsStrategy>();
-            if (profile.TlsStrategy == TlsBypassStrategy.Fake || profile.TlsStrategy == TlsBypassStrategy.FakeFragment)
+            if (profile.TlsStrategy == TlsBypassStrategy.Fake || profile.TlsStrategy == TlsBypassStrategy.FakeFragment || profile.TlsStrategy == TlsBypassStrategy.FakeDisorder)
             {
                 strategies.Add(_fakeStrategy);
             }
             if (profile.TlsStrategy == TlsBypassStrategy.Fragment || profile.TlsStrategy == TlsBypassStrategy.FakeFragment)
             {
                 strategies.Add(_fragmentStrategy);
+            }
+            if (profile.TlsStrategy == TlsBypassStrategy.Disorder || profile.TlsStrategy == TlsBypassStrategy.FakeDisorder)
+            {
+                strategies.Add(_disorderStrategy);
             }
 
             ISPAudit.Utils.DebugLogger.Log($"[WinDivert] TLS fragmenter started (Strategies={strategies.Count})");
@@ -835,14 +840,14 @@ namespace IspAudit.Bypass
 
                 try
                 {
-                    // First Fragment
+                    // First Fragment (отправляем первым)
                     Buffer.BlockCopy(buffer, 0, firstBuffer, 0, headerLen); // Headers
                     Buffer.BlockCopy(buffer, packet.PayloadOffset, firstBuffer, headerLen, firstLen); // Payload 1
                     AdjustPacketLengths(firstBuffer, packet.IpHeaderLength, packet.TcpHeaderLength, firstLen, packet.IsIpv4);
                     WinDivertNative.WinDivertHelperCalcChecksums(firstBuffer, (uint)(headerLen + firstLen), ref addr, 0);
                     WinDivertNative.WinDivertSend(handle, firstBuffer, (uint)(headerLen + firstLen), out _, in addr);
 
-                    // Second Fragment
+                    // Second Fragment (отправляем вторым)
                     Buffer.BlockCopy(buffer, 0, secondBuffer, 0, headerLen); // Headers
                     Buffer.BlockCopy(buffer, packet.PayloadOffset + firstLen, secondBuffer, headerLen, secondLen); // Payload 2
                     IncrementTcpSequence(secondBuffer, packet.IpHeaderLength, (uint)firstLen);
@@ -850,6 +855,56 @@ namespace IspAudit.Bypass
                     WinDivertNative.WinDivertHelperCalcChecksums(secondBuffer, (uint)(headerLen + secondLen), ref addr, 0);
                     WinDivertNative.WinDivertSend(handle, secondBuffer, (uint)(headerLen + secondLen), out _, in addr);
 
+                    return true;
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(firstBuffer);
+                    ArrayPool<byte>.Shared.Return(secondBuffer);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Disorder стратегия — отправка фрагментов в ОБРАТНОМ порядке (второй, потом первый).
+        /// Ломает DPI который ожидает последовательную сборку пакетов.
+        /// TCP стек получателя соберёт правильно по Sequence Numbers.
+        /// </summary>
+        private class DisorderStrategy : ITlsStrategy
+        {
+            public bool Process(WinDivertNative.SafeHandle handle, byte[] buffer, int length, in PacketHelper.PacketInfo packet, ref WinDivertNative.Address addr, BypassProfile profile, bool isNewConnection)
+            {
+                int firstLen = Math.Min(profile.TlsFirstFragmentSize, packet.PayloadLength - 1);
+                int secondLen = packet.PayloadLength - firstLen;
+                
+                if (firstLen <= 0 || secondLen <= 0) return false;
+
+                int headerLen = packet.IpHeaderLength + packet.TcpHeaderLength;
+                var firstBuffer = ArrayPool<byte>.Shared.Rent(headerLen + firstLen);
+                var secondBuffer = ArrayPool<byte>.Shared.Rent(headerLen + secondLen);
+
+                try
+                {
+                    // Подготавливаем First Fragment (но отправим его ВТОРЫМ)
+                    Buffer.BlockCopy(buffer, 0, firstBuffer, 0, headerLen);
+                    Buffer.BlockCopy(buffer, packet.PayloadOffset, firstBuffer, headerLen, firstLen);
+                    AdjustPacketLengths(firstBuffer, packet.IpHeaderLength, packet.TcpHeaderLength, firstLen, packet.IsIpv4);
+                    WinDivertNative.WinDivertHelperCalcChecksums(firstBuffer, (uint)(headerLen + firstLen), ref addr, 0);
+
+                    // Подготавливаем Second Fragment (но отправим его ПЕРВЫМ)
+                    Buffer.BlockCopy(buffer, 0, secondBuffer, 0, headerLen);
+                    Buffer.BlockCopy(buffer, packet.PayloadOffset + firstLen, secondBuffer, headerLen, secondLen);
+                    IncrementTcpSequence(secondBuffer, packet.IpHeaderLength, (uint)firstLen);
+                    AdjustPacketLengths(secondBuffer, packet.IpHeaderLength, packet.TcpHeaderLength, secondLen, packet.IsIpv4);
+                    WinDivertNative.WinDivertHelperCalcChecksums(secondBuffer, (uint)(headerLen + secondLen), ref addr, 0);
+
+                    // DISORDER: отправляем в ОБРАТНОМ порядке!
+                    // Сначала второй фрагмент (с большим Seq)
+                    WinDivertNative.WinDivertSend(handle, secondBuffer, (uint)(headerLen + secondLen), out _, in addr);
+                    // Потом первый фрагмент (с меньшим Seq)
+                    WinDivertNative.WinDivertSend(handle, firstBuffer, (uint)(headerLen + firstLen), out _, in addr);
+
+                    ISPAudit.Utils.DebugLogger.Log($"[WinDivert] DISORDER: sent fragments in reverse order for {packet.DstIp}:{packet.DstPort}");
                     return true;
                 }
                 finally

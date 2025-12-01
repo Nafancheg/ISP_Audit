@@ -37,7 +37,6 @@ namespace ISPAudit.Models
                 _status = value;
                 OnPropertyChanged(nameof(Status));
                 OnPropertyChanged(nameof(StatusText));
-                OnPropertyChanged(nameof(ShowFixButton));
                 OnPropertyChanged(nameof(ShowDetailsButton));
             }
         }
@@ -62,18 +61,6 @@ namespace ISPAudit.Models
             }
         }
 
-        public bool Fixable { get; set; }
-
-        /// <summary>
-        /// Тип исправления для этого теста (None = не исправляется автоматически)
-        /// </summary>
-        public FixType FixType { get; set; } = FixType.None;
-
-        /// <summary>
-        /// Инструкции для ручного исправления (для FixType.Manual)
-        /// </summary>
-        public string? FixInstructions { get; set; }
-
         /// <summary>
         /// Стратегия обхода (WinDivert), полученная от LiveTestingPipeline
         /// </summary>
@@ -95,7 +82,6 @@ namespace ISPAudit.Models
             }
         }
 
-        public bool ShowFixButton => Status == TestStatus.Fail && FixType != FixType.None;
         public bool ShowDetailsButton => Status == TestStatus.Fail || Status == TestStatus.Pass || Status == TestStatus.Warn;
 
         public event PropertyChangedEventHandler? PropertyChanged;
