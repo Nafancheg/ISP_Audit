@@ -110,7 +110,7 @@ if (HttpReplyLooksLikeDPIRedirect(payload, hostname)) bFail = true;
 | `FixHistory` + UI откат | ✅ Удалён |
 | `AuditRunner.cs` | ✅ Удалён |
 | `Output/` папка | ✅ Удалена |
-| Flow/Socket WinDivert layers | ⏳ TODO: включить Socket Layer |
+| Flow/Socket WinDivert layers | ✅ Socket Layer включён |
 | `TrafficAnalyzer.cs` | ⚠️ DEPRECATED (заменён на TrafficCollector) |
 | `TrafficAnalyzerDualLayer.cs` | 🗑️ Мёртвый код (не используется) |
 
@@ -225,16 +225,23 @@ DataContext = new MainViewModelRefactored();
 
 ---
 
-#### #3 Включить Socket Layer мониторинг ⏱️ 1-2ч
+#### ✅ #3 Включить Socket Layer мониторинг — ГОТОВО
 **Цель:** Событийный мониторинг вместо polling (точнее + меньше нагрузки)
 
-**Контекст:** При `AutoBypass=true` (умолчание) FlowMonitor ВСЕГДА в Watcher (polling) режиме. Flow/Socket WinDivert layers никогда не используются. НО: `Sniff` флаг НЕ конфликтует с bypass `None` флагом!
+**Реализовано:**
+- [x] `DiagnosticOrchestrator` устанавливает `UseWatcherMode = false`
+- [x] `FlowMonitorService.RunSocketMonitorLoop()` использует WinDivert Socket Layer
+- [x] Socket Layer (Sniff+RecvOnly) НЕ конфликтует с bypass (None)
+- [x] Watcher mode остаётся как fallback
 
-**Задачи:**
-- [ ] Тест: включить Socket Layer параллельно с bypass, проверить конфликт
-- [ ] Если работает — использовать Socket вместо polling
-- [ ] Удалить Flow Layer код (`RunMonitorLoop`) — избыточен при Socket
-- [ ] Обновить `UseWatcherMode` логику
+**Как работает:**
+```csharp
+// DiagnosticOrchestrator.cs
+_flowMonitor.UseWatcherMode = false;  // Socket Layer (WinDivert)
+// FlowMonitorService.cs
+if (!UseWatcherMode)
+    _socketMonitorTask = Task.Run(() => RunSocketMonitorLoop(...));
+```
 
 ---
 
@@ -424,10 +431,10 @@ DiagnosticOrchestrator.RunAsync()
 ### FlowMonitorService
 
 **Два режима:**
-1. **WinDivert (Socket/Flow)** — событийный, точный
-2. **IP Helper API polling** — каждую секунду, менее точный
+1. **WinDivert Socket Layer** — событийный, точный ✅ ИСПОЛЬЗУЕТСЯ
+2. **IP Helper API polling** — fallback для систем без WinDivert
 
-**Текущее:** При `AutoBypass=true` (умолчание) ВСЕГДА polling. WinDivert режим — мёртвый код.
+**Текущее:** `DiagnosticOrchestrator` устанавливает `UseWatcherMode = false` → Socket Layer активен.
 
 ### Детекция блокировок (StandardHostTester + StandardBlockageClassifier)
 
