@@ -15,16 +15,18 @@ using IspAudit.Core.Models;
 namespace IspAudit.Utils
 {
     /// <summary>
-    /// Легковесный анализатор сетевого трафика процесса через WinDivert Flow Layer.
-    /// ИСПОЛЬЗУЕТСЯ ДЛЯ STAGE1: быстрый сбор уникальных IP-адресов без захвата пакетов.
-    /// Для детального анализа (Stage2) используйте TrafficAnalyzerDualLayer.
+    /// DEPRECATED: Используйте TrafficCollector вместо этого класса.
+    /// TrafficCollector реализует чистую архитектуру с IAsyncEnumerable и событиями.
+    /// 
+    /// Старый анализатор сетевого трафика процесса через WinDivert Flow Layer.
     /// </summary>
+    [Obsolete("Используйте TrafficCollector вместо TrafficAnalyzer. TrafficCollector реализует чистую архитектуру SRP.")]
     internal static class TrafficAnalyzer
     {
         /// <summary>
-        /// Собирает список уникальных IP-адресов из сетевых соединений процесса.
-        /// НОВАЯ ВЕРСИЯ: Использует внешние FlowMonitorService и DnsParserService (D1).
+        /// DEPRECATED: Используйте TrafficCollector.CollectAsync() вместо этого метода.
         /// </summary>
+        [Obsolete("Используйте TrafficCollector.CollectAsync()")]
         public static async Task<GameProfile> AnalyzeProcessTrafficAsync(
             int targetPid,
             TimeSpan? captureTimeout,

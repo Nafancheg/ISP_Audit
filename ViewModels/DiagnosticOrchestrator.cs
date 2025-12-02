@@ -5,6 +5,7 @@ using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.Core.Models;
 using IspAudit.Utils;
 using ISPAudit.Windows;
 using IspAudit;
@@ -19,8 +20,8 @@ namespace ISPAudit.ViewModels
 {
     /// <summary>
     /// Оркестратор диагностики.
-    /// Управляет жизненным циклом мониторинговых сервисов,
-    /// запуском процесса, сбором трафика.
+    /// Координирует TrafficCollector и LiveTestingPipeline.
+    /// Управляет жизненным циклом мониторинговых сервисов.
     /// </summary>
     public class DiagnosticOrchestrator : INotifyPropertyChanged
     {
@@ -31,12 +32,20 @@ namespace ISPAudit.ViewModels
         private NetworkMonitorService? _networkMonitor;
         private DnsParserService? _dnsParser;
         private PidTrackerService? _pidTracker;
+        
+        // Новые компоненты (после рефакторинга)
+        private TrafficCollector? _trafficCollector;
+        private LiveTestingPipeline? _testingPipeline;
 
         private bool _isDiagnosticRunning;
         private string _diagnosticStatus = "";
         private int _flowEventsCount;
         private int _connectionsDiscovered;
         private string _flowModeText = "WinDivert";
+        
+        // Настройки
+        private const int SilenceTimeoutSeconds = 60;
+        private const int WarmupSeconds = 15;
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action<string>? OnLog;
@@ -100,7 +109,8 @@ namespace ISPAudit.ViewModels
         #region Core Methods
 
         /// <summary>
-        /// Запуск диагностики
+        /// Запуск диагностики с новой архитектурой:
+        /// TrafficCollector собирает хосты → LiveTestingPipeline тестирует и применяет bypass
         /// </summary>
         public async Task RunAsync(
             string targetExePath, 
@@ -110,13 +120,13 @@ namespace ISPAudit.ViewModels
         {
             if (IsDiagnosticRunning)
             {
-                Log("[Orchestrator] Diagnostic already running");
+                Log("[Orchestrator] Диагностика уже запущена");
                 return;
             }
 
             try
             {
-                Log($"[Orchestrator] Starting diagnostic for: {targetExePath}");
+                Log($"[Orchestrator] Старт диагностики: {targetExePath}");
                 
                 if (!OperatingSystem.IsWindows() || !IsAdministrator())
                 {
@@ -130,14 +140,14 @@ namespace ISPAudit.ViewModels
                 }
 
                 IsDiagnosticRunning = true;
-                DiagnosticStatus = "Запуск приложения...";
+                DiagnosticStatus = "Инициализация...";
                 FlowEventsCount = 0;
                 ConnectionsDiscovered = 0;
                 
                 _cts = new CancellationTokenSource();
 
                 // Сброс DNS кеша
-                Log("[Pipeline] Flushing DNS cache...");
+                Log("[Orchestrator] Сброс DNS кеша...");
                 await RunFlushDnsAsync();
 
                 // Создаём оверлей
@@ -160,10 +170,10 @@ namespace ISPAudit.ViewModels
                     });
                 });
 
-                // Запуск мониторинговых сервисов
+                // 1. Запуск мониторинговых сервисов
                 await StartMonitoringServicesAsync(progress, overlay);
 
-                // Запуск целевого процесса
+                // 2. Запуск целевого процесса
                 DiagnosticStatus = "Запуск целевого приложения...";
                 using var process = new System.Diagnostics.Process
                 {
@@ -180,52 +190,68 @@ namespace ISPAudit.ViewModels
                 }
                 
                 var pid = process.Id;
-                Log($"[Pipeline] Process started: PID={pid}");
+                Log($"[Orchestrator] Процесс запущен: PID={pid}");
                 
-                // PID Tracker
+                // 3. PID Tracker
                 _pidTracker = new PidTrackerService(pid, progress);
                 await _pidTracker.StartAsync(_cts.Token).ConfigureAwait(false);
                 
-                // Pre-resolve целей
+                // 4. Pre-resolve целей (параллельно)
                 _ = resultsManager.PreResolveTargetsAsync();
                 
                 DiagnosticStatus = "Анализ трафика...";
 
-                // Преимптивный bypass
+                // 5. Преимптивный bypass
                 if (enableAutoBypass)
                 {
                     await bypassController.EnablePreemptiveBypassAsync();
                     ((IProgress<string>?)progress)?.Report("✓ Bypass активирован (TLS-фрагментация + DROP_RST)");
                 }
 
-                // Запуск анализатора
-                var profile = await TrafficAnalyzer.AnalyzeProcessTrafficAsync(
-                    pid,
-                    TimeSpan.FromMinutes(10),
+                // 6. Создание TrafficCollector (чистый сборщик)
+                _trafficCollector = new TrafficCollector(
                     _flowMonitor!,
                     _pidTracker!,
                     _dnsParser!,
-                    progress,
-                    _cts.Token,
-                    enableLiveTesting: true,
-                    enableAutoBypass: enableAutoBypass,
-                    bypassManager: bypassController.BypassManager,
-                    onSilenceDetected: async () => 
-                    {
-                        var task = Application.Current!.Dispatcher.Invoke(() => 
-                            overlay!.ShowSilencePromptAsync(60));
-                        return await task;
-                    }
-                );
+                    progress);
                 
-                Log($"[Pipeline] Finished. Captured {profile?.Targets?.Count ?? 0} targets.");
+                // 7. Создание LiveTestingPipeline (тестирование + bypass)
+                var pipelineConfig = new PipelineConfig
+                {
+                    EnableLiveTesting = true,
+                    EnableAutoBypass = enableAutoBypass,
+                    MaxConcurrentTests = 5,
+                    TestTimeout = TimeSpan.FromSeconds(3)
+                };
+                _testingPipeline = new LiveTestingPipeline(
+                    pipelineConfig, 
+                    progress, 
+                    bypassController.BypassManager, 
+                    _dnsParser);
+                Log("[Orchestrator] ✓ TrafficCollector + LiveTestingPipeline созданы");
+
+                // 8. Запуск сбора и тестирования параллельно
+                var collectorTask = RunCollectorWithPipelineAsync(overlay, progress);
+                var silenceMonitorTask = RunSilenceMonitorAsync(overlay);
+                var processMonitorTask = RunProcessMonitorAsync();
                 
-                // Закрываем оверлей
+                // Ждём завершения (любой таск может завершить диагностику)
+                await Task.WhenAny(collectorTask, silenceMonitorTask, processMonitorTask);
+                
+                // Даём время на завершение оставшихся хостов в pipeline
+                await Task.Delay(500, _cts.Token).ContinueWith(_ => { });
+                
+                Log($"[Orchestrator] Завершено. Соединений: {_trafficCollector?.ConnectionsCount ?? 0}");
+                
+                // 9. Закрываем оверлей
                 Application.Current?.Dispatcher.Invoke(() => overlay?.Close());
                 
-                // Сохранение профиля
-                if (profile != null && profile.Targets.Count > 0)
+                // 10. Генерация и сохранение профиля
+                if (_trafficCollector != null && _trafficCollector.ConnectionsCount > 0)
                 {
+                    var profile = await _trafficCollector.BuildProfileAsync(
+                        Path.GetFileNameWithoutExtension(targetExePath),
+                        _cts.Token);
                     await SaveProfileAsync(targetExePath, profile);
                 }
                 
@@ -233,23 +259,152 @@ namespace ISPAudit.ViewModels
             }
             catch (OperationCanceledException)
             {
-                Log("[Pipeline] Cancelled by user");
+                Log("[Orchestrator] Отменено пользователем");
                 DiagnosticStatus = "Диагностика отменена";
             }
             catch (Exception ex)
             {
-                Log($"[Pipeline] Error: {ex.Message}");
-                MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка Pipeline", 
+                Log($"[Orchestrator] Ошибка: {ex.Message}");
+                MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка диагностики", 
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 DiagnosticStatus = $"Ошибка: {ex.Message}";
             }
             finally
             {
+                _testingPipeline?.Dispose();
+                _trafficCollector?.Dispose();
                 await StopMonitoringServicesAsync();
                 IsDiagnosticRunning = false;
                 _cts?.Dispose();
                 _cts = null;
                 OnDiagnosticComplete?.Invoke();
+            }
+        }
+
+        /// <summary>
+        /// Сбор трафика и передача хостов в pipeline
+        /// </summary>
+        private async Task RunCollectorWithPipelineAsync(OverlayWindow? overlay, IProgress<string> progress)
+        {
+            if (_trafficCollector == null || _testingPipeline == null || _cts == null) return;
+            
+            try
+            {
+                await foreach (var host in _trafficCollector.CollectAsync(
+                    TimeSpan.FromMinutes(10), 
+                    _cts.Token).ConfigureAwait(false))
+                {
+                    // Обновляем UI счётчик
+                    Application.Current?.Dispatcher.Invoke(() => 
+                    {
+                        ConnectionsDiscovered = _trafficCollector.ConnectionsCount;
+                        overlay?.UpdateStats(ConnectionsDiscovered, FlowEventsCount);
+                    });
+                    
+                    // Отправляем в pipeline на тестирование
+                    await _testingPipeline.EnqueueHostAsync(host).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Нормальное завершение
+            }
+        }
+
+        /// <summary>
+        /// Мониторинг тишины (отсутствие новых соединений)
+        /// </summary>
+        private async Task RunSilenceMonitorAsync(OverlayWindow? overlay)
+        {
+            if (_trafficCollector == null || _flowMonitor == null || _cts == null) return;
+            
+            bool silenceWarningShown = false;
+            
+            try
+            {
+                while (!_cts.Token.IsCancellationRequested)
+                {
+                    await Task.Delay(1000, _cts.Token).ConfigureAwait(false);
+                    
+                    // Проверяем время с момента открытия handle (warmup)
+                    var totalElapsed = _flowMonitor.FlowOpenedUtc.HasValue 
+                        ? (DateTime.UtcNow - _flowMonitor.FlowOpenedUtc.Value).TotalSeconds 
+                        : 0;
+
+                    if (totalElapsed < WarmupSeconds || silenceWarningShown)
+                        continue;
+
+                    var silenceDuration = (DateTime.UtcNow - _trafficCollector.LastNewConnectionTime).TotalSeconds;
+                    
+                    if (silenceDuration > SilenceTimeoutSeconds && overlay != null)
+                    {
+                        silenceWarningShown = true;
+                        Log($"[Silence] Нет новых соединений более {SilenceTimeoutSeconds}с");
+                        
+                        // Показываем запрос пользователю
+                        var extend = await Application.Current!.Dispatcher.Invoke(async () => 
+                            await overlay.ShowSilencePromptAsync(SilenceTimeoutSeconds));
+                        
+                        if (extend)
+                        {
+                            Log("[Silence] Пользователь продлил диагностику");
+                            silenceWarningShown = false;
+                            // TrafficCollector сбросит время при новом соединении
+                        }
+                        else
+                        {
+                            Log("[Silence] Авто-завершение диагностики");
+                            _cts.Cancel();
+                            break;
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Нормальное завершение
+            }
+        }
+
+        /// <summary>
+        /// Мониторинг жизни целевых процессов
+        /// </summary>
+        private async Task RunProcessMonitorAsync()
+        {
+            if (_pidTracker == null || _cts == null) return;
+            
+            try
+            {
+                while (!_cts.Token.IsCancellationRequested)
+                {
+                    await Task.Delay(2000, _cts.Token).ConfigureAwait(false);
+                    
+                    bool anyAlive = false;
+                    foreach (var pid in _pidTracker.TrackedPids.ToArray())
+                    {
+                        try
+                        {
+                            using var proc = System.Diagnostics.Process.GetProcessById(pid);
+                            if (!proc.HasExited)
+                            {
+                                anyAlive = true;
+                                break;
+                            }
+                        }
+                        catch { }
+                    }
+                    
+                    if (!anyAlive && _pidTracker.TrackedPids.Count > 0)
+                    {
+                        Log("[Orchestrator] Все отслеживаемые процессы завершились");
+                        _cts.Cancel();
+                        break;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Нормальное завершение
             }
         }
 
@@ -260,11 +415,11 @@ namespace ISPAudit.ViewModels
         {
             if (_cts == null || _cts.IsCancellationRequested)
             {
-                Log("[Orchestrator] Already cancelled or not running");
+                Log("[Orchestrator] Уже отменено или не запущено");
                 return;
             }
             
-            Log("[Orchestrator] Cancelling...");
+            Log("[Orchestrator] Отмена...");
             _cts.Cancel();
             DiagnosticStatus = "Остановка...";
         }
@@ -275,24 +430,13 @@ namespace ISPAudit.ViewModels
 
         private async Task StartMonitoringServicesAsync(IProgress<string> progress, OverlayWindow? overlay)
         {
-            Log("[Services] Starting monitoring services...");
+            Log("[Services] Запуск мониторинговых сервисов...");
             
             // Flow Monitor
             _flowMonitor = new FlowMonitorService(progress);
             
-            var uniqueConnections = new System.Collections.Concurrent.ConcurrentDictionary<string, bool>();
             _flowMonitor.OnFlowEvent += (count, pid, proto, remoteIp, remotePort, localPort) => 
             {
-                var key = $"{remoteIp}:{remotePort}:{proto}";
-                if (uniqueConnections.TryAdd(key, true))
-                {
-                    Application.Current?.Dispatcher.Invoke(() => 
-                    {
-                        ConnectionsDiscovered = uniqueConnections.Count;
-                        overlay?.UpdateStats(ConnectionsDiscovered, FlowEventsCount);
-                    });
-                }
-
                 if (count % 10 == 0)
                 {
                     Application.Current?.Dispatcher.Invoke(() => 
@@ -305,7 +449,7 @@ namespace ISPAudit.ViewModels
 
             _flowMonitor.UseWatcherMode = false;
             FlowModeText = "Socket Layer";
-            Log("[Pipeline] FlowMonitor: Socket Layer only");
+            Log("[Services] FlowMonitor: Socket Layer only");
             
             await _flowMonitor.StartAsync(_cts!.Token).ConfigureAwait(false);
             
@@ -323,13 +467,15 @@ namespace ISPAudit.ViewModels
                 });
             };
             await _dnsParser.StartAsync().ConfigureAwait(false);
+            
+            Log("[Services] ✓ Все сервисы запущены");
         }
 
         private async Task StopMonitoringServicesAsync()
         {
             try
             {
-                Log("[Services] Stopping monitoring services...");
+                Log("[Services] Остановка сервисов...");
                 if (_pidTracker != null) await _pidTracker.StopAsync().ConfigureAwait(false);
                 if (_dnsParser != null) await _dnsParser.StopAsync().ConfigureAwait(false);
                 if (_networkMonitor != null) await _networkMonitor.StopAsync().ConfigureAwait(false);
@@ -347,7 +493,7 @@ namespace ISPAudit.ViewModels
             }
             catch (Exception ex)
             {
-                Log($"[Services] Error stopping: {ex.Message}");
+                Log($"[Services] Ошибка остановки: {ex.Message}");
             }
         }
 
@@ -357,13 +503,13 @@ namespace ISPAudit.ViewModels
             
             if (msg.Contains("Захват активен"))
                 overlay.UpdateStatus("Мониторинг активности...");
-            else if (msg.Contains("Обнаружено соединение"))
+            else if (msg.Contains("Обнаружено соединение") || msg.Contains("Новое соединение"))
                 overlay.UpdateStatus("Анализ нового соединения...");
             else if (msg.StartsWith("✓ "))
                 overlay.UpdateStatus("Соединение успешно проверено");
             else if (msg.StartsWith("❌ "))
                 overlay.UpdateStatus("Обнаружена проблема соединения!");
-            else if (msg.Contains("Запуск приложения"))
+            else if (msg.Contains("Запуск приложения") || msg.Contains("Запуск целевого"))
                 overlay.UpdateStatus("Запуск целевого приложения...");
             else if (msg.Contains("Анализ трафика"))
                 overlay.UpdateStatus("Анализ сетевого трафика...");
@@ -387,7 +533,7 @@ namespace ISPAudit.ViewModels
                 var json = System.Text.Json.JsonSerializer.Serialize(profile, jsonOptions);
                 
                 await File.WriteAllTextAsync(profilePath, json);
-                Log($"[Pipeline] Profile saved: {profilePath}");
+                Log($"[Orchestrator] Профиль сохранен: {profilePath}");
                 
                 Application.Current?.Dispatcher.Invoke(() =>
                 {
@@ -396,7 +542,7 @@ namespace ISPAudit.ViewModels
             }
             catch (Exception ex)
             {
-                Log($"[Pipeline] Error saving profile: {ex.Message}");
+                Log($"[Orchestrator] Ошибка сохранения профиля: {ex.Message}");
             }
         }
 
