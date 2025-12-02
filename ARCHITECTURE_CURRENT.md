@@ -1,8 +1,8 @@
 # ISP_Audit — Архитектура и План Работ
 
-**Дата:** 01.12.2025  
+**Дата:** 02.12.2025  
 **Цель:** Обход блокировок провайдера (DPI, DNS-фильтрация, TCP RST injection)  
-**Статус:** ✅ BypassCoordinator интегрирован, мёртвый код удалён. Детекция блокировок — базовая.
+**Статус:** ✅ Архитектура рефакторена (MainViewModel → модульная структура). TrafficCollector + LiveTestingPipeline работают независимо.
 
 ---
 
@@ -206,16 +206,7 @@ DataContext = new MainViewModel();
 DataContext = new MainViewModelRefactored();
 ```
 
-**Ключевые изменения для целевой архитектуры:**
-
-| Сейчас (плохо) | Целевая (правильно) |
-|----------------|---------------------|
-| TrafficAnalyzer создаёт Pipeline | MainViewModel создаёт оба |
-| Pipeline внутри Analyzer | Analyzer и Pipeline — равноправные |
-| Жёсткая связь | Связь через события |
-| TrafficAnalyzer знает про bypass | TrafficAnalyzer только собирает |
-
-**Принципы целевой архитектуры:**
+**Принципы архитектуры:**
 1. **Single Responsibility** — каждый компонент делает одно
 2. **Dependency Inversion** — компоненты не знают друг о друге
 3. **Event-driven** — связь через `OnHostDiscovered`, `OnBlockageDetected`
@@ -331,27 +322,40 @@ DataContext = new MainViewModelRefactored();
 ### Точка входа
 ```
 Program.Main()
-├── GUI Mode (args.Length == 0)
-│   ├── TryHideConsoleWindow()  ← УДАЛИТЬ после OutputType=WinExe
-│   └── new App().Run() → MainWindow → MainViewModel
-│
-└── CLI Mode ← УДАЛИТЬ весь CLI код
+└── GUI Mode → new App().Run() → MainWindow → MainViewModelRefactored
 ```
 
-### Основной flow диагностики
+### Основной flow диагностики (новая архитектура)
 ```
-MainViewModel.RunLivePipelineAsync()
+MainViewModelRefactored
+    │
+    ├── BypassController         — управление bypass кнопками
+    ├── DiagnosticOrchestrator   — координация диагностики
+    │       │
+    │       ├── TrafficCollector      — сбор хостов (IAsyncEnumerable)
+    │       └── LiveTestingPipeline   — тестирование + bypass
+    │               │
+    │               └── BypassCoordinator — применение стратегий
+    │
+    └── TestResultsManager       — результаты и эвристики
+```
+
+### Flow диагностики
+```
+DiagnosticOrchestrator.RunAsync()
 │
 ├── 1. Проверка прав админа
-├── 2. ScreenState = "running"
-├── 3. DNS flush
-├── 4. Создание OverlayWindow
-├── 5. Запуск мониторинга (FlowMonitor, NetworkMonitor, DnsParser, PidTracker)
-├── 6. Запуск целевого процесса
-├── 7. Bypass включение (если admin)
-├── 8. TrafficAnalyzer.AnalyzeProcessTrafficAsync() ← БЛОКИРУЮЩИЙ
-├── 9. Закрытие overlay
-└── 10. ScreenState = "done"
+├── 2. DNS flush
+├── 3. Создание OverlayWindow
+├── 4. Запуск мониторинга (FlowMonitor, NetworkMonitor, DnsParser, PidTracker)
+├── 5. Запуск целевого процесса
+├── 6. Bypass включение через BypassController
+├── 7. Параллельно:
+│       ├── TrafficCollector.CollectAsync() — собирает хосты
+│       └── LiveTestingPipeline — тестирует и применяет bypass
+├── 8. Мониторинг тишины и процессов
+├── 9. Генерация профиля
+└── 10. Закрытие overlay
 ```
 
 ### Состояния UI
@@ -446,24 +450,31 @@ TcpOk && !TlsOk → DROP_RST, TLS_FRAGMENT, TLS_FAKE
 
 ## 7. UI и ViewModel
 
-### MainViewModel (~2400 строк)
+### Новая модульная структура (02.12.2025)
+
+| Компонент | Строк | Ответственность |
+|-----------|-------|----------------|
+| `MainViewModelRefactored` | ~430 | Тонкий координатор, прокси-свойства |
+| `BypassController` | ~510 | Toggle кнопки, VPN, DoH, WinDivertBypassManager |
+| `DiagnosticOrchestrator` | ~560 | Lifecycle, TrafficCollector + Pipeline |
+| `TestResultsManager` | ~490 | Результаты, парсинг, эвристики |
+
+### MainViewModelRefactored
 
 **Инициализация:**
 ```csharp
-MainViewModel()
-├── InitializeTestResults()
-├── Создание команд
-├── LoadFixHistory()  ← УДАЛИТЬ (мёртвый код)
-├── InitializeBypassOnStartupAsync()  // Авто-включение bypass
-└── CheckVpnStatus()
+MainViewModelRefactored()
+├── new BypassController()           // Bypass логика
+├── new DiagnosticOrchestrator()     // Диагностика
+├── new TestResultsManager()         // Результаты
+├── Создание команд (делегируют в контроллеры)
+└── Подписка на события контроллеров
 ```
 
-**Авто-bypass при старте (с админ правами):**
+**Авто-bypass при старте (через BypassController):**
 ```csharp
-_isFragmentEnabled = true;
-_isDropRstEnabled = true;
-_isDoHEnabled = true;
-await ApplyBypassOptionsAsync();
+await Bypass.InitializeOnStartupAsync();
+// Внутри: Fragment + DropRst + DoH включаются автоматически
 ```
 
 ### Bypass Control Panel
@@ -482,7 +493,7 @@ await ApplyBypassOptionsAsync();
 
 ## 8. Файловая структура
 
-### Текущая структура (после рефакторинга 01.12.2025)
+### Текущая структура (после рефакторинга 02.12.2025)
 ```
 ISP_Audit/
 ├── Program.cs                    # Точка входа (GUI only)
@@ -490,7 +501,11 @@ ISP_Audit/
 ├── MainWindow.xaml(.cs)          # Главное окно
 │
 ├── ViewModels/
-│   └── MainViewModel.cs          # Главная логика
+│   ├── MainViewModel.cs              # ⚠️ DEPRECATED (старый God Object)
+│   ├── MainViewModelRefactored.cs    # ✅ NEW: тонкий координатор
+│   ├── BypassController.cs           # ✅ NEW: bypass toggle, VPN, DoH
+│   ├── DiagnosticOrchestrator.cs     # ✅ NEW: lifecycle, Collector+Pipeline
+│   └── TestResultsManager.cs         # ✅ NEW: результаты, эвристики
 │
 ├── Bypass/
 │   ├── WinDivertBypassManager.cs # Управление WinDivert
@@ -509,9 +524,11 @@ ISP_Audit/
 │       └── StandardBlockageClassifier.cs
 │
 ├── Utils/
-│   ├── TrafficAnalyzer.cs        # Сбор трафика
-│   ├── LiveTestingPipeline.cs    # ✅ Использует BypassCoordinator
-│   ├── FlowMonitorService.cs     # ⏳ TODO: Socket Layer
+│   ├── TrafficCollector.cs       # ✅ NEW: чистый сборщик (IAsyncEnumerable)
+│   ├── TrafficAnalyzer.cs        # ⚠️ DEPRECATED
+│   ├── TrafficAnalyzerDualLayer.cs # 🗑️ Удалить (мёртвый код)
+│   ├── LiveTestingPipeline.cs    # ✅ Тестирование + BypassCoordinator
+│   ├── FlowMonitorService.cs     # Мониторинг соединений
 │   └── ...
 │
 ├── Models/
