@@ -130,18 +130,80 @@ if (HttpReplyLooksLikeDPIRedirect(payload, hostname)) bFail = true;
 **Текущая архитектура:**
 ```
 TrafficAnalyzer ──▶ LiveTestingPipeline ──▶ UI/Progress
-    (сбор)                 │
-         ┌─────────────────┼─────────────────┐
-         ▼                 ▼                 ▼
-   TesterWorker    ClassifierWorker    UiWorker
-   (HostTester)    (Classifier)            │
-                                           ▼
-                                  BypassCoordinator (МОЗГ)
-                                           │
-                                           ▼
-                                    BypassManager
-                                     (WinDivert)
+    (сбор)          (контейнер воркеров)
+                           │
+    ┌──────────────────────┼──────────────────────┐
+    ▼                      ▼                      ▼
+TesterWorker ────▶ ClassifierWorker ────▶ UiWorker
+(HostTester)       (Classifier)          (отображение + bypass)
+                                               │
+                                    ┌──────────┴──────────┐
+                                    ▼                     ▼
+                           BypassCoordinator        UI Progress
+                           (перебор стратегий)
+                                    │
+                                    ▼
+                             BypassManager
+                              (WinDivert)
 ```
+
+**⚠️ Архитектурный долг:** `TrafficAnalyzer` создаёт `LiveTestingPipeline` внутри себя — это инверсия зависимостей ("хвост виляет собакой"). См. целевую архитектуру ниже.
+
+---
+
+### 🎯 Целевая архитектура (TODO рефакторинг)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              MainViewModel                                   │
+│                         (Orchestrator / Координатор)                         │
+│                                                                             │
+│  • Создаёт и владеет всеми компонентами                                     │
+│  • Связывает их через события/callbacks                                      │
+│  • Управляет жизненным циклом                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+          ┌───────────────────────────┼───────────────────────────┐
+          │                           │                           │
+          ▼                           ▼                           ▼
+┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
+│  TrafficAnalyzer │      │ LiveTestingPipe- │      │ WinDivertBypass- │
+│    (Сборщик)     │      │      line        │      │     Manager      │
+│                  │      │   (Обработчик)   │      │   (Исполнитель)  │
+│ • FlowMonitor    │      │                  │      │                  │
+│ • DnsParser      │      │ • TesterWorker   │      │ • RST Blocker    │
+│ • PidTracker     │      │ • ClassifierWork │      │ • TLS Fragment   │
+│                  │      │ • BypassWorker   │      │ • Fake TTL       │
+└────────┬─────────┘      └────────┬─────────┘      └────────▲─────────┘
+         │                         │                         │
+         │ OnHostDiscovered        │                         │
+         │ (событие)               │                         │
+         └────────────────────────►│                         │
+                                   │                         │
+                                   ▼                         │
+                        ┌──────────────────┐                 │
+                        │ BypassCoordinator │                 │
+                        │    (Стратег)     │                 │
+                        │                  │                 │
+                        │ • Кеш стратегий  │─────────────────┘
+                        │ • Перебор        │  ApplyStrategy()
+                        │ • Ретест         │
+                        └──────────────────┘
+```
+
+**Ключевые изменения для целевой архитектуры:**
+
+| Сейчас (плохо) | Целевая (правильно) |
+|----------------|---------------------|
+| TrafficAnalyzer создаёт Pipeline | MainViewModel создаёт оба |
+| Pipeline внутри Analyzer | Analyzer и Pipeline — равноправные |
+| Жёсткая связь | Связь через события |
+| TrafficAnalyzer знает про bypass | TrafficAnalyzer только собирает |
+
+**Принципы целевой архитектуры:**
+1. **Single Responsibility** — каждый компонент делает одно
+2. **Dependency Inversion** — компоненты не знают друг о друге
+3. **Event-driven** — связь через `OnHostDiscovered`, `OnBlockageDetected`
 
 ---
 
@@ -483,6 +545,7 @@ ISP_Audit/
 
 | Дата | Изменения |
 |------|-----------|
+| 01.12.2025 | **Целевая архитектура:** добавлена диаграмма и принципы рефакторинга (TrafficAnalyzer не должен создавать Pipeline) |
 | 01.12.2025 | **Рефакторинг:** BypassCoordinator интегрирован, WinDivertBypassEnforcer/IBypassEnforcer удалены, мёртвый код очищен |
 | 01.12.2025 | Реструктуризация: критические проблемы в начало, план работ, принятые решения |
 | 27.11.2025 | Добавлено сравнение детекции с Zapret |
