@@ -150,39 +150,40 @@ if (HttpReplyLooksLikeDPIRedirect(payload, hostname)) bFail = true;
 │  BypassController  │    │DiagnosticOrchestra-│    │ TestResultsManager │
 │     ✅ NEW         │    │    tor ✅ NEW      │    │      ✅ NEW        │
 │   (~510 строк)     │    │   (~560 строк)     │    │   (~490 строк)     │
-│                    │    │                    │    │                    │
-│ • Toggle кнопки    │    │ • RunAsync()       │    │ • TestResults      │
-│ • VPN detection    │    │ • Lifecycle        │    │ • ParseMessage()   │
-│ • DoH              │    │   сервисов         │    │ • Heuristics       │
-│ • WinDivertBypass- │    │ • Координация      │    │ • PreResolve       │
-│   Manager владение │    │   Collector+Pipe   │    │                    │
 └─────────┬──────────┘    └─────────┬──────────┘    └────────────────────┘
           │                         │
-          │                         │
-          ▼                         ▼
-┌──────────────────┐      ┌──────────────────────────────────────────────┐
-│ WinDivertBypass- │      │            TrafficCollector ✅ NEW           │
-│     Manager      │      │          (Чистый сборщик, ~290 строк)        │
-│  (Исполнитель)   │      │                                              │
-│                  │      │  • IAsyncEnumerable<HostDiscovered>          │
-│ • RST Blocker    │      │  • События OnHostDiscovered                  │
-│ • TLS Fragment   │      │  • Нет логики bypass/UI                      │
-│ • Fake TTL       │      │  • Использует FlowMonitor, DnsParser         │
-└──────────────────┘      └───────────────────┬──────────────────────────┘
-                                              │
-                                              ▼
-                          ┌──────────────────────────────────────────────┐
-                          │         LiveTestingPipeline (~216 строк)     │
-                          │                                              │
-                          │  TesterWorker → ClassifierWorker → UiWorker  │
-                          │                                     ↓        │
-                          │                             BypassCoordinator│
-                          └──────────────────────────────────────────────┘
+          │              ┌──────────┴──────────┐
+          │              │                     │
+          ▼              ▼                     ▼
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────────────┐
+│ WinDivertBypass- │  │ TrafficCollector │  │    LiveTestingPipeline       │
+│     Manager      │  │    ✅ NEW        │  │        (~216 строк)          │
+│  (Исполнитель)   │  │  (~290 строк)    │  │                              │
+│                  │  │                  │  │ TesterWorker → Classifier →  │
+│ • RST Blocker    │  │ • IAsyncEnum     │  │ → UiWorker + BypassCoord     │
+│ • TLS Fragment   │  │ • Сбор трафика   │  │                              │
+│ • Fake TTL       │  │ • События        │  │ Получает хосты от Collector  │
+└──────────────────┘  └────────┬─────────┘  └──────────────┬───────────────┘
+                               │                          │
+                               │    HostDiscovered        │
+                               └─────────────────────────►│
+```
+
+**Ключевой flow:**
+```
+DiagnosticOrchestrator.RunAsync()
+    │
+    ├── Создаёт TrafficCollector
+    ├── Создаёт LiveTestingPipeline
+    │
+    └── await foreach (host in TrafficCollector.CollectAsync())
+            │
+            └── await LiveTestingPipeline.EnqueueHostAsync(host)
 ```
 
 **Ключевое изменение:** TrafficAnalyzer → TrafficCollector
 - Раньше: TrafficAnalyzer создавал LiveTestingPipeline внутри себя (инверсия зависимостей)
-- Теперь: DiagnosticOrchestrator координирует оба компонента
+- Теперь: DiagnosticOrchestrator координирует оба **равноправных** компонента
 
 **Статус рефакторинга:**
 | Модуль | Файл | Строк | Статус |
