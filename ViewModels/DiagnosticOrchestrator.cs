@@ -28,7 +28,7 @@ namespace ISPAudit.ViewModels
         private CancellationTokenSource? _cts;
         
         // Мониторинговые сервисы
-        private FlowMonitorService? _flowMonitor;
+        private ConnectionMonitorService? _connectionMonitor;
         private NetworkMonitorService? _networkMonitor;
         private DnsParserService? _dnsParser;
         private PidTrackerService? _pidTracker;
@@ -210,7 +210,7 @@ namespace ISPAudit.ViewModels
 
                 // 6. Создание TrafficCollector (чистый сборщик)
                 _trafficCollector = new TrafficCollector(
-                    _flowMonitor!,
+                    _connectionMonitor!,
                     _pidTracker!,
                     _dnsParser!,
                     progress);
@@ -316,7 +316,7 @@ namespace ISPAudit.ViewModels
         /// </summary>
         private async Task RunSilenceMonitorAsync(OverlayWindow? overlay)
         {
-            if (_trafficCollector == null || _flowMonitor == null || _cts == null) return;
+            if (_trafficCollector == null || _connectionMonitor == null || _cts == null) return;
             
             bool silenceWarningShown = false;
             
@@ -326,9 +326,9 @@ namespace ISPAudit.ViewModels
                 {
                     await Task.Delay(1000, _cts.Token).ConfigureAwait(false);
                     
-                    // Проверяем время с момента открытия handle (warmup)
-                    var totalElapsed = _flowMonitor.FlowOpenedUtc.HasValue 
-                        ? (DateTime.UtcNow - _flowMonitor.FlowOpenedUtc.Value).TotalSeconds 
+                    // Проверяем время с момента запуска мониторинга (warmup)
+                    var totalElapsed = _connectionMonitor.MonitorStartedUtc.HasValue 
+                        ? (DateTime.UtcNow - _connectionMonitor.MonitorStartedUtc.Value).TotalSeconds 
                         : 0;
 
                     if (totalElapsed < WarmupSeconds || silenceWarningShown)
@@ -432,10 +432,10 @@ namespace ISPAudit.ViewModels
         {
             Log("[Services] Запуск мониторинговых сервисов...");
             
-            // Flow Monitor
-            _flowMonitor = new FlowMonitorService(progress);
+            // Connection Monitor (WinDivert Socket Layer)
+            _connectionMonitor = new ConnectionMonitorService(progress);
             
-            _flowMonitor.OnFlowEvent += (count, pid, proto, remoteIp, remotePort, localPort) => 
+            _connectionMonitor.OnConnectionEvent += (count, pid, proto, remoteIp, remotePort, localPort) => 
             {
                 if (count % 10 == 0)
                 {
@@ -447,11 +447,11 @@ namespace ISPAudit.ViewModels
                 }
             };
 
-            _flowMonitor.UseWatcherMode = false;
+            _connectionMonitor.UsePollingMode = false;
             FlowModeText = "Socket Layer";
-            Log("[Services] FlowMonitor: Socket Layer only");
+            Log("[Services] ConnectionMonitor: Socket Layer активен");
             
-            await _flowMonitor.StartAsync(_cts!.Token).ConfigureAwait(false);
+            await _connectionMonitor.StartAsync(_cts!.Token).ConfigureAwait(false);
             
             // Network Monitor (для DNS)
             _networkMonitor = new NetworkMonitorService("udp.DstPort == 53 or udp.SrcPort == 53", progress);
@@ -479,17 +479,17 @@ namespace ISPAudit.ViewModels
                 if (_pidTracker != null) await _pidTracker.StopAsync().ConfigureAwait(false);
                 if (_dnsParser != null) await _dnsParser.StopAsync().ConfigureAwait(false);
                 if (_networkMonitor != null) await _networkMonitor.StopAsync().ConfigureAwait(false);
-                if (_flowMonitor != null) await _flowMonitor.StopAsync().ConfigureAwait(false);
+                if (_connectionMonitor != null) await _connectionMonitor.StopAsync().ConfigureAwait(false);
                 
                 _pidTracker?.Dispose();
                 _dnsParser?.Dispose();
                 _networkMonitor?.Dispose();
-                _flowMonitor?.Dispose();
+                _connectionMonitor?.Dispose();
                 
                 _pidTracker = null;
                 _dnsParser = null;
                 _networkMonitor = null;
-                _flowMonitor = null;
+                _connectionMonitor = null;
             }
             catch (Exception ex)
             {

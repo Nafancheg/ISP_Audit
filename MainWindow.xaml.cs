@@ -25,7 +25,7 @@ namespace ISPAudit
         {
             if (sender is DataGridRow row && row.DataContext is TestResult result)
             {
-                if (DataContext is MainViewModel viewModel && viewModel.DetailsCommand.CanExecute(result))
+                if (DataContext is MainViewModelRefactored viewModel && viewModel.DetailsCommand.CanExecute(result))
                 {
                     viewModel.DetailsCommand.Execute(result);
                 }

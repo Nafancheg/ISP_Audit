@@ -105,14 +105,15 @@ if (HttpReplyLooksLikeDPIRedirect(payload, hostname)) bFail = true;
 | Компонент | Статус |
 |-----------|--------|
 | `BypassCoordinator` | ✅ Интегрирован в LiveTestingPipeline |
-| `WinDivertBypassEnforcer` | ✅ Удалён (заменён на BypassCoordinator) |
-| `IBypassEnforcer` | ✅ Удалён (не нужен) |
+| `WinDivertBypassEnforcer` | ✅ Удалён |
+| `IBypassEnforcer` | ✅ Удалён |
 | `FixHistory` + UI откат | ✅ Удалён |
 | `AuditRunner.cs` | ✅ Удалён |
 | `Output/` папка | ✅ Удалена |
-| Flow/Socket WinDivert layers | ✅ Socket Layer включён |
-| `TrafficAnalyzer.cs` | ⚠️ DEPRECATED (заменён на TrafficCollector) |
-| `TrafficAnalyzerDualLayer.cs` | 🗑️ Мёртвый код (не используется) |
+| `MainViewModel.cs` | ✅ Удалён (заменён на MainViewModelRefactored) |
+| `TrafficAnalyzer.cs` | ✅ Удалён (заменён на TrafficCollector) |
+| `TrafficAnalyzerDualLayer.cs` | ✅ Удалён |
+| `FlowMonitorService` | ✅ Переименован → ConnectionMonitorService |
 
 ---
 
@@ -181,30 +182,23 @@ DiagnosticOrchestrator.RunAsync()
             └── await LiveTestingPipeline.EnqueueHostAsync(host)
 ```
 
-**Ключевое изменение:** TrafficAnalyzer → TrafficCollector
-- Раньше: TrafficAnalyzer создавал LiveTestingPipeline внутри себя (инверсия зависимостей)
-- Теперь: DiagnosticOrchestrator координирует оба **равноправных** компонента
+**Ключевое изменение:** Полный рефакторинг архитектуры (02.12.2025)
+- `MainViewModel` (2700+ строк) → `MainViewModelRefactored` (~430 строк) 
+- `TrafficAnalyzer` → `TrafficCollector` (SRP, IAsyncEnumerable)
+- `FlowMonitorService` → `ConnectionMonitorService` (Socket Layer мониторинг)
+- DiagnosticOrchestrator координирует TrafficCollector + LiveTestingPipeline
 
 **Статус рефакторинга:**
 | Модуль | Файл | Строк | Статус |
 |--------|------|-------|--------|
-| MainViewModelRefactored | `ViewModels/MainViewModelRefactored.cs` | ~430 | ✅ Создан |
+| MainViewModelRefactored | `ViewModels/MainViewModelRefactored.cs` | ~485 | ✅ АКТИВЕН |
 | BypassController | `ViewModels/BypassController.cs` | ~510 | ✅ Создан |
 | DiagnosticOrchestrator | `ViewModels/DiagnosticOrchestrator.cs` | ~560 | ✅ Обновлён |
 | TestResultsManager | `ViewModels/TestResultsManager.cs` | ~490 | ✅ Создан |
-| TrafficCollector | `Utils/TrafficCollector.cs` | ~290 | ✅ NEW |
+| TrafficCollector | `Utils/TrafficCollector.cs` | ~310 | ✅ Создан |
+| ConnectionMonitorService | `Utils/ConnectionMonitorService.cs` | ~230 | ✅ Переименован |
 | LiveTestingPipeline | `Utils/LiveTestingPipeline.cs` | ~216 | ✅ Рефакторён |
-| TrafficAnalyzer | `Utils/TrafficAnalyzer.cs` | ~1034 | ⚠️ DEPRECATED |
-| TrafficAnalyzerDualLayer | `Utils/TrafficAnalyzerDualLayer.cs` | ~752 | 🗑️ Удалить |
-| MainWindow переключение | `MainWindow.xaml.cs` | ⏳ TODO |
-
-**Как активировать новую архитектуру:**
-```csharp
-// MainWindow.xaml.cs — заменить:
-DataContext = new MainViewModel();
-// На:
-DataContext = new MainViewModelRefactored();
-```
+| RelayCommand | `Wpf/RelayCommand.cs` | ~30 | ✅ Вынесен |
 
 **Принципы архитектуры:**
 1. **Single Responsibility** — каждый компонент делает одно
@@ -423,18 +417,18 @@ DiagnosticOrchestrator.RunAsync()
 |-------|-------|------------|
 | Network + Sniff | Только копирует | DNS захват (NetworkMonitor) |
 | Flow + Sniff+RecvOnly | Только читает | События соединений (НЕ ИСПОЛЬЗУЕТСЯ) |
-| Socket + Sniff+RecvOnly | Только читает | События connect (НЕ ИСПОЛЬЗУЕТСЯ) |
+| Socket + Sniff+RecvOnly | Только читает | События connect (ОСНОВНОЙ) |
 | Network + None | Перехватывает | RST blocker, TLS fragmenter |
 
 **Ключевое:** `Sniff` НЕ конфликтует с `None` — можно использовать параллельно!
 
-### FlowMonitorService
+### ConnectionMonitorService
 
 **Два режима:**
-1. **WinDivert Socket Layer** — событийный, точный ✅ ИСПОЛЬЗУЕТСЯ
+1. **WinDivert Socket Layer** — событийный, точный ✅ ОСНОВНОЙ
 2. **IP Helper API polling** — fallback для систем без WinDivert
 
-**Текущее:** `DiagnosticOrchestrator` устанавливает `UseWatcherMode = false` → Socket Layer активен.
+**Текущее:** `DiagnosticOrchestrator` устанавливает `UsePollingMode = false` → Socket Layer активен.
 
 ### Детекция блокировок (StandardHostTester + StandardBlockageClassifier)
 
@@ -508,11 +502,10 @@ ISP_Audit/
 ├── MainWindow.xaml(.cs)          # Главное окно
 │
 ├── ViewModels/
-│   ├── MainViewModel.cs              # ⚠️ DEPRECATED (старый God Object)
-│   ├── MainViewModelRefactored.cs    # ✅ NEW: тонкий координатор
-│   ├── BypassController.cs           # ✅ NEW: bypass toggle, VPN, DoH
-│   ├── DiagnosticOrchestrator.cs     # ✅ NEW: lifecycle, Collector+Pipeline
-│   └── TestResultsManager.cs         # ✅ NEW: результаты, эвристики
+│   ├── MainViewModelRefactored.cs    # ✅ Главная ViewModel (~485 строк)
+│   ├── BypassController.cs           # ✅ bypass toggle, VPN, DoH
+│   ├── DiagnosticOrchestrator.cs     # ✅ lifecycle, Collector+Pipeline
+│   └── TestResultsManager.cs         # ✅ результаты, эвристики
 │
 ├── Bypass/
 │   ├── WinDivertBypassManager.cs # Управление WinDivert
@@ -531,12 +524,17 @@ ISP_Audit/
 │       └── StandardBlockageClassifier.cs
 │
 ├── Utils/
-│   ├── TrafficCollector.cs       # ✅ NEW: чистый сборщик (IAsyncEnumerable)
-│   ├── TrafficAnalyzer.cs        # ⚠️ DEPRECATED
-│   ├── TrafficAnalyzerDualLayer.cs # 🗑️ Удалить (мёртвый код)
+│   ├── TrafficCollector.cs       # ✅ Сборщик трафика (IAsyncEnumerable)
+│   ├── ConnectionMonitorService.cs # ✅ Socket Layer мониторинг
 │   ├── LiveTestingPipeline.cs    # ✅ Тестирование + BypassCoordinator
-│   ├── FlowMonitorService.cs     # Мониторинг соединений
+│   ├── NetworkMonitorService.cs  # DNS захват
+│   ├── DnsSnifferService.cs      # DNS парсинг
+│   ├── PidTrackerService.cs      # Трекинг процессов
 │   └── ...
+│
+├── Wpf/
+│   ├── RelayCommand.cs           # ✅ ICommand реализация
+│   └── ServiceItemViewModel.cs   # UI для сервисов
 │
 ├── Models/
 │   ├── Target.cs
@@ -553,7 +551,6 @@ ISP_Audit/
 ```
 
 ### Следующие шаги (TODO)
-- [ ] Включить Socket Layer мониторинг (событийная модель)
 - [ ] Улучшить детекцию: TCP Retransmissions, HTTP redirects
 - [ ] Ручное тестирование: YouTube, Discord, rutracker
 
@@ -584,10 +581,11 @@ ISP_Audit/
 
 | Дата | Изменения |
 |------|-----------|
-| 02.12.2025 | **TrafficCollector:** TrafficAnalyzer заменён на TrafficCollector (SRP, IAsyncEnumerable). DiagnosticOrchestrator теперь координирует Collector + Pipeline. TrafficAnalyzer помечен как DEPRECATED |
-| 02.12.2025 | **Рефакторинг MainViewModel:** добавлены BypassController, DiagnosticOrchestrator, TestResultsManager, MainViewModelRefactored. Диаграмма обновлена с пометками ✅ NEW |
-| 01.12.2025 | **Целевая архитектура:** добавлена диаграмма и принципы рефакторинга (TrafficAnalyzer не должен создавать Pipeline) |
-| 01.12.2025 | **Рефакторинг:** BypassCoordinator интегрирован, WinDivertBypassEnforcer/IBypassEnforcer удалены, мёртвый код очищен |
+| 02.12.2025 | **Cleanup:** Удалены MainViewModel.cs, TrafficAnalyzer.cs, TrafficAnalyzerDualLayer.cs. FlowMonitorService → ConnectionMonitorService. RelayCommand вынесен в Wpf/. MainWindow переключён на MainViewModelRefactored |
+| 02.12.2025 | **TrafficCollector:** TrafficAnalyzer заменён на TrafficCollector (SRP, IAsyncEnumerable). DiagnosticOrchestrator теперь координирует Collector + Pipeline |
+| 02.12.2025 | **Рефакторинг MainViewModel:** добавлены BypassController, DiagnosticOrchestrator, TestResultsManager, MainViewModelRefactored |
+| 01.12.2025 | **Целевая архитектура:** добавлена диаграмма и принципы рефакторинга |
+| 01.12.2025 | **Рефакторинг:** BypassCoordinator интегрирован, мёртвый код очищен |
 | 01.12.2025 | Реструктуризация: критические проблемы в начало, план работ, принятые решения |
 | 27.11.2025 | Добавлено сравнение детекции с Zapret |
 | 27.11.2025 | Добавлено сравнение bypass методов с GoodbyeDPI/Zapret |

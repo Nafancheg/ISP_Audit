@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using ISPAudit.Models;
+using IspAudit.Wpf;
 using IspAudit.Tests;
 
 // Явно указываем WPF вместо WinForms
@@ -456,7 +457,7 @@ namespace ISPAudit.ViewModels
                 }
             }
 
-            if (cleanMsg.Contains("FlowMonitor")) cleanMsg = "Анализ сетевого потока...";
+            if (cleanMsg.Contains("ConnectionMonitor")) cleanMsg = "Анализ сетевых соединений...";
             if (cleanMsg.Contains("WinDivert")) cleanMsg = "Инициализация драйвера перехвата...";
             if (cleanMsg.Contains("DNS")) cleanMsg = "Проверка DNS запросов...";
             

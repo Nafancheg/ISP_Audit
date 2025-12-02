@@ -14,7 +14,7 @@
         TextOptions.TextRenderingMode="ClearType">
     
     <Window.DataContext>
-        <vm:MainViewModel/>
+        <vm:MainViewModelRefactored/>
     </Window.DataContext>
 
     <Grid Margin="16">

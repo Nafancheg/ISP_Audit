@@ -12,12 +12,12 @@ namespace IspAudit.Utils
 {
     /// <summary>
     /// Чистый сборщик сетевого трафика.
-    /// Single Responsibility: только сбор соединений через WinDivert Flow Layer.
+    /// Single Responsibility: только сбор соединений через WinDivert Socket Layer.
     /// НЕ содержит логику тестирования, bypass, или UI.
     /// </summary>
     public sealed class TrafficCollector : IDisposable
     {
-        private readonly FlowMonitorService _flowMonitor;
+        private readonly ConnectionMonitorService _connectionMonitor;
         private readonly PidTrackerService _pidTracker;
         private readonly DnsParserService _dnsParser;
         private readonly IProgress<string>? _progress;
@@ -47,12 +47,12 @@ namespace IspAudit.Utils
         public DateTime LastNewConnectionTime => _lastNewConnectionTime;
 
         public TrafficCollector(
-            FlowMonitorService flowMonitor,
+            ConnectionMonitorService connectionMonitor,
             PidTrackerService pidTracker,
             DnsParserService dnsParser,
             IProgress<string>? progress = null)
         {
-            _flowMonitor = flowMonitor ?? throw new ArgumentNullException(nameof(flowMonitor));
+            _connectionMonitor = connectionMonitor ?? throw new ArgumentNullException(nameof(connectionMonitor));
             _pidTracker = pidTracker ?? throw new ArgumentNullException(nameof(pidTracker));
             _dnsParser = dnsParser ?? throw new ArgumentNullException(nameof(dnsParser));
             _progress = progress;
@@ -82,8 +82,8 @@ namespace IspAudit.Utils
                 cts.CancelAfter(captureTimeout.Value);
             }
 
-            // Подписка на события Flow
-            void OnFlowEvent(int eventNum, int pid, byte protocol, IPAddress remoteIp, ushort remotePort, ushort localPort)
+            // Подписка на события соединений
+            void OnConnectionEvent(int eventNum, int pid, byte protocol, IPAddress remoteIp, ushort remotePort, ushort localPort)
             {
                 // Фильтруем по отслеживаемым PID
                 if (!_pidTracker.TrackedPids.Contains(pid))
@@ -144,7 +144,7 @@ namespace IspAudit.Utils
                 }
             }
 
-            _flowMonitor.OnFlowEvent += OnFlowEvent;
+            _connectionMonitor.OnConnectionEvent += OnConnectionEvent;
             _dnsParser.OnHostnameUpdated += OnHostnameUpdated;
 
             try
@@ -157,7 +157,7 @@ namespace IspAudit.Utils
             }
             finally
             {
-                _flowMonitor.OnFlowEvent -= OnFlowEvent;
+                _connectionMonitor.OnConnectionEvent -= OnConnectionEvent;
                 _dnsParser.OnHostnameUpdated -= OnHostnameUpdated;
                 writer.Complete();
                 

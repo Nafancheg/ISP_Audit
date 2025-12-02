@@ -9,79 +9,78 @@ using IspAudit.Bypass;
 namespace IspAudit.Utils
 {
     /// <summary>
-    /// Сервис для мониторинга сетевой активности.
-    /// Поддерживает два режима:
-    /// 1. WinDivert Socket Layer — основной режим (событийная модель, Sniff+RecvOnly — не конфликтует с bypass)
-    /// 2. TcpConnectionWatcher — fallback (polling через IP Helper API, для систем без WinDivert)
+    /// Сервис мониторинга сетевых соединений процессов.
+    /// Основной режим: WinDivert Socket Layer (Sniff+RecvOnly) — событийная модель, не конфликтует с bypass.
+    /// Fallback: TcpConnectionWatcher (polling через IP Helper API) — для систем без WinDivert.
     /// </summary>
-    public class FlowMonitorService : IDisposable
+    public class ConnectionMonitorService : IDisposable
     {
         private WinDivertNative.SafeHandle? _socketHandle;
-        private Task? _monitorTask;
-        private Task? _socketMonitorTask;
+        private Task? _pollingTask;
+        private Task? _socketTask;
         private CancellationTokenSource? _cts;
         private readonly IProgress<string>? _progress;
         private bool _isRunning;
         private readonly TaskCompletionSource<bool> _readySignal = new();
         private readonly TcpConnectionWatcher _watcher = new();
         
-        public DateTime? FlowOpenedUtc { get; private set; }
+        /// <summary>Время открытия мониторинга (UTC)</summary>
+        public DateTime? MonitorStartedUtc { get; private set; }
+        /// <summary>Время первого события (UTC)</summary>
         public DateTime? FirstEventUtc { get; private set; }
         private int _totalEventsCount;
         public int TotalEventsCount => _totalEventsCount;
 
         /// <summary>
-        /// Если true, используется TcpConnectionWatcher (polling) вместо WinDivert Flow Layer.
+        /// Режим polling через IP Helper API (fallback). 
+        /// false = WinDivert Socket Layer (основной режим).
         /// </summary>
-        public bool UseWatcherMode { get; set; }
+        public bool UsePollingMode { get; set; }
         
         /// <summary>
-        /// Событие, вызываемое при получении Flow события.
+        /// Событие нового соединения.
         /// Args: (eventCount, pid, protocol, remoteIp, remotePort, localPort)
         /// </summary>
-        public event Action<int, int, byte, IPAddress, ushort, ushort>? OnFlowEvent;
+        public event Action<int, int, byte, IPAddress, ushort, ushort>? OnConnectionEvent;
 
-        public FlowMonitorService(IProgress<string>? progress = null)
+        public ConnectionMonitorService(IProgress<string>? progress = null)
         {
             _progress = progress;
         }
 
         /// <summary>
-        /// Запускает мониторинг в фоновом режиме.
-        /// Socket Layer — основной режим (Sniff+RecvOnly — не конфликтует с bypass).
-        /// Watcher Mode — fallback для систем без WinDivert.
+        /// Запускает мониторинг соединений.
         /// </summary>
         public Task StartAsync(CancellationToken cancellationToken = default)
         {
             if (_isRunning)
             {
-                throw new InvalidOperationException("FlowMonitorService уже запущен");
+                throw new InvalidOperationException("ConnectionMonitorService уже запущен");
             }
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _isRunning = true;
 
-            if (UseWatcherMode)
+            if (UsePollingMode)
             {
-                // Watcher mode: polling через IP Helper API (fallback для систем без WinDivert)
-                _monitorTask = Task.Run(() => RunWatcherLoop(_cts.Token), _cts.Token);
+                // Polling через IP Helper API (fallback для систем без WinDivert)
+                _pollingTask = Task.Run(() => RunPollingLoop(_cts.Token), _cts.Token);
             }
             else
             {
-                // Socket Layer: событийная модель через WinDivert (основной режим)
-                _socketMonitorTask = Task.Run(() => RunSocketMonitorLoop(_cts.Token), _cts.Token);
+                // WinDivert Socket Layer — основной режим (событийная модель)
+                _socketTask = Task.Run(() => RunSocketLoop(_cts.Token), _cts.Token);
             }
             
-            // Ждём, пока выбранный режим откроется
             return _readySignal.Task;
         }
 
-        private async Task RunWatcherLoop(CancellationToken token)
+        private async Task RunPollingLoop(CancellationToken token)
         {
             try
             {
-                _progress?.Report("[FlowMonitor] Запуск в режиме Watcher (Polling)...");
-                FlowOpenedUtc = DateTime.UtcNow;
+                _progress?.Report("[ConnectionMonitor] Запуск в режиме Polling (IP Helper API)...");
+                MonitorStartedUtc = DateTime.UtcNow;
                 _readySignal.TrySetResult(true);
 
                 var seenConnections = new HashSet<string>();
@@ -92,7 +91,6 @@ namespace IspAudit.Utils
                     
                     foreach (var conn in snapshot)
                     {
-                        // Формируем уникальный ключ соединения
                         var key = $"{conn.RemoteIp}:{conn.RemotePort}:{conn.LocalPort}:{conn.Protocol}";
                         
                         if (seenConnections.Add(key))
@@ -104,17 +102,16 @@ namespace IspAudit.Utils
                             }
 
                             byte proto = conn.Protocol == TransportProtocol.TCP ? (byte)6 : (byte)17;
-                            OnFlowEvent?.Invoke(count, conn.ProcessId, proto, conn.RemoteIp, conn.RemotePort, conn.LocalPort);
+                            OnConnectionEvent?.Invoke(count, conn.ProcessId, proto, conn.RemoteIp, conn.RemotePort, conn.LocalPort);
                         }
                     }
 
-                    // Пауза между опросами (1 секунда)
                     await Task.Delay(1000, token).ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
             {
-                _progress?.Report($"[FlowMonitor] Watcher Error: {ex.Message}");
+                _progress?.Report($"[ConnectionMonitor] Polling Error: {ex.Message}");
             }
             finally
             {
@@ -122,20 +119,19 @@ namespace IspAudit.Utils
             }
         }
 
-        private void RunSocketMonitorLoop(CancellationToken token)
+        private void RunSocketLoop(CancellationToken token)
         {
             try
             {
-                _progress?.Report("[FlowMonitor] Открытие WinDivert Socket layer...");
+                _progress?.Report("[ConnectionMonitor] Открытие WinDivert Socket Layer...");
                 
                 const string socketFilter = "true"; 
                 _socketHandle = WinDivertNative.Open(socketFilter, WinDivertNative.Layer.Socket, -1000, 
                     WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.RecvOnly);
                 
-                FlowOpenedUtc = DateTime.UtcNow;
-                _progress?.Report($"[FlowMonitor] ✓ Socket layer открыт (Utc={FlowOpenedUtc:O})");
+                MonitorStartedUtc = DateTime.UtcNow;
+                _progress?.Report($"[ConnectionMonitor] ✓ Socket Layer активен");
                 
-                // Сигнализируем готовность (теперь Socket Layer — основной режим)
                 _readySignal.TrySetResult(true);
                 
                 var addr = new WinDivertNative.Address();
@@ -152,11 +148,10 @@ namespace IspAudit.Utils
                         continue;
                     }
 
-                    // Обрабатываем только события SOCKET_CONNECT (попытка соединения)
+                    // SOCKET_CONNECT = попытка соединения
                     if (addr.Event != WinDivertNative.WINDIVERT_EVENT_SOCKET_CONNECT)
                         continue;
 
-                    // Пропускаем loopback
                     if (addr.Loopback)
                         continue;
 
@@ -178,10 +173,6 @@ namespace IspAudit.Utils
                         for (int i = 0; i < 4; i++)
                         {
                             var b = BitConverter.GetBytes(parts[i]);
-                            // WinDivert возвращает в Host Byte Order (Little Endian на x64)
-                            // BitConverter.GetBytes возвращает Little Endian
-                            // IPAddress ожидает Network Byte Order (Big Endian)
-                            // Поэтому нужно реверсировать
                             if (BitConverter.IsLittleEndian)
                             {
                                 Array.Reverse(b);
@@ -204,17 +195,16 @@ namespace IspAudit.Utils
                     var remotePort = addr.Data.Socket.RemotePort;
                     var localPort = addr.Data.Socket.LocalPort;
 
-                    // Передаем событие подписчикам (используем тот же event, так как это тоже "поток")
                     int count = Interlocked.Increment(ref _totalEventsCount);
                     
                     if (count == 1)
                     {
                         FirstEventUtc = DateTime.UtcNow;
-                        var delta = (FirstEventUtc.Value - FlowOpenedUtc!.Value).TotalMilliseconds;
-                        _progress?.Report($"[FlowMonitor] Первое событие через {delta:F0}ms");
+                        var delta = (FirstEventUtc.Value - MonitorStartedUtc!.Value).TotalMilliseconds;
+                        _progress?.Report($"[ConnectionMonitor] Первое событие через {delta:F0}ms");
                     }
                     
-                    OnFlowEvent?.Invoke(count, pid, protocol, remoteIp, remotePort, localPort);
+                    OnConnectionEvent?.Invoke(count, pid, protocol, remoteIp, remotePort, localPort);
                 }
             }
             catch (System.ComponentModel.Win32Exception wx)
@@ -223,17 +213,17 @@ namespace IspAudit.Utils
                 
                 if (wx.NativeErrorCode == 1058)
                 {
-                    _progress?.Report("[FlowMonitor] Ошибка: служба драйвера отключена (код 1058). Требуются права администратора.");
+                    _progress?.Report("[ConnectionMonitor] Ошибка: служба драйвера отключена (код 1058). Требуются права администратора.");
                 }
                 else
                 {
-                    _progress?.Report($"[FlowMonitor] Ошибка WinDivertOpen: {wx.NativeErrorCode} - {wx.Message}");
+                    _progress?.Report($"[ConnectionMonitor] Ошибка WinDivert: {wx.NativeErrorCode} - {wx.Message}");
                 }
             }
             catch (Exception ex)
             {
                 _readySignal.TrySetException(ex);
-                _progress?.Report($"[FlowMonitor] Socket Layer Error: {ex.Message}");
+                _progress?.Report($"[ConnectionMonitor] Socket Layer Error: {ex.Message}");
             }
             finally
             {
@@ -251,8 +241,8 @@ namespace IspAudit.Utils
             _cts?.Cancel();
             
             var tasks = new List<Task>();
-            if (_monitorTask != null) tasks.Add(_monitorTask);
-            if (_socketMonitorTask != null) tasks.Add(_socketMonitorTask);
+            if (_pollingTask != null) tasks.Add(_pollingTask);
+            if (_socketTask != null) tasks.Add(_socketTask);
 
             try
             {
@@ -260,7 +250,7 @@ namespace IspAudit.Utils
             }
             catch (OperationCanceledException)
             {
-                // Ожидаемое исключение при отмене
+                // Ожидаемо при отмене
             }
         }
 
