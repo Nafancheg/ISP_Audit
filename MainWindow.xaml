@@ -12,7 +12,7 @@
         FontFamily="Segoe UI"
         TextOptions.TextFormattingMode="Display"
         TextOptions.TextRenderingMode="ClearType">
-    
+
     <Window.DataContext>
         <vm:MainViewModelRefactored/>
     </Window.DataContext>
@@ -34,8 +34,7 @@
                 Margin="0,0,0,12"
                 AutomationProperties.AutomationId="ScenarioSelector">
             <StackPanel>
-                <TextBlock Text="Диагностика приложения" Style="{StaticResource H2Style}" Margin="0,0,0,8"/>
-                
+
                 <!-- Exe Selection -->
                 <StackPanel Margin="0,0,0,0" 
                             IsEnabled="{Binding IsBasicTestMode, Converter={StaticResource InverseBoolConverter}}"
@@ -48,41 +47,41 @@
                         </Grid.ColumnDefinitions>
                         <TextBox Grid.Column="0" Style="{StaticResource ModernTextBoxStyle}" 
                                  Text="{Binding ExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 AutomationProperties.AutomationId="ExePathTextBox"/>
-                        <Button Grid.Column="1" Content="Обзор..." 
+                                 AutomationProperties.AutomationId="ExePathTextBox" Margin="0,0,750,10"/>
+                        <Button Content="Обзор..." 
                                 Style="{StaticResource SecondaryButtonStyle}"
                                 Command="{Binding BrowseExeCommand}"
                                 IsEnabled="{Binding IsStart}"
-                                Margin="8,0,0,0"
+                                Margin="600,0,550,10"
                                 AutomationProperties.AutomationId="BrowseButton"/>
+                        <CheckBox Content="Тест базовых сервисов (Google, YouTube, Discord)"
+                                  IsChecked="{Binding IsBasicTestMode}"
+                                  IsEnabled="{Binding IsStart}"
+                                  AutomationProperties.AutomationId="BasicTestCheckbox" Margin="1002,14,20,21"/>
                     </Grid>
                 </StackPanel>
 
                 <Grid Margin="0,12,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition/>
+                        <ColumnDefinition Width="Auto" MinWidth="198.4"/>
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0">
+                    <StackPanel Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,198,0">
                         <!-- Basic Services Test Checkbox -->
-                        <CheckBox Content="Тест базовых сервисов (Google, YouTube, Discord)"
-                                  IsChecked="{Binding IsBasicTestMode}"
-                                  IsEnabled="{Binding IsStart}"
-                                  AutomationProperties.AutomationId="BasicTestCheckbox"/>
 
                         <!-- Auto Bypass Options - СКРЫТО: bypass включается автоматически при старте
                              Переключение стратегий будет реализовано отдельно -->
                     </StackPanel>
 
                     <!-- Start Button (Unified) -->
-                    <Button Grid.Column="1"
+                    <Button
                             Content="{Binding StartButtonText}" 
                             Style="{StaticResource PrimaryButtonStyle}"
                             Command="{Binding StartLiveTestingCommand}"
-                            VerticalAlignment="Bottom"
-                            Margin="16,0,0,0"
-                            AutomationProperties.AutomationId="StartButton"/>
+                            VerticalAlignment="Top"
+                            Margin="788,-60,149,0"
+                            AutomationProperties.AutomationId="StartButton" Height="40"/>
                 </Grid>
 
                 <!-- Bypass Control Panel (Пульт управления) -->
@@ -96,13 +95,13 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            
+
                             <!-- Title -->
                             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="🎛️" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
                                 <TextBlock Text="Bypass Control" FontWeight="Bold" FontSize="14" Foreground="#1F2937" VerticalAlignment="Center"/>
                             </StackPanel>
-                            
+
                             <!-- Status Badges -->
                             <StackPanel Grid.Column="1" Orientation="Horizontal">
                                 <!-- DoH Active Badge -->
@@ -133,7 +132,7 @@
                                 <TextBlock Text="{Binding VpnWarningText}" FontSize="12" Foreground="#92400E" VerticalAlignment="Center" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
-                        
+
                         <!-- Compatibility Warning (несовместимость стратегий) -->
                         <Border Background="#FEF9C3" BorderBrush="#FDE047" BorderThickness="1" CornerRadius="6" 
                                 Padding="10,6" Margin="0,0,0,12"
@@ -141,7 +140,7 @@
                             <TextBlock Text="{Binding CompatibilityWarning}" FontSize="11" Foreground="#854D0E" 
                                        VerticalAlignment="Center" TextWrapping="Wrap" LineHeight="18"/>
                         </Border>
-                        
+
                         <!-- Независимые toggle-кнопки bypass (1 опция = 1 кнопка) -->
                         <Grid Margin="0,0,0,0">
                             <Grid.ColumnDefinitions>
@@ -152,7 +151,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            
+
                             <!-- Fragment -->
                             <Button Grid.Column="0" Command="{Binding ToggleFragmentCommand}"
                                     Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
@@ -170,7 +169,7 @@
                                     </Style>
                                 </Button.Style>
                             </Button>
-                            
+
                             <!-- Disorder (фрагменты в обратном порядке) -->
                             <Button Grid.Column="1" Command="{Binding ToggleDisorderCommand}"
                                     Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
@@ -188,7 +187,7 @@
                                     </Style>
                                 </Button.Style>
                             </Button>
-                            
+
                             <!-- Fake -->
                             <Button Grid.Column="2" Command="{Binding ToggleFakeCommand}"
                                     Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
@@ -206,7 +205,7 @@
                                     </Style>
                                 </Button.Style>
                             </Button>
-                            
+
                             <!-- DROP RST -->
                             <Button Grid.Column="3" Command="{Binding ToggleDropRstCommand}"
                                     Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
@@ -224,7 +223,7 @@
                                     </Style>
                                 </Button.Style>
                             </Button>
-                            
+
                             <!-- DoH -->
                             <Button Grid.Column="4" Command="{Binding ToggleDoHCommand}"
                                     Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,8,0"
@@ -242,7 +241,7 @@
                                     </Style>
                                 </Button.Style>
                             </Button>
-                            
+
                             <!-- Выключить всё -->
                             <Button Grid.Column="5" Command="{Binding DisableAllBypassCommand}"
                                     Height="36" Width="80" FontSize="12" FontWeight="SemiBold" Cursor="Hand"
@@ -285,20 +284,23 @@
                 <!-- Active State (Running OR Done) -->
                 <Grid Visibility="{Binding IsStart, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/> <!-- Header (Running) -->
-                        <RowDefinition Height="Auto"/> <!-- Header (Done) -->
-                        <RowDefinition Height="*"/>    <!-- DataGrid -->
+                        <RowDefinition Height="Auto"/>
+                        <!-- Header (Running) -->
+                        <RowDefinition Height="Auto"/>
+                        <!-- Header (Done) -->
+                        <RowDefinition Height="*"/>
+                        <!-- DataGrid -->
                     </Grid.RowDefinitions>
 
                     <!-- Running Header -->
                     <StackPanel Grid.Row="0" 
                                 Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibilityConverter}}"
                                 Margin="16,16,16,8">
-                        
+
                         <!-- Title Row with Badge -->
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <TextBlock Text="Выполняется диагностика..." Style="{StaticResource H2Style}" VerticalAlignment="Center"/>
-                            
+
                             <!-- Bypass Badge - показывает что bypass активен -->
                             <Border Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="4" Margin="12,0,0,0" Padding="6,2"
                                     VerticalAlignment="Center"
@@ -320,7 +322,7 @@
                                      BorderThickness="0"
                                      Background="#E5E7EB"
                                      Foreground="{StaticResource PrimaryBrush}"/>
-                        
+
                         <!-- D2: Flow Stats -->
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <TextBlock Text="Активность сети:" FontWeight="SemiBold" Margin="0,0,8,0" Foreground="#4B5563" FontSize="12"/>
@@ -339,9 +341,9 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            
+
                             <TextBlock Text="Диагностика завершена" Style="{StaticResource H2Style}"/>
-                            
+
                             <StackPanel Grid.Column="1" Orientation="Horizontal">
                                 <Button Content="Экспорт отчета" 
                                         Style="{StaticResource SecondaryButtonStyle}"
@@ -372,17 +374,17 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                
+
                                 <StackPanel Grid.Row="0" Grid.Column="0">
                                     <TextBlock Text="Успешно" Style="{StaticResource CaptionStyle}"/>
                                     <TextBlock Text="{Binding PassCount}" Style="{StaticResource H2Style}" Foreground="{StaticResource PassBrush}"/>
                                 </StackPanel>
-                                
+
                                 <StackPanel Grid.Row="0" Grid.Column="1">
                                     <TextBlock Text="Ошибки" Style="{StaticResource CaptionStyle}"/>
                                     <TextBlock Text="{Binding FailCount}" Style="{StaticResource H2Style}" Foreground="{StaticResource FailBrush}"/>
                                 </StackPanel>
-                                
+
                                 <StackPanel Grid.Row="0" Grid.Column="2">
                                     <TextBlock Text="Предупреждения" Style="{StaticResource CaptionStyle}"/>
                                     <TextBlock Text="{Binding WarnCount}" Style="{StaticResource H2Style}" Foreground="{StaticResource WarnBrush}"/>
@@ -431,7 +433,7 @@
                               HorizontalScrollBarVisibility="Disabled"
                               VerticalScrollBarVisibility="Auto"
                               AutomationProperties.AutomationId="TestResultsDataGrid">
-                        
+
                         <DataGrid.Resources>
                             <!-- Override Selection Colors to Light Blue so buttons and gray text are visible -->
                             <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#DBEAFE"/>
@@ -447,7 +449,7 @@
                                 <Setter Property="BorderThickness" Value="0,0,0,1"/>
                                 <Setter Property="BorderBrush" Value="#E5E7EB"/>
                             </Style>
-                            
+
                             <Style TargetType="DataGridRow">
                                 <Setter Property="MinHeight" Value="36"/>
                                 <EventSetter Event="MouseDoubleClick" Handler="DataGridRow_MouseDoubleClick"/>
@@ -457,7 +459,7 @@
                                     </Trigger>
                                 </Style.Triggers>
                             </Style>
-                            
+
                             <Style TargetType="DataGridCell">
                                 <Setter Property="Padding" Value="8,4"/>
                                 <Setter Property="FocusVisualStyle" Value="{x:Null}"/>

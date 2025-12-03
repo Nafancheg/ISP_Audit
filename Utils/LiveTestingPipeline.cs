@@ -27,6 +27,16 @@ namespace IspAudit.Utils
         
         private readonly CancellationTokenSource _cts = new();
         private readonly Task[] _workers;
+        
+        // Счётчики для отслеживания очереди
+        private int _pendingInSniffer;
+        private int _pendingInTester;
+        private int _pendingInClassifier;
+        
+        /// <summary>
+        /// Количество хостов, ожидающих обработки во всех очередях
+        /// </summary>
+        public int PendingCount => _pendingInSniffer + _pendingInTester + _pendingInClassifier;
 
         // Modules
         private readonly IHostTester _tester;
@@ -79,7 +89,51 @@ namespace IspAudit.Utils
         /// </summary>
         public async ValueTask EnqueueHostAsync(HostDiscovered host)
         {
+            Interlocked.Increment(ref _pendingInSniffer);
             await _snifferQueue.Writer.WriteAsync(host).ConfigureAwait(false);
+        }
+        
+        /// <summary>
+        /// Завершает приём новых хостов и ожидает обработки всех в очереди
+        /// </summary>
+        /// <param name="timeout">Максимальное время ожидания</param>
+        /// <returns>true если все хосты обработаны, false если таймаут</returns>
+        public async Task<bool> DrainAndCompleteAsync(TimeSpan timeout)
+        {
+            // Закрываем входную очередь - больше хостов не будет
+            _snifferQueue.Writer.TryComplete();
+            
+            _progress?.Report($"[Pipeline] Ожидание завершения тестов... (в очереди: {PendingCount})");
+            
+            var deadline = DateTime.UtcNow + timeout;
+            
+            // Ждём пока все очереди опустеют
+            while (PendingCount > 0 && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(200).ConfigureAwait(false);
+                
+                // Логируем прогресс каждые 2 секунды
+                if ((int)(deadline - DateTime.UtcNow).TotalSeconds % 2 == 0)
+                {
+                    _progress?.Report($"[Pipeline] Осталось в очереди: {PendingCount}");
+                }
+            }
+            
+            var completed = PendingCount == 0;
+            if (completed)
+            {
+                _progress?.Report("[Pipeline] ✓ Все тесты завершены");
+            }
+            else
+            {
+                _progress?.Report($"[Pipeline] ⚠ Таймаут, не завершено: {PendingCount}");
+            }
+            
+            // Закрываем остальные очереди
+            _testerQueue.Writer.TryComplete();
+            _bypassQueue.Writer.TryComplete();
+            
+            return completed;
         }
 
         /// <summary>
@@ -89,15 +143,25 @@ namespace IspAudit.Utils
         {
             await foreach (var host in _snifferQueue.Reader.ReadAllAsync(ct))
             {
+                Interlocked.Decrement(ref _pendingInSniffer);
+                Interlocked.Increment(ref _pendingInTester);
                 try
                 {
                     // Тестируем хост (DNS, TCP, TLS)
                     var result = await _tester.TestHostAsync(host, ct).ConfigureAwait(false);
                     await _testerQueue.Writer.WriteAsync(result, ct).ConfigureAwait(false);
                 }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    // Не логируем при отмене
+                }
                 catch (Exception ex)
                 {
                     _progress?.Report($"[TESTER] Ошибка тестирования {host.RemoteIp}: {ex.Message}");
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _pendingInTester);
                 }
             }
         }
@@ -109,6 +173,7 @@ namespace IspAudit.Utils
         {
             await foreach (var tested in _testerQueue.Reader.ReadAllAsync(ct))
             {
+                Interlocked.Increment(ref _pendingInClassifier);
                 try
                 {
                     // Классифицируем блокировку
@@ -133,11 +198,15 @@ namespace IspAudit.Utils
                 {
                     _progress?.Report($"[CLASSIFIER] Ошибка классификации: {ex.Message}");
                 }
+                finally
+                {
+                    Interlocked.Decrement(ref _pendingInClassifier);
+                }
             }
         }
 
         /// <summary>
-        /// Worker 3: Обновление UI и применение bypass стратегий через BypassCoordinator
+        /// Worker 3: Обновление UI (bypass применяется отдельно, не во время диагностики)
         /// </summary>
         private async Task UiWorker(CancellationToken ct)
         {
@@ -159,40 +228,12 @@ namespace IspAudit.Utils
                     var checks = $"DNS:{(blocked.TestResult.DnsOk ? "✓" : "✗")} TCP:{(blocked.TestResult.TcpOk ? "✓" : "✗")} TLS:{(blocked.TestResult.TlsOk ? "✓" : "✗")}";
                     
                     _progress?.Report($"❌ {details} | {checks} | {blocked.TestResult.BlockageType}");
-                    _progress?.Report($"   → Рекомендуемая стратегия: {blocked.BypassStrategy}");
                     
-                    // Применяем bypass динамически через BypassCoordinator если:
-                    // 1. Стратегия не NONE (есть что применять)
-                    // 2. Auto-bypass включен в конфигурации
-                    // 3. Координатор доступен
-                    // 4. Bypass manager не в состоянии Faulted
-                    if (blocked.BypassStrategy != "NONE" && 
-                        _config.EnableAutoBypass && 
-                        _coordinator != null &&
-                        _bypassManager != null &&
-                        _bypassManager.State != BypassState.Faulted)
+                    // Показываем рекомендацию, но НЕ применяем bypass автоматически
+                    // Bypass должен применяться отдельной командой после завершения диагностики
+                    if (blocked.BypassStrategy != "NONE" && blocked.BypassStrategy != "UNKNOWN")
                     {
-                        _progress?.Report($"[BYPASS] Координатор применяет стратегию для {host}...");
-                        
-                        // BypassCoordinator.AutoFixLiveAsync — главный метод:
-                        // - Проверяет кеш работающих стратегий
-                        // - Перебирает стратегии по приоритету
-                        // - Выполняет ретест после каждой
-                        // - Кеширует успешную стратегию
-                        var fixResult = await _coordinator.AutoFixLiveAsync(
-                            blocked.TestResult,
-                            async (testedHost) => await _tester.TestHostAsync(testedHost.Host, ct).ConfigureAwait(false),
-                            ct
-                        ).ConfigureAwait(false);
-                        
-                        if (fixResult.Success)
-                        {
-                            _progress?.Report($"✓✓ BYPASS УСПЕХ: {fixResult.Strategy} работает для {host}");
-                        }
-                        else
-                        {
-                            _progress?.Report($"✗ BYPASS НЕ ПОМОГ: {fixResult.Message}");
-                        }
+                        _progress?.Report($"   💡 Рекомендация: {blocked.BypassStrategy}");
                     }
                 }
                 catch (Exception ex)
@@ -202,30 +243,27 @@ namespace IspAudit.Utils
             }
         }
 
-
-
-
-
-
-
+        private bool _disposed;
+        
         public void Dispose()
         {
-            _cts.Cancel();
-            _snifferQueue.Writer.Complete();
-            _testerQueue.Writer.Complete();
-            _bypassQueue.Writer.Complete();
+            if (_disposed) return;
+            _disposed = true;
             
-            Task.WhenAll(_workers).GetAwaiter().GetResult();
-            _cts.Dispose();
+            try { _cts.Cancel(); } catch { }
             
-            // НЕ отключаем bypass manager здесь, если он был передан извне (MainViewModel)
-            // MainViewModel сам управляет его жизненным циклом
-            if (_bypassManager != null && _config.EnableAutoBypass && IspAudit.Bypass.WinDivertBypassManager.HasAdministratorRights)
+            _snifferQueue.Writer.TryComplete();
+            _testerQueue.Writer.TryComplete();
+            _bypassQueue.Writer.TryComplete();
+            
+            // Ждём завершения воркеров максимум 3 секунды
+            try
             {
-                 // Если мы создали его сами (в конструкторе), то мы его и чистим
-                 // Но в текущей архитектуре MainViewModel передает его нам
-                 // Поэтому здесь мы ничего не делаем с _bypassManager, если он пришел извне
+                Task.WhenAll(_workers).Wait(3000);
             }
+            catch { }
+            
+            try { _cts.Dispose(); } catch { }
         }
     }
 }

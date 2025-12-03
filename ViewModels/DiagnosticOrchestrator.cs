@@ -42,6 +42,7 @@ namespace ISPAudit.ViewModels
         private int _flowEventsCount;
         private int _connectionsDiscovered;
         private string _flowModeText = "WinDivert";
+        private string? _stopReason;
         
         // Настройки
         private const int SilenceTimeoutSeconds = 60;
@@ -231,35 +232,55 @@ namespace ISPAudit.ViewModels
                 Log("[Orchestrator] ✓ TrafficCollector + LiveTestingPipeline созданы");
 
                 // 8. Запуск сбора и тестирования параллельно
-                var collectorTask = RunCollectorWithPipelineAsync(overlay, progress);
+                var collectorTask = RunCollectorWithPipelineAsync(overlay, progress!);
                 var silenceMonitorTask = RunSilenceMonitorAsync(overlay);
                 var processMonitorTask = RunProcessMonitorAsync();
                 
                 // Ждём завершения (любой таск может завершить диагностику)
-                await Task.WhenAny(collectorTask, silenceMonitorTask, processMonitorTask);
-                
-                // Даём время на завершение оставшихся хостов в pipeline
-                await Task.Delay(500, _cts.Token).ContinueWith(_ => { });
-                
-                Log($"[Orchestrator] Завершено. Соединений: {_trafficCollector?.ConnectionsCount ?? 0}");
+                try
+                {
+                    await Task.WhenAny(collectorTask, silenceMonitorTask, processMonitorTask);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Игнорируем здесь, обработка ниже
+                }
                 
                 // 9. Закрываем оверлей
                 Application.Current?.Dispatcher.Invoke(() => overlay?.Close());
-                
-                // 10. Генерация и сохранение профиля
-                if (_trafficCollector != null && _trafficCollector.ConnectionsCount > 0)
+
+                // 10. Обработка завершения
+                if (_stopReason == "UserCancel")
                 {
-                    var profile = await _trafficCollector.BuildProfileAsync(
-                        Path.GetFileNameWithoutExtension(targetExePath),
-                        _cts.Token);
-                    await SaveProfileAsync(targetExePath, profile);
+                    Log("[Orchestrator] Отменено пользователем");
+                    DiagnosticStatus = "Диагностика отменена";
                 }
-                
-                DiagnosticStatus = "Диагностика завершена";
+                else
+                {
+                    // ProcessExited, SilenceTimeout или другое
+                    Log($"[Orchestrator] Завершение диагностики ({_stopReason ?? "Unknown"})...");
+                    
+                    // Даём время на завершение оставшихся хостов в pipeline
+                    try { await Task.Delay(500, CancellationToken.None); } catch { }
+                    
+                    Log($"[Orchestrator] Завершено. Соединений: {_trafficCollector?.ConnectionsCount ?? 0}");
+                    
+                    // Генерация и сохранение профиля (используем CancellationToken.None, чтобы сохранить даже при отмене)
+                    if (_trafficCollector != null && _trafficCollector.ConnectionsCount > 0)
+                    {
+                        var profile = await _trafficCollector.BuildProfileAsync(
+                            Path.GetFileNameWithoutExtension(targetExePath),
+                            CancellationToken.None);
+                        await SaveProfileAsync(targetExePath, profile);
+                    }
+                    
+                    DiagnosticStatus = "Диагностика завершена";
+                }
             }
             catch (OperationCanceledException)
             {
-                Log("[Orchestrator] Отменено пользователем");
+                // Этот блок может быть достигнут, если исключение возникло до Task.WhenAny
+                Log("[Orchestrator] Отменено пользователем (до запуска задач)");
                 DiagnosticStatus = "Диагностика отменена";
             }
             catch (Exception ex)
@@ -354,6 +375,7 @@ namespace ISPAudit.ViewModels
                         else
                         {
                             Log("[Silence] Авто-завершение диагностики");
+                            _stopReason = "SilenceTimeout";
                             _cts.Cancel();
                             break;
                         }
@@ -397,6 +419,20 @@ namespace ISPAudit.ViewModels
                     if (!anyAlive && _pidTracker.TrackedPids.Count > 0)
                     {
                         Log("[Orchestrator] Все отслеживаемые процессы завершились");
+                        _stopReason = "ProcessExited";
+                        
+                        // НЕ отменяем сразу! Даём pipeline завершить тестирование
+                        // Сначала закрываем входящий поток данных
+                        _trafficCollector?.StopCollecting();
+                        
+                        // Ждём завершения тестов (максимум 30 секунд)
+                        if (_testingPipeline != null)
+                        {
+                            Log("[Orchestrator] Ожидание завершения тестов...");
+                            await _testingPipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+                        }
+                        
+                        // Теперь можно отменять
                         _cts.Cancel();
                         break;
                     }
@@ -420,8 +456,15 @@ namespace ISPAudit.ViewModels
             }
             
             Log("[Orchestrator] Отмена...");
-            _cts.Cancel();
             DiagnosticStatus = "Остановка...";
+            _stopReason = "UserCancel";
+            
+            // Сначала отменяем токен — это прервёт await foreach в CollectAsync
+            _cts.Cancel();
+            
+            // Потом останавливаем компоненты
+            _testingPipeline?.Dispose();
+            _trafficCollector?.Dispose();
         }
 
         #endregion
@@ -453,11 +496,16 @@ namespace ISPAudit.ViewModels
             
             await _connectionMonitor.StartAsync(_cts!.Token).ConfigureAwait(false);
             
-            // Network Monitor (для DNS)
-            _networkMonitor = new NetworkMonitorService("udp.DstPort == 53 or udp.SrcPort == 53", progress);
+            // Network Monitor (для DNS и SNI)
+            // Добавляем tcp.DstPort == 443 для захвата SNI (только outbound)
+            // Priority = 1000 (выше чем у BypassManager = 200), чтобы видеть оригинальные пакеты до фрагментации
+            _networkMonitor = new NetworkMonitorService(
+                "udp.DstPort == 53 or udp.SrcPort == 53 or (tcp.DstPort == 443 and outbound)", 
+                progress,
+                priority: 1000);
             await _networkMonitor.StartAsync(_cts.Token).ConfigureAwait(false);
             
-            // DNS Parser
+            // DNS Parser (теперь умеет и SNI)
             _dnsParser = new DnsParserService(_networkMonitor, progress);
             _dnsParser.OnDnsLookupFailed += (hostname, error) => 
             {

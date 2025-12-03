@@ -469,11 +469,7 @@ namespace ISPAudit.ViewModels
                 warnings.Add("ℹ️ Fake без фрагментации — рекомендуется добавить Fragment или Disorder");
             }
             
-            // VPN + Bypass = возможный конфликт
-            if (IsVpnDetected && (IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled || IsDropRstEnabled))
-            {
-                warnings.Add("⚠️ VPN + Bypass — возможен конфликт, bypass может быть не нужен");
-            }
+            // VPN + Bypass warning removed from here as it is already shown in VpnWarningText
             
             // DoH без других опций — только DNS защита
             if (IsDoHEnabled && !IsFragmentEnabled && !IsDisorderEnabled && !IsFakeEnabled && !IsDropRstEnabled)

@@ -240,17 +240,21 @@ namespace IspAudit.Utils
 
             _cts?.Cancel();
             
+            // Force close handle to unblock WinDivertRecv
+            try { _socketHandle?.Dispose(); } catch { }
+            
             var tasks = new List<Task>();
             if (_pollingTask != null) tasks.Add(_pollingTask);
             if (_socketTask != null) tasks.Add(_socketTask);
 
             try
             {
-                await Task.WhenAll(tasks).ConfigureAwait(false);
+                // Wait with timeout to avoid deadlocks
+                await Task.WhenAny(Task.WhenAll(tasks), Task.Delay(2000)).ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch (Exception)
             {
-                // Ожидаемо при отмене
+                // Ignore errors during stop
             }
         }
 

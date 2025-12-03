@@ -29,6 +29,7 @@ namespace IspAudit.Utils
         private CancellationTokenSource? _cts;
         private readonly IProgress<string>? _progress;
         private readonly string _filter;
+        private readonly short _priority;
         private bool _isRunning;
         private readonly TaskCompletionSource<bool> _readySignal = new();
         
@@ -39,10 +40,11 @@ namespace IspAudit.Utils
         /// </summary>
         public event Action<PacketData>? OnPacketReceived;
 
-        public NetworkMonitorService(string filter = "true", IProgress<string>? progress = null)
+        public NetworkMonitorService(string filter = "true", IProgress<string>? progress = null, short priority = 0)
         {
             _filter = filter;
             _progress = progress;
+            _priority = priority;
         }
 
         /// <summary>
@@ -72,9 +74,9 @@ namespace IspAudit.Utils
                 
                 try
                 {
-                    _handle = WinDivertNative.Open(_filter, WinDivertNative.Layer.Network, 0, 
+                    _handle = WinDivertNative.Open(_filter, WinDivertNative.Layer.Network, _priority, 
                         WinDivertNative.OpenFlags.Sniff);
-                    _progress?.Report("[NetworkMonitor] ✓ Network layer открыт");
+                    _progress?.Report($"[NetworkMonitor] ✓ Network layer открыт (Priority={_priority})");
                     
                     // Сигнализируем, что готовы принимать пакеты
                     _readySignal.TrySetResult(true);
@@ -143,15 +145,19 @@ namespace IspAudit.Utils
 
             _cts?.Cancel();
             
+            // Force close handle to unblock WinDivertRecv
+            try { _handle?.Dispose(); } catch { }
+            
             if (_monitorTask != null)
             {
                 try
                 {
-                    await _monitorTask.ConfigureAwait(false);
+                    // Wait with timeout to avoid deadlocks
+                    await Task.WhenAny(_monitorTask, Task.Delay(2000)).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException)
+                catch (Exception)
                 {
-                    // Ожидаемое исключение при отмене
+                    // Ignore errors during stop
                 }
             }
         }

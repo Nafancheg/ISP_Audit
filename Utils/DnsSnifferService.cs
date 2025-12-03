@@ -54,17 +54,157 @@ namespace IspAudit.Utils
         {
             if (packet.IsOutbound)
             {
-                // Парсим исходящий запрос
+                // Парсим исходящий запрос DNS
                 TryParseDnsRequest(packet.Buffer, packet.Length);
+                
+                // Парсим TLS SNI (для определения хоста без DNS)
+                TryParseTlsSni(packet.Buffer, packet.Length);
             }
             else
             {
-                // Парсим входящий ответ
+                // Парсим входящий ответ DNS
                 if (TryParseDnsResponse(packet.Buffer, packet.Length))
                 {
                     ParsedCount++;
                 }
             }
+        }
+
+        private void TryParseTlsSni(byte[] buffer, int length)
+        {
+            try
+            {
+                // 1. Parse IP Header to find Protocol and DestIP
+                int ipVersion = (buffer[0] >> 4);
+                int ipHeaderLen;
+                int protocol;
+                string destIp;
+
+                if (ipVersion == 4)
+                {
+                    ipHeaderLen = (buffer[0] & 0x0F) * 4;
+                    protocol = buffer[9];
+                    destIp = new IPAddress(new byte[] { buffer[16], buffer[17], buffer[18], buffer[19] }).ToString();
+                }
+                else if (ipVersion == 6)
+                {
+                    ipHeaderLen = 40;
+                    protocol = buffer[6]; // Next Header (simplified, doesn't handle extension headers)
+                    var ipBytes = new byte[16];
+                    Array.Copy(buffer, 24, ipBytes, 0, 16);
+                    destIp = new IPAddress(ipBytes).ToString();
+                }
+                else return;
+
+                if (protocol != 6) return; // Not TCP
+
+                // 2. Parse TCP Header to find Payload
+                int tcpOffset = ipHeaderLen;
+                if (tcpOffset + 20 > length) return;
+                
+                int tcpHeaderLen = ((buffer[tcpOffset + 12] >> 4) & 0x0F) * 4;
+                int payloadOffset = tcpOffset + tcpHeaderLen;
+                
+                if (payloadOffset >= length) return; // No payload
+
+                // 3. Parse TLS Record
+                // Content Type (1) + Version (2) + Length (2)
+                if (payloadOffset + 5 > length) return;
+                
+                byte contentType = buffer[payloadOffset];
+                if (contentType != 22) return; // Not Handshake
+
+                // 4. Parse Handshake Protocol
+                // Handshake Type (1) + Length (3)
+                int handshakeOffset = payloadOffset + 5;
+                if (handshakeOffset + 4 > length) return;
+                
+                byte handshakeType = buffer[handshakeOffset];
+                if (handshakeType != 1) return; // Not Client Hello
+
+                // 5. Parse Client Hello
+                int pos = handshakeOffset + 4;
+                
+                // Version (2) + Random (32)
+                pos += 34;
+                if (pos >= length) return;
+
+                // Session ID
+                if (pos + 1 > length) return;
+                int sessionIdLen = buffer[pos];
+                pos += 1 + sessionIdLen;
+                if (pos >= length) return;
+
+                // Cipher Suites
+                if (pos + 2 > length) return;
+                int cipherSuitesLen = (buffer[pos] << 8) | buffer[pos + 1];
+                pos += 2 + cipherSuitesLen;
+                if (pos >= length) return;
+
+                // Compression Methods
+                if (pos + 1 > length) return;
+                int compMethodsLen = buffer[pos];
+                pos += 1 + compMethodsLen;
+                if (pos >= length) return;
+
+                // Extensions
+                if (pos + 2 > length) return;
+                int extensionsLen = (buffer[pos] << 8) | buffer[pos + 1];
+                pos += 2;
+                
+                int extensionsEnd = pos + extensionsLen;
+                if (extensionsEnd > length) extensionsEnd = length;
+
+                while (pos + 4 <= extensionsEnd)
+                {
+                    int extType = (buffer[pos] << 8) | buffer[pos + 1];
+                    int extLen = (buffer[pos + 2] << 8) | buffer[pos + 3];
+                    pos += 4;
+
+                    if (extType == 0) // Server Name (SNI)
+                    {
+                        if (pos + 2 <= extensionsEnd)
+                        {
+                            int listLen = (buffer[pos] << 8) | buffer[pos + 1];
+                            int sniPos = pos + 2;
+                            
+                            if (sniPos + 3 <= extensionsEnd)
+                            {
+                                byte nameType = buffer[sniPos]; // 0 = host_name
+                                int nameLen = (buffer[sniPos + 1] << 8) | buffer[sniPos + 2];
+                                
+                                if (nameType == 0 && sniPos + 3 + nameLen <= extensionsEnd)
+                                {
+                                    var hostname = System.Text.Encoding.ASCII.GetString(buffer, sniPos + 3, nameLen);
+                                    if (!string.IsNullOrEmpty(hostname))
+                                    {
+                                        // Found SNI!
+                                        var lowerName = hostname.ToLowerInvariant();
+                                        
+                                        // Update cache
+                                        var isNew = true;
+                                        if (_dnsCache.TryGetValue(destIp, out var existingName))
+                                        {
+                                            if (existingName == lowerName) isNew = false;
+                                        }
+                                        
+                                        if (isNew)
+                                        {
+                                            _dnsCache[destIp] = lowerName;
+                                            OnHostnameUpdated?.Invoke(destIp, lowerName);
+                                            _progress?.Report($"[SNI] Detected: {destIp} -> {lowerName}");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        break; // Found SNI, stop parsing extensions
+                    }
+
+                    pos += extLen;
+                }
+            }
+            catch { }
         }
 
         private void TryParseDnsRequest(byte[] buffer, int length)

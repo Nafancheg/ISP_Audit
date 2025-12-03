@@ -25,6 +25,10 @@ namespace IspAudit.Utils
         private readonly ConcurrentDictionary<string, ConnectionInfo> _connections = new();
         private DateTime _lastNewConnectionTime = DateTime.UtcNow;
         private bool _disposed;
+        private bool _collecting = true; // Флаг активности сбора
+        
+        // Канал для передачи хостов — хранится здесь для возможности завершить при Dispose
+        private System.Threading.Channels.ChannelWriter<HostDiscovered>? _activeWriter;
         
         /// <summary>
         /// Событие обнаружения нового хоста (для live pipeline)
@@ -45,6 +49,19 @@ namespace IspAudit.Utils
         /// Время последнего нового соединения
         /// </summary>
         public DateTime LastNewConnectionTime => _lastNewConnectionTime;
+        
+        /// <summary>
+        /// Останавливает сбор новых соединений (закрывает канал).
+        /// Pipeline продолжит обрабатывать уже собранные данные.
+        /// </summary>
+        public void StopCollecting()
+        {
+            if (!_collecting) return;
+            _collecting = false;
+            
+            _progress?.Report("[Collector] Остановка сбора (ожидание завершения тестов)");
+            _activeWriter?.TryComplete();
+        }
 
         public TrafficCollector(
             ConnectionMonitorService connectionMonitor,
@@ -74,6 +91,7 @@ namespace IspAudit.Utils
             // Канал для передачи обнаруженных хостов
             var hostChannel = System.Threading.Channels.Channel.CreateUnbounded<HostDiscovered>();
             var writer = hostChannel.Writer;
+            _activeWriter = writer; // Сохраняем для возможности завершить при Dispose
             
             // Настройка таймаута
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -159,7 +177,8 @@ namespace IspAudit.Utils
             {
                 _connectionMonitor.OnConnectionEvent -= OnConnectionEvent;
                 _dnsParser.OnHostnameUpdated -= OnHostnameUpdated;
-                writer.Complete();
+                _activeWriter = null;
+                writer.TryComplete();
                 
                 _progress?.Report($"[Collector] Завершено. Всего соединений: {_connections.Count}");
             }
@@ -294,6 +313,11 @@ namespace IspAudit.Utils
         {
             if (_disposed) return;
             _disposed = true;
+            
+            // Завершаем канал — это разблокирует ReadAllAsync
+            _activeWriter?.TryComplete();
+            _activeWriter = null;
+            
             _connections.Clear();
         }
 

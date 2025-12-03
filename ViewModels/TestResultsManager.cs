@@ -183,6 +183,56 @@ namespace ISPAudit.ViewModels
                         _lastUpdatedHost = host;
                     }
                 }
+                else if (msg.Contains("[Collector] Новое соединение"))
+                {
+                    // Формат: "[Collector] Новое соединение #1: 142.251.38.142:443 (proto=6, pid=3796)"
+                    var parts = msg.Split(new[] { ": " }, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length >= 2)
+                    {
+                        var hostPortPart = parts[1].Split(' ')[0]; // "142.251.38.142:443"
+                        var hostPort = hostPortPart.Split(':');
+                        if (hostPort.Length == 2)
+                        {
+                            var host = hostPort[0];
+                            UpdateTestResult(host, TestStatus.Running, "Обнаружено соединение...");
+                            _lastUpdatedHost = host;
+                        }
+                    }
+                }
+                else if (msg.Contains("[Collector] Hostname обновлен"))
+                {
+                    // Формат: "[Collector] Hostname обновлен: 142.251.38.142 → google.com"
+                    var parts = msg.Split(new[] { " → " }, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length == 2)
+                    {
+                        var ipPart = parts[0].Split(new[] { ": " }, StringSplitOptions.RemoveEmptyEntries).Last();
+                        var newHostname = parts[1].Trim();
+                        
+                        var existing = TestResults.FirstOrDefault(t => t.Target.Host == ipPart);
+                        if (existing != null)
+                        {
+                            // Обновляем имя цели
+                            var oldTarget = existing.Target;
+                            existing.Target = new Target 
+                            { 
+                                Name = newHostname, 
+                                Host = newHostname, // Используем имя как хост
+                                Service = oldTarget.Service,
+                                Critical = oldTarget.Critical,
+                                FallbackIp = ipPart // Сохраняем IP как fallback
+                            };
+                            
+                            // Если это был "Running", обновляем детали
+                            if (existing.Status == TestStatus.Running)
+                            {
+                                existing.Details = $"Hostname: {newHostname}";
+                            }
+                            
+                            // Обновляем мапу
+                            _lastUpdatedHost = newHostname;
+                        }
+                    }
+                }
                 else if (msg.StartsWith("❌ "))
                 {
                     // Формат: "❌ 1.2.3.4:443 | DNS:✓ TCP:✓ TLS:✗ | TLS_DPI"
