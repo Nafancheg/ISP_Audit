@@ -29,6 +29,9 @@
     <None Include="bypass_profile.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="noise_hosts.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <!-- WinDivert native libraries (x64 only, Windows 10/11) -->

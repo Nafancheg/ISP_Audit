@@ -198,7 +198,7 @@ namespace IspAudit.Utils
 
             // Группируем по hostname (или IP), исключаем шумные хосты
             var targetGroups = _connections.Values
-                .Where(c => !IsNoiseHost(c.Hostname)) // Фильтруем шумные хосты
+                .Where(c => !NoiseHostFilter.Instance.IsNoiseHost(c.Hostname)) // Фильтруем шумные хосты
                 .GroupBy(c => c.Hostname ?? c.RemoteIp.ToString())
                 .OrderByDescending(g => g.Count())
                 .ToList();
@@ -320,51 +320,6 @@ namespace IspAudit.Utils
             _activeWriter = null;
             
             _connections.Clear();
-        }
-
-        /// <summary>
-        /// Проверяет, является ли хост "шумным" (CDN, телеметрия, реклама)
-        /// </summary>
-        private static bool IsNoiseHost(string? hostname)
-        {
-            if (string.IsNullOrEmpty(hostname))
-                return false;
-            
-            var lower = hostname.ToLowerInvariant();
-            
-            // Google CDN и сервисы
-            if (lower.EndsWith(".1e100.net") ||
-                lower.Contains(".gvt1.") ||
-                lower.Contains(".gvt2.") ||
-                lower.Contains("googletagmanager") ||
-                lower.Contains("analytics.google") ||
-                lower.Contains("doubleclick"))
-                return true;
-            
-            // Amazon/Cloudflare CDN
-            if (lower.Contains("cloudfront.net") ||
-                lower.Contains("amazonaws.com") && !lower.Contains("cognito") ||
-                lower.Contains("cloudflare"))
-                return true;
-            
-            // Microsoft телеметрия
-            if (lower.Contains("events.data.microsoft.com") ||
-                lower.Contains("smartscreen.microsoft") ||
-                lower.Contains("telemetry.microsoft"))
-                return true;
-            
-            // Facebook/Meta
-            if (lower.Contains("facebook.com") ||
-                lower.Contains("fbcdn.net"))
-                return true;
-            
-            // Общие рекламные/аналитика домены
-            if (lower.Contains("scorecardresearch") ||
-                lower.Contains("omtrdc.net") ||
-                lower.Contains("demdex.net"))
-                return true;
-            
-            return false;
         }
 
         /// <summary>

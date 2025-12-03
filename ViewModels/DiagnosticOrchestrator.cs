@@ -147,6 +147,10 @@ namespace ISPAudit.ViewModels
                 
                 _cts = new CancellationTokenSource();
 
+                // Инициализируем фильтр шумных хостов
+                var noiseFilterPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "noise_hosts.json");
+                NoiseHostFilter.Initialize(noiseFilterPath, new Progress<string>(Log));
+
                 // Сброс DNS кеша
                 Log("[Orchestrator] Сброс DNS кеша...");
                 await RunFlushDnsAsync();

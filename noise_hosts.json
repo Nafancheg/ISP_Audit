@@ -1,0 +1,111 @@
+{
+  "description": "Паттерны шумных хостов для фильтрации. Поддерживается wildcard (*) в начале и конце.",
+  "version": "1.0",
+  "patterns": {
+    "cdn_infrastructure": {
+      "description": "CDN и облачная инфраструктура",
+      "hosts": [
+        "*.1e100.net",
+        "*.r.cloudfront.net",
+        "server-*.cloudfront.net",
+        "*.akamaiedge.net",
+        "*.akamai.net",
+        "*.fastly.net",
+        "*.cdn.cloudflare.net",
+        "ec2-*.compute-*.amazonaws.com",
+        "*.elb.amazonaws.com",
+        "*.trafficmanager.net",
+        "*.msedge.net"
+      ]
+    },
+    "analytics_telemetry": {
+      "description": "Аналитика и телеметрия",
+      "hosts": [
+        "*.google-analytics.com",
+        "analytics.google.com",
+        "*.googletagmanager.com",
+        "*.doubleclick.net",
+        "*.googlesyndication.com",
+        "*.adsrvr.org",
+        "*.scorecardresearch.com",
+        "*.hotjar.com",
+        "*.mouseflow.com",
+        "*.amplitude.com",
+        "*.mixpanel.com",
+        "vortex.data.microsoft.com",
+        "*.telemetry.microsoft.com",
+        "*.events.data.microsoft.com",
+        "*.omtrdc.net",
+        "stats.adobe.com"
+      ]
+    },
+    "monitoring": {
+      "description": "Сервисы мониторинга",
+      "hosts": [
+        "*.newrelic.com",
+        "*.datadoghq.com",
+        "*.sentry.io",
+        "*.raygun.io",
+        "*.appdynamics.com"
+      ]
+    },
+    "social_ads": {
+      "description": "Социальные сети и реклама (кроме API)",
+      "hosts": [
+        "*.fbcdn.net",
+        "*.t.co",
+        "*.pinterest.com"
+      ],
+      "exclude": [
+        "graph.facebook.com",
+        "api.facebook.com",
+        "api.twitter.com"
+      ]
+    },
+    "isp_internal": {
+      "description": "Внутренние хосты провайдеров",
+      "hosts": [
+        "yandex.ru",
+        "www.yandex.ru",
+        "*.rambler.ru"
+      ],
+      "exclude": [
+        "api.*.yandex.net",
+        "*.my.mail.ru",
+        "api.mail.ru",
+        "api.qiwi.com"
+      ]
+    },
+    "system_services": {
+      "description": "Системные и служебные сервисы",
+      "hosts": [
+        "*.msftncsi.com",
+        "*.ntp.org",
+        "time.*.com",
+        "pool.ntp.org",
+        "*.windowsupdate.com",
+        "*.update.microsoft.com",
+        "*.delivery.mp.microsoft.com"
+      ]
+    },
+    "dns_network": {
+      "description": "DNS и сетевые служебные зоны",
+      "hosts": [
+        "*.arpa",
+        "*.local",
+        "*.localdomain"
+      ]
+    },
+    "misc_telemetry": {
+      "description": "Прочая телеметрия",
+      "hosts": [
+        "*.smartscreen.microsoft.com",
+        "*.gvt1.com",
+        "*.gvt2.com"
+      ],
+      "exclude": [
+        "api.bing.com"
+      ]
+    }
+  }
+}
