@@ -101,11 +101,9 @@ namespace IspAudit.Bypass
 
         private static BypassProfile BuildFallback()
         {
-            var gameHosts = TargetCatalog.Targets
-                .Where(t => t.Service.Contains("Игровые сервера", StringComparison.OrdinalIgnoreCase))
-                .Select(t => t.Host)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            // В новой архитектуре список игровых хостов формируется динамически,
+            // поэтому fallback-профиль не привязывается к TargetCatalog.
+            var gameHosts = new List<string>();
 
             var defaultRule = new BypassRedirectRule
             {

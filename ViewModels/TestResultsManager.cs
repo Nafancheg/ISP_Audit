@@ -50,62 +50,37 @@ namespace ISPAudit.ViewModels
 
         #region Initialization
 
-        /// <summary>
-        /// Инициализация результатов из каталога целей
-        /// </summary>
         public void Initialize()
-        {
-            var catalogTargets = TargetCatalog.Targets;
-            
-            TestResults.Clear();
-            _testResultMap.Clear();
-
-            foreach (var t in catalogTargets)
-            {
-                var target = new Target
-                {
-                    Name = t.Name,
-                    Host = t.Host,
-                    Service = t.Service ?? "Unknown",
-                    Critical = false,
-                    FallbackIp = ""
-                };
-                
-                var result = new TestResult { Target = target, Status = TestStatus.Idle };
-                TestResults.Add(result);
-                _testResultMap[target.Name] = result;
-            }
-
-            NotifyCountersChanged();
-        }
-
-        /// <summary>
-        /// Очистка результатов для нового запуска
-        /// </summary>
-        public void Clear()
         {
             TestResults.Clear();
             _testResultMap.Clear();
             _resolvedIpMap.Clear();
+            _pendingResolutions.Clear();
             _lastUpdatedHost = null;
-            NotifyCountersChanged();
         }
 
         /// <summary>
-        /// Сброс всех статусов в Idle
+        /// Сброс статусов существующих записей в Idle (для повторного запуска)
         /// </summary>
         public void ResetStatuses()
         {
             foreach (var test in TestResults)
             {
                 test.Status = TestStatus.Idle;
+                test.Details = string.Empty;
+                test.Error = null!; // сбрасываем в null намеренно
             }
             NotifyCountersChanged();
         }
 
-        #endregion
-
-        #region Update Methods
+        /// <summary>
+        /// Полная очистка результатов (для нового запуска диагностики)
+        /// </summary>
+        public void Clear()
+        {
+            Initialize();
+            NotifyCountersChanged();
+        }
 
         /// <summary>
         /// Обновление результата теста
@@ -126,39 +101,21 @@ namespace ISPAudit.ViewModels
             }
             else
             {
-                // Пытаемся найти цель в каталоге
-                var knownTarget = TargetCatalog.Targets.FirstOrDefault(t => 
-                    t.Host.Equals(host, StringComparison.OrdinalIgnoreCase) || 
-                    t.Name.Equals(host, StringComparison.OrdinalIgnoreCase));
+                var target = new Target
+                {
+                    Name = host,
+                    Host = host,
+                    Service = "Unknown",
+                    Critical = false,
+                    FallbackIp = ""
+                };
 
-                Target target;
-                if (knownTarget != null)
-                {
-                    target = new Target 
-                    { 
-                        Name = knownTarget.Name, 
-                        Host = knownTarget.Host, 
-                        Service = knownTarget.Service,
-                        Critical = knownTarget.Critical,
-                        FallbackIp = knownTarget.FallbackIp ?? ""
-                    };
-                }
-                else if (_resolvedIpMap.TryGetValue(host, out var resolvedTarget))
-                {
-                    target = resolvedTarget;
-                }
-                else
-                {
-                    target = new Target { Name = host, Host = host, Service = "Обнаружено" };
-                    _ = ResolveUnknownHostAsync(host);
-                }
-
-                var result = new TestResult { Target = target, Status = status, Details = details };
+                existing = new TestResult { Target = target, Status = status, Details = details };
                 if (status == TestStatus.Fail)
                 {
-                    result.Error = details;
+                    existing.Error = details;
                 }
-                TestResults.Add(result);
+                TestResults.Add(existing);
             }
             
             NotifyCountersChanged();
@@ -359,59 +316,23 @@ namespace ISPAudit.ViewModels
         /// <summary>
         /// Предварительное разрешение целей
         /// </summary>
-        public async System.Threading.Tasks.Task PreResolveTargetsAsync()
+        public System.Threading.Tasks.Task PreResolveTargetsAsync()
         {
             try
             {
                 Log("[PreResolve] Starting target resolution...");
                 _resolvedIpMap.Clear();
-                
-                var targets = TargetCatalog.Targets;
-                foreach (var t in targets)
-                {
-                    try
-                    {
-                        if (!string.IsNullOrEmpty(t.FallbackIp))
-                        {
-                            _resolvedIpMap[t.FallbackIp] = new Target 
-                            { 
-                                Name = t.Name, 
-                                Host = t.Host, 
-                                Service = t.Service,
-                                Critical = t.Critical,
-                                FallbackIp = t.FallbackIp 
-                            };
-                        }
 
-                        var dnsResult = await IspAudit.Utils.NetUtils.ResolveWithFallbackAsync(t.Host);
-                        
-                        foreach (var ip in dnsResult.Addresses)
-                        {
-                            var ipStr = ip.ToString();
-                            if (!_resolvedIpMap.ContainsKey(ipStr))
-                            {
-                                _resolvedIpMap[ipStr] = new Target 
-                                { 
-                                    Name = t.Name, 
-                                    Host = t.Host, 
-                                    Service = t.Service,
-                                    Critical = t.Critical,
-                                    FallbackIp = t.FallbackIp ?? ""
-                                };
-                            }
-                        }
-                    }
-                    catch { }
-                }
-                
-                Log($"[PreResolve] Resolved {_resolvedIpMap.Count} IPs for {targets.Count} targets");
-                
+                // В новой архитектуре цели формируются динамически, поэтому
+                // предварительное разрешение по статическому каталогу не требуется.
+                Log($"[PreResolve] Skipped: dynamic targets mode");
+
                 // Обновляем существующие результаты
                 System.Windows.Application.Current?.Dispatcher.Invoke(() =>
                 {
                     foreach (var result in TestResults)
                     {
-                        if (result.Target.Name == result.Target.Host && 
+                        if (result.Target.Name == result.Target.Host &&
                             _resolvedIpMap.TryGetValue(result.Target.Host, out var resolvedTarget))
                         {
                             result.Target = resolvedTarget;
@@ -423,6 +344,9 @@ namespace ISPAudit.ViewModels
             {
                 Log($"[PreResolve] Error: {ex.Message}");
             }
+
+            // Никакой асинхронной работы здесь больше нет
+            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         private async System.Threading.Tasks.Task ResolveUnknownHostAsync(string ip)
@@ -523,12 +447,6 @@ namespace ISPAudit.ViewModels
         {
             // Проверка по имени сервиса
             string? failingService = TestResults.FirstOrDefault(t => t.Target.Host == failingHost)?.Target.Service;
-            
-            if (failingService == null)
-            {
-                var def = TargetCatalog.TryGetByHost(failingHost);
-                if (def != null) failingService = def.Service;
-            }
             
             if (!string.IsNullOrEmpty(failingService) && 
                 !string.IsNullOrEmpty(passingTarget.Service) &&

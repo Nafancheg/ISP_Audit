@@ -563,7 +563,7 @@ namespace ISPAudit.ViewModels
                 overlay.UpdateStatus("Анализ сетевого трафика...");
         }
 
-        private async Task SaveProfileAsync(string targetExePath, GameProfile profile)
+        private async Task SaveProfileAsync(string targetExePath, DiagnosticProfile profile)
         {
             try 
             {

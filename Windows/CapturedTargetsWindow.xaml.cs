@@ -10,9 +10,9 @@ namespace IspAudit.Windows
 {
     public partial class CapturedTargetsWindow : Window
     {
-        private readonly GameProfile _profile;
+        private readonly DiagnosticProfile _profile;
 
-        public CapturedTargetsWindow(GameProfile profile)
+        public CapturedTargetsWindow(DiagnosticProfile profile)
         {
             InitializeComponent();
             _profile = profile;

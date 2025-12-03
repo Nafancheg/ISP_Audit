@@ -6,8 +6,8 @@ namespace IspAudit
 {
     internal static class Program
     {
-        // Для совместимости с GUI: имя -> определение цели
-        public static Dictionary<string, TargetDefinition> Targets { get; set; } = TargetCatalog.CreateDefaultTargetMap();
+        // Для совместимости с GUI: имя -> определение цели (заполняется из активного профиля)
+        public static Dictionary<string, TargetDefinition> Targets { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
         [STAThread]
         private static int Main(string[] args)

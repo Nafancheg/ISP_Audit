@@ -15,7 +15,7 @@ namespace IspAudit.Utils
         /// </summary>
         public static BypassProfile PlanBypassStrategy(
             List<BlockageProblem> problems,
-            GameProfile gameProfile,
+            DiagnosticProfile gameProfile,
             IProgress<string>? progress = null)
         {
             progress?.Report($"Планирование стратегии обхода для {problems.Count} проблем...");

@@ -39,14 +39,7 @@ namespace IspAudit
         public UdpProbeDefinition Copy() => this with { };
     }
 
-    public class TargetCatalogData
-    {
-        public List<TargetDefinition> Targets { get; set; } = new();
-        public List<int> TcpPorts { get; set; } = new();
-        public List<UdpProbeDefinition> UdpProbes { get; set; } = new();
-    }
-
-    public class GameProfile
+    public class DiagnosticProfile
     {
         public string Name { get; set; } = string.Empty;
         public string TestMode { get; set; } = string.Empty;

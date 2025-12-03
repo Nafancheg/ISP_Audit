@@ -187,7 +187,7 @@ namespace IspAudit.Utils
         /// <summary>
         /// Получить собранные соединения с обогащением hostname
         /// </summary>
-        public async Task<GameProfile> BuildProfileAsync(
+        public async Task<DiagnosticProfile> BuildProfileAsync(
             string? processName = null,
             CancellationToken cancellationToken = default)
         {
@@ -247,7 +247,7 @@ namespace IspAudit.Utils
                 _progress?.Report($"  • {fail.Hostname} (DNS FAIL: {fail.Error})");
             }
 
-            return new GameProfile
+            return new DiagnosticProfile
             {
                 Name = $"Captured_{processName ?? "Unknown"}",
                 TestMode = "host",

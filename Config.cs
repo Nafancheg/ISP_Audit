@@ -12,10 +12,10 @@ namespace IspAudit
     public class Config
     {
         public List<string> Targets { get; set; } = new();
-        public Dictionary<string, TargetDefinition> TargetMap { get; set; } = TargetCatalog.CreateDefaultTargetMap();
+        public Dictionary<string, TargetDefinition> TargetMap { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         
-        // Управление игровыми профилями
-        public static GameProfile? ActiveProfile { get; set; }
+        // Управление профилями диагностики
+        public static DiagnosticProfile? ActiveProfile { get; set; }
         
         // Профиль окружения: normal|vpn (влияет на классификацию/пороги)
         public string Profile { get; set; } = "normal";
@@ -26,8 +26,8 @@ namespace IspAudit
         public int UdpTimeoutSeconds { get; set; } = 2;
 
         // Список портов для TCP проверок
-        public List<int> Ports { get; set; } = TargetCatalog.CreateDefaultTcpPorts();
-        public List<UdpProbeDefinition> UdpProbes { get; set; } = TargetCatalog.CreateDefaultUdpProbes();
+        public List<int> Ports { get; set; } = new() { 80, 443 };
+        public List<UdpProbeDefinition> UdpProbes { get; set; } = new();
 
         // Переключатели тестов (используются в GUI)
         public bool EnableDns { get; set; } = true;
@@ -71,16 +71,9 @@ namespace IspAudit
                 return result;
             }
 
-            // Fallback: старая логика с TargetCatalog
-            System.Diagnostics.Debug.WriteLine($"ResolveTargets: Using TargetCatalog fallback");
-            var map = TargetMap.Count > 0
-                ? TargetMap
-                : TargetCatalog.CreateDefaultTargetMap();
-
-            if (Targets.Count == 0)
-            {
-                return map.Values.Select(t => t.Copy()).ToList();
-            }
+            // Fallback: если нет активного профиля — строим цели только из явного списка Targets
+            System.Diagnostics.Debug.WriteLine($"ResolveTargets: Using explicit Targets fallback");
+            var map = TargetMap;
 
             var fallbackResult = new List<TargetDefinition>();
             foreach (var host in Targets)
@@ -89,13 +82,6 @@ namespace IspAudit
                 if (matched != null)
                 {
                     fallbackResult.Add(matched.Copy());
-                    continue;
-                }
-
-                var catalog = TargetCatalog.TryGetByHost(host);
-                if (catalog != null)
-                {
-                    fallbackResult.Add(catalog);
                     continue;
                 }
 
@@ -127,7 +113,7 @@ namespace IspAudit
                             try
                             {
                                 string json = File.ReadAllText(file);
-                                var testProfile = System.Text.Json.JsonSerializer.Deserialize<GameProfile>(json);
+                                var testProfile = System.Text.Json.JsonSerializer.Deserialize<DiagnosticProfile>(json);
                                 if (testProfile?.Name == profileName)
                                 {
                                     profilePath = file;
@@ -148,7 +134,7 @@ namespace IspAudit
                 }
 
                 string profileJson = File.ReadAllText(profilePath);
-                var profile = System.Text.Json.JsonSerializer.Deserialize<GameProfile>(profileJson);
+                var profile = System.Text.Json.JsonSerializer.Deserialize<DiagnosticProfile>(profileJson);
                 
                 if (profile == null)
                 {
