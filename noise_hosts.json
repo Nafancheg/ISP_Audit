@@ -1,11 +1,12 @@
 {
   "description": "Паттерны шумных хостов для фильтрации. Поддерживается wildcard (*) в начале и конце.",
-  "version": "1.0",
+  "version": "1.1",
   "patterns": {
     "cdn_infrastructure": {
       "description": "CDN и облачная инфраструктура",
       "hosts": [
         "*.1e100.net",
+        "*.bc.googleusercontent.com",
         "*.r.cloudfront.net",
         "server-*.cloudfront.net",
         "*.akamaiedge.net",
@@ -16,6 +17,18 @@
         "*.elb.amazonaws.com",
         "*.trafficmanager.net",
         "*.msedge.net"
+      ]
+    },
+    "doh_dns_services": {
+      "description": "DNS-over-HTTPS и публичные DNS",
+      "hosts": [
+        "cloudflare-dns.com",
+        "*.cloudflare-dns.com",
+        "dns.google",
+        "dns.google.com",
+        "doh.opendns.com",
+        "dns.quad9.net",
+        "dns.adguard.com"
       ]
     },
     "analytics_telemetry": {
@@ -37,6 +50,20 @@
         "*.events.data.microsoft.com",
         "*.omtrdc.net",
         "stats.adobe.com"
+      ]
+    },
+    "browser_services": {
+      "description": "Браузерные сервисы (Edge, Chrome)",
+      "hosts": [
+        "edge.microsoft.com",
+        "*.edge.microsoft.com",
+        "www.google.com",
+        "www.google.*",
+        "*.gstatic.com",
+        "*.googleapis.com"
+      ],
+      "exclude": [
+        "*.storage.googleapis.com"
       ]
     },
     "monitoring": {
@@ -67,6 +94,7 @@
       "hosts": [
         "yandex.ru",
         "www.yandex.ru",
+        "*.yandex.ru",
         "*.rambler.ru"
       ],
       "exclude": [

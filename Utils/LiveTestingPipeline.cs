@@ -188,6 +188,12 @@ namespace IspAudit.Utils
                 Interlocked.Increment(ref _pendingInClassifier);
                 try
                 {
+                    // Фильтруем шумные хосты (hostname уже известен после тестирования)
+                    if (NoiseHostFilter.Instance.IsNoiseHost(tested.Hostname))
+                    {
+                        continue; // Пропускаем без логирования
+                    }
+                    
                     // Классифицируем блокировку
                     var blocked = _classifier.ClassifyBlockage(tested);
 
