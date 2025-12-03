@@ -79,11 +79,30 @@ cd ISP_Audit
 # - native/WinDivert64.sys
 # - native/WinDivert.dll
 
+# Соберите тестовое приложение (нужно для тестирования)
+cd TestNetworkApp
+dotnet publish -c Release -r win-x64 --self-contained false -o bin/Publish
+cd ..
+
 # Debug
 dotnet build
 
 # Release single-file
 dotnet publish -c Release -r win-x64 /p:PublishSingleFile=true /p:SelfContained=true -o ./publish
+```
+
+### TestNetworkApp (для разработки)
+Тестовое приложение для калибровки и проверки работы ISP Audit:
+- Устанавливает соединения к 7 известным хостам (Google, YouTube, Discord, GitHub и др.)
+- Работает 60 секунд с повторяющимися запросами
+- Используйте как эталон для проверки захвата трафика
+
+```powershell
+# Сборка
+cd TestNetworkApp
+dotnet publish -c Release -r win-x64 --self-contained false -o bin/Publish
+
+# Использование: в ISP Audit выберите TestNetworkApp\bin\Publish\TestNetworkApp.exe
 ```
 
 ## Использование
