@@ -29,6 +29,9 @@ namespace IspAudit.Utils
         private readonly CancellationTokenSource _cts = new();
         private readonly Task[] _workers;
         
+        // Дедупликация: уже протестированные хосты (IP:Port)
+        private readonly ConcurrentDictionary<string, byte> _testedHosts = new();
+        
         // Счётчики для отслеживания очереди
         private int _pendingInSniffer;
         private int _pendingInTester;
@@ -146,6 +149,13 @@ namespace IspAudit.Utils
             await foreach (var host in _snifferQueue.Reader.ReadAllAsync(ct))
             {
                 Interlocked.Decrement(ref _pendingInSniffer);
+                
+                // Дедупликация: пропускаем уже протестированные хосты
+                var hostKey = $"{host.RemoteIp}:{host.RemotePort}";
+                if (!_testedHosts.TryAdd(hostKey, 1))
+                {
+                    continue; // Уже тестировали этот IP:Port
+                }
                 
                 // Фильтруем шумные хосты (Google CDN, analytics и т.д.)
                 var hostname = _dnsParser?.DnsCache.TryGetValue(host.RemoteIp.ToString(), out var name) == true 
