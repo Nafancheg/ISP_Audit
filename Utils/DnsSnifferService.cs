@@ -211,9 +211,18 @@ namespace IspAudit.Utils
         {
             try
             {
-                if (length < 20) return;
+                if (length < 28) return; // Минимум: IP (20) + UDP (8)
+                
+                // Проверяем протокол — должен быть UDP (17)
+                int protocol = buffer[9];
+                if (protocol != 17) return; // Не UDP — не DNS
                 
                 int ipHeaderLen = (buffer[0] & 0x0F) * 4;
+                
+                // Проверяем порт назначения — должен быть 53 (DNS)
+                int destPort = (buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1];
+                if (destPort != 53) return; // Не DNS порт
+                
                 int udpHeaderLen = 8;
                 int dnsOffset = ipHeaderLen + udpHeaderLen;
                 
@@ -243,9 +252,18 @@ namespace IspAudit.Utils
         {
             try
             {
-                if (length < 20) return false;
+                if (length < 28) return false; // Минимум: IP (20) + UDP (8)
+                
+                // Проверяем протокол — должен быть UDP (17)
+                int protocol = buffer[9];
+                if (protocol != 17) return false; // Не UDP — не DNS
                 
                 int ipHeaderLen = (buffer[0] & 0x0F) * 4;
+                
+                // Проверяем порт источника — должен быть 53 (DNS ответ)
+                int srcPort = (buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1];
+                if (srcPort != 53) return false; // Не DNS порт
+                
                 int udpHeaderLen = 8;
                 int dnsOffset = ipHeaderLen + udpHeaderLen;
                 

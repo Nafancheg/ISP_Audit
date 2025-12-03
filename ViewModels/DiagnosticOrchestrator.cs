@@ -260,8 +260,12 @@ namespace ISPAudit.ViewModels
                     // ProcessExited, SilenceTimeout или другое
                     Log($"[Orchestrator] Завершение диагностики ({_stopReason ?? "Unknown"})...");
                     
-                    // Даём время на завершение оставшихся хостов в pipeline
-                    try { await Task.Delay(500, CancellationToken.None); } catch { }
+                    // Ждём завершения всех тестов в pipeline (до 30 секунд)
+                    if (_testingPipeline != null)
+                    {
+                        Log("[Orchestrator] Ожидание завершения тестов в pipeline...");
+                        await _testingPipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+                    }
                     
                     Log($"[Orchestrator] Завершено. Соединений: {_trafficCollector?.ConnectionsCount ?? 0}");
                     
@@ -421,19 +425,11 @@ namespace ISPAudit.ViewModels
                         Log("[Orchestrator] Все отслеживаемые процессы завершились");
                         _stopReason = "ProcessExited";
                         
-                        // НЕ отменяем сразу! Даём pipeline завершить тестирование
-                        // Сначала закрываем входящий поток данных
+                        // Закрываем входящий поток данных (это разблокирует collectorTask)
+                        // DrainAndCompleteAsync будет вызван в основном потоке после WhenAny
                         _trafficCollector?.StopCollecting();
                         
-                        // Ждём завершения тестов (максимум 30 секунд)
-                        if (_testingPipeline != null)
-                        {
-                            Log("[Orchestrator] Ожидание завершения тестов...");
-                            await _testingPipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
-                        }
-                        
-                        // Теперь можно отменять
-                        _cts.Cancel();
+                        // НЕ отменяем и НЕ ждём здесь — основной поток сам вызовет DrainAndCompleteAsync
                         break;
                     }
                 }

@@ -20,6 +20,7 @@ namespace IspAudit.Utils
         private readonly PipelineConfig _config;
         private readonly IProgress<string>? _progress;
         private readonly IspAudit.Bypass.WinDivertBypassManager? _bypassManager;
+        private readonly DnsParserService? _dnsParser;
         
         private readonly Channel<HostDiscovered> _snifferQueue;
         private readonly Channel<HostTested> _testerQueue;
@@ -47,6 +48,7 @@ namespace IspAudit.Utils
         {
             _config = config;
             _progress = progress;
+            _dnsParser = dnsParser;
             
             // Используем переданный менеджер или создаем новый если auto-bypass включен
             if (bypassManager != null)
@@ -144,6 +146,16 @@ namespace IspAudit.Utils
             await foreach (var host in _snifferQueue.Reader.ReadAllAsync(ct))
             {
                 Interlocked.Decrement(ref _pendingInSniffer);
+                
+                // Фильтруем шумные хосты (Google CDN, analytics и т.д.)
+                var hostname = _dnsParser?.DnsCache.TryGetValue(host.RemoteIp.ToString(), out var name) == true 
+                    ? name : null;
+                if (IsNoiseHost(hostname))
+                {
+                    // Пропускаем без тестирования
+                    continue;
+                }
+                
                 Interlocked.Increment(ref _pendingInTester);
                 try
                 {
@@ -265,5 +277,48 @@ namespace IspAudit.Utils
             
             try { _cts.Dispose(); } catch { }
         }
+        
+        #region Host Filtering
+        
+        /// <summary>
+        /// Проверяет, является ли хост "шумным" (не нужным для диагностики).
+        /// Такие хосты пропускаются для экономии времени.
+        /// </summary>
+        private static bool IsNoiseHost(string? hostname)
+        {
+            if (string.IsNullOrEmpty(hostname)) return false;
+            
+            var lower = hostname.ToLowerInvariant();
+            
+            // Google CDN internal hostnames (reverse DNS)
+            // Примеры: lcprga-af-in-f2.1e100.net, prg03s10-in-f2.1e100.net, rc-in-f156.1e100.net
+            if (lower.EndsWith(".1e100.net")) return true;
+            
+            // CloudFront edge servers (reverse DNS)
+            // Примеры: server-99-84-91-18.vie50.r.cloudfront.net
+            if (lower.Contains(".r.cloudfront.net") && lower.StartsWith("server-")) return true;
+            
+            // AWS EC2 instances (reverse DNS) — обычно не являются целевыми серверами
+            // Примеры: ec2-98-91-75-43.compute-1.amazonaws.com
+            if (lower.StartsWith("ec2-") && lower.Contains(".compute-")) return true;
+            
+            // Microsoft telemetry/SmartScreen — не критичны для работы приложений
+            if (lower.Contains("smartscreen.microsoft.com")) return true;
+            if (lower.Contains("events.data.microsoft.com")) return true;
+            
+            // Yandex internal services
+            if (lower.EndsWith(".yandex.net") && !lower.Contains("api")) return true;
+            if (lower == "yandex.ru" || lower == "www.yandex.ru") return true;
+            
+            // Analytics/tracking — обычно не влияют на работу приложения
+            if (lower.Contains("analytics.google.com")) return true;
+            if (lower.Contains("googletagmanager.com")) return true;
+            if (lower.Contains("doubleclick.net")) return true;
+            if (lower.Contains("googlesyndication.com")) return true;
+            
+            return false;
+        }
+        
+        #endregion
     }
 }
