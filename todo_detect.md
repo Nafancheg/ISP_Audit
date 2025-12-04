@@ -190,23 +190,31 @@
 
 ### 3.1. Fail counter + time window
 
-**Идея:** добавить отдельное состояние per-host, не меняя сигнатуры существующих интерфейсов.
+**Статус:** базовая реализация и первый шаг агрегатора сигналов **сделаны**.
 
-- [ ] Добавить новый модельный класс, например `HostBlockageState` (`Core/Models`):
+- [x] Добавить новый модельный класс, например `HostBlockageState` (`Core/Models`):
   - `HostKey` (IP + порт и/или hostname).
   - `List<FailureEvent>` с `Timestamp`, `BlockageType`, флагами (`IsHardFail`, `IsTimeout`, `IsTls`, и т.п.).
   - Расчётные свойства: `FailCountLastWindow(TimeSpan window)`, `HasRecentHardFails`, и т.п.
 
-- [ ] Добавить простой стор для состояний, например `IBlockageStateStore` + реализация (в оперативной памяти):
-  - Методы `RegisterResult(HostTested result)` и `GetState(HostKey)`.
+- [x] Добавить простой стор для состояний, например `IBlockageStateStore` + реализация (в оперативной памяти):
+  - Методы вида `RegisterResult(HostTested result)` и выдача статистики по окну (`FailWindowStats`).
 
-- [ ] Расширить `StandardBlockageClassifier` так, чтобы:
+- [x] Расширить `StandardBlockageClassifier` так, чтобы:
   - В конструктор принимался `IBlockageStateStore` (через DI или с дефолтной реализацией).
-  - В `ClassifyBlockage` вызывался `stateStore.RegisterResult(tested)`, затем получалось текущее состояние и на его основе выставлялись дополнительные флаги/поле `BlockageSeverity`.
+  - В `ClassifyBlockage` запрашивалась статистика фейлов за окно и она использовалась хотя бы в текстовой части рекомендаций ("фейлов за 60с: N").
 
-- [ ] В `LiveTestingPipeline` заменить создание `new StandardBlockageClassifier()` на внедрение через конструктор:
-  - либо передавать общий `IBlockageStateStore`,
-  - либо дать возможность подменить реализацию в будущем.
+- [x] В `LiveTestingPipeline` заменить создание `new StandardBlockageClassifier()` на внедрение через конструктор:
+  - передавать общий `IBlockageStateStore`.
+
+- [x] Развить стор до первого варианта агрегатора сигналов:
+  - Ввести DTO `BlockageSignals` (fail-count, hard-fail-count, окно, retranmission-count).
+  - Добавить метод `GetSignals(HostTested, TimeSpan)` в `IBlockageStateStore` и реализовать его в `InMemoryBlockageStateStore`.
+  - Перевести `StandardBlockageClassifier` на использование `BlockageSignals` для формирования текстовой части и мягкой эвристики `TCP_RETRY_HEAVY`.
+
+- [ ] Дальнейшее развитие агрегатора сигналов:
+  - Расширить `BlockageSignals` дополнительными полями (RST, HTTP-redirect, TLS-auth-fails) по мере реализации детекторов.
+  - При необходимости выделить отдельный `IBlockageSignalsProvider`, оставив `IBlockageStateStore` тонкой обёрткой над историей `HostTested`.
 
 **Плюсы:**
 - Не ломает интерфейс `IBlockageClassifier` и сигнатуры `ClassifyBlockage`.
@@ -214,24 +222,26 @@
 
 ### 3.2. TCP Retransmissions на базе NetworkMonitorService
 
-**Идея:** использовать уже существующий `NetworkMonitorService` и добавить над ним модуль-"подписчик", который будет считать ретрансмиссии.
-
-- [ ] Создать новый модуль, например `TcpRetransmissionTracker` (`Utils/` или `Core/Modules`):
+**Статус:** минимальная реализация ретрансмиссий **сделана**, сигнал уже попадает в агрегатор, классификатор **и UI**.
+- [x] Создать модуль `TcpRetransmissionTracker` (`Core/Modules/TcpRetransmissionTracker.cs`):
   - Подписывается на `NetworkMonitorService.OnPacketReceived`.
-  - Парсит TCP-заголовок из `PacketData.Buffer` (потребуются утилиты для разбора IP/TCP).
-  - Идентифицирует потоки по `(srcIp, srcPort, dstIp, dstPort)`.
-  - Хранит для каждого потока последние seq/ack/len исходящих пакетов.
-  - При совпадении `seq` и длины полезной нагрузки → считает это ретрансмиссией и увеличивает счётчик.
+  - Парсит IPv4+TCP-заголовок из `PacketData.Buffer`.
+  - Идентифицирует потоки по нормализованному `TcpFlowKey` (src/dst IP+порт, направление-агностично).
+  - Считает ретрансмиссии по повторяющемуся `seq`.
 
-- [ ] Вести агрегированные счётчики per-host (по IP/hostname):
-  - `RetransmissionCount` за окно времени.
-  - Возможно, `FirstSeenAt` / `LastSeenAt`.
+- [x] Вести агрегированные счётчики per-host:
+  - `TcpRetransmissionTracker.GetRetransmissionCountForIp(IPAddress ip)` суммирует ретрансмиссии по всем потокам с этим IP.
 
-- [ ] Предоставить API для детектора:
-  - Например, `GetRetransmissionScore(HostKey, TimeSpan window)`.
+- [x] Интеграция со стором и классификатором:
+  - `InMemoryBlockageStateStore` принимает опциональный `TcpRetransmissionTracker` и включает `RetransmissionCount` в `BlockageSignals`.
+  - `DiagnosticOrchestrator` создаёт `TcpRetransmissionTracker`, подписывает его на `NetworkMonitorService` и передаёт в `LiveTestingPipeline` через `InMemoryBlockageStateStore`.
+  - `StandardBlockageClassifier` добавляет `ретрансмиссий: N` в текст рекомендаций и при `HasSignificantRetransmissions` + пустом `BlockageType` выставляет мягкий тип `TCP_RETRY_HEAVY`.
+  - `LiveTestingPipeline.UiWorker` в live-строке (`❌ host | … | BlockageType (…)`) подмешивает хвост из `HostBlocked.RecommendedAction`, так что в UI видно `ретрансмиссий: N` (и другие агрегированные сигналы).
 
-- [ ] Интеграция с классификатором:
-  - `StandardBlockageClassifier` или новый слой `BlockageSignalAggregator` будет, при классификации, опрашивать `TcpRetransmissionTracker` для текущего хоста и выставлять флаг `HasTcpRetransmissions`/поднимать `BlockageSeverity`.
+**Дальнейшие шаги по ретрансмиссиям:**
+
+- [ ] Уточнить эвристику `HasSignificantRetransmissions` (пороги, сглаживание по окну, возможно нормализация по количеству пакетов).
+- [ ] Связать ретрансмиссии с конкретными типами фейлов (`TCP_TIMEOUT`, `TCP_RST`) для более точной типизации (например, усиление DPI-подозрения при сочетании таймаутов и высокого числа ретрансов).
 
 **Минимизация вторжений:**
 - Не меняем `StandardHostTester`.
@@ -240,27 +250,38 @@
 
 ### 3.3. HTTP redirect detection
 
-**Идея:** поверх `NetworkMonitorService` сделать ещё одного подписчика, который будет парсить HTTP и искать редиректы на другие домены.
+**Статус:** минимальный детектор и протяжка сигнала в агрегатор **сделаны**, сигнал учитывается в классификаторе и виден в live-логе UI.
 
-- [ ] Создать модуль `HttpRedirectDetector`:
-  - Подписывается на `NetworkMonitorService.OnPacketReceived`.
-  - Фокусируется на TCP (port 80, возможно позже 443 с расшифровкой, но для начала достаточно 80).
-  - Собирает HTTP-ответы (может потребоваться минимальный reassembly по TCP-потоку, либо грубая эвристика по одиночным пакетам с HTTP заголовками).
-  - Парсит статус-код и заголовок `Location`.
+- [x] Создать модуль `HttpRedirectDetector` (`Core/Modules/HttpRedirectDetector.cs`):
+  - Подписывается на `NetworkMonitorService.OnPacketReceived` через метод `Attach`.
+  - Фокусируется на TCP-ответах с порта 80 (сервер → клиент).
+  - Для каждого TCP-потока (по `TcpFlowKey`) аккумулирует до 2 КБ первых байт полезной нагрузки.
+  - Грубым ASCII-парсером ищет HTTP-ответы `HTTP/1.x 3xx` и заголовок `Location`.
+  - Через `Uri.TryCreate` извлекает целевой `Host` и сохраняет per-IP (`ConcurrentDictionary<IPAddress, RedirectInfo>`).
 
-- [ ] Логика детекции:
-  - Имея исходный hostname (из DNS/TrafficCollector/TestResult), и `Location`/`Host` в ответе:
+- [x] Хранить per-host состояние в агрегаторе сигналов:
+  - `InMemoryBlockageStateStore` принимает опциональный `HttpRedirectDetector`.
+  - В `GetSignals` при наличии IP и детектора вызывает `TryGetRedirectHost`.
+  - В `BlockageSignals` добавлены поля `HasHttpRedirectDpi` и `RedirectToHost`.
+
+- [x] Интеграция с оркестратором и пайплайном:
+  - `DiagnosticOrchestrator` создаёт `HttpRedirectDetector`, подписывает его на `NetworkMonitorService` и передаёт в `LiveTestingPipeline` через `InMemoryBlockageStateStore`.
+  - Существующие интерфейсы пайплайна не менялись, сигнал идёт через уже введённый слой `BlockageSignals`.
+  - `StandardBlockageClassifier` использует `HasHttpRedirectDpi/RedirectToHost` для формирования мягкого `BlockageType = "HTTP_REDIRECT_DPI"` (если тип ещё не задан) и дописывает в текст рекомендаций «HTTP-редирект на {RedirectToHost}». `UiWorker` вытаскивает этот хвост и показывает его в live-строке.
+
+**Дополнительно:**
+
+- [x] В `DnsParserService` (`Utils/DnsSnifferService.cs`) фоновой цикл таймаутов (`CleanupPendingRequestsLoop`) переведён на `CancellationToken`, `Dispose` корректно гасит таск; варнинги CS0162 по этому файлу устранены, сборка проходит без предупреждений по DNS-снифферу.
+
+- [ ] Логика детекции (следующие шаги):
+  - Имея исходный hostname (из DNS/TrafficCollector/TestResult) и `RedirectToHost` из `BlockageSignals`:
     - Выделять SLD (second-level domain) исходного и целевого доменов.
-    - Если SLD различаются (например, `youtube.com` → `provder-portal.ru`) → флаг `IsDpiRedirect = true`.
+    - Если SLD различаются (например, `youtube.com` → `provider-portal.ru`), выставлять флаг `IsDpiRedirect = true` внутри классификатора.
 
-- [ ] Хранить per-host состояние:
-  - `HasHttpRedirectDpi`,
-  - `RedirectToHost`,
-  - Время первого/последнего события.
-
-- [ ] Интеграция:
-  - Добавить новый `BlockageType` или поле в `HostTested`/`HostBlocked` типа `HttpRedirectDpiDetected` (без ломания старых полей — можно как доп. флаг/мета-инфо).
-  - `StandardBlockageClassifier` при наличии этого сигнала может выбирать другой набор стратегий.
+- [ ] Интеграция с классификатором и UI:
+  - В `StandardBlockageClassifier` при наличии `HasHttpRedirectDpi/RedirectToHost` добавлять в описание явную пометку про «HTTP-редирект на {RedirectToHost} (возможно, портал провайдера / DPI)».
+  - При желании ввести мягкий `BlockageType`, например `HTTP_REDIRECT_DPI`, не ломая существующие типы.
+  - В UI/логах сделать отдельную строку/бейдж для HTTP-редиректа, чтобы пользователь явно видел, что трафик уводится на другой домен.
 
 ### 3.4. RST packet inspection
 

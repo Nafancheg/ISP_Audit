@@ -14,6 +14,7 @@ namespace IspAudit.Utils
         private readonly NetworkMonitorService _networkMonitor;
         private readonly IProgress<string>? _progress;
         private readonly ConcurrentDictionary<string, string> _dnsCache;
+        private const bool VerboseDnsLogging = false;
         
         // Хранение активных запросов: TransactionID -> (Hostname, Timestamp)
         private readonly ConcurrentDictionary<ushort, (string Hostname, DateTime Timestamp)> _pendingRequests = new();
@@ -22,6 +23,8 @@ namespace IspAudit.Utils
         private readonly ConcurrentDictionary<string, DnsFailureInfo> _failedRequests = new();
 
         public int ParsedCount { get; private set; }
+
+        private readonly CancellationTokenSource _cts = new();
         
         /// <summary>
         /// Кеш DNS: IP → hostname
@@ -38,9 +41,9 @@ namespace IspAudit.Utils
             _networkMonitor = networkMonitor ?? throw new ArgumentNullException(nameof(networkMonitor));
             _progress = progress;
             _dnsCache = new ConcurrentDictionary<string, string>();
-            
+
             // Запускаем очистку старых pending запросов (таймауты)
-            _ = CleanupPendingRequestsLoop();
+            _ = CleanupPendingRequestsLoop(_cts.Token);
         }
 
         public Task StartAsync()
@@ -242,7 +245,13 @@ namespace IspAudit.Utils
                 
                 if (!string.IsNullOrEmpty(qname))
                 {
-                    _pendingRequests[txId] = (qname.ToLowerInvariant(), DateTime.UtcNow);
+                    var lower = qname.ToLowerInvariant();
+                    _pendingRequests[txId] = (lower, DateTime.UtcNow);
+
+                    if (VerboseDnsLogging)
+                    {
+                        _progress?.Report($"[DNS][Req] txid={txId} qname={lower}");
+                    }
                 }
             }
             catch { }
@@ -292,6 +301,14 @@ namespace IspAudit.Utils
                             Error = $"DNS Error RCODE={rcode}"
                         };
                         OnDnsLookupFailed?.Invoke(requestInfo.Hostname, $"DNS Error RCODE={rcode}");
+                        if (VerboseDnsLogging)
+                        {
+                            _progress?.Report($"[DNS][Resp][ERR] txid={txId} host={requestInfo.Hostname} rcode={rcode}");
+                        }
+                    }
+                    else if (VerboseDnsLogging)
+                    {
+                        _progress?.Report($"[DNS][Resp] txid={txId} host={requestInfo.Hostname} rcode=0");
                     }
                 }
 
@@ -367,6 +384,10 @@ namespace IspAudit.Utils
                             {
                                 _dnsCache[ip] = lowerName;
                                 OnHostnameUpdated?.Invoke(ip, lowerName);
+                                if (VerboseDnsLogging)
+                                {
+                                    _progress?.Report($"[DNS][A] {lowerName} -> {ip}");
+                                }
                             }
                         }
                     }
@@ -389,6 +410,10 @@ namespace IspAudit.Utils
                             {
                                 _dnsCache[ip] = lowerName;
                                 OnHostnameUpdated?.Invoke(ip, lowerName);
+                                if (VerboseDnsLogging)
+                                {
+                                    _progress?.Report($"[DNS][AAAA] {lowerName} -> {ip}");
+                                }
                             }
                         }
                     }
@@ -405,29 +430,35 @@ namespace IspAudit.Utils
             }
         }
 
-        private async Task CleanupPendingRequestsLoop()
+        private async Task CleanupPendingRequestsLoop(CancellationToken cancellationToken)
         {
-            while (true)
+            while (!cancellationToken.IsCancellationRequested)
             {
-                await Task.Delay(5000); // Проверка каждые 5 секунд
+                try
+                {
+                    await Task.Delay(5000, cancellationToken).ConfigureAwait(false); // Проверка каждые 5 секунд
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
                 var now = DateTime.UtcNow;
                 var timeout = TimeSpan.FromSeconds(5); // Таймаут DNS запроса
 
                 foreach (var kvp in _pendingRequests)
                 {
-                    if (now - kvp.Value.Timestamp > timeout)
+                    if (now - kvp.Value.Timestamp > timeout &&
+                        _pendingRequests.TryRemove(kvp.Key, out var info))
                     {
-                        if (_pendingRequests.TryRemove(kvp.Key, out var info))
+                        // Запрос протух - считаем таймаутом
+                        _failedRequests[info.Hostname] = new DnsFailureInfo
                         {
-                            // Запрос протух - считаем таймаутом
-                            _failedRequests[info.Hostname] = new DnsFailureInfo
-                            {
-                                Hostname = info.Hostname,
-                                Timestamp = now,
-                                Error = "Timeout"
-                            };
-                            OnDnsLookupFailed?.Invoke(info.Hostname, "Timeout");
-                        }
+                            Hostname = info.Hostname,
+                            Timestamp = now,
+                            Error = "Timeout"
+                        };
+                        OnDnsLookupFailed?.Invoke(info.Hostname, "Timeout");
                     }
                 }
             }
@@ -468,7 +499,16 @@ namespace IspAudit.Utils
 
         public void Dispose()
         {
+            try
+            {
+                _cts.Cancel();
+            }
+            catch
+            {
+            }
+
             StopAsync().GetAwaiter().GetResult();
+            _cts.Dispose();
         }
 
         public event Action<string, string>? OnDnsLookupFailed;

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using IspAudit.Bypass;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
+using IspAudit.Core.Modules;
 using ISPAudit.Windows;
 using IspAudit;
 
@@ -30,6 +31,8 @@ namespace ISPAudit.ViewModels
         // Мониторинговые сервисы
         private ConnectionMonitorService? _connectionMonitor;
         private NetworkMonitorService? _networkMonitor;
+        private TcpRetransmissionTracker? _tcpRetransmissionTracker;
+        private HttpRedirectDetector? _httpRedirectDetector;
         private DnsParserService? _dnsParser;
         private PidTrackerService? _pidTracker;
         
@@ -237,7 +240,10 @@ namespace ISPAudit.ViewModels
                     progress, 
                     bypassController.BypassManager, 
                     _dnsParser,
-                    trafficFilter);
+                    trafficFilter,
+                    _tcpRetransmissionTracker != null
+                        ? new InMemoryBlockageStateStore(_tcpRetransmissionTracker, _httpRedirectDetector)
+                        : null);
                 Log("[Orchestrator] ✓ TrafficCollector + LiveTestingPipeline созданы");
 
                 // 8. Запуск сбора и тестирования параллельно
@@ -480,8 +486,13 @@ namespace ISPAudit.ViewModels
         {
             Log("[Services] Запуск мониторинговых сервисов...");
             
-            // Connection Monitor (WinDivert Socket Layer)
-            _connectionMonitor = new ConnectionMonitorService(progress);
+            // Connection Monitor
+            _connectionMonitor = new ConnectionMonitorService(progress)
+            {
+                // Временно используем fallback-режим polling через IP Helper API,
+                // чтобы видеть попытки соединения даже без успешного Socket Layer.
+                UsePollingMode = true
+            };
             
             _connectionMonitor.OnConnectionEvent += (count, pid, proto, remoteIp, remotePort, localPort) => 
             {
@@ -494,10 +505,8 @@ namespace ISPAudit.ViewModels
                     });
                 }
             };
-
-            _connectionMonitor.UsePollingMode = false;
-            FlowModeText = "Socket Layer";
-            Log("[Services] ConnectionMonitor: Socket Layer активен");
+            FlowModeText = _connectionMonitor.UsePollingMode ? "IP Helper (polling)" : "Socket Layer";
+            Log($"[Services] ConnectionMonitor: {( _connectionMonitor.UsePollingMode ? "Polling (IP Helper)" : "Socket Layer" )} активен");
             
             await _connectionMonitor.StartAsync(_cts!.Token).ConfigureAwait(false);
             
@@ -509,6 +518,14 @@ namespace ISPAudit.ViewModels
                 progress,
                 priority: 1000);
             await _networkMonitor.StartAsync(_cts.Token).ConfigureAwait(false);
+
+            // TCP Retransmission Tracker — подписываем на NetworkMonitor
+            _tcpRetransmissionTracker = new TcpRetransmissionTracker();
+            _tcpRetransmissionTracker.Attach(_networkMonitor);
+
+            // HTTP Redirect Detector — минимальный детектор HTTP 3xx Location
+            _httpRedirectDetector = new HttpRedirectDetector();
+            _httpRedirectDetector.Attach(_networkMonitor);
             
             // DNS Parser (теперь умеет и SNI)
             _dnsParser = new DnsParserService(_networkMonitor, progress);
@@ -543,6 +560,8 @@ namespace ISPAudit.ViewModels
                 _dnsParser = null;
                 _networkMonitor = null;
                 _connectionMonitor = null;
+                _tcpRetransmissionTracker = null;
+                _httpRedirectDetector = null;
             }
             catch (Exception ex)
             {

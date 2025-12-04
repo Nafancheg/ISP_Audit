@@ -23,6 +23,7 @@ namespace IspAudit.Utils
         private bool _isRunning;
         private readonly TaskCompletionSource<bool> _readySignal = new();
         private readonly TcpConnectionWatcher _watcher = new();
+        private const bool VerboseSocketLogging = false;
         
         /// <summary>Время открытия мониторинга (UTC)</summary>
         public DateTime? MonitorStartedUtc { get; private set; }
@@ -194,6 +195,11 @@ namespace IspAudit.Utils
 
                     var remotePort = addr.Data.Socket.RemotePort;
                     var localPort = addr.Data.Socket.LocalPort;
+
+                    if (VerboseSocketLogging)
+                    {
+                        _progress?.Report($"[ConnectionMonitor][Raw] pid={pid} proto={(protocol == 6 ? "TCP" : protocol == 17 ? "UDP" : protocol.ToString())} {remoteIp}:{remotePort} local:{localPort}");
+                    }
 
                     int count = Interlocked.Increment(ref _totalEventsCount);
                     

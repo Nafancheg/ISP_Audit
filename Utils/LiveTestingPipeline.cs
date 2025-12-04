@@ -45,6 +45,7 @@ namespace IspAudit.Utils
         // Modules
         private readonly IHostTester _tester;
         private readonly IBlockageClassifier _classifier;
+        private readonly IBlockageStateStore _stateStore;
         private readonly BypassCoordinator? _coordinator; // Главный координатор bypass-стратегий
         
         public LiveTestingPipeline(
@@ -52,7 +53,8 @@ namespace IspAudit.Utils
             IProgress<string>? progress = null, 
             IspAudit.Bypass.WinDivertBypassManager? bypassManager = null, 
             DnsParserService? dnsParser = null,
-            ITrafficFilter? filter = null)
+            ITrafficFilter? filter = null,
+            IBlockageStateStore? stateStore = null)
         {
             _config = config;
             _progress = progress;
@@ -73,8 +75,10 @@ namespace IspAudit.Utils
             }
 
             // Инициализация модулей
+            _stateStore = stateStore ?? new InMemoryBlockageStateStore();
+
             _tester = new StandardHostTester(progress, dnsParser?.DnsCache);
-            _classifier = new StandardBlockageClassifier();
+            _classifier = new StandardBlockageClassifier(_stateStore);
             
             // BypassCoordinator — главный "мозг" управления bypass-стратегиями
             // Содержит логику: кеширование работающих стратегий, перебор, ретест
@@ -201,6 +205,9 @@ namespace IspAudit.Utils
                 Interlocked.Increment(ref _pendingInClassifier);
                 try
                 {
+                    // Регистрируем результат в сторе, чтобы поддерживать fail counter + time window
+                    _stateStore.RegisterResult(tested);
+
                     // Классифицируем блокировку
                     var blocked = _classifier.ClassifyBlockage(tested);
 
@@ -274,8 +281,33 @@ namespace IspAudit.Utils
                     
                     // Статус проверок
                     var checks = $"DNS:{(blocked.TestResult.DnsOk ? "✓" : "✗")} TCP:{(blocked.TestResult.TcpOk ? "✓" : "✗")} TLS:{(blocked.TestResult.TlsOk ? "✓" : "✗")}";
-                    
-                    _progress?.Report($"❌ {details} | {checks} | {blocked.TestResult.BlockageType}");
+
+                    var blockage = string.IsNullOrEmpty(blocked.TestResult.BlockageType)
+                        ? "UNKNOWN"
+                        : blocked.TestResult.BlockageType;
+
+                    // Краткий хвост из текста рекомендации (там уже зашиты счётчики фейлов и ретрансмиссий)
+                    string? suffix = null;
+                    if (!string.IsNullOrWhiteSpace(blocked.RecommendedAction))
+                    {
+                        // Ищем первую открывающую скобку – именно там StandardBlockageClassifier
+                        // дописывает агрегированные сигналы: "(фейлов за Ns: N, ретрансмиссий: M, ...)".
+                        var idx = blocked.RecommendedAction.IndexOf('(');
+                        if (idx >= 0 && blocked.RecommendedAction.EndsWith(")", StringComparison.Ordinal))
+                        {
+                            var tail = blocked.RecommendedAction.Substring(idx).Trim();
+                            if (!string.IsNullOrEmpty(tail))
+                            {
+                                suffix = tail;
+                            }
+                        }
+                    }
+
+                    var uiLine = suffix is null
+                        ? $"❌ {details} | {checks} | {blockage}"
+                        : $"❌ {details} | {checks} | {blockage} {suffix}";
+
+                    _progress?.Report(uiLine);
                     
                     // Показываем рекомендацию, но НЕ применяем bypass автоматически
                     // Bypass должен применяться отдельной командой после завершения диагностики

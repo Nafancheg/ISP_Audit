@@ -23,8 +23,14 @@ namespace IspAudit.Utils
         private readonly DnsParserService _dnsParser;
         private readonly IProgress<string>? _progress;
         private readonly ITrafficFilter _filter;
+
+        // Флаг подробного логирования событий соединений (для диагностики проблем сбора)
+        private const bool VerboseConnectionLogging = false;
+        // Ограничение на количество подробных логов для снижения шума
+        private const int VerboseConnectionLogLimit = 200;
         
         private readonly ConcurrentDictionary<string, ConnectionInfo> _connections = new();
+        private int _rawEventsLogged;
         private DateTime _lastNewConnectionTime = DateTime.UtcNow;
         private bool _disposed;
         private bool _collecting = true; // Флаг активности сбора
@@ -107,9 +113,30 @@ namespace IspAudit.Utils
             // Подписка на события соединений
             void OnConnectionEvent(int eventNum, int pid, byte protocol, IPAddress remoteIp, ushort remotePort, ushort localPort)
             {
+                // Подробный лог входящего события
+                if (VerboseConnectionLogging && _rawEventsLogged < VerboseConnectionLogLimit)
+                {
+                    // Копируем PID-ы под локальный снапшот для безопасного логирования
+                    int[] trackedSnapshot;
+                    try
+                    {
+                        trackedSnapshot = _pidTracker.TrackedPids.ToArray();
+                    }
+                    catch
+                    {
+                        trackedSnapshot = Array.Empty<int>();
+                    }
+
+                    bool isTracked = trackedSnapshot.Contains(pid);
+                    _progress?.Report($"[Collector][Raw] evt={eventNum} pid={pid} proto={(protocol == 6 ? "TCP" : "UDP")} {remoteIp}:{remotePort} -> local:{localPort} tracked={isTracked} trackedPids=[{string.Join(",", trackedSnapshot)}]");
+                    Interlocked.Increment(ref _rawEventsLogged);
+                }
+
                 // Фильтруем по отслеживаемым PID
                 if (!_pidTracker.TrackedPids.Contains(pid))
+                {
                     return;
+                }
 
                 var key = $"{remoteIp}:{remotePort}:{protocol}";
                 
