@@ -29,8 +29,8 @@ namespace IspAudit.Utils
         private readonly CancellationTokenSource _cts = new();
         private readonly Task[] _workers;
         
-        // Дедупликация: уже протестированные хосты (IP:Port)
-        private readonly ConcurrentDictionary<string, byte> _testedHosts = new();
+        // Единый фильтр трафика (дедупликация + шум + UI правила)
+        private readonly ITrafficFilter _filter;
         
         // Счётчики для отслеживания очереди
         private int _pendingInSniffer;
@@ -47,11 +47,19 @@ namespace IspAudit.Utils
         private readonly IBlockageClassifier _classifier;
         private readonly BypassCoordinator? _coordinator; // Главный координатор bypass-стратегий
         
-        public LiveTestingPipeline(PipelineConfig config, IProgress<string>? progress = null, IspAudit.Bypass.WinDivertBypassManager? bypassManager = null, DnsParserService? dnsParser = null)
+        public LiveTestingPipeline(
+            PipelineConfig config, 
+            IProgress<string>? progress = null, 
+            IspAudit.Bypass.WinDivertBypassManager? bypassManager = null, 
+            DnsParserService? dnsParser = null,
+            ITrafficFilter? filter = null)
         {
             _config = config;
             _progress = progress;
             _dnsParser = dnsParser;
+            
+            // Используем переданный фильтр или создаем новый
+            _filter = filter ?? new UnifiedTrafficFilter();
             
             // Используем переданный менеджер или создаем новый если auto-bypass включен
             if (bypassManager != null)
@@ -150,19 +158,14 @@ namespace IspAudit.Utils
             {
                 Interlocked.Decrement(ref _pendingInSniffer);
                 
-                // Дедупликация: пропускаем уже протестированные хосты
-                var hostKey = $"{host.RemoteIp}:{host.RemotePort}";
-                if (!_testedHosts.TryAdd(hostKey, 1))
-                {
-                    continue; // Уже тестировали этот IP:Port
-                }
-                
-                // Фильтруем шумные хосты (Google CDN, analytics и т.д.)
+                // Получаем hostname из кеша (если есть) для более умной дедупликации
                 var hostname = _dnsParser?.DnsCache.TryGetValue(host.RemoteIp.ToString(), out var name) == true 
                     ? name : null;
-                if (NoiseHostFilter.Instance.IsNoiseHost(hostname))
+
+                // Проверяем через единый фильтр (дедупликация + шум)
+                var decision = _filter.ShouldTest(host, hostname);
+                if (decision.Action == FilterAction.Drop)
                 {
-                    // Пропускаем без тестирования
                     continue;
                 }
                 
@@ -198,28 +201,45 @@ namespace IspAudit.Utils
                 Interlocked.Increment(ref _pendingInClassifier);
                 try
                 {
-                    // Фильтруем шумные хосты (hostname уже известен после тестирования)
-                    if (NoiseHostFilter.Instance.IsNoiseHost(tested.Hostname))
-                    {
-                        continue; // Пропускаем без логирования
-                    }
-                    
                     // Классифицируем блокировку
                     var blocked = _classifier.ClassifyBlockage(tested);
 
-                    // Если стратегия OK (NONE + OK), то это успех
-                    if (blocked.BypassStrategy == "NONE" && blocked.RecommendedAction == "OK")
+                    // Принимаем решение о показе через единый фильтр
+                    var decision = _filter.ShouldDisplay(blocked);
+
+                    // Пытаемся обновить hostname из кеша (мог появиться за время теста)
+                    var hostname = tested.Hostname;
+                    if (string.IsNullOrEmpty(hostname) && _dnsParser != null)
                     {
-                        // Хост работает - просто логируем
-                        var host = tested.Hostname ?? tested.Host.RemoteIp.ToString();
+                        _dnsParser.DnsCache.TryGetValue(tested.Host.RemoteIp.ToString(), out hostname);
+                    }
+                    
+                    // Используем hostname или IP
+                    var displayHost = hostname ?? tested.Host.RemoteIp.ToString();
+                    
+                    // Перепроверяем шум с обновлённым hostname
+                    if (!string.IsNullOrEmpty(hostname) && NoiseHostFilter.Instance.IsNoiseHost(hostname))
+                    {
+                        _progress?.Report($"[NOISE] Отфильтрован (late): {displayHost}");
+                        continue; // Пропускаем шумовой хост
+                    }
+
+                    if (decision.Action == FilterAction.Process)
+                    {
+                        // Это блокировка или проблема - отправляем в UI
+                        await _bypassQueue.Writer.WriteAsync(blocked, ct).ConfigureAwait(false);
+                    }
+                    else if (decision.Action == FilterAction.LogOnly)
+                    {
+                        // Хост работает - просто логируем (не отправляем в UI)
                         var port = tested.Host.RemotePort;
                         var latency = tested.TcpLatencyMs > 0 ? $" ({tested.TcpLatencyMs}ms)" : "";
-                        _progress?.Report($"✓ {host}:{port}{latency}");
+                        _progress?.Report($"✓ {displayHost}:{port}{latency}");
                     }
-                    else
+                    else if (decision.Action == FilterAction.Drop)
                     {
-                        // Это блокировка или проблема (включая PORT_CLOSED, FAKE_IP и т.д.)
-                        await _bypassQueue.Writer.WriteAsync(blocked, ct).ConfigureAwait(false);
+                        // Шумовой хост - отправляем специальное сообщение для UI (удаления карточки)
+                        _progress?.Report($"[NOISE] Отфильтрован: {displayHost}");
                     }
                 }
                 catch (Exception ex)

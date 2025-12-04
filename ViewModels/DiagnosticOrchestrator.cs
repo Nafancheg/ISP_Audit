@@ -150,6 +150,9 @@ namespace ISPAudit.ViewModels
                 // Инициализируем фильтр шумных хостов
                 var noiseFilterPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "noise_hosts.json");
                 NoiseHostFilter.Initialize(noiseFilterPath, new Progress<string>(Log));
+                
+                // Создаем единый фильтр трафика (для дедупликации и фильтрации)
+                var trafficFilter = new UnifiedTrafficFilter();
 
                 // Сброс DNS кеша
                 Log("[Orchestrator] Сброс DNS кеша...");
@@ -218,7 +221,8 @@ namespace ISPAudit.ViewModels
                     _connectionMonitor!,
                     _pidTracker!,
                     _dnsParser!,
-                    progress);
+                    progress,
+                    trafficFilter);
                 
                 // 7. Создание LiveTestingPipeline (тестирование + bypass)
                 var pipelineConfig = new PipelineConfig
@@ -232,7 +236,8 @@ namespace ISPAudit.ViewModels
                     pipelineConfig, 
                     progress, 
                     bypassController.BypassManager, 
-                    _dnsParser);
+                    _dnsParser,
+                    trafficFilter);
                 Log("[Orchestrator] ✓ TrafficCollector + LiveTestingPipeline созданы");
 
                 // 8. Запуск сбора и тестирования параллельно

@@ -42,8 +42,16 @@ namespace IspAudit.Core.Modules
                 {
                     try
                     {
-                        var hostEntry = await System.Net.Dns.GetHostEntryAsync(host.RemoteIp.ToString()).ConfigureAwait(false);
-                        hostname = hostEntry.HostName;
+                        // Используем таймаут 2с для DNS, чтобы не зависать
+                        var dnsTask = System.Net.Dns.GetHostEntryAsync(host.RemoteIp.ToString());
+                        var timeoutTask = Task.Delay(2000, ct);
+                        
+                        var completedTask = await Task.WhenAny(dnsTask, timeoutTask).ConfigureAwait(false);
+                        if (completedTask == dnsTask)
+                        {
+                            var hostEntry = await dnsTask.ConfigureAwait(false);
+                            hostname = hostEntry.HostName;
+                        }
                     }
                     catch
                     {
@@ -55,18 +63,17 @@ namespace IspAudit.Core.Modules
                 try
                 {
                     using var tcpClient = new System.Net.Sockets.TcpClient();
-                    var connectTask = tcpClient.ConnectAsync(host.RemoteIp, host.RemotePort);
-                    
-                    var timeoutTask = Task.Delay(3000, ct);
-                    var completedTask = await Task.WhenAny(connectTask, timeoutTask).ConfigureAwait(false);
-                    
-                    if (completedTask == connectTask)
+                    // Используем CancellationToken для корректной отмены
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    linkedCts.CancelAfter(3000);
+
+                    try 
                     {
-                        await connectTask.ConfigureAwait(false); // Проверяем исключения
+                        await tcpClient.ConnectAsync(host.RemoteIp, host.RemotePort, linkedCts.Token).ConfigureAwait(false);
                         tcpOk = true;
                         tcpLatencyMs = (int)sw.ElapsedMilliseconds;
                     }
-                    else
+                    catch (OperationCanceledException)
                     {
                         blockageType = "TCP_TIMEOUT";
                     }
@@ -97,23 +104,30 @@ namespace IspAudit.Core.Modules
                     try
                     {
                         using var tcpClient = new System.Net.Sockets.TcpClient();
-                        await tcpClient.ConnectAsync(host.RemoteIp, 443, ct).ConfigureAwait(false);
+                        // Используем CancellationToken
+                        using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        connectCts.CancelAfter(3000);
+                        await tcpClient.ConnectAsync(host.RemoteIp, 443, connectCts.Token).ConfigureAwait(false);
                         
                         using var sslStream = new System.Net.Security.SslStream(tcpClient.GetStream(), false);
-                        var tlsTask = sslStream.AuthenticateAsClientAsync(hostname, null, System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13, false);
                         
-                        var timeoutTask = Task.Delay(3000, ct);
-                        var completedTask = await Task.WhenAny(tlsTask, timeoutTask).ConfigureAwait(false);
+                        // Используем опции для поддержки CancellationToken
+                        var sslOptions = new System.Net.Security.SslClientAuthenticationOptions
+                        {
+                            TargetHost = hostname,
+                            EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
+                            CertificateRevocationCheckMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck
+                        };
+
+                        using var tlsCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        tlsCts.CancelAfter(3000);
                         
-                        if (completedTask == tlsTask)
-                        {
-                            await tlsTask.ConfigureAwait(false);
-                            tlsOk = true;
-                        }
-                        else
-                        {
-                            blockageType = "TLS_TIMEOUT";
-                        }
+                        await sslStream.AuthenticateAsClientAsync(sslOptions, tlsCts.Token).ConfigureAwait(false);
+                        tlsOk = true;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        blockageType = "TLS_TIMEOUT";
                     }
                     catch (System.Security.Authentication.AuthenticationException)
                     {

@@ -6,6 +6,7 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using IspAudit.Core.Interfaces;
 using IspAudit.Core.Models;
 
 namespace IspAudit.Utils
@@ -21,6 +22,7 @@ namespace IspAudit.Utils
         private readonly PidTrackerService _pidTracker;
         private readonly DnsParserService _dnsParser;
         private readonly IProgress<string>? _progress;
+        private readonly ITrafficFilter _filter;
         
         private readonly ConcurrentDictionary<string, ConnectionInfo> _connections = new();
         private DateTime _lastNewConnectionTime = DateTime.UtcNow;
@@ -67,12 +69,14 @@ namespace IspAudit.Utils
             ConnectionMonitorService connectionMonitor,
             PidTrackerService pidTracker,
             DnsParserService dnsParser,
-            IProgress<string>? progress = null)
+            IProgress<string>? progress = null,
+            ITrafficFilter? filter = null)
         {
             _connectionMonitor = connectionMonitor ?? throw new ArgumentNullException(nameof(connectionMonitor));
             _pidTracker = pidTracker ?? throw new ArgumentNullException(nameof(pidTracker));
             _dnsParser = dnsParser ?? throw new ArgumentNullException(nameof(dnsParser));
             _progress = progress;
+            _filter = filter ?? new UnifiedTrafficFilter();
         }
 
         /// <summary>
@@ -118,7 +122,19 @@ namespace IspAudit.Utils
                 }))
                 {
                     _lastNewConnectionTime = DateTime.UtcNow;
-                    _progress?.Report($"[Collector] Новое соединение #{_connections.Count}: {remoteIp}:{remotePort} (proto={protocol}, pid={pid})");
+                    
+                    // Обогащаем hostname из DNS кеша (если есть)
+                    string? hostname = null;
+                    _dnsParser.DnsCache.TryGetValue(remoteIp.ToString(), out hostname);
+                    
+                    if (!string.IsNullOrEmpty(hostname))
+                    {
+                        _connections[key].Hostname = hostname;
+                    }
+                    
+                    // Логируем с hostname если есть
+                    var displayName = hostname ?? remoteIp.ToString();
+                    _progress?.Report($"[Collector] Новое соединение #{_connections.Count}: {displayName}:{remotePort} (proto={protocol}, pid={pid})");
                     
                     var host = new HostDiscovered(
                         Key: key,
@@ -128,15 +144,13 @@ namespace IspAudit.Utils
                         DiscoveredAt: DateTime.UtcNow
                     );
                     
-                    // Пишем в канал для yield return
+                    // Передаём дальше — фильтрация будет в Pipeline
                     writer.TryWrite(host);
-                    
-                    // Вызываем событие (для обратной совместимости)
                     OnHostDiscovered?.Invoke(host);
                 }
             }
             
-            // Подписка на DNS обновления
+            // Подписка на DNS обновления — только обновляем внутренний кеш
             void OnHostnameUpdated(string ip, string hostname)
             {
                 foreach (var kvp in _connections)
@@ -146,18 +160,7 @@ namespace IspAudit.Utils
                         kvp.Value.Hostname = hostname;
                         _progress?.Report($"[Collector] Hostname обновлен: {ip} → {hostname}");
                         OnHostnameResolved?.Invoke(ip, hostname);
-                        
-                        // Отправляем хост повторно для переоценки
-                        var host = new HostDiscovered(
-                            Key: kvp.Key,
-                            RemoteIp: kvp.Value.RemoteIp,
-                            RemotePort: kvp.Value.RemotePort,
-                            Protocol: kvp.Value.Protocol == TransportProtocol.TCP 
-                                ? IspAudit.Bypass.TransportProtocol.Tcp 
-                                : IspAudit.Bypass.TransportProtocol.Udp,
-                            DiscoveredAt: DateTime.UtcNow
-                        );
-                        writer.TryWrite(host);
+                        // НЕ отправляем хост повторно — UI обновит по сообщению
                     }
                 }
             }
@@ -198,7 +201,7 @@ namespace IspAudit.Utils
 
             // Группируем по hostname (или IP), исключаем шумные хосты
             var targetGroups = _connections.Values
-                .Where(c => !NoiseHostFilter.Instance.IsNoiseHost(c.Hostname)) // Фильтруем шумные хосты
+                .Where(c => !_filter.IsNoise(c.Hostname)) // Фильтруем шумные хосты через единый фильтр
                 .GroupBy(c => c.Hostname ?? c.RemoteIp.ToString())
                 .OrderByDescending(g => g.Count())
                 .ToList();

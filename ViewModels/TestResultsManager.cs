@@ -6,6 +6,7 @@ using System.Net;
 using System.Collections.Concurrent;
 using ISPAudit.Models;
 using IspAudit;
+using IspAudit.Utils;
 
 namespace ISPAudit.ViewModels
 {
@@ -87,8 +88,26 @@ namespace ISPAudit.ViewModels
         /// </summary>
         public void UpdateTestResult(string host, TestStatus status, string details)
         {
+            // КРИТИЧНО: Фильтруем шумные хосты ПЕРЕД созданием карточки
+            if (NoiseHostFilter.Instance.IsNoiseHost(host))
+            {
+                // Если карточка уже существует - удаляем её
+                var toRemove = TestResults.FirstOrDefault(t => 
+                    t.Target.Host == host || t.Target.Name == host);
+                if (toRemove != null)
+                {
+                    TestResults.Remove(toRemove);
+                    _testResultMap.TryRemove(host, out _);
+                    Log($"[UI] Удалена шумовая карточка: {host}");
+                    NotifyCountersChanged();
+                }
+                return; // Не создаём новую карточку для шума
+            }
+
             var existing = TestResults.FirstOrDefault(t => 
-                t.Target.Host == host || t.Target.Name == host);
+                t.Target.Host.Equals(host, StringComparison.OrdinalIgnoreCase) || 
+                t.Target.Name.Equals(host, StringComparison.OrdinalIgnoreCase) ||
+                t.Target.FallbackIp == host);
             
             if (existing != null)
             {
@@ -128,29 +147,95 @@ namespace ISPAudit.ViewModels
         {
             try 
             {
+                // Обработка сообщения о фильтрации шума - удаляем карточку
+                if (msg.StartsWith("[NOISE]") || msg.Contains("Шум обнаружен:"))
+                {
+                    // Форматы:
+                    // "[NOISE] Отфильтрован: hostname"
+                    // "[NOISE] Отфильтрован (late): hostname"
+                    // "[Collector] Шум обнаружен: IP → hostname"
+                    string? host = null;
+                    string? ip = null;
+                    
+                    if (msg.Contains("Отфильтрован"))
+                    {
+                        host = msg.Split(':').LastOrDefault()?.Trim();
+                    }
+                    else if (msg.Contains("Шум обнаружен:"))
+                    {
+                        var parts = msg.Split(new[] { " → " }, StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length == 2)
+                        {
+                            ip = parts[0].Split(':').LastOrDefault()?.Trim();
+                            host = parts[1].Trim();
+                        }
+                    }
+                    
+                    if (!string.IsNullOrEmpty(host) || !string.IsNullOrEmpty(ip))
+                    {
+                        var toRemove = TestResults.FirstOrDefault(t => 
+                            (!string.IsNullOrEmpty(host) && (t.Target.Host.Equals(host, StringComparison.OrdinalIgnoreCase) || t.Target.Name.Equals(host, StringComparison.OrdinalIgnoreCase))) ||
+                            (!string.IsNullOrEmpty(ip) && (t.Target.Host == ip || t.Target.FallbackIp == ip)));
+                        if (toRemove != null)
+                        {
+                            TestResults.Remove(toRemove);
+                            Log($"[UI] Удалена шумовая карточка: {host ?? ip}");
+                            NotifyCountersChanged();
+                        }
+                    }
+                    return;
+                }
+
                 if (msg.StartsWith("✓ "))
                 {
-                    // Формат: "✓ 1.2.3.4:80 (20ms)"
+                    // Формат: "✓ hostname:port (20ms)" или "✓ 1.2.3.4:port (20ms)"
                     var parts = msg.Substring(2).Split(' ');
                     var hostPort = parts[0].Split(':');
                     if (hostPort.Length == 2)
                     {
                         var host = hostPort[0];
+                        
+                        // КРИТИЧНО: Проверяем на шум - не создаём карточку для успешных шумовых хостов
+                        if (NoiseHostFilter.Instance.IsNoiseHost(host))
+                        {
+                            // Удаляем карточку, если она была создана ранее (ищем по всем полям)
+                            var toRemove = TestResults.FirstOrDefault(t => 
+                                t.Target.Host.Equals(host, StringComparison.OrdinalIgnoreCase) || 
+                                t.Target.Name.Equals(host, StringComparison.OrdinalIgnoreCase) ||
+                                t.Target.FallbackIp == host);
+                            if (toRemove != null)
+                            {
+                                TestResults.Remove(toRemove);
+                                Log($"[UI] Удалена шумовая карточка (успех): {host}");
+                                NotifyCountersChanged();
+                            }
+                            return;
+                        }
+                        
+                        // Обновляем существующую карточку или создаём новую
                         UpdateTestResult(host, TestStatus.Pass, msg);
                         _lastUpdatedHost = host;
                     }
                 }
                 else if (msg.Contains("[Collector] Новое соединение"))
                 {
-                    // Формат: "[Collector] Новое соединение #1: 142.251.38.142:443 (proto=6, pid=3796)"
+                    // Формат: "[Collector] Новое соединение #1: hostname:443 (proto=6, pid=3796)"
+                    // или:    "[Collector] Новое соединение #1: 142.251.38.142:443 (proto=6, pid=3796)"
                     var parts = msg.Split(new[] { ": " }, StringSplitOptions.RemoveEmptyEntries);
                     if (parts.Length >= 2)
                     {
-                        var hostPortPart = parts[1].Split(' ')[0]; // "142.251.38.142:443"
+                        var hostPortPart = parts[1].Split(' ')[0]; // "hostname:443" или "142.251.38.142:443"
                         var hostPort = hostPortPart.Split(':');
                         if (hostPort.Length == 2)
                         {
                             var host = hostPort[0];
+                            
+                            // Фильтр уже применён в TrafficCollector, но проверим ещё раз
+                            if (NoiseHostFilter.Instance.IsNoiseHost(host))
+                            {
+                                return;
+                            }
+                            
                             UpdateTestResult(host, TestStatus.Running, "Обнаружено соединение...");
                             _lastUpdatedHost = host;
                         }
@@ -165,12 +250,43 @@ namespace ISPAudit.ViewModels
                         var ipPart = parts[0].Split(new[] { ": " }, StringSplitOptions.RemoveEmptyEntries).Last();
                         var newHostname = parts[1].Trim();
                         
-                        var existing = TestResults.FirstOrDefault(t => t.Target.Host == ipPart);
-                        if (existing != null)
+                        // КРИТИЧНО: Проверяем, не является ли новый hostname шумовым
+                        if (NoiseHostFilter.Instance.IsNoiseHost(newHostname))
+                        {
+                            // Удаляем карточку, если она была создана для IP
+                            var toRemove = TestResults.FirstOrDefault(t => t.Target.Host == ipPart || t.Target.FallbackIp == ipPart);
+                            if (toRemove != null)
+                            {
+                                TestResults.Remove(toRemove);
+                                Log($"[UI] Удалена шумовая карточка после резолва: {ipPart} → {newHostname}");
+                                NotifyCountersChanged();
+                            }
+                            return;
+                        }
+                        
+                        // Проверяем, есть ли уже карточка с таким hostname (дедупликация)
+                        var existingByHostname = TestResults.FirstOrDefault(t => 
+                            t.Target.Host.Equals(newHostname, StringComparison.OrdinalIgnoreCase) ||
+                            t.Target.Name.Equals(newHostname, StringComparison.OrdinalIgnoreCase));
+                        
+                        // Находим карточку для IP
+                        var existingByIp = TestResults.FirstOrDefault(t => t.Target.Host == ipPart);
+                        
+                        if (existingByHostname != null && existingByIp != null && existingByHostname != existingByIp)
+                        {
+                            // ДУБЛИКАТ! Удаляем карточку для IP, оставляем существующую для hostname
+                            TestResults.Remove(existingByIp);
+                            Log($"[UI] Удален дубликат: {ipPart} → {newHostname} (уже есть карточка)");
+                            NotifyCountersChanged();
+                            _lastUpdatedHost = newHostname;
+                            return;
+                        }
+                        
+                        if (existingByIp != null)
                         {
                             // Обновляем имя цели
-                            var oldTarget = existing.Target;
-                            existing.Target = new Target 
+                            var oldTarget = existingByIp.Target;
+                            existingByIp.Target = new Target 
                             { 
                                 Name = newHostname, 
                                 Host = newHostname, // Используем имя как хост
@@ -180,9 +296,9 @@ namespace ISPAudit.ViewModels
                             };
                             
                             // Если это был "Running", обновляем детали
-                            if (existing.Status == TestStatus.Running)
+                            if (existingByIp.Status == TestStatus.Running)
                             {
-                                existing.Details = $"Hostname: {newHostname}";
+                                existingByIp.Details = $"Hostname: {newHostname}";
                             }
                             
                             // Обновляем мапу
@@ -201,6 +317,23 @@ namespace ISPAudit.ViewModels
                         if (hostPort.Length == 2)
                         {
                             var host = hostPort[0];
+                            
+                            // КРИТИЧНО: Проверяем на шум перед созданием карточки ошибки
+                            if (NoiseHostFilter.Instance.IsNoiseHost(host))
+                            {
+                                // Удаляем существующую карточку (ищем по всем полям)
+                                var toRemove = TestResults.FirstOrDefault(t => 
+                                    t.Target.Host.Equals(host, StringComparison.OrdinalIgnoreCase) || 
+                                    t.Target.Name.Equals(host, StringComparison.OrdinalIgnoreCase) ||
+                                    t.Target.FallbackIp == host);
+                                if (toRemove != null)
+                                {
+                                    TestResults.Remove(toRemove);
+                                    Log($"[UI] Удалена шумовая карточка при ошибке: {host}");
+                                    NotifyCountersChanged();
+                                }
+                                return;
+                            }
                             
                             // Если цель - IP адрес, убираем "DNS:✓" из сообщения
                             if (IPAddress.TryParse(host, out _))

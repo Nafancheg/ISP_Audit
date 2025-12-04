@@ -36,12 +36,12 @@ namespace IspAudit.Utils
         /// Загружает паттерны из JSON-файла
         /// </summary>
         /// <param name="filePath">Путь к файлу noise_hosts.json</param>
-        /// <returns>true если файл загружен, false если использованы fallback-паттерны</returns>
+        /// <returns>true если файл загружен, false если использованы минимальные паттерны</returns>
         public bool LoadFromFile(string filePath)
         {
             if (!File.Exists(filePath))
             {
-                _progress?.Report($"[NoiseFilter] Файл {filePath} не найден, используем минимальные паттерны");
+                _progress?.Report($"[NoiseFilter] ⚠ Файл {filePath} не найден! Используем только базовые фильтры (local/arpa).");
                 LoadFallbackPatterns();
                 return false;
             }
@@ -94,7 +94,15 @@ namespace IspAudit.Utils
                     }
                 }
 
-                _progress?.Report($"[NoiseFilter] Загружено {_patterns.Count} паттернов, {_excludePatterns.Count} исключений");
+                _progress?.Report($"[NoiseFilter] Загружено {_patterns.Count} паттернов, {_excludePatterns.Count} исключений из файла");
+                
+                // Логируем первые 5 паттернов для отладки
+                if (_patterns.Count > 0)
+                {
+                    var sample = string.Join(", ", _patterns.Take(5).Select(p => p.ToString()));
+                    _progress?.Report($"[NoiseFilter] Примеры паттернов: {sample}");
+                }
+                
                 return true;
             }
             catch (Exception ex)
@@ -113,7 +121,8 @@ namespace IspAudit.Utils
             if (string.IsNullOrEmpty(hostname))
                 return false;
 
-            var lower = hostname.ToLowerInvariant();
+            // Убираем точку в конце (FQDN), пробелы и приводим к нижнему регистру
+            var lower = hostname.Trim().TrimEnd('.').ToLowerInvariant();
 
             // Сначала проверяем исключения (whitelist) — они имеют приоритет
             foreach (var exclude in _excludePatterns)
@@ -133,14 +142,37 @@ namespace IspAudit.Utils
         }
 
         /// <summary>
-        /// Минимальные fallback-паттерны если файл не загружен
+        /// Метод для отладки: проверяет хост и возвращает причину
+        /// </summary>
+        public string DebugMatch(string? hostname)
+        {
+            if (string.IsNullOrEmpty(hostname))
+                return "Empty hostname";
+
+            var lower = hostname.Trim().TrimEnd('.').ToLowerInvariant();
+
+            foreach (var exclude in _excludePatterns)
+            {
+                if (exclude.IsMatch(lower))
+                    return $"Whitelisted by {exclude}";
+            }
+
+            foreach (var pattern in _patterns)
+            {
+                if (pattern.IsMatch(lower))
+                    return $"Matched noise pattern {pattern}";
+            }
+
+            return "No match (Clean)";
+        }
+
+        /// <summary>
+        /// Минимальные fallback-паттерны (только технические)
         /// </summary>
         private void LoadFallbackPatterns()
         {
-            // Только критически важные паттерны, чтобы не фильтровать нужное
             var fallback = new[]
             {
-                "*.1e100.net",
                 "*.arpa",
                 "*.local",
                 "*.localdomain"
@@ -152,6 +184,8 @@ namespace IspAudit.Utils
                 if (regex != null)
                     _patterns.Add(regex);
             }
+            
+            _progress?.Report($"[NoiseFilter] Загружено {fallback.Length} базовых паттернов (fallback)");
         }
 
         /// <summary>
@@ -196,7 +230,12 @@ namespace IspAudit.Utils
                 {
                     lock (_lock)
                     {
-                        _instance ??= new NoiseHostFilter();
+                        if (_instance == null)
+                        {
+                            _instance = new NoiseHostFilter();
+                            // Если не инициализирован явно, используем fallback
+                            _instance.LoadFallbackPatterns();
+                        }
                     }
                 }
                 return _instance;

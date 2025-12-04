@@ -13,6 +13,7 @@
         "*.akamai.net",
         "*.fastly.net",
         "*.cdn.cloudflare.net",
+        "*.vscode-cdn.net",
         "ec2-*.compute-*.amazonaws.com",
         "*.elb.amazonaws.com",
         "*.trafficmanager.net",
@@ -36,6 +37,7 @@
       "hosts": [
         "*.google-analytics.com",
         "analytics.google.com",
+        "*.analytics.google.com",
         "*.googletagmanager.com",
         "*.doubleclick.net",
         "*.googlesyndication.com",
@@ -49,7 +51,8 @@
         "*.telemetry.microsoft.com",
         "*.events.data.microsoft.com",
         "*.omtrdc.net",
-        "stats.adobe.com"
+        "stats.adobe.com",
+        "*.usercentrics.eu"
       ]
     },
     "browser_services": {
@@ -133,6 +136,46 @@
       ],
       "exclude": [
         "api.bing.com"
+      ]
+    },
+    "certificates_verification": {
+      "description": "Проверка сертификатов (OCSP, CRL)",
+      "hosts": [
+        "ocsp.digicert.com",
+        "crl3.digicert.com",
+        "crl4.digicert.com",
+        "*.symcb.com",
+        "*.symcd.com",
+        "mscrl.microsoft.com",
+        "crl.microsoft.com",
+        "ocsp.msocsp.com",
+        "*.lencr.org",
+        "*.identrust.com",
+        "*.globalsign.com",
+        "*.sectigo.com"
+      ]
+    },
+    "hardware_telemetry": {
+      "description": "Телеметрия драйверов и железа (NVIDIA, AMD)",
+      "hosts": [
+        "*.nvidia.com",
+        "*.geforce.com",
+        "*.nvidiagrid.net",
+        "*.amd.com",
+        "*.radeon.com"
+      ]
+    },
+    "game_engine_analytics": {
+      "description": "Аналитика игровых движков (Unity, Unreal)",
+      "hosts": [
+        "config.uca.cloud.unity3d.com",
+        "cdp.cloud.unity3d.com",
+        "*.unity3d.com",
+        "*.epicgames.com",
+        "*.unrealengine.com"
+      ],
+      "exclude": [
+        "*.epicgames.dev" 
       ]
     }
   }
