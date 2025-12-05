@@ -245,5 +245,32 @@ namespace IspAudit.Utils
             catch { }
             return "<unknown>";
         }
+
+        /// <summary>
+        /// Извлекает "главный домен" (SLD+TLD) из имени хоста.
+        /// Эвристика: берет последние 2 части, или 3, если TLD короткий (2 символа) и SLD короткий (<=3 символа).
+        /// Пример: www.google.com -> google.com, block.mts.ru -> mts.ru, google.co.uk -> google.co.uk
+        /// </summary>
+        public static string GetMainDomain(string hostname)
+        {
+            if (string.IsNullOrWhiteSpace(hostname)) return string.Empty;
+            if (IPAddress.TryParse(hostname, out _)) return hostname;
+
+            var parts = hostname.Split('.');
+            if (parts.Length < 2) return hostname;
+
+            // Simple heuristic for SLD (Second Level Domain)
+            var tld = parts[^1].ToLowerInvariant();
+            var sld = parts[^2].ToLowerInvariant();
+
+            // Handle co.uk, com.ru, net.ru, org.ru, etc.
+            // Если TLD из 2 букв (ru, uk, au) и пред-TLD <= 3 букв (co, com, net, org, pp) -> берем 3 части
+            if (parts.Length >= 3 && tld.Length == 2 && sld.Length <= 3)
+            {
+                return string.Join(".", parts[^3..]).ToLowerInvariant();
+            }
+
+            return string.Join(".", parts[^2..]).ToLowerInvariant();
+        }
     }
 }

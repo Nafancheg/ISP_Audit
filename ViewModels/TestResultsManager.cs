@@ -402,12 +402,22 @@ namespace ISPAudit.ViewModels
                         existing.Details += "\n" + msg;
                     }
                 }
-                else if (msg.Contains("→ Стратегия:") && !string.IsNullOrEmpty(_lastUpdatedHost))
+                else if ((msg.Contains("→ Стратегия:") || msg.Contains("💡 Рекомендация:")) && !string.IsNullOrEmpty(_lastUpdatedHost))
                 {
                     var parts = msg.Split(':');
                     if (parts.Length >= 2)
                     {
+                        // Для "💡 Рекомендация: DROP_RST" берем вторую часть
+                        // Для "→ Стратегия: DROP_RST" тоже вторую
                         var strategy = parts[1].Trim();
+                        
+                        // Если в строке есть скобки с деталями (фейлов за 60s...), отрезаем их для поля стратегии
+                        var parenIndex = strategy.IndexOf('(');
+                        if (parenIndex > 0)
+                        {
+                            strategy = strategy.Substring(0, parenIndex).Trim();
+                        }
+
                         var result = TestResults.FirstOrDefault(t => 
                             t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
                         if (result != null)

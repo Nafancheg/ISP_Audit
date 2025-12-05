@@ -15,15 +15,20 @@ namespace IspAudit.Core.Modules
         private readonly ConcurrentDictionary<string, HostBlockageState> _states = new();
         private readonly TcpRetransmissionTracker? _retransmissionTracker;
         private readonly HttpRedirectDetector? _httpRedirectDetector;
+        private readonly RstInspectionService? _rstInspectionService;
 
         public InMemoryBlockageStateStore()
         {
         }
 
-        public InMemoryBlockageStateStore(TcpRetransmissionTracker retransmissionTracker, HttpRedirectDetector? httpRedirectDetector = null)
+        public InMemoryBlockageStateStore(
+            TcpRetransmissionTracker retransmissionTracker, 
+            HttpRedirectDetector? httpRedirectDetector = null,
+            RstInspectionService? rstInspectionService = null)
         {
             _retransmissionTracker = retransmissionTracker ?? throw new ArgumentNullException(nameof(retransmissionTracker));
             _httpRedirectDetector = httpRedirectDetector;
+            _rstInspectionService = rstInspectionService;
         }
 
         public void RegisterResult(HostTested tested)
@@ -62,6 +67,8 @@ namespace IspAudit.Core.Modules
             var retransmissions = 0;
             bool hasHttpRedirect = false;
             string? redirectTo = null;
+            bool hasSuspiciousRst = false;
+            string? suspiciousRstDetails = null;
 
             if (_retransmissionTracker != null && tested.Host.RemoteIp != null)
             {
@@ -93,6 +100,23 @@ namespace IspAudit.Core.Modules
                 }
             }
 
+            if (_rstInspectionService != null && tested.Host.RemoteIp != null)
+            {
+                try
+                {
+                    if (_rstInspectionService.HasSuspiciousRst(tested.Host.RemoteIp, out var details))
+                    {
+                        hasSuspiciousRst = true;
+                        suspiciousRstDetails = details;
+                    }
+                }
+                catch
+                {
+                    hasSuspiciousRst = false;
+                    suspiciousRstDetails = null;
+                }
+            }
+
             return new BlockageSignals(
                 stats.FailCount,
                 stats.HardFailCount,
@@ -100,7 +124,9 @@ namespace IspAudit.Core.Modules
                 stats.Window,
                 retransmissions,
                 hasHttpRedirect,
-                redirectTo);
+                redirectTo,
+                hasSuspiciousRst,
+                suspiciousRstDetails);
         }
 
         private static string BuildKey(IPAddress ip, int port, string? hostname)

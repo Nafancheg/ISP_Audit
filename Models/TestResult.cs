@@ -64,7 +64,16 @@ namespace ISPAudit.Models
         /// <summary>
         /// Стратегия обхода (WinDivert), полученная от LiveTestingPipeline
         /// </summary>
-        public string? BypassStrategy { get; set; }
+        private string? _bypassStrategy;
+        public string? BypassStrategy
+        {
+            get => _bypassStrategy;
+            set
+            {
+                _bypassStrategy = value;
+                OnPropertyChanged(nameof(BypassStrategy));
+            }
+        }
 
         public string StatusText
         {

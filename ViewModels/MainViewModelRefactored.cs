@@ -241,7 +241,11 @@ namespace ISPAudit.ViewModels
 
             // Подписываемся на события
             Bypass.OnLog += Log;
-            Bypass.PropertyChanged += (s, e) => OnPropertyChanged(e.PropertyName ?? "");
+            Bypass.PropertyChanged += (s, e) => 
+            {
+                OnPropertyChanged(e.PropertyName ?? "");
+                CheckAndRetestFailedTargets(e.PropertyName);
+            };
             
             Orchestrator.OnLog += Log;
             Orchestrator.OnPipelineMessage += msg => 
@@ -467,6 +471,35 @@ namespace ISPAudit.ViewModels
             }
 
             UserMessage = cleanMsg;
+        }
+
+        private async void CheckAndRetestFailedTargets(string? propertyName)
+        {
+            // Если диагностика завершена (IsDone) и изменилась настройка bypass
+            if (!IsDone || string.IsNullOrEmpty(propertyName)) return;
+
+            // Проверяем, что изменилось именно свойство bypass
+            if (propertyName != nameof(Bypass.IsFragmentEnabled) &&
+                propertyName != nameof(Bypass.IsDisorderEnabled) &&
+                propertyName != nameof(Bypass.IsFakeEnabled) &&
+                propertyName != nameof(Bypass.IsDropRstEnabled) &&
+                propertyName != nameof(Bypass.IsDoHEnabled))
+            {
+                return;
+            }
+
+            // Находим проблемные цели (не OK)
+            var failedTargets = Results.TestResults
+                .Where(r => r.Status != TestStatus.Pass)
+                .Select(r => r.Target)
+                .ToList();
+
+            if (failedTargets.Count == 0) return;
+
+            Log($"[AutoRetest] Bypass option changed ({propertyName}). Retesting {failedTargets.Count} failed targets...");
+            
+            // Запускаем ретест
+            await Orchestrator.RetestTargetsAsync(failedTargets, Bypass);
         }
 
         #endregion

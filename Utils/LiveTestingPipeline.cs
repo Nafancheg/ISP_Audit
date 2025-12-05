@@ -54,7 +54,8 @@ namespace IspAudit.Utils
             IspAudit.Bypass.WinDivertBypassManager? bypassManager = null, 
             DnsParserService? dnsParser = null,
             ITrafficFilter? filter = null,
-            IBlockageStateStore? stateStore = null)
+            IBlockageStateStore? stateStore = null,
+            System.Collections.Generic.IEnumerable<string>? activeStrategies = null)
         {
             _config = config;
             _progress = progress;
@@ -78,7 +79,16 @@ namespace IspAudit.Utils
             _stateStore = stateStore ?? new InMemoryBlockageStateStore();
 
             _tester = new StandardHostTester(progress, dnsParser?.DnsCache);
-            _classifier = new StandardBlockageClassifier(_stateStore);
+            
+            var stdClassifier = new StandardBlockageClassifier(_stateStore);
+            if (activeStrategies != null)
+            {
+                foreach (var s in activeStrategies)
+                {
+                    stdClassifier.ActiveStrategies.Add(s);
+                }
+            }
+            _classifier = stdClassifier;
             
             // BypassCoordinator — главный "мозг" управления bypass-стратегиями
             // Содержит логику: кеширование работающих стратегий, перебор, ретест
@@ -162,9 +172,13 @@ namespace IspAudit.Utils
             {
                 Interlocked.Decrement(ref _pendingInSniffer);
                 
-                // Получаем hostname из кеша (если есть) для более умной дедупликации
-                var hostname = _dnsParser?.DnsCache.TryGetValue(host.RemoteIp.ToString(), out var name) == true 
-                    ? name : null;
+                // Получаем hostname из объекта или кеша (если есть) для более умной дедупликации
+                var hostname = host.Hostname;
+                if (string.IsNullOrEmpty(hostname))
+                {
+                    hostname = _dnsParser?.DnsCache.TryGetValue(host.RemoteIp.ToString(), out var name) == true 
+                        ? name : null;
+                }
 
                 // Проверяем через единый фильтр (дедупликация + шум)
                 var decision = _filter.ShouldTest(host, hostname);

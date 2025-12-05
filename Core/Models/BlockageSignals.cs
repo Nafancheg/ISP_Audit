@@ -41,7 +41,17 @@ namespace IspAudit.Core.Models
         /// <summary>
         /// Целевой хост HTTP-редиректа (если обнаружен).
         /// </summary>
-        string? RedirectToHost)
+        string? RedirectToHost,
+
+        /// <summary>
+        /// Обнаружен ли подозрительный RST пакет (с аномальным TTL).
+        /// </summary>
+        bool HasSuspiciousRst,
+
+        /// <summary>
+        /// Детали подозрительного RST (например, "TTL=64 (expected 50-55)").
+        /// </summary>
+        string? SuspiciousRstDetails)
     {
         /// <summary>
         /// Есть ли фейлы вообще за окно.

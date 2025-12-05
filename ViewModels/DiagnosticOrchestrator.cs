@@ -33,6 +33,7 @@ namespace ISPAudit.ViewModels
         private NetworkMonitorService? _networkMonitor;
         private TcpRetransmissionTracker? _tcpRetransmissionTracker;
         private HttpRedirectDetector? _httpRedirectDetector;
+        private RstInspectionService? _rstInspectionService;
         private DnsParserService? _dnsParser;
         private PidTrackerService? _pidTracker;
         
@@ -242,7 +243,7 @@ namespace ISPAudit.ViewModels
                     _dnsParser,
                     trafficFilter,
                     _tcpRetransmissionTracker != null
-                        ? new InMemoryBlockageStateStore(_tcpRetransmissionTracker, _httpRedirectDetector)
+                        ? new InMemoryBlockageStateStore(_tcpRetransmissionTracker, _httpRedirectDetector, _rstInspectionService)
                         : null);
                 Log("[Orchestrator] ✓ TrafficCollector + LiveTestingPipeline созданы");
 
@@ -314,6 +315,122 @@ namespace ISPAudit.ViewModels
                 _testingPipeline?.Dispose();
                 _trafficCollector?.Dispose();
                 await StopMonitoringServicesAsync();
+                IsDiagnosticRunning = false;
+                _cts?.Dispose();
+                _cts = null;
+                OnDiagnosticComplete?.Invoke();
+            }
+        }
+
+        /// <summary>
+        /// Повторная диагностика списка целей (для проверки эффективности bypass)
+        /// </summary>
+        public async Task RetestTargetsAsync(
+            System.Collections.Generic.IEnumerable<ISPAudit.Models.Target> targets,
+            BypassController bypassController)
+        {
+            if (IsDiagnosticRunning)
+            {
+                Log("[Orchestrator] Нельзя запустить ретест во время активной диагностики");
+                return;
+            }
+
+            try
+            {
+                Log("[Orchestrator] Запуск ретеста проблемных целей...");
+                IsDiagnosticRunning = true;
+                DiagnosticStatus = "Ретест...";
+                _cts = new CancellationTokenSource();
+
+                var progress = new Progress<string>(msg => 
+                {
+                    Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        DiagnosticStatus = msg;
+                        Log($"[Retest] {msg}");
+                        OnPipelineMessage?.Invoke(msg);
+                    });
+                });
+
+                // Создаем pipeline только для тестирования (без сниффера)
+                var pipelineConfig = new PipelineConfig
+                {
+                    EnableLiveTesting = true,
+                    EnableAutoBypass = false, // Bypass уже настроен контроллером
+                    MaxConcurrentTests = 5,
+                    TestTimeout = TimeSpan.FromSeconds(3)
+                };
+
+                // Собираем активные стратегии для исключения их из рекомендаций
+                var activeStrategies = new System.Collections.Generic.List<string>();
+                if (bypassController.IsFragmentEnabled) activeStrategies.Add("TLS_FRAGMENT");
+                if (bypassController.IsDisorderEnabled) activeStrategies.Add("TLS_DISORDER");
+                if (bypassController.IsFakeEnabled) activeStrategies.Add("TLS_FAKE");
+                if (bypassController.IsFragmentEnabled && bypassController.IsFakeEnabled) activeStrategies.Add("TLS_FAKE_FRAGMENT");
+                if (bypassController.IsDropRstEnabled) activeStrategies.Add("DROP_RST");
+                if (bypassController.IsDoHEnabled) activeStrategies.Add("DOH");
+
+                // Используем существующий bypass manager из контроллера
+                _testingPipeline = new LiveTestingPipeline(
+                    pipelineConfig, 
+                    progress, 
+                    bypassController.BypassManager, 
+                    null, // DNS parser не нужен для ретеста (уже есть IP)
+                    new UnifiedTrafficFilter(),
+                    null, // State store новый
+                    activeStrategies);
+
+                // Запускаем цели в pipeline
+                foreach (var target in targets)
+                {
+                    // Пытаемся извлечь порт из Service, если там число
+                    int port = 443;
+                    if (int.TryParse(target.Service, out var p)) port = p;
+
+                    if (System.Net.IPAddress.TryParse(target.Host, out var ip))
+                    {
+                        var key = $"{ip}:{port}:TCP";
+                        var host = new HostDiscovered(key, ip, port, IspAudit.Bypass.TransportProtocol.Tcp, DateTime.UtcNow)
+                        {
+                            Hostname = target.Name != target.Host ? target.Name : null // Если имя отличается от IP, передаем его
+                        };
+                        await _testingPipeline.EnqueueHostAsync(host).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        // Если Host - это доменное имя, нужно его разрешить
+                        try 
+                        {
+                            var ips = await System.Net.Dns.GetHostAddressesAsync(target.Host);
+                            if (ips.Length > 0)
+                            {
+                                var ipAddr = ips[0];
+                                var key = $"{ipAddr}:{port}:TCP";
+                                var host = new HostDiscovered(key, ipAddr, port, IspAudit.Bypass.TransportProtocol.Tcp, DateTime.UtcNow)
+                                {
+                                    Hostname = target.Host // Передаем оригинальный hostname
+                                };
+                                await _testingPipeline.EnqueueHostAsync(host).ConfigureAwait(false);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+
+                // Ждем завершения
+                await _testingPipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(15)).ConfigureAwait(false);
+                
+                Log("[Orchestrator] Ретест завершен");
+                DiagnosticStatus = "Ретест завершен";
+            }
+            catch (Exception ex)
+            {
+                Log($"[Orchestrator] Ошибка ретеста: {ex.Message}");
+            }
+            finally
+            {
+                _testingPipeline?.Dispose();
+                _testingPipeline = null;
                 IsDiagnosticRunning = false;
                 _cts?.Dispose();
                 _cts = null;
@@ -526,6 +643,10 @@ namespace ISPAudit.ViewModels
             // HTTP Redirect Detector — минимальный детектор HTTP 3xx Location
             _httpRedirectDetector = new HttpRedirectDetector();
             _httpRedirectDetector.Attach(_networkMonitor);
+
+            // RST Inspection Service — анализ TTL входящих RST пакетов
+            _rstInspectionService = new RstInspectionService();
+            _rstInspectionService.Attach(_networkMonitor);
             
             // DNS Parser (теперь умеет и SNI)
             _dnsParser = new DnsParserService(_networkMonitor, progress);
@@ -562,6 +683,7 @@ namespace ISPAudit.ViewModels
                 _connectionMonitor = null;
                 _tcpRetransmissionTracker = null;
                 _httpRedirectDetector = null;
+                _rstInspectionService = null;
             }
             catch (Exception ex)
             {

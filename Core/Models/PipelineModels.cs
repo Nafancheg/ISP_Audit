@@ -13,7 +13,10 @@ namespace IspAudit.Core.Models
         int RemotePort,
         TransportProtocol Protocol,
         DateTime DiscoveredAt
-    );
+    )
+    {
+        public string? Hostname { get; init; }
+    }
 
     /// <summary>
     /// Результат тестирования хоста

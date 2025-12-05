@@ -154,11 +154,11 @@
 
                             <!-- Fragment -->
                             <Button Grid.Column="0" Command="{Binding ToggleFragmentCommand}"
-                                    Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
-                                    ToolTip="TLS Fragment&#x0a;Фрагментация ClientHello (обычный порядок)">
+                                    Height="36" FontSize="11" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
+                                    ToolTip="TLS_FRAGMENT&#x0a;Фрагментация ClientHello (обычный порядок)">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
-                                        <Setter Property="Content" Value="Fragment"/>
+                                        <Setter Property="Content" Value="TLS_FRAGMENT"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsFragmentEnabled}" Value="True">
                                                 <Setter Property="Background" Value="#3B82F6"/>
@@ -172,11 +172,11 @@
 
                             <!-- Disorder (фрагменты в обратном порядке) -->
                             <Button Grid.Column="1" Command="{Binding ToggleDisorderCommand}"
-                                    Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
-                                    ToolTip="TLS Disorder&#x0a;Фрагменты в ОБРАТНОМ порядке&#x0a;(сначала 2-й, потом 1-й) — эффективнее против DPI">
+                                    Height="36" FontSize="11" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
+                                    ToolTip="TLS_DISORDER&#x0a;Фрагменты в ОБРАТНОМ порядке&#x0a;(сначала 2-й, потом 1-й) — эффективнее против DPI">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
-                                        <Setter Property="Content" Value="Disorder"/>
+                                        <Setter Property="Content" Value="TLS_DISORDER"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsDisorderEnabled}" Value="True">
                                                 <Setter Property="Background" Value="#8B5CF6"/>
@@ -190,11 +190,11 @@
 
                             <!-- Fake -->
                             <Button Grid.Column="2" Command="{Binding ToggleFakeCommand}"
-                                    Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
-                                    ToolTip="TLS Fake&#x0a;Fake TTL пакет для обхода active probing">
+                                    Height="36" FontSize="11" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
+                                    ToolTip="TLS_FAKE&#x0a;Fake TTL пакет для обхода active probing">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
-                                        <Setter Property="Content" Value="Fake"/>
+                                        <Setter Property="Content" Value="TLS_FAKE"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsFakeEnabled}" Value="True">
                                                 <Setter Property="Background" Value="#3B82F6"/>
@@ -208,11 +208,11 @@
 
                             <!-- DROP RST -->
                             <Button Grid.Column="3" Command="{Binding ToggleDropRstCommand}"
-                                    Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
-                                    ToolTip="DROP RST&#x0a;Блокировка TCP RST пакетов от провайдера">
+                                    Height="36" FontSize="11" FontWeight="Medium" Cursor="Hand" Margin="0,0,4,0"
+                                    ToolTip="DROP_RST&#x0a;Блокировка TCP RST пакетов от провайдера">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
-                                        <Setter Property="Content" Value="DROP RST"/>
+                                        <Setter Property="Content" Value="DROP_RST"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsDropRstEnabled}" Value="True">
                                                 <Setter Property="Background" Value="#3B82F6"/>
@@ -361,6 +361,7 @@
                         </Grid>
 
                         <!-- Summary Stats -->
+                        <!--
                         <Border Background="#F9FAFB" 
                                 CornerRadius="8" 
                                 Padding="12">
@@ -390,7 +391,6 @@
                                     <TextBlock Text="{Binding WarnCount}" Style="{StaticResource H2Style}" Foreground="{StaticResource WarnBrush}"/>
                                 </StackPanel>
 
-                                <!-- Profile Saved Notification -->
                                 <Border Grid.Row="1" Grid.ColumnSpan="3" 
                                         Margin="0,8,0,0" 
                                         Background="#ECFDF5" 
@@ -406,6 +406,7 @@
                                 </Border>
                             </Grid>
                         </Border>
+                        -->
                     </StackPanel>
 
                     <!-- Unified DataGrid -->

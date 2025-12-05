@@ -23,7 +23,7 @@ namespace IspAudit.Utils
         private bool _isRunning;
         private readonly TaskCompletionSource<bool> _readySignal = new();
         private readonly TcpConnectionWatcher _watcher = new();
-        private const bool VerboseSocketLogging = false;
+        private static readonly bool VerboseSocketLogging = false;
         
         /// <summary>Время открытия мониторинга (UTC)</summary>
         public DateTime? MonitorStartedUtc { get; private set; }

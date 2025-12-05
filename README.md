@@ -50,10 +50,17 @@ Windows-приложение для анализа сетевого трафик
 - **SNI-парсинг** — определение реальных доменов из TLS ClientHello
 - **DNS-мониторинг** — захват DNS-запросов/ответов приложения
 - **Параллельное тестирование** — проверка хостов по мере обнаружения
-- **Классификация блокировок**: DNS_FILTERED, TLS_DPI, TCP_RST, TCP_TIMEOUT
+- **Продвинутая детекция**:
+  - **HTTP Redirect** — обнаружение "заглушек" провайдера
+  - **RST Inspection** — анализ TTL для выявления DPI-инжектов
+  - **TCP Retransmissions** — подсчет потерь пакетов
+  - **Fail Counters** — анализ стабильности во времени
+- **Классификация блокировок**: DNS_FILTERED, TLS_DPI, TCP_RST, TCP_TIMEOUT, HTTP_REDIRECT_DPI
 
 ### Оптимизация соединения
 - **TLS Fragmentation** — разбиение ClientHello для стабильности
+- **TLS Disorder** — отправка фрагментов в обратном порядке (эффективно против современных DPI)
+- **TLS Fake** — отправка фейковых пакетов для запутывания DPI
 - **RST Drop** — фильтрация некорректных TCP RST пакетов
 - **DoH (DNS-over-HTTPS)** — защищённый DNS через Cloudflare/Google/Quad9
 
@@ -143,6 +150,8 @@ dotnet run
 | `TCP_TIMEOUT` | TCP соединение не устанавливается | VPN |
 | `DNS_FILTERED` | DNS возвращает пустой ответ | DoH |
 | `DNS_BOGUS` | DNS возвращает некорректный IP | DoH |
+| `HTTP_REDIRECT_DPI` | Подмена HTTP-ответа провайдером | VPN / TTL Trick |
+| `TCP_RETRY_HEAVY` | Высокий % ретрансмиссий пакетов | VPN / Проверка канала |
 
 ## Архитектура
 
@@ -205,6 +214,10 @@ dotnet run
 | `Utils/ConnectionMonitorService.cs` | WinDivert Socket Layer |
 | `Utils/NetworkMonitorService.cs` | WinDivert Network Layer |
 | `Utils/DnsParserService.cs` | Парсинг DNS и SNI |
+| `Core/Modules/HttpRedirectDetector.cs` | Детекция HTTP-заглушек |
+| `Core/Modules/RstInspectionService.cs` | Анализ RST-пакетов (TTL) |
+| `Core/Modules/TcpRetransmissionTracker.cs` | Подсчет ретрансмиссий |
+| `Core/Modules/InMemoryBlockageStateStore.cs` | Агрегация сигналов и истории |
 | `Bypass/WinDivertBypassManager.cs` | Правила оптимизации |
 | `Bypass/BypassCoordinator.cs` | Автовыбор стратегий |
 

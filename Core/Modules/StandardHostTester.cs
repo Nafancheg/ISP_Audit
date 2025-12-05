@@ -31,8 +31,12 @@ namespace IspAudit.Core.Modules
 
             try
             {
-                // 0. Проверка в DNS кеше (самый быстрый и точный способ)
-                if (_dnsCache != null && _dnsCache.TryGetValue(host.RemoteIp.ToString(), out var cachedName))
+                // 0. Проверка переданного hostname или DNS кеша
+                if (!string.IsNullOrEmpty(host.Hostname))
+                {
+                    hostname = host.Hostname;
+                }
+                else if (_dnsCache != null && _dnsCache.TryGetValue(host.RemoteIp.ToString(), out var cachedName))
                 {
                     hostname = cachedName;
                 }

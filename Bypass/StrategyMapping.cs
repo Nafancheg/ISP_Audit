@@ -75,9 +75,21 @@ namespace IspAudit.Bypass
             // 1. Analyze TLS/HTTP issues (TCP OK, but TLS Failed)
             if (result.TcpOk && !result.TlsOk)
             {
-                // Prioritize DROP_RST as it's faster and often sufficient for RST injection on TLS ClientHello
-                rec.AddApplicable("DROP_RST");
+                bool isTimeout = result.BlockageType == "TLS_TIMEOUT" || result.BlockageType == "HTTP_TIMEOUT";
+
+                if (!isTimeout)
+                {
+                    // Prioritize DROP_RST as it's faster and often sufficient for RST injection on TLS ClientHello
+                    rec.AddApplicable("DROP_RST");
+                }
+
                 AddTlsStrategies(rec);
+
+                if (isTimeout)
+                {
+                    // For timeouts, DROP_RST is unlikely to help, but we can add it as a fallback
+                    rec.AddApplicable("DROP_RST");
+                }
             }
 
             // 2. Analyze TCP issues (TCP Failed)
@@ -92,8 +104,10 @@ namespace IspAudit.Bypass
 
         private static void AddTlsStrategies(StrategyRecommendation rec)
         {
-            rec.AddApplicable("TLS_FRAGMENT");
+            // Prioritize DISORDER and FAKE over simple FRAGMENT, as they are more robust against modern DPI
+            rec.AddApplicable("TLS_DISORDER");
             rec.AddApplicable("TLS_FAKE");
+            rec.AddApplicable("TLS_FRAGMENT");
             rec.AddApplicable("TLS_FAKE_FRAGMENT");
         }
 
@@ -101,10 +115,13 @@ namespace IspAudit.Bypass
         {
             if (blockageType == "PORT_CLOSED") return;
 
-            bool isTimeout = blockageType == "TCP_TIMEOUT" || minElapsed > 2000;
-            // If minElapsed is 0, it could be a very fast local failure (e.g. interface down) or instant RST.
-            // We treat 0 as potential RST too, just to be safe.
-            bool isRst = blockageType == "TCP_RST" || minElapsed < 200;
+            // TCP_TIMEOUT_CONFIRMED - это усиленный TCP_TIMEOUT (много фейлов подряд).
+            // Стратегии те же, что и для обычного таймаута.
+            bool isTimeout = blockageType == "TCP_TIMEOUT" || blockageType == "TCP_TIMEOUT_CONFIRMED" || minElapsed > 2000;
+            
+            // TCP_RST_INJECTION - это усиленный TCP_RST (обнаружен аномальный TTL).
+            // Стратегии те же, что и для обычного RST.
+            bool isRst = blockageType == "TCP_RST" || blockageType == "TCP_RST_INJECTION" || minElapsed < 200;
 
             if (isRst)
             {

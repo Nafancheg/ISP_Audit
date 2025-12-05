@@ -14,7 +14,7 @@ namespace IspAudit.Utils
         private readonly NetworkMonitorService _networkMonitor;
         private readonly IProgress<string>? _progress;
         private readonly ConcurrentDictionary<string, string> _dnsCache;
-        private const bool VerboseDnsLogging = false;
+        private static readonly bool VerboseDnsLogging = false;
         
         // Хранение активных запросов: TransactionID -> (Hostname, Timestamp)
         private readonly ConcurrentDictionary<ushort, (string Hostname, DateTime Timestamp)> _pendingRequests = new();

@@ -138,6 +138,12 @@ namespace IspAudit.Utils
                     return;
                 }
 
+                // Игнорируем 0.0.0.0 (часто бывает при биндинге или ошибках)
+                if (remoteIp.Equals(IPAddress.Any) || remoteIp.Equals(IPAddress.IPv6Any))
+                {
+                    return;
+                }
+
                 var key = $"{remoteIp}:{remotePort}:{protocol}";
                 
                 if (_connections.TryAdd(key, new ConnectionInfo
@@ -169,7 +175,10 @@ namespace IspAudit.Utils
                         RemotePort: remotePort,
                         Protocol: protocol == 6 ? IspAudit.Bypass.TransportProtocol.Tcp : IspAudit.Bypass.TransportProtocol.Udp,
                         DiscoveredAt: DateTime.UtcNow
-                    );
+                    )
+                    {
+                        Hostname = hostname
+                    };
                     
                     // Передаём дальше — фильтрация будет в Pipeline
                     writer.TryWrite(host);

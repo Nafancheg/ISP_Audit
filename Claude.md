@@ -54,6 +54,7 @@ Workflow `.github/workflows/build.yml` автоматически собирае
 **GUI (WPF + MaterialDesignInXaml)**:
 - **App.xaml**: Настройка Material Design темы (Light, PrimaryColor=Blue, SecondaryColor=Cyan)
 - **MainWindow.xaml**: Основное окно с Material Design компонентами:
+  - **Bypass Control Panel**: Панель с кнопками стратегий (`TLS_FRAGMENT`, `TLS_DISORDER`, `TLS_FAKE`, `DROP_RST`, `DOH`).
   - Карточки (materialDesign:Card) для предупреждений (красная) и успеха (зелёная)
   - Большая кнопка "ПРОВЕРИТЬ" с тенью (MaterialDesignRaisedButton)
   - Список сервисов (ItemsControl) с прогресс-индикаторами и иконками статусов
@@ -82,10 +83,12 @@ Workflow `.github/workflows/build.yml` автоматически собирае
 ### Обход блокировок (Bypass/)
 - **WinDivertBypassManager.cs**: Менеджер WinDivert-драйвера для фильтрации пакетов
   - Дроп входящих/исходящих TCP RST
-  - Фрагментация TLS ClientHello
+  - Фрагментация TLS ClientHello (Fragment, Disorder)
+  - Fake TTL пакеты
   - Опциональная переадресация трафика (UDP/TCP) по правилам
 - **BypassProfile.cs**: Конфигурация правил обхода из `bypass_profile.json`
 - **WinDivertNative.cs**: P/Invoke обёртка для WinDivert.dll
+- **BypassCoordinator.cs**: Координатор стратегий, управляет логикой Auto-Retest (автоматическая перепроверка при смене стратегии).
 
 **Требования**: WinDivert.dll + права администратора. GUI показывает предупреждение и разблокирует кнопку активации только после обнаружения проблем в диагностике.
 
