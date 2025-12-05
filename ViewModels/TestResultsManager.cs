@@ -123,9 +123,11 @@ namespace ISPAudit.ViewModels
                 return; // Не создаём новую карточку для шума
             }
 
+            var normalizedHost = NormalizeHost(host);
+
             var existing = TestResults.FirstOrDefault(t => 
-                t.Target.Host.Equals(host, StringComparison.OrdinalIgnoreCase) || 
-                t.Target.Name.Equals(host, StringComparison.OrdinalIgnoreCase) ||
+                NormalizeHost(t.Target.Host).Equals(normalizedHost, StringComparison.OrdinalIgnoreCase) || 
+                NormalizeHost(t.Target.Name).Equals(normalizedHost, StringComparison.OrdinalIgnoreCase) ||
                 t.Target.FallbackIp == host);
             
             if (existing != null)
@@ -679,6 +681,14 @@ namespace ISPAudit.ViewModels
         #endregion
 
         #region Private Methods
+
+        private string NormalizeHost(string host)
+        {
+            if (string.IsNullOrEmpty(host)) return host;
+            if (host.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+                return host.Substring(4);
+            return host;
+        }
 
         private void NotifyCountersChanged()
         {
