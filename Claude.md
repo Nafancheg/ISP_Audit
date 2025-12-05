@@ -35,13 +35,20 @@ Workflow `.github/workflows/build.yml` автоматически собирае
 
 ### Основные компоненты
 
-**Config.cs**: Парсинг аргументов командной строки и конфигурация запуска. Содержит:
-- Таймауты для HTTP/TCP/UDP
-- Список целей и портов
-- Флаги включения/выключения тестов (EnableDns, EnableTcp, EnableHttp, EnableTrace, EnableUdp, EnableRst)
-- Метод `ResolveTargets()` для резолва целей из разных источников (JSON/CSV/список)
+**Config.cs**: Парсинг аргументов командной строки и конфигурация запуска.
 
-**AuditRunner.cs**: Оркестратор выполнения всех тестов. Последовательно запускает:
+**DiagnosticOrchestrator.cs**: Главный контроллер режима "Live Audit".
+- Управляет жизненным циклом мониторинговых сервисов (`ConnectionMonitor`, `NetworkMonitor`).
+- Координирует сбор трафика (`TrafficCollector`) и тестирование (`LiveTestingPipeline`).
+- Обрабатывает события от пассивных анализаторов (`UdpInspectionService`, `RstInspectionService`) и запускает ретесты.
+
+**LiveTestingPipeline.cs**: Конвейер обработки обнаруженных хостов.
+- **Sniffer**: Получает новые хосты от `TrafficCollector` или по сигналу `ForceRetest`.
+- **Tester**: Выполняет активные проверки (DNS, TCP, TLS).
+- **Classifier**: Определяет тип блокировки на основе результатов тестов и сигналов от пассивных анализаторов.
+- **Bypass**: Подбирает стратегии обхода.
+
+**AuditRunner.cs**: Оркестратор выполнения статических тестов (CLI режим). Последовательно запускает:
 1. DNS-проверки (System DNS vs DoH)
 2. TCP-проверки портов
 3. HTTP/HTTPS запросы с SNI
