@@ -102,6 +102,15 @@ namespace IspAudit.Bypass
             // 3. Analyze UDP issues
             if (result.BlockageType == "UDP_BLOCKAGE")
             {
+                // Если порт 443, это скорее всего QUIC.
+                // Если QUIC заблокирован, браузер должен откатиться на TCP.
+                // Если сайт всё равно не работает, значит TCP тоже заблокирован (но тестер мог этого не заметить).
+                // Поэтому предлагаем и TLS стратегии тоже.
+                if (result.Host.RemotePort == 443)
+                {
+                    AddTlsStrategies(rec);
+                }
+                
                 rec.AddManual("VPN");
             }
 
