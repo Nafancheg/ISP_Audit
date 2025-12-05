@@ -248,6 +248,16 @@ namespace ISPAudit.ViewModels
                         : null);
                 Log("[Orchestrator] ✓ TrafficCollector + LiveTestingPipeline созданы");
 
+                // Подписываемся на события UDP блокировок для ретеста
+                if (_udpInspectionService != null)
+                {
+                    _udpInspectionService.OnBlockageDetected += (ip) => 
+                    {
+                        Log($"[Orchestrator] UDP Blockage detected for {ip}. Forcing retest.");
+                        _testingPipeline.ForceRetest(ip);
+                    };
+                }
+
                 // 8. Запуск сбора и тестирования параллельно
                 var collectorTask = RunCollectorWithPipelineAsync(overlay, progress!);
                 var silenceMonitorTask = RunSilenceMonitorAsync(overlay);

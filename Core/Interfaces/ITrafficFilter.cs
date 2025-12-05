@@ -22,8 +22,13 @@ namespace IspAudit.Core.Interfaces
         bool IsNoise(string? hostname);
 
         /// <summary>
-        /// Сбрасывает состояние фильтра (например, кеш дедупликации).
+        /// Сбрасывает состояние фильтра (кеш проверенных хостов).
         /// </summary>
         void Reset();
+
+        /// <summary>
+        /// Принудительно удаляет хост из кеша проверенных, позволяя протестировать его снова.
+        /// </summary>
+        void Invalidate(string ip);
     }
 }

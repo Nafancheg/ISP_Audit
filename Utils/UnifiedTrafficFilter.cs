@@ -71,6 +71,26 @@ namespace IspAudit.Utils
             return NoiseHostFilter.Instance.IsNoiseHost(hostname);
         }
 
+        public void Invalidate(string ip)
+        {
+            // Удаляем ключи, связанные с этим IP
+            // Так как мы не знаем порт, удаляем все ключи, содержащие этот IP
+            // Это не очень эффективно, но редко вызывается
+            var keysToRemove = new System.Collections.Generic.List<string>();
+            foreach (var key in _testedKeys.Keys)
+            {
+                if (key.Contains(ip))
+                {
+                    keysToRemove.Add(key);
+                }
+            }
+
+            foreach (var key in keysToRemove)
+            {
+                _testedKeys.TryRemove(key, out _);
+            }
+        }
+
         public void Reset()
         {
             _testedKeys.Clear();

@@ -359,5 +359,30 @@ namespace IspAudit.Utils
             
             try { _cts.Dispose(); } catch { }
         }
+
+        /// <summary>
+        /// Принудительно запускает повторное тестирование указанного IP.
+        /// Используется, когда пассивные анализаторы (UDP/RST) обнаруживают проблему постфактум.
+        /// </summary>
+        public void ForceRetest(IPAddress ip)
+        {
+            if (_disposed) return;
+
+            // 1. Сбрасываем фильтр для этого IP, чтобы он не был отброшен как дубликат
+            _filter.Invalidate(ip.ToString());
+
+            // 2. Создаем искусственное событие обнаружения хоста
+            // Предполагаем порт 443, так как это наиболее вероятно для QUIC/Web
+            var key = $"{ip}:443:UDP";
+            var host = new HostDiscovered(
+                key, 
+                ip, 
+                443, 
+                IspAudit.Bypass.TransportProtocol.Udp, 
+                DateTime.UtcNow);
+            
+            // 3. Отправляем в очередь на обработку
+            _snifferQueue.Writer.TryWrite(host);
+        }
     }
 }

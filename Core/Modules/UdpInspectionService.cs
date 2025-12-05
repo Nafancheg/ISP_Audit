@@ -14,6 +14,9 @@ namespace IspAudit.Core.Modules
     {
         private readonly ConcurrentDictionary<IPAddress, int> _unansweredHandshakes = new();
         private readonly ConcurrentDictionary<string, long> _flowLastSeen = new(); // Key: "SrcIP:SrcPort-DstIP:DstPort"
+        private readonly ConcurrentDictionary<IPAddress, bool> _alertedIps = new();
+
+        public event Action<IPAddress>? OnBlockageDetected;
 
         public void Attach(NetworkMonitorService monitor)
         {
@@ -73,7 +76,14 @@ namespace IspAudit.Core.Modules
                     var remoteIpBytes = BitConverter.GetBytes(dstIpInt); // Little Endian usually
                     var remoteIp = new IPAddress(remoteIpBytes);
 
-                    _unansweredHandshakes.AddOrUpdate(remoteIp, 1, (_, c) => c + 1);
+                    int count = _unansweredHandshakes.AddOrUpdate(remoteIp, 1, (_, c) => c + 1);
+                    
+                    // Если количество безответных рукопожатий превышает порог (например, 5), считаем это блокировкой
+                    if (count >= 5 && !_alertedIps.ContainsKey(remoteIp))
+                    {
+                        _alertedIps.TryAdd(remoteIp, true);
+                        OnBlockageDetected?.Invoke(remoteIp);
+                    }
                 }
             }
             else
@@ -89,6 +99,7 @@ namespace IspAudit.Core.Modules
                 if (_unansweredHandshakes.ContainsKey(remoteIp))
                 {
                     _unansweredHandshakes[remoteIp] = 0; // Reset
+                    _alertedIps.TryRemove(remoteIp, out _); // Сбрасываем флаг оповещения
                 }
             }
         }
