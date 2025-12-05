@@ -47,112 +47,93 @@ namespace IspAudit.Core.Modules
                 strategy = "NONE";
                 action = $"Порт {tested.Host.RemotePort} закрыт на {tested.Host.RemoteIp} (не блокировка)";
             }
-            else if (tested.DnsOk && tested.TcpOk && tested.TlsOk)
-            {
-                // Все проверки прошли успешно
-                strategy = "NONE";
-                action = "OK";
-            }
             else
             {
+                // Получаем сигналы из стора (если есть)
+                BlockageSignals? signals = null;
+                if (_stateStore != null)
+                {
+                    signals = _stateStore.GetSignals(tested, TimeSpan.FromSeconds(60));
+                }
+
+                // Проверяем UDP блокировки даже если TCP/TLS OK
+                if (tested.DnsOk && tested.TcpOk && tested.TlsOk)
+                {
+                    if (signals != null && signals.Value.HasUdpBlockage)
+                    {
+                        // TCP работает, но UDP блокируется (типично для QUIC/Games)
+                        tested = tested with { BlockageType = "UDP_BLOCKAGE" };
+                    }
+                    else
+                    {
+                        // Все проверки прошли успешно
+                        strategy = "NONE";
+                        action = "OK";
+                        return new HostBlocked(tested, strategy, action);
+                    }
+                }
+
                 // Если есть стор состояния, можно дополнить рекомендацию статистикой фейлов,
                 // ретрансмиссий и HTTP-редиректов (портал провайдера / DPI).
                 string? suffix = null;
-                if (_stateStore != null)
+                if (signals != null)
                 {
-                    // Официальное окно по умолчанию – 60 секунд
-                    var signals = _stateStore.GetSignals(tested, TimeSpan.FromSeconds(60));
+                    var s = signals.Value;
                     var hasProviderLikeRedirect = false;
 
-                    if (signals.FailCount > 0 || signals.RetransmissionCount > 0 || signals.HasHttpRedirectDpi || signals.HasSuspiciousRst)
+                    // Формируем суффикс с техническими деталями (скрываем его в UI, если нужно, или показываем в скобках)
+                    if (s.FailCount > 0 || s.RetransmissionCount > 0 || s.HasHttpRedirectDpi || s.HasSuspiciousRst || s.HasUdpBlockage)
                     {
-                        suffix = $" (фейлов за {signals.Window.TotalSeconds:0}s: {signals.FailCount}" +
-                                 (signals.HardFailCount > 0 ? $", жёстких: {signals.HardFailCount}" : string.Empty);
+                        suffix = $" (фейлов: {s.FailCount}";
 
-                        if (signals.RetransmissionCount > 0)
-                        {
-                            suffix += $", ретрансмиссий: {signals.RetransmissionCount}";
-                        }
-
-                        if (signals.HasSuspiciousRst)
-                        {
-                            suffix += $", {signals.SuspiciousRstDetails}";
-                        }
-
-                        if (signals.HasHttpRedirectDpi && !string.IsNullOrEmpty(signals.RedirectToHost))
-                        {
-                            suffix += $", HTTP-редирект на {signals.RedirectToHost}";
-
-                            // Грубая эвристика: если SLD исходного хоста и цели редиректа отличаются,
-                            // считаем, что это не "обычный" редирект внутри одного домена, а, скорее всего,
-                            // портал провайдера / страница блокировки.
-                            var sourceHost = tested.Hostname;
-                            var targetHost = signals.RedirectToHost;
-                            if (!string.IsNullOrEmpty(sourceHost) && !string.IsNullOrEmpty(targetHost))
-                            {
-                                var sourceSld = NetUtils.GetMainDomain(sourceHost);
-                                var targetSld = NetUtils.GetMainDomain(targetHost);
-                                if (!string.IsNullOrEmpty(sourceSld) &&
-                                    !string.IsNullOrEmpty(targetSld) &&
-                                    !string.Equals(sourceSld, targetSld, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    hasProviderLikeRedirect = true;
-                                }
-                            }
-                        }
-
-                        if (signals.UdpUnansweredHandshakes > 0)
-                        {
-                            suffix += $", UDP потерь: {signals.UdpUnansweredHandshakes}";
-                        }
-
-                        if (hasProviderLikeRedirect)
-                        {
-                            suffix += ", похоже на портал провайдера/страницу блокировки";
-                        }
-
+                        if (s.RetransmissionCount > 0) suffix += $", потерь пакетов: {s.RetransmissionCount}";
+                        if (s.HasSuspiciousRst) suffix += $", {s.SuspiciousRstDetails}";
+                        if (s.UdpUnansweredHandshakes > 0) suffix += $", UDP потерь: {s.UdpUnansweredHandshakes}";
+                        
                         suffix += ")";
                     }
 
-                    // Примитивная эвристика: если много ретрансмиссий и фейлов, а BlockageType пока общий,
-                    // усиливаем подозрение на сетевую проблему/DPI, не меняя текст конкретной стратегии.
-                    if (signals.HasSignificantRetransmissions && string.IsNullOrEmpty(tested.BlockageType))
+                    // Анализ редиректов
+                    if (s.HasHttpRedirectDpi && !string.IsNullOrEmpty(s.RedirectToHost))
+                    {
+                        var sourceHost = tested.Hostname;
+                        var targetHost = s.RedirectToHost;
+                        if (!string.IsNullOrEmpty(sourceHost) && !string.IsNullOrEmpty(targetHost))
+                        {
+                            var sourceSld = NetUtils.GetMainDomain(sourceHost);
+                            var targetSld = NetUtils.GetMainDomain(targetHost);
+                            if (!string.IsNullOrEmpty(sourceSld) &&
+                                !string.IsNullOrEmpty(targetSld) &&
+                                !string.Equals(sourceSld, targetSld, StringComparison.OrdinalIgnoreCase))
+                            {
+                                hasProviderLikeRedirect = true;
+                            }
+                        }
+                    }
+
+                    // Уточнение типа блокировки на основе сигналов
+                    if (s.HasSignificantRetransmissions && string.IsNullOrEmpty(tested.BlockageType))
                     {
                         tested = tested with { BlockageType = "TCP_RETRY_HEAVY" };
                     }
 
-                    // Если обнаружен явный редирект на другой домен (DPI заглушка),
-                    // это более точный диагноз, чем просто ошибка TLS или таймаут.
                     if (hasProviderLikeRedirect)
                     {
                         tested = tested with { BlockageType = "HTTP_REDIRECT_DPI" };
                     }
-                    // Если есть подозрительный RST, это явный признак DPI
-                    else if (signals.HasSuspiciousRst && string.IsNullOrEmpty(tested.BlockageType))
+                    else if (s.HasSuspiciousRst && string.IsNullOrEmpty(tested.BlockageType))
                     {
                         tested = tested with { BlockageType = "TCP_RST_INJECTION" };
                     }
-                    // Если есть потери UDP рукопожатий
-                    else if (signals.HasUdpBlockage && string.IsNullOrEmpty(tested.BlockageType))
+                    else if (s.HasUdpBlockage && string.IsNullOrEmpty(tested.BlockageType))
                     {
                         tested = tested with { BlockageType = "UDP_BLOCKAGE" };
                     }
-                    // Если просто есть редирект (но домены совпадают или неизвестны),
-                    // ставим мягкий тип, только если нет другого.
-                    else if (signals.HasHttpRedirectDpi && string.IsNullOrEmpty(tested.BlockageType))
+                    else if (s.HasHttpRedirectDpi && string.IsNullOrEmpty(tested.BlockageType))
                     {
                         tested = tested with { BlockageType = "HTTP_REDIRECT_DPI" };
                     }
-                    // Если это таймаут, но фейлов мало (меньше 3 за минуту), считаем это случайным сбоем
-                    // и не пугаем пользователя страшным словом TCP_TIMEOUT.
-                    // Но если фейлов много (>3), то это уже подтвержденная проблема.
-                    else if (tested.BlockageType == "TCP_TIMEOUT" && signals.FailCount < 3)
-                    {
-                        // Оставляем TCP_TIMEOUT, но в action будет видно, что фейлов мало.
-                        // Можно было бы менять на "TCP_TIMEOUT_FLAKY", но пока не будем ломать маппинг стратегий.
-                    }
-                    // Если фейлов много, можно усилить вердикт
-                    else if (tested.BlockageType == "TCP_TIMEOUT" && signals.FailCount >= 3)
+                    else if (tested.BlockageType == "TCP_TIMEOUT" && s.FailCount >= 3)
                     {
                         tested = tested with { BlockageType = "TCP_TIMEOUT_CONFIRMED" };
                     }
@@ -166,31 +147,52 @@ namespace IspAudit.Core.Modules
                     .Where(s => !ActiveStrategies.Contains(s))
                     .ToList();
 
+                // Формируем человекочитаемое сообщение об ошибке
+                string errorDescription = GetFriendlyErrorMessage(tested.BlockageType, tested.Host.RemoteIp.ToString());
+
                 // Use the first applicable strategy if available (skipping active ones)
                 if (availableStrategies.Count > 0)
                 {
                     strategy = availableStrategies[0];
-                    action = $"Рекомендуемая стратегия: {strategy}" + suffix;
+                    action = $"{errorDescription}{suffix}";
                 }
                 // If all applicable strategies are active, it means the current strategy is failing
                 else if (rec.Applicable.Count > 0)
                 {
                     strategy = rec.Applicable[0];
-                    action = $"Стратегия {strategy} уже применена, но проблема сохраняется" + suffix;
+                    action = $"Стратегия {strategy} уже применена, но проблема сохраняется. {errorDescription}{suffix}";
                 }
                 else if (rec.Manual.Count > 0)
                 {
                     strategy = rec.Manual[0];
-                    action = $"Требуется ручное вмешательство: {strategy}" + suffix;
+                    action = $"Требуется ручное вмешательство: {strategy}. {errorDescription}{suffix}";
                 }
                 else
                 {
                     strategy = "UNKNOWN";
-                    action = $"Неизвестная проблема с {tested.Host.RemoteIp}:{tested.Host.RemotePort}" + suffix;
+                    action = $"{errorDescription}{suffix}";
                 }
             }
             
             return new HostBlocked(tested, strategy, action);
+        }
+
+        private string GetFriendlyErrorMessage(string? blockageType, string ip)
+        {
+            return blockageType switch
+            {
+                "TCP_RST_INJECTION" => "Соединение сброшено (RST Injection). Обнаружено активное вмешательство DPI.",
+                "HTTP_REDIRECT_DPI" => "Подмена ответа (HTTP Redirect). Провайдер перенаправляет на страницу-заглушку.",
+                "TCP_RETRY_HEAVY" => "Критическая потеря пакетов. Вероятно, DPI отбрасывает пакеты (Blackhole).",
+                "UDP_BLOCKAGE" => "Блокировка UDP/QUIC протокола. Игровой трафик или современные веб-протоколы недоступны.",
+                "TCP_TIMEOUT" => "Таймаут соединения. Сервер не отвечает.",
+                "TCP_TIMEOUT_CONFIRMED" => "Сервер недоступен (подтвержденный таймаут).",
+                "TLS_TIMEOUT" => "Таймаут TLS рукопожатия. TCP соединение есть, но шифрование не устанавливается.",
+                "TLS_DPI" => "Ошибка TLS. Вероятно, DPI блокирует ClientHello.",
+                "DNS_FILTERED" => "DNS-фильтрация. Домен резолвится в неверный IP.",
+                "DNS_BOGUS" => "DNS-подмена. Ответ содержит локальный или служебный IP.",
+                _ => $"Неизвестная проблема с {ip}"
+            };
         }
 
         private bool IsFakeIp(IPAddress ip)
