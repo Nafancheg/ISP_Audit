@@ -391,7 +391,14 @@ namespace ISPAudit.ViewModels
                         Status = t.Status.ToString(),
                         Details = t.Details,
                         Error = t.Error,
-                        BypassStrategy = t.BypassStrategy
+                        BypassStrategy = t.BypassStrategy,
+                        Flags = new 
+                        {
+                            t.IsRstInjection,
+                            t.IsHttpRedirect,
+                            t.IsRetransmissionHeavy,
+                            t.IsUdpBlockage
+                        }
                     }).ToList()
                 };
 
