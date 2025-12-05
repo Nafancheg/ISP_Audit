@@ -55,6 +55,41 @@
                                Visibility="Collapsed"/>
                 </StackPanel>
 
+                <!-- Detection Badges -->
+                <WrapPanel Orientation="Horizontal" Margin="0,6,0,0">
+                    <!-- RST Injection Badge -->
+                    <Border Background="#FEF2F2" CornerRadius="4" Padding="6,2" Margin="0,0,4,4"
+                            Visibility="{Binding TestResult.IsRstInjection, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⚡ TCP RST" FontSize="10" FontWeight="SemiBold" Foreground="#DC2626"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- HTTP Redirect Badge -->
+                    <Border Background="#FFF7ED" CornerRadius="4" Padding="6,2" Margin="0,0,4,4"
+                            Visibility="{Binding TestResult.IsHttpRedirect, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="↪ HTTP Redirect" FontSize="10" FontWeight="SemiBold" Foreground="#EA580C"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Retransmission Badge -->
+                    <Border Background="#EFF6FF" CornerRadius="4" Padding="6,2" Margin="0,0,4,4"
+                            Visibility="{Binding TestResult.IsRetransmissionHeavy, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📉 Packet Loss" FontSize="10" FontWeight="SemiBold" Foreground="#2563EB"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- UDP Blockage Badge -->
+                    <Border Background="#FEF2F2" CornerRadius="4" Padding="6,2" Margin="0,0,4,4"
+                            Visibility="{Binding TestResult.IsUdpBlockage, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🚫 UDP Block" FontSize="10" FontWeight="SemiBold" Foreground="#DC2626"/>
+                        </StackPanel>
+                    </Border>
+                </WrapPanel>
+
                 <!-- Status Text -->
                 <TextBlock x:Name="statusText" 
                            Style="{StaticResource CaptionStyle}"

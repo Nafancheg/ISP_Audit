@@ -22,6 +22,25 @@ namespace ISPAudit.ViewModels
         private readonly ConcurrentDictionary<string, bool> _pendingResolutions = new();
         private string? _lastUpdatedHost;
 
+        private readonly Queue<(DateTime Time, bool IsSuccess)> _healthHistory = new();
+        
+        private double _healthScore = 100;
+        public double HealthScore
+        {
+            get => _healthScore;
+            set
+            {
+                if (Math.Abs(_healthScore - value) > 0.1)
+                {
+                    _healthScore = value;
+                    OnPropertyChanged(nameof(HealthScore));
+                    OnPropertyChanged(nameof(HealthColor));
+                }
+            }
+        }
+
+        public string HealthColor => HealthScore > 80 ? "#10B981" : (HealthScore > 50 ? "#EAB308" : "#EF4444");
+
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action<string>? OnLog;
 
@@ -113,6 +132,13 @@ namespace ISPAudit.ViewModels
             {
                 existing.Status = status;
                 existing.Details = details;
+                
+                // Parse flags from details
+                existing.IsRstInjection = details.Contains("TCP_RST_INJECTION") || details.Contains("RST-инжект");
+                existing.IsHttpRedirect = details.Contains("HTTP_REDIRECT_DPI") || details.Contains("HTTP-редирект");
+                existing.IsRetransmissionHeavy = details.Contains("TCP_RETRY_HEAVY") || details.Contains("ретрансмиссий:");
+                existing.IsUdpBlockage = details.Contains("UDP_BLOCKAGE") || details.Contains("UDP потерь");
+
                 if (status == TestStatus.Fail)
                 {
                     existing.Error = details;
@@ -130,11 +156,45 @@ namespace ISPAudit.ViewModels
                 };
 
                 existing = new TestResult { Target = target, Status = status, Details = details };
+                
+                // Parse flags from details
+                existing.IsRstInjection = details.Contains("TCP_RST_INJECTION") || details.Contains("RST-инжект");
+                existing.IsHttpRedirect = details.Contains("HTTP_REDIRECT_DPI") || details.Contains("HTTP-редирект");
+                existing.IsRetransmissionHeavy = details.Contains("TCP_RETRY_HEAVY") || details.Contains("ретрансмиссий:");
+                existing.IsUdpBlockage = details.Contains("UDP_BLOCKAGE") || details.Contains("UDP потерь");
+
                 if (status == TestStatus.Fail)
                 {
                     existing.Error = details;
                 }
                 TestResults.Add(existing);
+            }
+
+            // Update health history
+            if (status == TestStatus.Pass || status == TestStatus.Fail)
+            {
+                lock (_healthHistory)
+                {
+                    _healthHistory.Enqueue((DateTime.UtcNow, status == TestStatus.Pass));
+                    
+                    // Prune older than 60s
+                    var cutoff = DateTime.UtcNow.AddSeconds(-60);
+                    while (_healthHistory.Count > 0 && _healthHistory.Peek().Time < cutoff)
+                    {
+                        _healthHistory.Dequeue();
+                    }
+
+                    // Calculate score
+                    if (_healthHistory.Count > 0)
+                    {
+                        double success = _healthHistory.Count(x => x.IsSuccess);
+                        HealthScore = (success / _healthHistory.Count) * 100.0;
+                    }
+                    else
+                    {
+                        HealthScore = 100;
+                    }
+                }
             }
             
             NotifyCountersChanged();

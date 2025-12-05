@@ -16,6 +16,7 @@ namespace IspAudit.Core.Modules
         private readonly TcpRetransmissionTracker? _retransmissionTracker;
         private readonly HttpRedirectDetector? _httpRedirectDetector;
         private readonly RstInspectionService? _rstInspectionService;
+        private readonly UdpInspectionService? _udpInspectionService;
 
         public InMemoryBlockageStateStore()
         {
@@ -24,11 +25,13 @@ namespace IspAudit.Core.Modules
         public InMemoryBlockageStateStore(
             TcpRetransmissionTracker retransmissionTracker, 
             HttpRedirectDetector? httpRedirectDetector = null,
-            RstInspectionService? rstInspectionService = null)
+            RstInspectionService? rstInspectionService = null,
+            UdpInspectionService? udpInspectionService = null)
         {
             _retransmissionTracker = retransmissionTracker ?? throw new ArgumentNullException(nameof(retransmissionTracker));
             _httpRedirectDetector = httpRedirectDetector;
             _rstInspectionService = rstInspectionService;
+            _udpInspectionService = udpInspectionService;
         }
 
         public void RegisterResult(HostTested tested)
@@ -117,6 +120,19 @@ namespace IspAudit.Core.Modules
                 }
             }
 
+            int udpUnanswered = 0;
+            if (_udpInspectionService != null && tested.Host.RemoteIp != null)
+            {
+                try
+                {
+                    udpUnanswered = _udpInspectionService.GetUnansweredHandshakeCount(tested.Host.RemoteIp);
+                }
+                catch
+                {
+                    udpUnanswered = 0;
+                }
+            }
+
             return new BlockageSignals(
                 stats.FailCount,
                 stats.HardFailCount,
@@ -126,7 +142,8 @@ namespace IspAudit.Core.Modules
                 hasHttpRedirect,
                 redirectTo,
                 hasSuspiciousRst,
-                suspiciousRstDetails);
+                suspiciousRstDetails,
+                udpUnanswered);
         }
 
         private static string BuildKey(IPAddress ip, int port, string? hostname)

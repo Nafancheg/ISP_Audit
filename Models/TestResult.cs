@@ -51,6 +51,50 @@ namespace ISPAudit.Models
             }
         }
 
+        private bool _isRstInjection;
+        public bool IsRstInjection
+        {
+            get => _isRstInjection;
+            set
+            {
+                _isRstInjection = value;
+                OnPropertyChanged(nameof(IsRstInjection));
+            }
+        }
+
+        private bool _isHttpRedirect;
+        public bool IsHttpRedirect
+        {
+            get => _isHttpRedirect;
+            set
+            {
+                _isHttpRedirect = value;
+                OnPropertyChanged(nameof(IsHttpRedirect));
+            }
+        }
+
+        private bool _isRetransmissionHeavy;
+        public bool IsRetransmissionHeavy
+        {
+            get => _isRetransmissionHeavy;
+            set
+            {
+                _isRetransmissionHeavy = value;
+                OnPropertyChanged(nameof(IsRetransmissionHeavy));
+            }
+        }
+
+        private bool _isUdpBlockage;
+        public bool IsUdpBlockage
+        {
+            get => _isUdpBlockage;
+            set
+            {
+                _isUdpBlockage = value;
+                OnPropertyChanged(nameof(IsUdpBlockage));
+            }
+        }
+
         public string? Details
         {
             get => _details;

@@ -51,7 +51,12 @@ namespace IspAudit.Core.Models
         /// <summary>
         /// Детали подозрительного RST (например, "TTL=64 (expected 50-55)").
         /// </summary>
-        string? SuspiciousRstDetails)
+        string? SuspiciousRstDetails,
+
+        /// <summary>
+        /// Количество безответных UDP рукопожатий (DTLS/QUIC).
+        /// </summary>
+        int UdpUnansweredHandshakes)
     {
         /// <summary>
         /// Есть ли фейлы вообще за окно.
@@ -68,5 +73,10 @@ namespace IspAudit.Core.Models
         /// Порог сейчас примитивный и может быть уточнён.
         /// </summary>
         public bool HasSignificantRetransmissions => RetransmissionCount > 3;
+
+        /// <summary>
+        /// Есть ли подозрение на блокировку UDP (DTLS/QUIC).
+        /// </summary>
+        public bool HasUdpBlockage => UdpUnansweredHandshakes > 2;
     }
 }

@@ -101,6 +101,11 @@ namespace IspAudit.Core.Modules
                             }
                         }
 
+                        if (signals.UdpUnansweredHandshakes > 0)
+                        {
+                            suffix += $", UDP потерь: {signals.UdpUnansweredHandshakes}";
+                        }
+
                         if (hasProviderLikeRedirect)
                         {
                             suffix += ", похоже на портал провайдера/страницу блокировки";
@@ -126,6 +131,11 @@ namespace IspAudit.Core.Modules
                     else if (signals.HasSuspiciousRst && string.IsNullOrEmpty(tested.BlockageType))
                     {
                         tested = tested with { BlockageType = "TCP_RST_INJECTION" };
+                    }
+                    // Если есть потери UDP рукопожатий
+                    else if (signals.HasUdpBlockage && string.IsNullOrEmpty(tested.BlockageType))
+                    {
+                        tested = tested with { BlockageType = "UDP_BLOCKAGE" };
                     }
                     // Если просто есть редирект (но домены совпадают или неизвестны),
                     // ставим мягкий тип, только если нет другого.

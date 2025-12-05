@@ -34,6 +34,7 @@ namespace ISPAudit.ViewModels
         private TcpRetransmissionTracker? _tcpRetransmissionTracker;
         private HttpRedirectDetector? _httpRedirectDetector;
         private RstInspectionService? _rstInspectionService;
+        private UdpInspectionService? _udpInspectionService;
         private DnsParserService? _dnsParser;
         private PidTrackerService? _pidTracker;
         
@@ -243,7 +244,7 @@ namespace ISPAudit.ViewModels
                     _dnsParser,
                     trafficFilter,
                     _tcpRetransmissionTracker != null
-                        ? new InMemoryBlockageStateStore(_tcpRetransmissionTracker, _httpRedirectDetector, _rstInspectionService)
+                        ? new InMemoryBlockageStateStore(_tcpRetransmissionTracker, _httpRedirectDetector, _rstInspectionService, _udpInspectionService)
                         : null);
                 Log("[Orchestrator] ✓ TrafficCollector + LiveTestingPipeline созданы");
 
@@ -627,11 +628,12 @@ namespace ISPAudit.ViewModels
             
             await _connectionMonitor.StartAsync(_cts!.Token).ConfigureAwait(false);
             
-            // Network Monitor (для DNS и SNI)
+            // Network Monitor (для DNS, SNI и UDP-инспекции)
             // Добавляем tcp.DstPort == 443 для захвата SNI (только outbound)
+            // Добавляем udp для захвата DTLS/QUIC (Star Citizen)
             // Priority = 1000 (выше чем у BypassManager = 200), чтобы видеть оригинальные пакеты до фрагментации
             _networkMonitor = new NetworkMonitorService(
-                "udp.DstPort == 53 or udp.SrcPort == 53 or (tcp.DstPort == 443 and outbound)", 
+                "udp or (tcp.DstPort == 443 and outbound)", 
                 progress,
                 priority: 1000);
             await _networkMonitor.StartAsync(_cts.Token).ConfigureAwait(false);
@@ -647,6 +649,10 @@ namespace ISPAudit.ViewModels
             // RST Inspection Service — анализ TTL входящих RST пакетов
             _rstInspectionService = new RstInspectionService();
             _rstInspectionService.Attach(_networkMonitor);
+
+            // UDP Inspection Service — анализ DTLS/QUIC блокировок
+            _udpInspectionService = new UdpInspectionService();
+            _udpInspectionService.Attach(_networkMonitor);
             
             // DNS Parser (теперь умеет и SNI)
             _dnsParser = new DnsParserService(_networkMonitor, progress);

@@ -99,6 +99,12 @@ namespace IspAudit.Bypass
                 AnalyzeTcpFailure(rec, elapsed, result.BlockageType);
             }
 
+            // 3. Analyze UDP issues
+            if (result.BlockageType == "UDP_BLOCKAGE")
+            {
+                rec.AddManual("VPN");
+            }
+
             return rec;
         }
 
