@@ -138,6 +138,10 @@ namespace ISPAudit.Utils
                 await EnableDoHAsync(preset.PrimaryIp, preset.PrimaryDoH);
                 await EnableDoHAsync(preset.SecondaryIp, preset.SecondaryDoH);
 
+                // Проверка (для логов)
+                var (_, checkOutput) = await RunCommandAsync("netsh", "dns show encryption");
+                Log($"[FixService] Current DoH rules:\n{checkOutput}");
+
                 // 4. Очистить DNS кэш
                 await RunCommandAsync("ipconfig", "/flushdns");
 
@@ -332,20 +336,46 @@ namespace ISPAudit.Utils
         /// </summary>
         private static async Task<bool> EnableDoHAsync(string dnsIp, string dohTemplate)
         {
+            // Попытка 1: PowerShell (предпочтительно для Win11)
+            try 
+            {
+                // Удаляем старое правило и добавляем новое
+                // AllowFallback=$false (Strict), AutoUpgrade=$true
+                string psCommand = $"Remove-DnsClientDohServerAddress -ServerAddress '{dnsIp}' -ErrorAction SilentlyContinue; " +
+                                   $"Add-DnsClientDohServerAddress -ServerAddress '{dnsIp}' -DohTemplate '{dohTemplate}' -AllowFallback $false -AutoUpgrade $true -Force";
+                
+                var (success, output) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"");
+                
+                if (success) 
+                {
+                    Log($"[FixService] DoH enabled via PowerShell for {dnsIp}");
+                    return true;
+                }
+                
+                Log($"[FixService] PowerShell failed: {output}. Trying netsh...");
+            }
+            catch (Exception ex)
+            {
+                Log($"[FixService] PowerShell exception: {ex.Message}");
+            }
+
+            // Попытка 2: netsh (fallback)
             // 1. Удаляем существующее правило (игнорируем ошибку, если его нет)
             await RunCommandAsync("netsh", $"dns delete encryption server={dnsIp}");
 
-            // 2. Добавляем новое правило
-            // autoupgrade=yes: разрешает автоматическое использование DoH
-            // udpfallback=no: ЗАПРЕЩАЕТ откат на нешифрованный UDP (строгий режим)
-            var (success, output) = await RunCommandAsync("netsh", $"dns add encryption server={dnsIp} dohtemplate={dohTemplate} autoupgrade=yes udpfallback=no");
+            // 2. Добавляем новое правило (важно: кавычки вокруг шаблона)
+            var (netshSuccess, netshOutput) = await RunCommandAsync("netsh", $"dns add encryption server={dnsIp} dohtemplate=\"{dohTemplate}\" autoupgrade=yes udpfallback=no");
             
-            if (!success)
+            if (!netshSuccess)
             {
-                Log($"[FixService] Ошибка включения DoH для {dnsIp}: {output}");
+                Log($"[FixService] Ошибка включения DoH для {dnsIp} (netsh): {netshOutput}");
+            }
+            else
+            {
+                Log($"[FixService] DoH enabled via netsh for {dnsIp}");
             }
             
-            return success;
+            return netshSuccess;
         }
 
         /// <summary>
