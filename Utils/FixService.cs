@@ -26,6 +26,12 @@ namespace ISPAudit.Utils
         };
 
         private const string BackupFileName = "dns_backup.json";
+        
+        /// <summary>
+        /// Существует ли файл бэкапа (значит DoH скорее всего включен)
+        /// </summary>
+        public static bool HasBackupFile => File.Exists(BackupFileName);
+
         private static string? _originalDnsConfig = null; // "DHCP" or "Static IP1,IP2"
         private static string? _originalAdapterName = null;
 

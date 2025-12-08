@@ -309,10 +309,20 @@ namespace ISPAudit.ViewModels
                 _bypassManager = new WinDivertBypassManager();
                 _bypassManager.StateChanged += (s, e) => Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
                 
-                // Включаем Fragment + DROP RST при старте (DoH выключен по умолчанию)
+                // Включаем Fragment + DROP RST при старте
                 _isFragmentEnabled = true;
                 _isDropRstEnabled = true;
-                _isDoHEnabled = false;
+                
+                // Если есть файл бэкапа DNS, значит DoH остался включенным с прошлого раза
+                if (FixService.HasBackupFile)
+                {
+                    _isDoHEnabled = true;
+                    Log("[Bypass] Detected existing DNS backup - assuming DoH is active");
+                }
+                else
+                {
+                    _isDoHEnabled = false;
+                }
                 
                 OnPropertyChanged(nameof(IsFragmentEnabled));
                 OnPropertyChanged(nameof(IsDropRstEnabled));
