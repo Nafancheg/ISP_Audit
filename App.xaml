@@ -9,6 +9,7 @@
             <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
             <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
             <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
+            <converters:EqualityConverter x:Key="EqualityConverter"/>
 
             <!-- Colors -->
             <SolidColorBrush x:Key="BgBrush" Color="#FAFAFB"/>

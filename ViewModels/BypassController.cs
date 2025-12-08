@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading.Tasks;
+using System.Windows.Input;
 using IspAudit.Bypass;
 using IspAudit.Utils;
 using ISPAudit.Utils;
+using IspAudit.Wpf;
 
 // Явно указываем WPF Application вместо WinForms
 using Application = System.Windows.Application;
@@ -31,6 +33,18 @@ namespace ISPAudit.ViewModels
         private string _vpnWarningText = "";
         private string _compatibilityWarning = "";
         private string _bypassWarningText = "";
+        
+        // DNS Presets
+        private string _selectedDnsPreset = "Hybrid (CF + Yandex)";
+        public List<string> AvailableDnsPresets { get; } = new() 
+        { 
+            "Cloudflare", 
+            "Google", 
+            "Yandex", 
+            "Hybrid (CF + Yandex)" 
+        };
+
+        public ICommand SetDnsPresetCommand { get; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
         
@@ -39,7 +53,39 @@ namespace ISPAudit.ViewModels
         /// </summary>
         public event Action<string>? OnLog;
 
+        public BypassController()
+        {
+            SetDnsPresetCommand = new RelayCommand(param => 
+            {
+                if (param is string preset)
+                {
+                    SelectedDnsPreset = preset;
+                }
+            }, _ => true);
+        }
+
         #region Properties
+
+        /// <summary>
+        /// Выбранный пресет DNS
+        /// </summary>
+        public string SelectedDnsPreset
+        {
+            get => _selectedDnsPreset;
+            set
+            {
+                if (_selectedDnsPreset != value)
+                {
+                    _selectedDnsPreset = value;
+                    OnPropertyChanged(nameof(SelectedDnsPreset));
+                    // Если DoH уже включен, переприменяем с новым пресетом
+                    if (IsDoHEnabled)
+                    {
+                        _ = ApplyDoHAsync();
+                    }
+                }
+            }
+        }
 
         /// <summary>
         /// Показывать ли панель управления bypass (только при admin правах)
@@ -156,6 +202,10 @@ namespace ISPAudit.ViewModels
                     {
                         _ = ApplyDoHAsync();
                     }
+                    else
+                    {
+                        _ = RestoreDoHAsync();
+                    }
                 }
             }
         }
@@ -259,10 +309,10 @@ namespace ISPAudit.ViewModels
                 _bypassManager = new WinDivertBypassManager();
                 _bypassManager.StateChanged += (s, e) => Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
                 
-                // Включаем Fragment + DROP RST + DoH при старте (3 независимые опции)
+                // Включаем Fragment + DROP RST при старте (DoH выключен по умолчанию)
                 _isFragmentEnabled = true;
                 _isDropRstEnabled = true;
-                _isDoHEnabled = true;
+                _isDoHEnabled = false;
                 
                 OnPropertyChanged(nameof(IsFragmentEnabled));
                 OnPropertyChanged(nameof(IsDropRstEnabled));
@@ -274,10 +324,10 @@ namespace ISPAudit.ViewModels
                 // Применяем WinDivert bypass
                 await ApplyBypassOptionsAsync().ConfigureAwait(false);
                 
-                // Применяем DoH
-                await ApplyDoHAsync().ConfigureAwait(false);
+                // DoH не применяем автоматически
+                // await ApplyDoHAsync().ConfigureAwait(false);
                 
-                Log("[Bypass] Startup complete: Fragment + DROP RST + DoH");
+                Log("[Bypass] Startup complete: Fragment + DROP RST");
             }
             catch (Exception ex)
             {
@@ -363,20 +413,22 @@ namespace ISPAudit.ViewModels
         }
 
         /// <summary>
-        /// Применить DoH (DNS-over-HTTPS через Cloudflare)
+        /// Применить DoH (DNS-over-HTTPS)
         /// </summary>
         public async Task ApplyDoHAsync()
         {
             try
             {
-                Log("[DoH] Applying DNS-over-HTTPS (Cloudflare)...");
-                var (success, error) = await FixService.ApplyDnsFixAsync().ConfigureAwait(false);
+                string presetName = SelectedDnsPreset;
+                Log($"[DoH] Applying DNS-over-HTTPS ({presetName})...");
+                
+                var (success, error) = await FixService.ApplyDnsFixAsync(presetName).ConfigureAwait(false);
                 
                 Application.Current?.Dispatcher.Invoke(() =>
                 {
                     if (success)
                     {
-                        Log("[DoH] DoH enabled: Cloudflare 1.1.1.1");
+                        Log($"[DoH] DoH enabled: {presetName}");
                     }
                     else
                     {
@@ -390,6 +442,35 @@ namespace ISPAudit.ViewModels
             catch (Exception ex)
             {
                 Log($"[DoH] Error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Восстановить исходные настройки DNS
+        /// </summary>
+        public async Task RestoreDoHAsync()
+        {
+            try
+            {
+                Log($"[DoH] Restoring original DNS settings...");
+                var (success, error) = await FixService.RestoreDnsAsync().ConfigureAwait(false);
+                
+                Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    if (success)
+                    {
+                        Log($"[DoH] DNS settings restored.");
+                    }
+                    else
+                    {
+                        Log($"[DoH] Restore failed: {error}");
+                    }
+                    OnPropertyChanged(nameof(IsDoHActive));
+                });
+            }
+            catch (Exception ex)
+            {
+                Log($"[DoH] Error restoring DNS: {ex.Message}");
             }
         }
 

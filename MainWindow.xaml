@@ -227,7 +227,7 @@
                             <!-- DoH -->
                             <Button Grid.Column="4" Command="{Binding ToggleDoHCommand}"
                                     Height="36" FontSize="12" FontWeight="Medium" Cursor="Hand" Margin="0,0,8,0"
-                                    ToolTip="DoH (DNS-over-HTTPS)&#x0a;Защита DNS через Cloudflare 1.1.1.1">
+                                    ToolTip="DoH (DNS-over-HTTPS)&#x0a;Защита DNS (ПКМ для выбора провайдера)">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
                                         <Setter Property="Content" Value="🔒 DoH"/>
@@ -240,6 +240,25 @@
                                         </Style.Triggers>
                                     </Style>
                                 </Button.Style>
+                                <Button.ContextMenu>
+                                    <ContextMenu ItemsSource="{Binding Bypass.AvailableDnsPresets}">
+                                        <ContextMenu.ItemContainerStyle>
+                                            <Style TargetType="MenuItem">
+                                                <Setter Property="Header" Value="{Binding}"/>
+                                                <Setter Property="Command" Value="{Binding DataContext.Bypass.SetDnsPresetCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                                <Setter Property="CommandParameter" Value="{Binding}"/>
+                                                <Setter Property="IsChecked">
+                                                    <Setter.Value>
+                                                        <MultiBinding Converter="{StaticResource EqualityConverter}">
+                                                            <Binding Path="DataContext.Bypass.SelectedDnsPreset" RelativeSource="{RelativeSource AncestorType=ContextMenu}"/>
+                                                            <Binding Path="."/>
+                                                        </MultiBinding>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </ContextMenu.ItemContainerStyle>
+                                    </ContextMenu>
+                                </Button.ContextMenu>
                             </Button>
 
                             <!-- Выключить всё -->
