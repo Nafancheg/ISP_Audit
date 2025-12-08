@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace ISPAudit.Utils
@@ -23,8 +25,16 @@ namespace ISPAudit.Utils
             new("Hybrid (CF + Yandex)", "1.1.1.1", "https://cloudflare-dns.com/dns-query", "77.88.8.8", "https://dns.yandex.ru/dns-query")
         };
 
+        private const string BackupFileName = "dns_backup.json";
         private static string? _originalDnsConfig = null; // "DHCP" or "Static IP1,IP2"
         private static string? _originalAdapterName = null;
+
+        private class DnsBackupState
+        {
+            public string AdapterName { get; set; } = "";
+            public string Config { get; set; } = "";
+            public DateTime Timestamp { get; set; }
+        }
 
         #region DNS Fix (Cloudflare + DoH)
 
@@ -48,7 +58,28 @@ namespace ISPAudit.Utils
                 // Сохраняем оригинальные настройки, если еще не сохранены
                 if (_originalDnsConfig == null)
                 {
-                    await BackupDnsSettingsAsync(adapter.Name);
+                    // Пытаемся загрузить из файла, если есть
+                    if (File.Exists(BackupFileName))
+                    {
+                        try 
+                        {
+                            var json = await File.ReadAllTextAsync(BackupFileName);
+                            var state = JsonSerializer.Deserialize<DnsBackupState>(json);
+                            if (state != null && state.AdapterName == adapter.Name)
+                            {
+                                _originalDnsConfig = state.Config;
+                                _originalAdapterName = state.AdapterName;
+                                Log($"[FixService] Loaded backup from file: {_originalDnsConfig}");
+                            }
+                        }
+                        catch { /* ignore corrupt file */ }
+                    }
+
+                    // Если все еще нет бэкапа, делаем новый
+                    if (_originalDnsConfig == null)
+                    {
+                        await BackupDnsSettingsAsync(adapter.Name);
+                    }
                 }
 
                 // 2. Установить DNS серверы
@@ -80,6 +111,25 @@ namespace ISPAudit.Utils
         /// </summary>
         public static async Task<(bool success, string error)> RestoreDnsAsync()
         {
+            // Если в памяти пусто, пробуем загрузить с диска
+            if (_originalDnsConfig == null && File.Exists(BackupFileName))
+            {
+                try
+                {
+                    var json = await File.ReadAllTextAsync(BackupFileName);
+                    var state = JsonSerializer.Deserialize<DnsBackupState>(json);
+                    if (state != null)
+                    {
+                        _originalDnsConfig = state.Config;
+                        _originalAdapterName = state.AdapterName;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"[FixService] Failed to load backup: {ex.Message}");
+                }
+            }
+
             if (_originalDnsConfig == null || _originalAdapterName == null)
                 return (false, "Нет сохраненных настроек DNS");
 
@@ -102,8 +152,14 @@ namespace ISPAudit.Utils
                 }
 
                 await RunCommandAsync("ipconfig", "/flushdns");
+                
+                // Очищаем состояние и удаляем файл бэкапа
                 _originalDnsConfig = null;
                 _originalAdapterName = null;
+                if (File.Exists(BackupFileName))
+                {
+                    try { File.Delete(BackupFileName); } catch { }
+                }
                 
                 return (true, string.Empty);
             }
@@ -159,6 +215,23 @@ namespace ISPAudit.Utils
                     }
                     
                     Log($"[FixService] Backup DNS: {_originalDnsConfig}");
+
+                    // Сохраняем в файл
+                    try
+                    {
+                        var state = new DnsBackupState 
+                        { 
+                            AdapterName = _originalAdapterName, 
+                            Config = _originalDnsConfig,
+                            Timestamp = DateTime.Now
+                        };
+                        var json = JsonSerializer.Serialize(state);
+                        await File.WriteAllTextAsync(BackupFileName, json);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"[FixService] Failed to write backup file: {ex.Message}");
+                    }
                 }
             }
             catch (Exception ex)
