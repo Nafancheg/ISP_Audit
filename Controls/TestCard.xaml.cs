@@ -65,10 +65,12 @@ namespace ISPAudit.Controls
                 {
                     fallbackText.Text = $"Fallback: {target.FallbackIp}";
                     fallbackText.Visibility = Visibility.Visible;
+                    if (CopyFallbackIpItem != null) CopyFallbackIpItem.Visibility = Visibility.Visible;
                 }
                 else
                 {
                     fallbackText.Visibility = Visibility.Collapsed;
+                    if (CopyFallbackIpItem != null) CopyFallbackIpItem.Visibility = Visibility.Collapsed;
                 }
 
                 if (TestResult.Status != TestStatus.Idle)
@@ -112,6 +114,22 @@ namespace ISPAudit.Controls
                 Owner = System.Windows.Application.Current.MainWindow
             };
             detailsWindow.ShowDialog();
+        }
+
+        private void CopyHost_Click(object sender, RoutedEventArgs e)
+        {
+            if (TestResult?.Target?.Host is string host && !string.IsNullOrEmpty(host))
+            {
+                System.Windows.Clipboard.SetText(host);
+            }
+        }
+
+        private void CopyFallbackIp_Click(object sender, RoutedEventArgs e)
+        {
+            if (TestResult?.Target?.FallbackIp is string ip && !string.IsNullOrEmpty(ip))
+            {
+                System.Windows.Clipboard.SetText(ip);
+            }
         }
     }
 }

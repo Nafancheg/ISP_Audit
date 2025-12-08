@@ -3,6 +3,12 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:ISPAudit.Controls">
     <Border Style="{StaticResource CardStyle}" Padding="20" Margin="0,0,0,0">
+        <Border.ContextMenu>
+            <ContextMenu>
+                <MenuItem x:Name="CopyHostItem" Header="Копировать Host" Click="CopyHost_Click"/>
+                <MenuItem x:Name="CopyFallbackIpItem" Header="Копировать Fallback IP" Click="CopyFallbackIp_Click"/>
+            </ContextMenu>
+        </Border.ContextMenu>
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
