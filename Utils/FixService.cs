@@ -306,12 +306,27 @@ namespace ISPAudit.Utils
         }
 
         /// <summary>
-        /// Установить DNS серверы через netsh
+        /// Установить DNS серверы (PowerShell + netsh fallback)
         /// </summary>
         private static async Task<bool> SetDnsServersAsync(string adapterName, string[] dnsServers)
         {
             try
             {
+                // Попытка 1: PowerShell (Set-DnsClientServerAddress)
+                string servers = string.Join(",", dnsServers.Select(s => $"'{s}'"));
+                string psCommand = $"Set-DnsClientServerAddress -InterfaceAlias '{adapterName}' -ServerAddresses ({servers})";
+                
+                var (psSuccess, psOutput) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"");
+                
+                if (psSuccess) 
+                {
+                    Log($"[FixService] DNS servers set via PowerShell for {adapterName}");
+                    return true;
+                }
+                
+                Log($"[FixService] PowerShell Set-DNS failed: {psOutput}. Fallback to netsh.");
+
+                // Попытка 2: netsh (fallback)
                 // Установить primary DNS
                 var (success1, _) = await RunCommandAsync("netsh", $"interface ipv4 set dns name=\"{adapterName}\" static {dnsServers[0]}");
                 if (!success1) return false;
@@ -325,8 +340,9 @@ namespace ISPAudit.Utils
 
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                Log($"[FixService] SetDnsServers error: {ex.Message}");
                 return false;
             }
         }
@@ -336,16 +352,27 @@ namespace ISPAudit.Utils
         /// </summary>
         private static async Task<bool> EnableDoHAsync(string dnsIp, string dohTemplate)
         {
+            // 0. Убедиться, что AutoDoH разрешен в реестре (для некоторых версий Windows)
+            try
+            {
+                await RunCommandAsync("reg", "add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\Dnscache\\Parameters\" /v EnableAutoDoh /t REG_DWORD /d 2 /f");
+            }
+            catch { }
+
             // Попытка 1: PowerShell (предпочтительно для Win11)
             try 
             {
                 // Удаляем старое правило и добавляем новое
-                // AllowFallback=$false (Strict), AutoUpgrade=$true
+                // Исправлено: AllowFallbackToUdp (вместо AllowFallback), убран Force (не поддерживается)
                 string psCommand = $"Remove-DnsClientDohServerAddress -ServerAddress '{dnsIp}' -ErrorAction SilentlyContinue; " +
-                                   $"Add-DnsClientDohServerAddress -ServerAddress '{dnsIp}' -DohTemplate '{dohTemplate}' -AllowFallback $false -AutoUpgrade $true -Force";
+                                   $"Add-DnsClientDohServerAddress -ServerAddress '{dnsIp}' -DohTemplate '{dohTemplate}' -AllowFallbackToUdp $false -AutoUpgrade $true";
                 
                 var (success, output) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"");
                 
+                // Проверка результата
+                var (checkSuccess, checkOutput) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"Get-DnsClientDohServerAddress -ServerAddress '{dnsIp}' | Format-List\"");
+                Log($"[FixService] DoH Check for {dnsIp}:\n{checkOutput}");
+
                 if (success) 
                 {
                     Log($"[FixService] DoH enabled via PowerShell for {dnsIp}");
