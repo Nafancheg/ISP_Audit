@@ -42,6 +42,43 @@ namespace ISPAudit.Utils
             public DateTime Timestamp { get; set; }
         }
 
+        /// <summary>
+        /// Определить, активен ли один из пресетов DNS
+        /// </summary>
+        public static string? DetectActivePreset()
+        {
+            try
+            {
+                var adapter = GetActiveNetworkInterface();
+                if (adapter == null) return null;
+
+                var props = adapter.GetIPProperties();
+                var dns = props.DnsAddresses
+                    .Where(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                    .Select(ip => ip.ToString())
+                    .ToList();
+
+                if (dns.Count == 0) return null;
+
+                foreach (var preset in AvailablePresets)
+                {
+                    // Проверяем совпадение Primary. Secondary проверяем, только если он есть в пресете и в системе.
+                    bool primaryMatch = dns[0] == preset.PrimaryIp;
+                    
+                    // Если в системе есть второй DNS, он должен совпадать с пресетом
+                    bool secondaryMatch = true;
+                    if (dns.Count > 1)
+                    {
+                        secondaryMatch = dns[1] == preset.SecondaryIp;
+                    }
+
+                    if (primaryMatch && secondaryMatch) return preset.Name;
+                }
+            }
+            catch { }
+            return null;
+        }
+
         #region DNS Fix (Cloudflare + DoH)
 
         /// <summary>

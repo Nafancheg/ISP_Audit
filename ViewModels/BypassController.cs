@@ -313,20 +313,32 @@ namespace ISPAudit.ViewModels
                 _isFragmentEnabled = true;
                 _isDropRstEnabled = true;
                 
-                // Если есть файл бэкапа DNS, значит DoH остался включенным с прошлого раза
-                if (FixService.HasBackupFile)
+                // Проверяем текущее состояние DNS
+                var activePreset = FixService.DetectActivePreset();
+                if (activePreset != null)
                 {
                     _isDoHEnabled = true;
-                    Log("[Bypass] Detected existing DNS backup - assuming DoH is active");
+                    _selectedDnsPreset = activePreset;
+                    Log($"[Bypass] Detected active DNS preset: {activePreset}");
+                    
+                    // Если файл бэкапа есть, загружаем его (чтобы знать, куда откатываться)
+                    // Если нет - ну, значит не судьба, при выключении спросим или сбросим в DHCP
+                    if (FixService.HasBackupFile)
+                    {
+                        // Просто триггерим загрузку (можно добавить метод LoadBackup, но пока Restore сам разберется)
+                    }
                 }
                 else
                 {
                     _isDoHEnabled = false;
+                    // Если DoH выключен, но файл бэкапа есть - он, вероятно, устарел.
+                    // Но удалять его опасно, вдруг пользователь просто временно сменил DNS.
                 }
                 
                 OnPropertyChanged(nameof(IsFragmentEnabled));
                 OnPropertyChanged(nameof(IsDropRstEnabled));
                 OnPropertyChanged(nameof(IsDoHEnabled));
+                OnPropertyChanged(nameof(SelectedDnsPreset));
                 
                 // Проверяем совместимость после включения опций
                 CheckCompatibility();
