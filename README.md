@@ -14,7 +14,7 @@ Windows-приложение для анализа сетевого трафик
 1. **Выбираете .exe** игры или приложения
 2. **Запускаете диагностику** — приложение стартует автоматически
 3. **Наблюдаете в реальном времени** как тестируются обнаруженные соединения
-4. **Получаете результат** — какие хосты заблокированы и почему
+4. **Получаете результат** — какие хосты работают нестабильно и почему
 
 Оптимизация соединения включается автоматически при старте диагностики.
 
@@ -34,21 +34,21 @@ Windows-приложение для анализа сетевого трафик
   - **RST Inspection** — анализ TTL для выявления DPI-инжектов
   - **TCP Retransmissions** — подсчет потерь пакетов
   - **Fail Counters** — анализ стабильности во времени
-- **Классификация блокировок**: `DNS_FILTERED`, `TLS_DPI`, `TCP_RST`, `TCP_TIMEOUT`, `HTTP_REDIRECT_DPI`
+- **Классификация проблем**: `DNS_FILTERED`, `TLS_DPI`, `TCP_RST`, `TCP_TIMEOUT`, `HTTP_REDIRECT_DPI`
 
 ### Оптимизация соединения
 - **TrafficEngine 2.0** — модульная архитектура на базе Chain of Responsibility
 - **Performance Monitoring** — встроенный мониторинг задержек обработки пакетов (<0.5ms)
 - **TLS Fragmentation** — разбиение ClientHello для стабильности
-- **TLS Disorder** — отправка фрагментов в обратном порядке (эффективно против современных DPI)
-- **TLS Fake** — отправка фейковых пакетов для запутывания DPI
-- **RST Drop** — фильтрация некорректных TCP RST пакетов
+- **TLS Disorder** — отправка фрагментов в обратном порядке (улучшает совместимость)
+- **TLS Fake** — дополнительные пакеты для повышения стабильности
+- **RST Drop** — фильтрация аномальных TCP RST пакетов
 - **DoH (DNS-over-HTTPS)** — защищённый DNS через Cloudflare/Google/Quad9
 
 ### Отчётность
 - Генерация профиля приложения (JSON)
 - Подробный лог в `Logs/isp_audit_*.log`
-- Статистика: хосты ✓/❌, задержки, типы блокировок
+- Статистика: хосты ✓/❌, задержки, типы проблем
 
 ## Установка
 
@@ -148,7 +148,7 @@ dotnet run
          │                          │                          │
          ▼                          ▼                          ▼
 ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐
-│   BypassController  │  │DiagnosticOrchestrator│  │ TestResultsManager │
+│  ConnectionOptimizer│  │DiagnosticOrchestrator│  │ TestResultsManager │
 │                     │  │                     │  │                     │
 │ • Toggle кнопки     │  │ • Lifecycle         │  │ • Результаты        │
 │ • VPN детекция      │  │ • Координация       │  │ • Эвристики         │
@@ -163,7 +163,7 @@ dotnet run
 │                     (Chain of Responsibility Pipeline)                      │
 │                                                                             │
 │  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐  │
-│  │ WinDivert    │──►│ BypassFilter │──►│TrafficMonitor│──►│ WinDivert    │  │
+│  │ WinDivert    │──►│ OptimizeFilter│──►│TrafficMonitor│──►│ WinDivert    │  │
 │  │ Recv         │   │ (Modify/Drop)│   │Filter (Stats)│   │ Send         │  │
 │  └──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘  │
 │                                                                             │
@@ -177,11 +177,11 @@ dotnet run
 | Файл | Назначение |
 |------|------------|
 | `ViewModels/MainViewModelRefactored.cs` | Тонкий координатор UI |
-| `ViewModels/BypassController.cs` | Управление оптимизацией |
+| `ViewModels/BypassController.cs` | Управление стабилизацией соединения |
 | `ViewModels/DiagnosticOrchestrator.cs` | Координация диагностики |
 | `ViewModels/TestResultsManager.cs` | Результаты и эвристики |
 | `Core/Traffic/TrafficEngine.cs` | Ядро обработки трафика (Pipeline) |
-| `Core/Traffic/Filters/BypassFilter.cs` | Фильтр модификации пакетов |
+| `Core/Traffic/Filters/BypassFilter.cs` | Фильтр оптимизации пакетов |
 | `Core/Traffic/Filters/TrafficMonitorFilter.cs` | Фильтр анализа трафика |
 | `Utils/TrafficCollector.cs` | Сбор и обогащение соединений |
 | `Utils/LiveTestingPipeline.cs` | Тестирование + классификация |
@@ -190,7 +190,7 @@ dotnet run
 | `Core/Modules/RstInspectionService.cs` | Анализ RST-пакетов (TTL) |
 | `Core/Modules/TcpRetransmissionTracker.cs` | Подсчет ретрансмиссий |
 | `Core/Modules/InMemoryBlockageStateStore.cs` | Агрегация сигналов и истории |
-| `Bypass/BypassCoordinator.cs` | Автовыбор стратегий |
+| `Bypass/BypassCoordinator.cs` | Автовыбор методов оптимизации |
 
 ## Системные требования
 
