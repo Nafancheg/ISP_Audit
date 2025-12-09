@@ -467,8 +467,12 @@ namespace ISPAudit.ViewModels
             
             try
             {
+                // Если включен таймаут тишины, то ставим и глобальный лимит 10 минут.
+                // Если "Без лимита времени", то глобальный лимит тоже отключаем (null).
+                var captureTimeout = EnableSilenceTimeout ? TimeSpan.FromMinutes(10) : (TimeSpan?)null;
+
                 await foreach (var host in _trafficCollector.CollectAsync(
-                    TimeSpan.FromMinutes(10), 
+                    captureTimeout, 
                     _cts.Token).ConfigureAwait(false))
                 {
                     // Обновляем UI счётчик
