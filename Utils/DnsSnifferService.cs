@@ -3,15 +3,16 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using IspAudit.Core.Traffic.Filters;
 
 namespace IspAudit.Utils
 {
     /// <summary>
-    /// Сервис для парсинга DNS-ответов из пакетов NetworkMonitorService.
+    /// Сервис для парсинга DNS-ответов из пакетов TrafficMonitorFilter.
     /// </summary>
     public class DnsParserService : IDisposable
     {
-        private readonly NetworkMonitorService _networkMonitor;
+        private readonly TrafficMonitorFilter _filter;
         private readonly IProgress<string>? _progress;
         private readonly ConcurrentDictionary<string, string> _dnsCache;
         private static readonly bool VerboseDnsLogging = false;
@@ -36,9 +37,9 @@ namespace IspAudit.Utils
         /// </summary>
         public IReadOnlyDictionary<string, DnsFailureInfo> FailedRequests => _failedRequests;
 
-        public DnsParserService(NetworkMonitorService networkMonitor, IProgress<string>? progress = null)
+        public DnsParserService(TrafficMonitorFilter filter, IProgress<string>? progress = null)
         {
-            _networkMonitor = networkMonitor ?? throw new ArgumentNullException(nameof(networkMonitor));
+            _filter = filter ?? throw new ArgumentNullException(nameof(filter));
             _progress = progress;
             _dnsCache = new ConcurrentDictionary<string, string>();
 
@@ -48,8 +49,8 @@ namespace IspAudit.Utils
 
         public Task StartAsync()
         {
-            _networkMonitor.OnPacketReceived += OnPacketReceived;
-            _progress?.Report("[DnsParser] ✓ Подписка на NetworkMonitor активна");
+            _filter.OnPacketReceived += OnPacketReceived;
+            _progress?.Report("[DnsParser] ✓ Подписка на TrafficMonitor активна");
             return Task.CompletedTask;
         }
 
@@ -492,7 +493,7 @@ namespace IspAudit.Utils
 
         public Task StopAsync()
         {
-            _networkMonitor.OnPacketReceived -= OnPacketReceived;
+            _filter.OnPacketReceived -= OnPacketReceived;
             _progress?.Report($"[DnsParser] Завершение. Распарсено ответов: {ParsedCount}, кеш: {_dnsCache.Count} записей");
             return Task.CompletedTask;
         }

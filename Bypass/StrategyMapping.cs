@@ -99,7 +99,16 @@ namespace IspAudit.Bypass
                 AnalyzeTcpFailure(rec, elapsed, result.BlockageType);
             }
 
-            // 3. Analyze UDP issues
+            // 3. Analyze HTTP Redirect DPI
+            if (result.BlockageType == "HTTP_REDIRECT_DPI")
+            {
+                // Для HTTP редиректов (заглушек) часто помогает отправка фейкового запроса
+                // или фрагментация, чтобы DPI не распознал Host.
+                rec.AddApplicable("TLS_FAKE");
+                rec.AddApplicable("TLS_DISORDER");
+            }
+
+            // 4. Analyze UDP issues
             if (result.BlockageType == "UDP_BLOCKAGE")
             {
                 // Если порт 443, это скорее всего QUIC.

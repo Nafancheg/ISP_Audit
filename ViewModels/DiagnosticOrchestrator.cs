@@ -8,6 +8,8 @@ using IspAudit.Bypass;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
 using IspAudit.Core.Modules;
+using IspAudit.Core.Traffic;
+using IspAudit.Core.Traffic.Filters;
 using ISPAudit.Windows;
 using IspAudit;
 
@@ -30,7 +32,8 @@ namespace ISPAudit.ViewModels
         
         // Мониторинговые сервисы
         private ConnectionMonitorService? _connectionMonitor;
-        private NetworkMonitorService? _networkMonitor;
+        private TrafficEngine? _trafficEngine;
+        private TrafficMonitorFilter? _trafficMonitorFilter;
         private TcpRetransmissionTracker? _tcpRetransmissionTracker;
         private HttpRedirectDetector? _httpRedirectDetector;
         private RstInspectionService? _rstInspectionService;
@@ -638,34 +641,31 @@ namespace ISPAudit.ViewModels
             
             await _connectionMonitor.StartAsync(_cts!.Token).ConfigureAwait(false);
             
-            // Network Monitor (для DNS, SNI и UDP-инспекции)
-            // Добавляем tcp.DstPort == 443 для захвата SNI (только outbound)
-            // Добавляем udp для захвата DTLS/QUIC (Star Citizen)
-            // Priority = 1000 (выше чем у BypassManager = 200), чтобы видеть оригинальные пакеты до фрагментации
-            _networkMonitor = new NetworkMonitorService(
-                "udp or (tcp.DstPort == 443 and outbound)", 
-                progress,
-                priority: 1000);
-            await _networkMonitor.StartAsync(_cts.Token).ConfigureAwait(false);
+            // Traffic Engine (замена NetworkMonitorService)
+            _trafficEngine = new TrafficEngine(progress);
+            _trafficMonitorFilter = new TrafficMonitorFilter();
+            _trafficEngine.RegisterFilter(_trafficMonitorFilter);
+            
+            await _trafficEngine.StartAsync(_cts.Token).ConfigureAwait(false);
 
-            // TCP Retransmission Tracker — подписываем на NetworkMonitor
+            // TCP Retransmission Tracker — подписываем на TrafficMonitorFilter
             _tcpRetransmissionTracker = new TcpRetransmissionTracker();
-            _tcpRetransmissionTracker.Attach(_networkMonitor);
+            _tcpRetransmissionTracker.Attach(_trafficMonitorFilter);
 
             // HTTP Redirect Detector — минимальный детектор HTTP 3xx Location
             _httpRedirectDetector = new HttpRedirectDetector();
-            _httpRedirectDetector.Attach(_networkMonitor);
+            _httpRedirectDetector.Attach(_trafficMonitorFilter);
 
             // RST Inspection Service — анализ TTL входящих RST пакетов
             _rstInspectionService = new RstInspectionService();
-            _rstInspectionService.Attach(_networkMonitor);
+            _rstInspectionService.Attach(_trafficMonitorFilter);
 
             // UDP Inspection Service — анализ DTLS/QUIC блокировок
             _udpInspectionService = new UdpInspectionService();
-            _udpInspectionService.Attach(_networkMonitor);
+            _udpInspectionService.Attach(_trafficMonitorFilter);
             
             // DNS Parser (теперь умеет и SNI)
-            _dnsParser = new DnsParserService(_networkMonitor, progress);
+            _dnsParser = new DnsParserService(_trafficMonitorFilter, progress);
             _dnsParser.OnDnsLookupFailed += (hostname, error) => 
             {
                 Application.Current?.Dispatcher.Invoke(() => 
@@ -685,17 +685,17 @@ namespace ISPAudit.ViewModels
                 Log("[Services] Остановка сервисов...");
                 if (_pidTracker != null) await _pidTracker.StopAsync().ConfigureAwait(false);
                 if (_dnsParser != null) await _dnsParser.StopAsync().ConfigureAwait(false);
-                if (_networkMonitor != null) await _networkMonitor.StopAsync().ConfigureAwait(false);
+                if (_trafficEngine != null) await _trafficEngine.StopAsync().ConfigureAwait(false);
                 if (_connectionMonitor != null) await _connectionMonitor.StopAsync().ConfigureAwait(false);
                 
                 _pidTracker?.Dispose();
                 _dnsParser?.Dispose();
-                _networkMonitor?.Dispose();
+                _trafficEngine?.Dispose();
                 _connectionMonitor?.Dispose();
                 
                 _pidTracker = null;
                 _dnsParser = null;
-                _networkMonitor = null;
+                _trafficEngine = null;
                 _connectionMonitor = null;
                 _tcpRetransmissionTracker = null;
                 _httpRedirectDetector = null;

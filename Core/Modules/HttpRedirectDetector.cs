@@ -4,11 +4,12 @@ using System.Net;
 using System.Text;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
+using IspAudit.Core.Traffic.Filters;
 
 namespace IspAudit.Core.Modules
 {
     /// <summary>
-    /// Минимальный детектор HTTP-редиректов (3xx + Location) поверх NetworkMonitorService.
+    /// Минимальный детектор HTTP-редиректов (3xx + Location) поверх TrafficMonitorFilter.
     /// Фокусируется на TCP/80 и первых байтах ответа.
     /// </summary>
     public sealed class HttpRedirectDetector
@@ -21,10 +22,10 @@ namespace IspAudit.Core.Modules
         private readonly record struct FlowBuffer(byte[] Data, int Length, bool Completed);
         private readonly record struct RedirectInfo(string TargetHost, DateTime FirstSeenUtc, DateTime LastSeenUtc);
 
-        public void Attach(NetworkMonitorService networkMonitor)
+        public void Attach(TrafficMonitorFilter filter)
         {
-            if (networkMonitor == null) throw new ArgumentNullException(nameof(networkMonitor));
-            networkMonitor.OnPacketReceived += OnPacketReceived;
+            if (filter == null) throw new ArgumentNullException(nameof(filter));
+            filter.OnPacketReceived += OnPacketReceived;
         }
 
         private void OnPacketReceived(PacketData packet)

@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
+using IspAudit.Core.Traffic.Filters;
 
 namespace IspAudit.Core.Modules
 {
@@ -22,10 +23,10 @@ namespace IspAudit.Core.Modules
         private readonly record struct TtlStats(byte Min, byte Max, byte Last, int SampleCount);
         private readonly record struct RstEvent(byte RstTtl, byte ExpectedMin, byte ExpectedMax, DateTime Timestamp);
 
-        public void Attach(NetworkMonitorService networkMonitor)
+        public void Attach(TrafficMonitorFilter filter)
         {
-            if (networkMonitor == null) throw new ArgumentNullException(nameof(networkMonitor));
-            networkMonitor.OnPacketReceived += OnPacketReceived;
+            if (filter == null) throw new ArgumentNullException(nameof(filter));
+            filter.OnPacketReceived += OnPacketReceived;
         }
 
         private void OnPacketReceived(PacketData packet)

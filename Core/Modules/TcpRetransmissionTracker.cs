@@ -3,11 +3,12 @@ using System.Collections.Concurrent;
 using System.Net;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
+using IspAudit.Core.Traffic.Filters;
 
 namespace IspAudit.Core.Modules
 {
     /// <summary>
-    /// Простой трекер TCP-ретрансмиссий на базе NetworkMonitorService.
+    /// Простой трекер TCP-ретрансмиссий на базе TrafficMonitorFilter.
     /// Эвристика: повтор того же seq для того же потока считаем ретрансмиссией.
     /// </summary>
     public sealed class TcpRetransmissionTracker
@@ -16,10 +17,10 @@ namespace IspAudit.Core.Modules
 
         private readonly record struct FlowState(uint LastSeq, DateTime LastSeenUtc, int Retransmissions);
 
-        public void Attach(NetworkMonitorService networkMonitor)
+        public void Attach(TrafficMonitorFilter filter)
         {
-            if (networkMonitor == null) throw new ArgumentNullException(nameof(networkMonitor));
-            networkMonitor.OnPacketReceived += OnPacketReceived;
+            if (filter == null) throw new ArgumentNullException(nameof(filter));
+            filter.OnPacketReceived += OnPacketReceived;
         }
 
         private void OnPacketReceived(PacketData packet)
