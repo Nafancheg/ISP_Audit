@@ -20,7 +20,7 @@ Windows-приложение для анализа сетевого трафик
 
 ## Интерфейс
 
-`	ext
+```text
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  ISP Audit v1.0                                                [—][□][×] │
 ├──────────────────────────────────────────────────────────────────────────┤
@@ -45,7 +45,7 @@ Windows-приложение для анализа сетевого трафик
 │                                                                          │
 │  Соединений: 51 | Тестов: 48 ✓ / 3 ❌             [ Traffic: 0.2ms ]     │
 └──────────────────────────────────────────────────────────────────────────┘
-`
+```
 
 ## Возможности
 
@@ -59,7 +59,7 @@ Windows-приложение для анализа сетевого трафик
   - **RST Inspection** — анализ TTL для выявления DPI-инжектов
   - **TCP Retransmissions** — подсчет потерь пакетов
   - **Fail Counters** — анализ стабильности во времени
-- **Классификация блокировок**: DNS_FILTERED, TLS_DPI, TCP_RST, TCP_TIMEOUT, HTTP_REDIRECT_DPI
+- **Классификация блокировок**: `DNS_FILTERED`, `TLS_DPI`, `TCP_RST`, `TCP_TIMEOUT`, `HTTP_REDIRECT_DPI`
 
 ### Оптимизация соединения
 - **TrafficEngine 2.0** — модульная архитектура на базе Chain of Responsibility
@@ -72,19 +72,19 @@ Windows-приложение для анализа сетевого трафик
 
 ### Отчётность
 - Генерация профиля приложения (JSON)
-- Подробный лог в Logs/isp_audit_*.log
+- Подробный лог в `Logs/isp_audit_*.log`
 - Статистика: хосты ✓/❌, задержки, типы блокировок
 
 ## Установка
 
 ### Готовый exe (рекомендуется)
-1. Скачайте ISP_Audit.exe из [Releases](https://github.com/Nafancheg/ISP_Audit/releases)
-2. Скачайте [WinDivert 2.2](https://github.com/basil00/Divert/releases) и распакуйте WinDivert64.sys и WinDivert.dll рядом с exe
+1. Скачайте `ISP_Audit.exe` из [Releases](https://github.com/Nafancheg/ISP_Audit/releases)
+2. Скачайте [WinDivert 2.2](https://github.com/basil00/Divert/releases) и распакуйте `WinDivert64.sys` и `WinDivert.dll` рядом с exe
 3. Запустите **от имени администратора** (требуется для WinDivert)
 
 ### Сборка из исходников
 
-`powershell
+```powershell
 # Требуется .NET 9 SDK
 git clone https://github.com/Nafancheg/ISP_Audit.git
 cd ISP_Audit
@@ -103,7 +103,7 @@ dotnet build
 
 # Release single-file
 dotnet publish -c Release -r win-x64 /p:PublishSingleFile=true /p:SelfContained=true -o ./publish
-`
+```
 
 ### TestNetworkApp (для разработки)
 Тестовое приложение для калибровки и проверки работы ISP Audit:
@@ -111,25 +111,25 @@ dotnet publish -c Release -r win-x64 /p:PublishSingleFile=true /p:SelfContained=
 - Работает 60 секунд с повторяющимися запросами
 - Используйте как эталон для проверки захвата трафика
 
-`powershell
+```powershell
 # Сборка
 cd TestNetworkApp
 dotnet publish -c Release -r win-x64 --self-contained false -o bin/Publish
 
 # Использование: в ISP Audit выберите TestNetworkApp\bin\Publish\TestNetworkApp.exe
-`
+```
 
 ## Использование
 
 ### GUI (по умолчанию)
 
-`powershell
+```powershell
 # Запуск GUI
 .\ISP_Audit.exe
 
 # или из исходников
 dotnet run
-`
+```
 
 1. Нажмите **Обзор** и выберите .exe файл приложения
 2. Нажмите **Запустить диагностику**
@@ -145,25 +145,25 @@ dotnet run
 
 ### Результаты
 После завершения:
-- Профиль сохраняется в Profiles/{AppName}_{timestamp}.json
-- Лог сессии в Logs/isp_audit_vm_{timestamp}.log
+- Профиль сохраняется в `Profiles/{AppName}_{timestamp}.json`
+- Лог сессии в `Logs/isp_audit_vm_{timestamp}.log`
 
 ## Типы проблем
 
 | Статус | Описание | Решение |
 |--------|----------|--------|
-| TLS_DPI | Проблемы с TLS handshake | TLS Fragmentation |
-| TLS_TIMEOUT | TLS соединение зависает | DROP_RST |
-| TCP_RST | Некорректные RST пакеты | DROP_RST |
-| TCP_TIMEOUT | TCP соединение не устанавливается | VPN |
-| DNS_FILTERED | DNS возвращает пустой ответ | DoH |
-| DNS_BOGUS | DNS возвращает некорректный IP | DoH |
-| HTTP_REDIRECT_DPI | Подмена HTTP-ответа провайдером | VPN / TTL Trick |
-| TCP_RETRY_HEAVY | Высокий % ретрансмиссий пакетов | VPN / Проверка канала |
+| `TLS_DPI` | Проблемы с TLS handshake | TLS Fragmentation |
+| `TLS_TIMEOUT` | TLS соединение зависает | DROP_RST |
+| `TCP_RST` | Некорректные RST пакеты | DROP_RST |
+| `TCP_TIMEOUT` | TCP соединение не устанавливается | VPN |
+| `DNS_FILTERED` | DNS возвращает пустой ответ | DoH |
+| `DNS_BOGUS` | DNS возвращает некорректный IP | DoH |
+| `HTTP_REDIRECT_DPI` | Подмена HTTP-ответа провайдером | VPN / TTL Trick |
+| `TCP_RETRY_HEAVY` | Высокий % ретрансмиссий пакетов | VPN / Проверка канала |
 
 ## Архитектура
 
-`	ext
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        MainViewModelRefactored                              │
 │                         (Тонкий координатор UI)                             │
@@ -195,27 +195,27 @@ dotnet run
 │  • Single Handle (No Race Conditions)                                       │
 │  • Performance Metrics (<0.5ms latency)                                     │
 └─────────────────────────────────────────────────────────────────────────────┘
-`
+```
 
 ### Ключевые компоненты
 
 | Файл | Назначение |
 |------|------------|
-| ViewModels/MainViewModelRefactored.cs | Тонкий координатор UI |
-| ViewModels/BypassController.cs | Управление оптимизацией |
-| ViewModels/DiagnosticOrchestrator.cs | Координация диагностики |
-| ViewModels/TestResultsManager.cs | Результаты и эвристики |
-| Core/Traffic/TrafficEngine.cs | Ядро обработки трафика (Pipeline) |
-| Core/Traffic/Filters/BypassFilter.cs | Фильтр модификации пакетов |
-| Core/Traffic/Filters/TrafficMonitorFilter.cs | Фильтр анализа трафика |
-| Utils/TrafficCollector.cs | Сбор и обогащение соединений |
-| Utils/LiveTestingPipeline.cs | Тестирование + классификация |
-| Utils/DnsParserService.cs | Парсинг DNS и SNI |
-| Core/Modules/HttpRedirectDetector.cs | Детекция HTTP-заглушек |
-| Core/Modules/RstInspectionService.cs | Анализ RST-пакетов (TTL) |
-| Core/Modules/TcpRetransmissionTracker.cs | Подсчет ретрансмиссий |
-| Core/Modules/InMemoryBlockageStateStore.cs | Агрегация сигналов и истории |
-| Bypass/BypassCoordinator.cs | Автовыбор стратегий |
+| `ViewModels/MainViewModelRefactored.cs` | Тонкий координатор UI |
+| `ViewModels/BypassController.cs` | Управление оптимизацией |
+| `ViewModels/DiagnosticOrchestrator.cs` | Координация диагностики |
+| `ViewModels/TestResultsManager.cs` | Результаты и эвристики |
+| `Core/Traffic/TrafficEngine.cs` | Ядро обработки трафика (Pipeline) |
+| `Core/Traffic/Filters/BypassFilter.cs` | Фильтр модификации пакетов |
+| `Core/Traffic/Filters/TrafficMonitorFilter.cs` | Фильтр анализа трафика |
+| `Utils/TrafficCollector.cs` | Сбор и обогащение соединений |
+| `Utils/LiveTestingPipeline.cs` | Тестирование + классификация |
+| `Utils/DnsParserService.cs` | Парсинг DNS и SNI |
+| `Core/Modules/HttpRedirectDetector.cs` | Детекция HTTP-заглушек |
+| `Core/Modules/RstInspectionService.cs` | Анализ RST-пакетов (TTL) |
+| `Core/Modules/TcpRetransmissionTracker.cs` | Подсчет ретрансмиссий |
+| `Core/Modules/InMemoryBlockageStateStore.cs` | Агрегация сигналов и истории |
+| `Bypass/BypassCoordinator.cs` | Автовыбор стратегий |
 
 ## Системные требования
 
@@ -240,7 +240,7 @@ A: Да. Приложение:
 **Q: Что делать если "0 соединений"?**  
 1. Убедитесь что запустили от администратора
 2. Убедитесь что приложение делает сетевые запросы
-3. Попробуйте ipconfig /flushdns перед диагностикой
+3. Попробуйте `ipconfig /flushdns` перед диагностикой
 
 **Q: Hostname показывает технические имена (1e100.net)?**  
 A: Это reverse-DNS от Google CDN. SNI-парсинг показывает реальные домены, если они доступны в TLS ClientHello.
