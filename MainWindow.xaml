@@ -85,7 +85,13 @@
                         <CheckBox Content="Без лимита времени (отключить авто-стоп)"
                                   IsChecked="{Binding IsUnlimitedTime}"
                                   IsEnabled="{Binding IsStart}"
-                                  AutomationProperties.AutomationId="UnlimitedTimeCheckbox"/>
+                                  AutomationProperties.AutomationId="UnlimitedTimeCheckbox"
+                                  Margin="0,0,0,4"/>
+                        <CheckBox Content="Сбор данных без обхода (чистый тест)"
+                                  IsChecked="{Binding EnableAutoBypass, Converter={StaticResource InverseBoolConverter}}"
+                                  IsEnabled="{Binding IsStart}"
+                                  ToolTip="Если включено, стратегии обхода НЕ будут активированы автоматически. Используйте для проверки наличия блокировок."
+                                  AutomationProperties.AutomationId="AutoBypassCheckbox"/>
                     </StackPanel>
                 </Grid>
 

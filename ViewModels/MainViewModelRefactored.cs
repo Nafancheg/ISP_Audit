@@ -340,7 +340,11 @@ namespace ISPAudit.ViewModels
             ToggleFakeCommand = new RelayCommand(_ => Bypass.IsFakeEnabled = !Bypass.IsFakeEnabled, _ => ShowBypassPanel);
             ToggleDropRstCommand = new RelayCommand(_ => Bypass.IsDropRstEnabled = !Bypass.IsDropRstEnabled, _ => ShowBypassPanel);
             ToggleDoHCommand = new RelayCommand(_ => Bypass.IsDoHEnabled = !Bypass.IsDoHEnabled, _ => ShowBypassPanel);
-            DisableAllBypassCommand = new RelayCommand(async _ => await Bypass.DisableAllAsync(), 
+            DisableAllBypassCommand = new RelayCommand(async _ => 
+            {
+                await Bypass.DisableAllAsync();
+                EnableAutoBypass = false; // Также отключаем авто-включение при следующем старте
+            }, 
                 _ => ShowBypassPanel && (IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled || IsDropRstEnabled));
 
             // Инициализация bypass при старте
