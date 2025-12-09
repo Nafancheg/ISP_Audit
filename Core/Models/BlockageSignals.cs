@@ -34,6 +34,11 @@ namespace IspAudit.Core.Models
         int RetransmissionCount,
 
         /// <summary>
+        /// Общее количество TCP-пакетов для хоста за окно.
+        /// </summary>
+        int TotalPackets,
+
+        /// <summary>
         /// Был ли замечен HTTP-редирект, подозрительный на DPI.
         /// </summary>
         bool HasHttpRedirectDpi,
@@ -70,9 +75,9 @@ namespace IspAudit.Core.Models
 
         /// <summary>
         /// Есть ли существенные ретрансмиссии за окно.
-        /// Порог сейчас примитивный и может быть уточнён.
+        /// Порог: > 5% ретрансмиссий при наличии хотя бы 10 пакетов.
         /// </summary>
-        public bool HasSignificantRetransmissions => RetransmissionCount > 3;
+        public bool HasSignificantRetransmissions => TotalPackets > 10 && ((double)RetransmissionCount / TotalPackets) > 0.05;
 
         /// <summary>
         /// Есть ли подозрение на блокировку UDP (DTLS/QUIC).

@@ -49,6 +49,16 @@ namespace IspAudit.Bypass
         /// </summary>
         public int TlsFragmentThreshold { get; init; } = 128;
 
+        /// <summary>
+        /// Использовать TTL Trick (отправка копии пакета с малым TTL).
+        /// </summary>
+        public bool TtlTrick { get; init; } = false;
+
+        /// <summary>
+        /// Значение TTL для TTL Trick (обычно 3-5).
+        /// </summary>
+        public int TtlTrickValue { get; init; } = 3;
+
         public IReadOnlyList<BypassRedirectRule> RedirectRules { get; init; } = Array.Empty<BypassRedirectRule>();
 
         public static BypassProfile CreateDefault() => _default.Value;

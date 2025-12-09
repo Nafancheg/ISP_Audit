@@ -104,6 +104,8 @@ namespace IspAudit.Bypass
             {
                 // Для HTTP редиректов (заглушек) часто помогает отправка фейкового запроса
                 // или фрагментация, чтобы DPI не распознал Host.
+                rec.AddApplicable("SAFE_MODE");
+                rec.AddApplicable("TTL_TRICK");
                 rec.AddApplicable("TLS_FAKE");
                 rec.AddApplicable("TLS_DISORDER");
             }
@@ -149,6 +151,10 @@ namespace IspAudit.Bypass
 
             if (isRst)
             {
+                if (blockageType == "TCP_RST_INJECTION")
+                {
+                    rec.AddApplicable("SAFE_MODE");
+                }
                 rec.AddApplicable("DROP_RST");
             }
             else if (isTimeout)

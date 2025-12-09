@@ -15,7 +15,7 @@ namespace IspAudit.Core.Modules
     {
         private readonly ConcurrentDictionary<TcpFlowKey, FlowState> _flows = new();
 
-        private readonly record struct FlowState(uint LastSeq, DateTime LastSeenUtc, int Retransmissions);
+        private readonly record struct FlowState(uint LastSeq, DateTime LastSeenUtc, int Retransmissions, int TotalPackets);
 
         public void Attach(TrafficMonitorFilter filter)
         {
@@ -68,33 +68,42 @@ namespace IspAudit.Core.Modules
 
             _flows.AddOrUpdate(
                 key,
-                _ => new FlowState(seq, now, 0),
+                _ => new FlowState(seq, now, 0, 1),
                 (_, state) =>
                 {
                     // Если seq тот же, что и в прошлый раз, считаем это ретрансмиссией.
                     var retrans = state.LastSeq == seq ? state.Retransmissions + 1 : state.Retransmissions;
-                    return new FlowState(seq, now, retrans);
+                    return new FlowState(seq, now, retrans, state.TotalPackets + 1);
                 });
         }
 
         /// <summary>
-        /// Получить количество ретрансмиссий для IP-адреса за всё время наблюдения.
-        /// Пока используется только для диагностики/эвристики.
+        /// Получить статистику (ретрансмиссии и общее число пакетов) для IP-адреса.
         /// </summary>
-        public int GetRetransmissionCountForIp(IPAddress ip)
+        public (int Retransmissions, int TotalPackets) GetStatsForIp(IPAddress ip)
         {
             if (ip == null) throw new ArgumentNullException(nameof(ip));
 
-            var total = 0;
+            var totalRetrans = 0;
+            var totalPackets = 0;
             foreach (var (key, state) in _flows)
             {
                 if (ip.Equals(key.A) || ip.Equals(key.B))
                 {
-                    total += state.Retransmissions;
+                    totalRetrans += state.Retransmissions;
+                    totalPackets += state.TotalPackets;
                 }
             }
 
-            return total;
+            return (totalRetrans, totalPackets);
+        }
+
+        /// <summary>
+        /// Получить количество ретрансмиссий для IP-адреса за всё время наблюдения.
+        /// </summary>
+        public int GetRetransmissionCountForIp(IPAddress ip)
+        {
+            return GetStatsForIp(ip).Retransmissions;
         }
     }
 }

@@ -220,6 +220,14 @@ namespace IspAudit.Bypass
                     case "TLS_DISORDER":
                         profile = new BypassProfile { DropTcpRst = true, TlsStrategy = TlsBypassStrategy.Disorder };
                         break;
+                    case "SAFE_MODE":
+                        // DROP_RST + TLS_DISORDER (Safe Mode)
+                        profile = new BypassProfile { DropTcpRst = true, TlsStrategy = TlsBypassStrategy.Disorder };
+                        break;
+                    case "TTL_TRICK":
+                        // TTL Trick + DROP_RST
+                        profile = new BypassProfile { DropTcpRst = true, TlsStrategy = TlsBypassStrategy.None, TtlTrick = true };
+                        break;
                     default:
                         return; // Not a WinDivert strategy
                 }
@@ -237,7 +245,7 @@ namespace IspAudit.Bypass
 
         private bool IsTechnicalStrategy(string strategy)
         {
-            return strategy != "DOH" && strategy != "PROXY" && strategy != "ROUTER_REDIRECT" && strategy != "NONE" && strategy != "UNKNOWN";
+            return strategy != "DOH" && strategy != "PROXY" && strategy != "ROUTER_REDIRECT" && strategy != "NONE" && strategy != "UNKNOWN" && strategy != "SAFE_MODE";
         }
 
         private bool IsFixed(TargetReport report)

@@ -38,14 +38,19 @@ namespace IspAudit.Core.Traffic.Filters
                 return false;
             }
 
-            // 2. TLS Fragmentation
-            if (_profile.TlsStrategy != TlsBypassStrategy.None && 
-                packet.Info.IsTcp && 
+            // 2. TLS Fragmentation / Fake / Disorder
+            if (packet.Info.IsTcp && 
                 packet.Info.PayloadLength >= _profile.TlsFragmentThreshold && 
                 packet.Info.DstPort == 443)
             {
                 if (IsClientHello(packet.Buffer.AsSpan(packet.Info.PayloadOffset, packet.Info.PayloadLength)))
                 {
+                    // 2.1 TTL Trick (send fake packet with low TTL)
+                    if (_profile.TtlTrick)
+                    {
+                        ApplyTtlTrick(packet, context, sender);
+                    }
+
                     var connectionKey = new ConnectionKey(packet.Info.SrcIpInt, packet.Info.DstIpInt, packet.Info.SrcPort, packet.Info.DstPort);
                     bool isNewConnection = !_processedConnections.ContainsKey(connectionKey);
                     _processedConnections[connectionKey] = Environment.TickCount64;
@@ -59,6 +64,24 @@ namespace IspAudit.Core.Traffic.Filters
             }
 
             return true; // Pass through
+        }
+
+        private void ApplyTtlTrick(InterceptedPacket packet, PacketContext context, IPacketSender sender)
+        {
+            // Create a copy of the packet
+            var fakePacket = new byte[packet.Length];
+            Array.Copy(packet.Buffer, fakePacket, packet.Length);
+
+            // Set TTL (IPv4 offset 8)
+            if (packet.Info.IsIpv4)
+            {
+                fakePacket[8] = (byte)_profile.TtlTrickValue;
+                PacketHelper.RecalculateIpChecksum(fakePacket);
+                
+                // Send the fake packet
+                // Note: We use the same address info, so it goes to the same destination
+                sender.Send(fakePacket, fakePacket.Length, ref packet.Address);
+            }
         }
 
         private bool ProcessTlsStrategy(InterceptedPacket packet, PacketContext context, IPacketSender sender, bool isNewConnection)

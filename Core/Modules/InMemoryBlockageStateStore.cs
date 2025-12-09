@@ -68,6 +68,7 @@ namespace IspAudit.Core.Modules
             // с добавлением оценки ретрансмиссий (если передан внешний трекер).
             var stats = GetFailStats(tested, window);
             var retransmissions = 0;
+            var totalPackets = 0;
             bool hasHttpRedirect = false;
             string? redirectTo = null;
             bool hasSuspiciousRst = false;
@@ -77,12 +78,15 @@ namespace IspAudit.Core.Modules
             {
                 try
                 {
-                    retransmissions = _retransmissionTracker.GetRetransmissionCountForIp(tested.Host.RemoteIp);
+                    var tStats = _retransmissionTracker.GetStatsForIp(tested.Host.RemoteIp);
+                    retransmissions = tStats.Retransmissions;
+                    totalPackets = tStats.TotalPackets;
                 }
                 catch
                 {
                     // Логика детекции не должна падать из-за проблем трекера
                     retransmissions = 0;
+                    totalPackets = 0;
                 }
             }
 
@@ -139,6 +143,7 @@ namespace IspAudit.Core.Modules
                 stats.LastFailAt,
                 stats.Window,
                 retransmissions,
+                totalPackets,
                 hasHttpRedirect,
                 redirectTo,
                 hasSuspiciousRst,

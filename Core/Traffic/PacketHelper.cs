@@ -132,5 +132,35 @@ namespace IspAudit.Core.Traffic
 
             return new PacketInfo(true, isIpv4, isTcp, isUdp, isRst, ipHeaderLength, tcpHeaderLength, payloadOffset, payloadLength, srcIpInt, dstIpInt, buffer, srcIpOffset, dstIpOffset, srcPort, dstPort);
         }
+
+        public static void RecalculateIpChecksum(byte[] buffer)
+        {
+            if (buffer.Length < 20) return;
+            
+            // Only for IPv4
+            if ((buffer[0] >> 4) != 4) return;
+
+            // Clear current checksum (offset 10)
+            buffer[10] = 0;
+            buffer[11] = 0;
+
+            int headerLength = (buffer[0] & 0x0F) * 4;
+            uint sum = 0;
+
+            for (int i = 0; i < headerLength; i += 2)
+            {
+                ushort word = (ushort)((buffer[i] << 8) | buffer[i + 1]);
+                sum += word;
+            }
+
+            while ((sum >> 16) != 0)
+            {
+                sum = (sum & 0xFFFF) + (sum >> 16);
+            }
+
+            ushort checksum = (ushort)~sum;
+            buffer[10] = (byte)(checksum >> 8);
+            buffer[11] = (byte)(checksum & 0xFF);
+        }
     }
 }
