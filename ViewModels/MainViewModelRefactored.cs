@@ -134,6 +134,13 @@ namespace ISPAudit.ViewModels
             set { _exePath = value; OnPropertyChanged(nameof(ExePath)); }
         }
 
+        private bool _isUnlimitedTime;
+        public bool IsUnlimitedTime
+        {
+            get => _isUnlimitedTime;
+            set { _isUnlimitedTime = value; OnPropertyChanged(nameof(IsUnlimitedTime)); }
+        }
+
         public string CurrentAction
         {
             get => _currentAction;
@@ -389,6 +396,7 @@ namespace ISPAudit.ViewModels
             ScreenState = "running";
             Results.Clear();
             
+            Orchestrator.EnableSilenceTimeout = !IsUnlimitedTime;
             await Orchestrator.RunAsync(targetExePath, Bypass, Results, EnableAutoBypass);
         }
 

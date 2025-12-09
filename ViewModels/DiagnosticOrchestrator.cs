@@ -53,7 +53,8 @@ namespace ISPAudit.ViewModels
         private string? _stopReason;
         
         // Настройки
-        private const int SilenceTimeoutSeconds = 60;
+        public int SilenceTimeoutSeconds { get; set; } = 60;
+        public bool EnableSilenceTimeout { get; set; } = true;
         private const int WarmupSeconds = 15;
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -512,7 +513,7 @@ namespace ISPAudit.ViewModels
 
                     var silenceDuration = (DateTime.UtcNow - _trafficCollector.LastNewConnectionTime).TotalSeconds;
                     
-                    if (silenceDuration > SilenceTimeoutSeconds && overlay != null)
+                    if (EnableSilenceTimeout && silenceDuration > SilenceTimeoutSeconds && overlay != null)
                     {
                         silenceWarningShown = true;
                         Log($"[Silence] Нет новых соединений более {SilenceTimeoutSeconds}с");
