@@ -11,23 +11,23 @@
 **Workflow**: После завершения итерации редактирования кода делать `git push`.
 
 ## Project Context
-Windows-native .NET 9 WPF application for diagnosing ISP-level network blocking (DNS filtering, DPI, TCP RST injection). Primary use case: Star Citizen connectivity issues. Ships as single-file executable (~164MB), dual GUI/CLI mode.
+Windows-native .NET 9 WPF application for diagnosing ISP-level network blocking (DNS filtering, DPI, TCP RST injection). Primary use case: Star Citizen connectivity issues. Ships as single-file executable (~164MB), GUI mode only.
 
 **Tech**: .NET 9, WPF, MaterialDesignInXaml 5.1.0, WinDivert 2.2.0 (bypass module)
 
 ## Architecture at a Glance
 
 ```
-Program.cs → [GUI: App.xaml + MainWindow] or [CLI: Config → AuditRunner → ReportWriter]
+Program.cs → [GUI: App.xaml + MainWindow]
                            ↓
-              AuditRunner orchestrates Tests/* (DNS/TCP/HTTP/Firewall/ISP/Router/Software)
+              DiagnosticOrchestrator orchestrates LiveTestingPipeline
                            ↓
-              Results → ReportWriter (JSON + human output + verdict)
+              Results → UI Updates (Live)
 ```
 
-**Entry point**: `Program.Main()` detects mode (GUI if no args, CLI if args), hides console in GUI, loads default profile from `Profiles/`.
+**Entry point**: `Program.Main()` initializes GUI mode, hides console, loads default profile from `Profiles/`.
 
-**Test flow**: Independent async tests (`Tests/*.cs`) → return domain-specific result objects → `AuditRunner` coordinates sequential execution with `IProgress<TestProgress>` for GUI live updates.
+**Test flow**: `LiveTestingPipeline` (Sniffer → Tester → Classifier) → `DiagnosticOrchestrator` updates GUI via `IProgress`.
 
 **GUI**: MVVM pattern (`ViewModels/MainViewModel.cs`), Material Design cards shown ONLY when problems detected (Firewall/ISP/Router/Software cards).
 

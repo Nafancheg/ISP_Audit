@@ -16,9 +16,6 @@ dotnet publish -c Release -r win-x64 /p:PublishSingleFile=true /p:SelfContained=
 
 # Быстрый запуск GUI в отладочном режиме
 dotnet run
-
-# CLI запуск с параметрами
-dotnet run -- --targets youtube.com,discord.com --report result.json --verbose
 ```
 
 ### GitHub Actions
@@ -27,15 +24,14 @@ Workflow `.github/workflows/build.yml` автоматически собирае
 ## Архитектура приложения
 
 ### Точка входа и режимы работы
-- **Program.cs**: Основной entry point. Определяет режим работы:
-  - Без аргументов или `gui` → GUI-режим (WPF + Material Design)
-  - С аргументами → CLI-режим
-  - При GUI-запуске консоль скрывается через Win32 API
-  - В GUI-режиме запускается `App.xaml` (WPF Application)
+- **Program.cs**: Основной entry point.
+  - Запускает GUI-режим (WPF + Material Design)
+  - Консоль скрывается через Win32 API
+  - Запускается `App.xaml` (WPF Application)
 
 ### Основные компоненты
 
-**Config.cs**: Парсинг аргументов командной строки и конфигурация запуска.
+**Config.cs**: Конфигурация запуска приложения.
 
 **DiagnosticOrchestrator.cs**: Главный контроллер режима "Live Audit".
 - Управляет жизненным циклом мониторинговых сервисов (`ConnectionMonitor`, `NetworkMonitor`).
@@ -47,16 +43,6 @@ Workflow `.github/workflows/build.yml` автоматически собирае
 - **Tester**: Выполняет активные проверки (DNS, TCP, TLS).
 - **Classifier**: Определяет тип блокировки на основе результатов тестов и сигналов от пассивных анализаторов.
 - **Bypass**: Подбирает стратегии обхода.
-
-**AuditRunner.cs**: Оркестратор выполнения статических тестов (CLI режим). Последовательно запускает:
-1. DNS-проверки (System DNS vs DoH)
-2. TCP-проверки портов
-3. HTTP/HTTPS запросы с SNI
-4. Traceroute через системный `tracert.exe`
-5. UDP-пробы (DNS и игровые шлюзы)
-6. RST-инжекция эвристика
-
-Поддерживает `IProgress<TestProgress>` для GUI и `CancellationToken` для отмены.
 
 **GUI (WPF + MaterialDesignInXaml)**:
 - **App.xaml**: Настройка Material Design темы (Light, PrimaryColor=Blue, SecondaryColor=Cyan)
@@ -136,7 +122,7 @@ Workflow `.github/workflows/build.yml` автоматически собирае
 Все сетевые операции асинхронные (`async/await`). Используется `ConfigureAwait(false)` для избежания захвата контекста.
 
 ### Прогресс и отмена
-- `IProgress<TestProgress>` для отчётов о прогрессе из AuditRunner в GUI
+- `IProgress<TestProgress>` для отчётов о прогрессе в GUI
 - `CancellationToken` для прерывания длительных операций (traceroute, HTTP-таймауты)
 
 ### Traceroute кодировка
