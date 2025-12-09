@@ -131,7 +131,8 @@ namespace ISPAudit.ViewModels
             string targetExePath, 
             BypassController bypassController,
             TestResultsManager resultsManager,
-            bool enableAutoBypass = true)
+            bool enableAutoBypass = true,
+            bool isSteamMode = false)
         {
             if (IsDiagnosticRunning)
             {
@@ -195,24 +196,46 @@ namespace ISPAudit.ViewModels
                 // 1. Запуск мониторинговых сервисов
                 await StartMonitoringServicesAsync(progress, overlay);
 
-                // 2. Запуск целевого процесса
-                DiagnosticStatus = "Запуск целевого приложения...";
-                using var process = new System.Diagnostics.Process
+                // 2. Запуск целевого процесса или ожидание
+                int pid = 0;
+                
+                if (isSteamMode)
                 {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    var processName = Path.GetFileNameWithoutExtension(targetExePath);
+                    DiagnosticStatus = $"Ожидание запуска {processName}...";
+                    Log($"[Orchestrator] Режим Steam: ожидание процесса {processName}");
+                    
+                    while (!_cts.Token.IsCancellationRequested)
                     {
-                        FileName = targetExePath,
-                        UseShellExecute = true
+                        var found = System.Diagnostics.Process.GetProcessesByName(processName).FirstOrDefault();
+                        if (found != null)
+                        {
+                            pid = found.Id;
+                            Log($"[Orchestrator] Процесс обнаружен: {processName} (PID={pid})");
+                            break;
+                        }
+                        await Task.Delay(1000, _cts.Token);
                     }
-                };
-                
-                if (!process.Start())
-                {
-                    throw new Exception("Не удалось запустить процесс");
                 }
-                
-                var pid = process.Id;
-                Log($"[Orchestrator] Процесс запущен: PID={pid}");
+                else
+                {
+                    DiagnosticStatus = "Запуск целевого приложения...";
+                    using var process = new System.Diagnostics.Process
+                    {
+                        StartInfo = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = targetExePath,
+                            UseShellExecute = true
+                        }
+                    };
+                    
+                    if (!process.Start())
+                    {
+                        throw new Exception("Не удалось запустить процесс");
+                    }
+                    pid = process.Id;
+                    Log($"[Orchestrator] Процесс запущен: PID={pid}");
+                }
                 
                 // 3. PID Tracker
                 _pidTracker = new PidTrackerService(pid, progress);

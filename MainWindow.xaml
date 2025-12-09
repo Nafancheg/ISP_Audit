@@ -91,7 +91,13 @@
                                   IsChecked="{Binding EnableAutoBypass, Converter={StaticResource InverseBoolConverter}}"
                                   IsEnabled="{Binding IsStart}"
                                   ToolTip="Если включено, стратегии обхода НЕ будут активированы автоматически. Используйте для проверки наличия блокировок."
-                                  AutomationProperties.AutomationId="AutoBypassCheckbox"/>
+                                  AutomationProperties.AutomationId="AutoBypassCheckbox"
+                                  Margin="0,0,0,4"/>
+                        <CheckBox Content="Режим Steam (ждать запуска процесса)"
+                                  IsChecked="{Binding IsSteamMode}"
+                                  IsEnabled="{Binding IsStart}"
+                                  ToolTip="Выберите exe файл игры, нажмите Начать, затем запустите игру через Steam/Launcher"
+                                  AutomationProperties.AutomationId="SteamModeCheckbox"/>
                     </StackPanel>
                 </Grid>
 

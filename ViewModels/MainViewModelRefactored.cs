@@ -141,6 +141,13 @@ namespace ISPAudit.ViewModels
             set { _isUnlimitedTime = value; OnPropertyChanged(nameof(IsUnlimitedTime)); }
         }
 
+        private bool _isSteamMode;
+        public bool IsSteamMode
+        {
+            get => _isSteamMode;
+            set { _isSteamMode = value; OnPropertyChanged(nameof(IsSteamMode)); }
+        }
+
         public string CurrentAction
         {
             get => _currentAction;
@@ -401,7 +408,7 @@ namespace ISPAudit.ViewModels
             Results.Clear();
             
             Orchestrator.EnableSilenceTimeout = !IsUnlimitedTime;
-            await Orchestrator.RunAsync(targetExePath, Bypass, Results, EnableAutoBypass);
+            await Orchestrator.RunAsync(targetExePath, Bypass, Results, EnableAutoBypass, IsSteamMode);
         }
 
         private void BrowseExe()
