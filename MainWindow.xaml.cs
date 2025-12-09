@@ -34,11 +34,20 @@ namespace ISPAudit
 
         private void CopyHost_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is MenuItem menuItem && menuItem.DataContext is TestResult result)
+            if (ResultsGrid.SelectedItems.Count > 0)
             {
-                if (!string.IsNullOrEmpty(result.Target?.Host))
+                var hosts = new System.Collections.Generic.List<string>();
+                foreach (var item in ResultsGrid.SelectedItems)
                 {
-                    System.Windows.Clipboard.SetText(result.Target.Host);
+                    if (item is TestResult result && !string.IsNullOrEmpty(result.Target?.Host))
+                    {
+                        hosts.Add(result.Target.Host);
+                    }
+                }
+
+                if (hosts.Count > 0)
+                {
+                    System.Windows.Clipboard.SetText(string.Join(Environment.NewLine, hosts));
                 }
             }
         }

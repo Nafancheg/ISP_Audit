@@ -20,7 +20,8 @@
     <Window.Resources>
         <ContextMenu x:Key="RowContextMenu">
             <MenuItem Header="Копировать Host" Click="CopyHost_Click"/>
-            <MenuItem Header="Копировать Fallback IP" Click="CopyFallbackIp_Click"/>
+            <MenuItem Header="Копировать Fallback IP" Click="CopyFallbackIp_Click"
+                      Visibility="{Binding Target.FallbackIp, Converter={StaticResource StringToVisibilityConverter}}"/>
         </ContextMenu>
     </Window.Resources>
 
@@ -392,13 +393,14 @@
 
                     <!-- Unified DataGrid -->
                     <DataGrid Grid.Row="3"
+                              x:Name="ResultsGrid"
                               ItemsSource="{Binding TestResults}"
                               AutoGenerateColumns="False"
                               CanUserAddRows="False"
                               CanUserDeleteRows="False"
                               CanUserResizeRows="False"
                               IsReadOnly="True"
-                              SelectionMode="Single"
+                              SelectionMode="Extended"
                               SelectionUnit="FullRow"
                               ClipboardCopyMode="IncludeHeader"
                               HeadersVisibility="Column"
