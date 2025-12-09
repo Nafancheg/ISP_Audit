@@ -17,6 +17,13 @@
         <vm:MainViewModelRefactored/>
     </Window.DataContext>
 
+    <Window.Resources>
+        <ContextMenu x:Key="RowContextMenu">
+            <MenuItem Header="Копировать Host" Click="CopyHost_Click"/>
+            <MenuItem Header="Копировать Fallback IP" Click="CopyFallbackIp_Click"/>
+        </ContextMenu>
+    </Window.Resources>
+
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -428,6 +435,7 @@
                             <Style TargetType="DataGridRow">
                                 <Setter Property="MinHeight" Value="36"/>
                                 <EventSetter Event="MouseDoubleClick" Handler="DataGridRow_MouseDoubleClick"/>
+                                <Setter Property="ContextMenu" Value="{StaticResource RowContextMenu}"/>
                                 <Style.Triggers>
                                     <Trigger Property="IsSelected" Value="True">
                                         <Setter Property="Background" Value="#DBEAFE"/>

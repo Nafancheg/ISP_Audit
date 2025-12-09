@@ -31,5 +31,27 @@ namespace ISPAudit
                 }
             }
         }
+
+        private void CopyHost_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem menuItem && menuItem.DataContext is TestResult result)
+            {
+                if (!string.IsNullOrEmpty(result.Target?.Host))
+                {
+                    System.Windows.Clipboard.SetText(result.Target.Host);
+                }
+            }
+        }
+
+        private void CopyFallbackIp_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem menuItem && menuItem.DataContext is TestResult result)
+            {
+                if (!string.IsNullOrEmpty(result.Target?.FallbackIp))
+                {
+                    System.Windows.Clipboard.SetText(result.Target.FallbackIp);
+                }
+            }
+        }
     }
 }
