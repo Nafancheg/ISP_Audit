@@ -80,7 +80,8 @@ namespace IspAudit.Core.Traffic.Filters
                 
                 // Send the fake packet
                 // Note: We use the same address info, so it goes to the same destination
-                sender.Send(fakePacket, fakePacket.Length, ref packet.Address);
+                var addr = context.Address;
+                sender.Send(fakePacket, fakePacket.Length, ref addr);
             }
         }
 
