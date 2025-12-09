@@ -525,7 +525,8 @@ namespace ISPAudit.ViewModels
                         {
                             Log("[Silence] Пользователь продлил диагностику");
                             silenceWarningShown = false;
-                            // TrafficCollector сбросит время при новом соединении
+                            // Сбрасываем время последнего соединения на текущее
+                            _trafficCollector.ResetSilenceTimer();
                         }
                         else
                         {

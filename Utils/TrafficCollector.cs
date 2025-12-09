@@ -59,6 +59,14 @@ namespace IspAudit.Utils
         public DateTime LastNewConnectionTime => _lastNewConnectionTime;
         
         /// <summary>
+        /// Сбрасывает таймер тишины (для продления диагностики пользователем)
+        /// </summary>
+        public void ResetSilenceTimer()
+        {
+            _lastNewConnectionTime = DateTime.UtcNow;
+        }
+        
+        /// <summary>
         /// Останавливает сбор новых соединений (закрывает канал).
         /// Pipeline продолжит обрабатывать уже собранные данные.
         /// </summary>
