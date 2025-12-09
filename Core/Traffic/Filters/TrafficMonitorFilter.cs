@@ -5,10 +5,13 @@ namespace IspAudit.Core.Traffic.Filters
 {
     public class TrafficMonitorFilter : IPacketFilter
     {
+        public string Name => "TrafficMonitor";
+        public int Priority => 0;
+
         public event Action<PacketData>? OnPacketReceived;
         public int PacketsCount { get; private set; }
 
-        public bool Process(InterceptedPacket packet, PacketContext context)
+        public bool Process(InterceptedPacket packet, PacketContext context, IPacketSender sender)
         {
             PacketsCount++;
             

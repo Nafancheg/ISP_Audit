@@ -204,6 +204,32 @@ namespace ISPAudit.ViewModels
         public bool IsDropRstActive => Bypass.IsDropRstActive;
         public bool IsDoHActive => Bypass.IsDoHActive;
 
+        // Traffic Engine Performance
+        private double _trafficEngineLatency;
+        public double TrafficEngineLatency
+        {
+            get => _trafficEngineLatency;
+            set 
+            { 
+                _trafficEngineLatency = value; 
+                OnPropertyChanged(nameof(TrafficEngineLatency)); 
+                OnPropertyChanged(nameof(TrafficEngineLatencyText)); 
+                OnPropertyChanged(nameof(TrafficEngineLatencyColor));
+            }
+        }
+
+        public string TrafficEngineLatencyText => $"{TrafficEngineLatency:F3} ms";
+        
+        public System.Windows.Media.Brush TrafficEngineLatencyColor
+        {
+            get
+            {
+                if (TrafficEngineLatency < 0.5) return System.Windows.Media.Brushes.Green;
+                if (TrafficEngineLatency < 2.0) return System.Windows.Media.Brushes.Orange;
+                return System.Windows.Media.Brushes.Red;
+            }
+        }
+
         #endregion
 
         #region Commands
@@ -228,15 +254,26 @@ namespace ISPAudit.ViewModels
 
         #region Constructor
 
+        private readonly IspAudit.Core.Traffic.TrafficEngine _trafficEngine;
+
         public MainViewModelRefactored()
         {
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             Log("MainViewModelRefactored: Инициализация");
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
+            // Create TrafficEngine
+            var progress = new Progress<string>(msg => Log(msg));
+            _trafficEngine = new IspAudit.Core.Traffic.TrafficEngine(progress);
+            
+            _trafficEngine.OnPerformanceUpdate += ms => 
+            {
+                Application.Current?.Dispatcher.Invoke(() => TrafficEngineLatency = ms);
+            };
+
             // Создаём контроллеры
-            Bypass = new BypassController();
-            Orchestrator = new DiagnosticOrchestrator();
+            Bypass = new BypassController(_trafficEngine);
+            Orchestrator = new DiagnosticOrchestrator(_trafficEngine);
             Results = new TestResultsManager();
 
             // Подписываемся на события
@@ -245,6 +282,7 @@ namespace ISPAudit.ViewModels
             {
                 OnPropertyChanged(e.PropertyName ?? "");
                 CheckAndRetestFailedTargets(e.PropertyName);
+                if (e.PropertyName == nameof(Bypass.IsBypassActive)) CheckTrafficEngineState();
             };
             
             Orchestrator.OnLog += Log;
@@ -266,6 +304,7 @@ namespace ISPAudit.ViewModels
                 {
                     OnPropertyChanged(nameof(IsRunning));
                     OnPropertyChanged(nameof(StartButtonText));
+                    CheckTrafficEngineState();
                 }
             };
 
@@ -507,6 +546,18 @@ namespace ISPAudit.ViewModels
             
             // Запускаем ретест
             await Orchestrator.RetestTargetsAsync(failedTargets, Bypass);
+        }
+
+        private void CheckTrafficEngineState()
+        {
+            if (!Bypass.IsBypassActive && !Orchestrator.IsDiagnosticRunning)
+            {
+                if (_trafficEngine.IsRunning)
+                {
+                    Log("[Main] Stopping TrafficEngine (no active consumers)...");
+                    _ = _trafficEngine.StopAsync();
+                }
+            }
         }
 
         #endregion

@@ -49,12 +49,13 @@
 3. [x] Адаптировать подписчиков (`TcpRetransmissionTracker`, `UdpInspectionService`) к новому источнику событий.
 
 ### Фаза 3: Миграция Байпаса
-1. [ ] Создать `BypassFilter`.
-2. [ ] Перенести логику `WinDivertBypassManager` (RstBlocker, TlsFragmenter) в фильтр.
-3. [ ] Обеспечить корректную передачу состояния (BypassProfile) в фильтр.
+1. [x] Создать `BypassFilter`.
+2. [x] Перенести логику `WinDivertBypassManager` (RstBlocker, TlsFragmenter) в фильтр.
+3. [x] Обеспечить корректную передачу состояния (BypassProfile) в фильтр.
+4. [x] Удалить старый `WinDivertBypassManager`.
 
 ### Фаза 4: Интеграция и Тесты
-1. [ ] Заменить старые сервисы на `TrafficEngine` в `DiagnosticOrchestrator`.
+1. [x] Заменить старые сервисы на `TrafficEngine` в `DiagnosticOrchestrator`.
 2. [ ] Проверить работу диагностики (графики, счетчики).
 3. [ ] Проверить работу обхода (RST drop, TLS fragmentation).
 4. [ ] Убедиться в отсутствии регрессий производительности.

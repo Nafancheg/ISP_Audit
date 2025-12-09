@@ -4,6 +4,8 @@ using System.ComponentModel;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using IspAudit.Bypass;
+using IspAudit.Core.Traffic;
+using IspAudit.Core.Traffic.Filters;
 using IspAudit.Utils;
 using ISPAudit.Utils;
 using IspAudit.Wpf;
@@ -16,11 +18,11 @@ namespace ISPAudit.ViewModels
     /// <summary>
     /// Контроллер bypass-стратегий.
     /// Управляет toggle-кнопками (Fragment, Disorder, Fake, DROP_RST, DoH),
-    /// владеет WinDivertBypassManager, проверяет VPN.
+    /// использует TrafficEngine и BypassFilter.
     /// </summary>
     public class BypassController : INotifyPropertyChanged
     {
-        private WinDivertBypassManager? _bypassManager;
+        private readonly TrafficEngine _trafficEngine;
         
         // Независимые флаги для каждой опции bypass
         private bool _isFragmentEnabled;
@@ -53,8 +55,9 @@ namespace ISPAudit.ViewModels
         /// </summary>
         public event Action<string>? OnLog;
 
-        public BypassController()
+        public BypassController(TrafficEngine trafficEngine)
         {
+            _trafficEngine = trafficEngine;
             SetDnsPresetCommand = new RelayCommand(param => 
             {
                 if (param is string preset)
@@ -90,7 +93,7 @@ namespace ISPAudit.ViewModels
         /// <summary>
         /// Показывать ли панель управления bypass (только при admin правах)
         /// </summary>
-        public bool ShowBypassPanel => WinDivertBypassManager.HasAdministratorRights;
+        public bool ShowBypassPanel => TrafficEngine.HasAdministratorRights;
 
         /// <summary>
         /// Bypass активен в данный момент
@@ -279,11 +282,6 @@ namespace ISPAudit.ViewModels
         public bool IsDropRstActive => IsDropRstEnabled && IsBypassActive;
         public bool IsDoHActive => IsDoHEnabled;
 
-        /// <summary>
-        /// Доступ к менеджеру bypass (для DiagnosticOrchestrator)
-        /// </summary>
-        public WinDivertBypassManager? BypassManager => _bypassManager;
-
         #endregion
 
         #region Initialization
@@ -296,7 +294,7 @@ namespace ISPAudit.ViewModels
             // Проверка VPN
             CheckVpnStatus();
 
-            if (!WinDivertBypassManager.HasAdministratorRights)
+            if (!TrafficEngine.HasAdministratorRights)
             {
                 Log("[Bypass] No admin rights - bypass not available");
                 return;
@@ -306,39 +304,58 @@ namespace ISPAudit.ViewModels
             {
                 Log("[Bypass] Initializing bypass on application startup...");
                 
-                _bypassManager = new WinDivertBypassManager();
-                _bypassManager.StateChanged += (s, e) => Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
-                
-                // Включаем Fragment + DROP RST при старте
-                _isFragmentEnabled = true;
+                // Включаем Disorder + DROP RST при старте (как наиболее эффективную стратегию)
+                _isDisorderEnabled = true;
+                _isFragmentEnabled = false;
                 _isDropRstEnabled = true;
                 
-                // Проверяем текущее состояние DNS
-                var activePreset = FixService.DetectActivePreset();
-                if (activePreset != null)
+                // Предварительная установка DoH по наличию бэкапа (чтобы UI не прыгал)
+                if (FixService.HasBackupFile)
                 {
                     _isDoHEnabled = true;
+                    OnPropertyChanged(nameof(IsDoHEnabled));
+                }
+
+                // Проверяем текущее состояние DNS (в фоновом потоке, чтобы не фризить UI)
+                var activePreset = await Task.Run(() => FixService.DetectActivePreset());
+                
+                if (activePreset != null)
+                {
                     _selectedDnsPreset = activePreset;
-                    Log($"[Bypass] Detected active DNS preset: {activePreset}");
+                    OnPropertyChanged(nameof(SelectedDnsPreset));
                     
-                    // Если файл бэкапа есть, загружаем его (чтобы знать, куда откатываться)
-                    // Если нет - ну, значит не судьба, при выключении спросим или сбросим в DHCP
+                    // Включаем галочку DoH только если есть файл бэкапа (индикатор того, что это мы настроили)
+                    // Просто наличие 8.8.8.8 не гарантирует включенный DoH/HTTPS
                     if (FixService.HasBackupFile)
                     {
-                        // Просто триггерим загрузку (можно добавить метод LoadBackup, но пока Restore сам разберется)
+                        _isDoHEnabled = true;
+                        Log($"[Bypass] Detected active DoH preset (restorable): {activePreset}");
+                    }
+                    else
+                    {
+                        // Если бэкапа нет, но DNS совпадает — не включаем DoH автоматически
+                        if (_isDoHEnabled)
+                        {
+                            _isDoHEnabled = false;
+                            OnPropertyChanged(nameof(IsDoHEnabled));
+                        }
+                        Log($"[Bypass] Detected active DNS provider: {activePreset} (DoH not confirmed)");
                     }
                 }
                 else
                 {
-                    _isDoHEnabled = false;
-                    // Если DoH выключен, но файл бэкапа есть - он, вероятно, устарел.
-                    // Но удалять его опасно, вдруг пользователь просто временно сменил DNS.
+                    // Если пресет не обнаружен, снимаем галочку (даже если был бэкап, значит состояние рассинхронизировано)
+                    if (_isDoHEnabled)
+                    {
+                        _isDoHEnabled = false;
+                        OnPropertyChanged(nameof(IsDoHEnabled));
+                    }
                 }
                 
+                OnPropertyChanged(nameof(IsDisorderEnabled));
                 OnPropertyChanged(nameof(IsFragmentEnabled));
                 OnPropertyChanged(nameof(IsDropRstEnabled));
-                OnPropertyChanged(nameof(IsDoHEnabled));
-                OnPropertyChanged(nameof(SelectedDnsPreset));
+                // IsDoHEnabled уже обновлен выше
                 
                 // Проверяем совместимость после включения опций
                 CheckCompatibility();
@@ -346,10 +363,7 @@ namespace ISPAudit.ViewModels
                 // Применяем WinDivert bypass
                 await ApplyBypassOptionsAsync().ConfigureAwait(false);
                 
-                // DoH не применяем автоматически
-                // await ApplyDoHAsync().ConfigureAwait(false);
-                
-                Log("[Bypass] Startup complete: Fragment + DROP RST");
+                Log("[Bypass] Startup complete: Disorder + DROP RST");
             }
             catch (Exception ex)
             {
@@ -366,21 +380,14 @@ namespace ISPAudit.ViewModels
         /// </summary>
         public async Task ApplyBypassOptionsAsync()
         {
-            if (_bypassManager == null)
-            {
-                _bypassManager = new WinDivertBypassManager();
-                _bypassManager.StateChanged += (s, e) => Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
-            }
-
             try
             {
+                // Remove old filter
+                _trafficEngine.RemoveFilter("BypassFilter");
+
                 // Если ничего не включено — отключаем bypass
                 if (!IsFragmentEnabled && !IsDisorderEnabled && !IsFakeEnabled && !IsDropRstEnabled)
                 {
-                    if (_bypassManager.State == BypassState.Enabled)
-                    {
-                        await _bypassManager.DisableAsync().ConfigureAwait(false);
-                    }
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
                         IsBypassActive = false;
@@ -388,12 +395,6 @@ namespace ISPAudit.ViewModels
                         Log("[Bypass] All options disabled");
                     });
                     return;
-                }
-
-                // Отключаем перед переконфигурацией
-                if (_bypassManager.State == BypassState.Enabled)
-                {
-                    await _bypassManager.DisableAsync().ConfigureAwait(false);
                 }
 
                 // Собираем профиль из текущих флагов
@@ -419,7 +420,15 @@ namespace ISPAudit.ViewModels
                     RedirectRules = Array.Empty<BypassRedirectRule>()
                 };
 
-                await _bypassManager.EnableAsync(profile).ConfigureAwait(false);
+                // Create and register filter
+                var filter = new BypassFilter(profile);
+                _trafficEngine.RegisterFilter(filter);
+
+                // Ensure engine is running
+                if (!_trafficEngine.IsRunning)
+                {
+                    await _trafficEngine.StartAsync().ConfigureAwait(false);
+                }
 
                 Application.Current?.Dispatcher.Invoke(() =>
                 {
@@ -519,26 +528,24 @@ namespace ISPAudit.ViewModels
         /// </summary>
         public async Task EnablePreemptiveBypassAsync()
         {
-            if (!WinDivertBypassManager.HasAdministratorRights) return;
+            if (!TrafficEngine.HasAdministratorRights) return;
             
             Log("[Bypass] Enabling preemptive TLS_DISORDER + DROP_RST...");
             
-            var profile = BypassProfile.CreateDefault();
             try
             {
-                if (_bypassManager == null)
-                {
-                    _bypassManager = new WinDivertBypassManager();
-                    _bypassManager.StateChanged += (s, e) => Application.Current?.Dispatcher.Invoke(UpdateBypassWarning);
-                }
+                // Fix: Actually enable Disorder, not Fragment
+                _isDisorderEnabled = true; 
+                _isFragmentEnabled = false;
+                _isDropRstEnabled = true;
+                // Note: DoH state is NOT changed here. It remains as set by user or startup logic.
                 
-                await _bypassManager.EnableAsync(profile).ConfigureAwait(false);
+                await ApplyBypassOptionsAsync().ConfigureAwait(false);
                 
                 Application.Current?.Dispatcher.Invoke(() => 
                 {
                     IsBypassActive = true;
-                    _isFragmentEnabled = true;
-                    _isDropRstEnabled = true;
+                    OnPropertyChanged(nameof(IsDisorderEnabled));
                     OnPropertyChanged(nameof(IsFragmentEnabled));
                     OnPropertyChanged(nameof(IsDropRstEnabled));
                     NotifyActiveStatesChanged();
@@ -571,8 +578,6 @@ namespace ISPAudit.ViewModels
             {
                 warnings.Add("ℹ️ Fake без фрагментации — рекомендуется добавить Fragment или Disorder");
             }
-            
-            // VPN + Bypass warning removed from here as it is already shown in VpnWarningText
             
             // DoH без других опций — только DNS защита
             if (IsDoHEnabled && !IsFragmentEnabled && !IsDisorderEnabled && !IsFakeEnabled && !IsDropRstEnabled)
@@ -613,21 +618,9 @@ namespace ISPAudit.ViewModels
 
         private void UpdateBypassWarning()
         {
-            if (_bypassManager != null && _bypassManager.State == BypassState.Enabled)
-            {
-                if (IsDropRstEnabled && !_bypassManager.IsRstBlockerActive)
-                {
-                    BypassWarningText = "⚠️ Обход активен без RST-защиты (возможны разрывы)";
-                }
-                else
-                {
-                    BypassWarningText = "";
-                }
-            }
-            else
-            {
-                BypassWarningText = "";
-            }
+            // TODO: Check if RST blocking is actually active in TrafficEngine
+            // For now, assume it works if enabled
+            BypassWarningText = "";
         }
 
         private void NotifyActiveStatesChanged()

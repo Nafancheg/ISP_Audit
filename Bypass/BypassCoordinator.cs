@@ -6,6 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using ISPAudit.Models;
 using IspAudit.Core.Models;
+using IspAudit.Core.Traffic;
+using IspAudit.Core.Traffic.Filters;
 
 namespace IspAudit.Bypass
 {
@@ -19,12 +21,12 @@ namespace IspAudit.Bypass
 
     public class BypassCoordinator
     {
-        private readonly WinDivertBypassManager _manager;
+        private readonly TrafficEngine _engine;
         private readonly Dictionary<string, string> _workingStrategies = new(); // Host -> Strategy
 
-        public BypassCoordinator(WinDivertBypassManager manager)
+        public BypassCoordinator(TrafficEngine engine)
         {
-            _manager = manager;
+            _engine = engine;
         }
 
         public List<string> SuggestFixes(TargetReport report)
@@ -99,12 +101,7 @@ namespace IspAudit.Bypass
             }
 
             // 4. Cleanup if failed
-            // We don't necessarily want to disable everything if we failed this target, 
-            // but if we leave a broken strategy active it might affect others.
-            // However, WinDivertBypassManager is global.
-            // If we failed, we should probably revert to Disabled or previous state?
-            // For now, let's disable to be safe.
-            await _manager.DisableAsync().ConfigureAwait(false);
+            _engine.RemoveFilter("BypassFilter");
             
             return new FixResult { Success = false, Message = "All strategies failed" };
         }
@@ -165,28 +162,13 @@ namespace IspAudit.Bypass
                 }
             }
 
-            await _manager.DisableAsync().ConfigureAwait(false);
+            _engine.RemoveFilter("BypassFilter");
             return new FixResult { Success = false, Message = "All strategies failed" };
         }
 
         private async Task ApplyStrategyLiveAsync(string strategy, IPAddress ip, CancellationToken ct)
         {
-            try
-            {
-                // Variant A: Global bypass for technical strategies
-                if (IsTechnicalStrategy(strategy))
-                {
-                    await _manager.ApplyBypassStrategyAsync(strategy, null).ConfigureAwait(false);
-                }
-                else
-                {
-                    await _manager.ApplyBypassStrategyAsync(strategy, ip).ConfigureAwait(false);
-                }
-            }
-            catch (Exception ex)
-            {
-                ISPAudit.Utils.DebugLogger.Log($"[Coordinator] Failed to apply strategy '{strategy}': {ex.Message}");
-            }
+            await ApplyBypassStrategyInternalAsync(strategy, ip).ConfigureAwait(false);
         }
 
         private bool IsFixed(IspAudit.Core.Models.HostTested result)
@@ -199,35 +181,53 @@ namespace IspAudit.Bypass
             IPAddress? ip = null;
             try 
             {
-                // Try to resolve host to IP for specific targeting
                 var ips = await Dns.GetHostAddressesAsync(target.Host, ct).ConfigureAwait(false);
                 ip = ips.FirstOrDefault(i => i.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
             } 
-            catch 
-            {
-                // Resolution failed, ip remains null (Global apply)
-            }
+            catch { }
 
-            // If we have a fallback IP and resolution failed, maybe use that?
             if (ip == null && !string.IsNullOrEmpty(target.FallbackIp) && IPAddress.TryParse(target.FallbackIp, out var fallback))
             {
                 ip = fallback;
             }
 
+            await ApplyBypassStrategyInternalAsync(strategy, ip).ConfigureAwait(false);
+        }
+
+        private async Task ApplyBypassStrategyInternalAsync(string strategy, IPAddress? targetIp)
+        {
             try
             {
-                // Variant A: Global bypass for technical strategies
-                if (IsTechnicalStrategy(strategy))
+                _engine.RemoveFilter("BypassFilter");
+
+                if (strategy == "NONE" || strategy == "UNKNOWN") return;
+
+                var profile = new BypassProfile();
+                switch (strategy)
                 {
-                    ip = null;
+                    case "DROP_RST":
+                        profile = new BypassProfile { DropTcpRst = true, TlsStrategy = TlsBypassStrategy.None };
+                        break;
+                    case "TLS_FRAGMENT":
+                        profile = new BypassProfile { DropTcpRst = true, TlsStrategy = TlsBypassStrategy.Fragment };
+                        break;
+                    case "TLS_FAKE":
+                        profile = new BypassProfile { DropTcpRst = true, TlsStrategy = TlsBypassStrategy.Fake };
+                        break;
+                    case "TLS_FAKE_FRAGMENT":
+                        profile = new BypassProfile { DropTcpRst = true, TlsStrategy = TlsBypassStrategy.FakeFragment };
+                        break;
+                    case "TLS_DISORDER":
+                        profile = new BypassProfile { DropTcpRst = true, TlsStrategy = TlsBypassStrategy.Disorder };
+                        break;
+                    default:
+                        return; // Not a WinDivert strategy
                 }
 
-                await _manager.ApplyBypassStrategyAsync(strategy, ip).ConfigureAwait(false);
-            }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("администратора"))
-            {
-                ISPAudit.Utils.DebugLogger.Log($"[Coordinator] Failed to apply strategy '{strategy}': Admin rights required.");
-                throw; // Re-throw to be handled by caller or let it fail the fix
+                var filter = new BypassFilter(profile);
+                _engine.RegisterFilter(filter);
+
+                if (!_engine.IsRunning) await _engine.StartAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
             {

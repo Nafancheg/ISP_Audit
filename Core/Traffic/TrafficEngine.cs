@@ -1,13 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
 
 namespace IspAudit.Core.Traffic
 {
-    public class TrafficEngine : IDisposable
+    public class TrafficEngine : IDisposable, IPacketSender
     {
         private readonly List<IPacketFilter> _filters = new();
         private WinDivertNative.SafeHandle? _handle;
@@ -15,6 +16,12 @@ namespace IspAudit.Core.Traffic
         private Task? _loopTask;
         private readonly IProgress<string>? _progress;
         
+        // Performance metrics
+        public event Action<double>? OnPerformanceUpdate;
+        private long _totalProcessingTicks;
+        private int _processedPacketsCount;
+        private DateTime _lastPerformanceReport = DateTime.MinValue;
+
         // Filter: Capture all IP packets (TCP/UDP/ICMP) to allow filters to decide
         // We exclude loopback to avoid noise if not needed, but for local testing we might need it.
         // Let's stick to "ip" for now.
@@ -22,6 +29,24 @@ namespace IspAudit.Core.Traffic
         private const short Priority = 0; // Default priority
 
         public bool IsRunning => _loopTask != null && !_loopTask.IsCompleted;
+
+        public static bool HasAdministratorRights
+        {
+            get
+            {
+                if (!OperatingSystem.IsWindows()) return false;
+                try
+                {
+                    using var identity = WindowsIdentity.GetCurrent();
+                    var principal = new WindowsPrincipal(identity);
+                    return principal.IsInRole(WindowsBuiltInRole.Administrator);
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
 
         public TrafficEngine(IProgress<string>? progress = null)
         {
@@ -33,6 +58,16 @@ namespace IspAudit.Core.Traffic
             lock (_filters)
             {
                 _filters.Add(filter);
+                // Sort by priority (descending)
+                _filters.Sort((a, b) => b.Priority.CompareTo(a.Priority));
+            }
+        }
+
+        public void RemoveFilter(string filterName)
+        {
+            lock (_filters)
+            {
+                _filters.RemoveAll(f => f.Name == filterName);
             }
         }
 
@@ -122,6 +157,8 @@ namespace IspAudit.Core.Traffic
                         continue;
                     }
 
+                    var startTicks = DateTime.UtcNow.Ticks;
+
                     var packet = new InterceptedPacket(buffer, (int)readLen);
                     var ctx = new PacketContext(addr);
                     
@@ -133,7 +170,7 @@ namespace IspAudit.Core.Traffic
                         {
                             try 
                             {
-                                if (!filter.Process(packet, ctx))
+                                if (!filter.Process(packet, ctx, this))
                                 {
                                     drop = true;
                                     break;
@@ -154,6 +191,27 @@ namespace IspAudit.Core.Traffic
                         
                         WinDivertNative.WinDivertSend(_handle, packet.Buffer, (uint)packet.Length, out _, in addr);
                     }
+
+                    var endTicks = DateTime.UtcNow.Ticks;
+                    _totalProcessingTicks += (endTicks - startTicks);
+                    _processedPacketsCount++;
+
+                    if (DateTime.UtcNow - _lastPerformanceReport > TimeSpan.FromSeconds(1))
+                    {
+                        double avgMs = 0;
+                        if (_processedPacketsCount > 0)
+                        {
+                            var avgTicks = (double)_totalProcessingTicks / _processedPacketsCount;
+                            avgMs = avgTicks / 10000.0; // 10000 ticks in 1 ms
+                        }
+                        
+                        // Report even if 0 packets (to show idle state)
+                        OnPerformanceUpdate?.Invoke(avgMs);
+                        
+                        _totalProcessingTicks = 0;
+                        _processedPacketsCount = 0;
+                        _lastPerformanceReport = DateTime.UtcNow;
+                    }
                 }
             }
             catch (Exception ex)
@@ -161,6 +219,16 @@ namespace IspAudit.Core.Traffic
                 // Log unexpected loop errors
                 _progress?.Report($"[TrafficEngine] Loop crashed: {ex.Message}");
             }
+        }
+
+        public bool Send(byte[] packet, int length, ref WinDivertNative.Address addr)
+        {
+            if (_handle == null || _handle.IsInvalid) return false;
+
+            // Recalculate checksums before sending
+            WinDivertNative.WinDivertHelperCalcChecksums(packet, (uint)length, ref addr, 0);
+
+            return WinDivertNative.WinDivertSend(_handle, packet, (uint)length, out _, in addr);
         }
 
         public void Dispose()

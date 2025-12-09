@@ -34,54 +34,46 @@
                 Margin="0,0,0,12"
                 AutomationProperties.AutomationId="ScenarioSelector">
             <StackPanel>
-
-                <!-- Exe Selection -->
-                <StackPanel Margin="0,0,0,0" 
-                            IsEnabled="{Binding IsBasicTestMode, Converter={StaticResource InverseBoolConverter}}"
-                            AutomationProperties.AutomationId="ExeScenarioPanel">
-                    <TextBlock Text="Выберите exe файл игры или лаунчера" Style="{StaticResource BodyStyle}" Margin="0,0,0,4"/>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBox Grid.Column="0" Style="{StaticResource ModernTextBoxStyle}" 
-                                 Text="{Binding ExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 AutomationProperties.AutomationId="ExePathTextBox" Margin="0,0,750,10"/>
-                        <Button Content="Обзор..." 
-                                Style="{StaticResource SecondaryButtonStyle}"
-                                Command="{Binding BrowseExeCommand}"
-                                IsEnabled="{Binding IsStart}"
-                                Margin="600,0,550,10"
-                                AutomationProperties.AutomationId="BrowseButton"/>
-                        <CheckBox Content="Тест базовых сервисов (Google, YouTube, Discord)"
-                                  IsChecked="{Binding IsBasicTestMode}"
-                                  IsEnabled="{Binding IsStart}"
-                                  AutomationProperties.AutomationId="BasicTestCheckbox" Margin="1002,14,20,21"/>
-                    </Grid>
-                </StackPanel>
-
-                <Grid Margin="0,12,0,0">
+                <TextBlock Text="Выберите exe файл игры или лаунчера" Style="{StaticResource BodyStyle}" Margin="0,0,0,8"/>
+                
+                <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition/>
-                        <ColumnDefinition Width="Auto" MinWidth="198.4"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,198,0">
-                        <!-- Basic Services Test Checkbox -->
+                    <!-- Path TextBox -->
+                    <TextBox Grid.Column="0" Style="{StaticResource ModernTextBoxStyle}" 
+                             Text="{Binding ExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             IsEnabled="{Binding IsBasicTestMode, Converter={StaticResource InverseBoolConverter}}"
+                             AutomationProperties.AutomationId="ExePathTextBox" 
+                             Margin="0,0,8,0" VerticalAlignment="Center" Height="36"/>
 
-                        <!-- Auto Bypass Options - СКРЫТО: bypass включается автоматически при старте
-                             Переключение стратегий будет реализовано отдельно -->
-                    </StackPanel>
+                    <!-- Browse Button -->
+                    <Button Grid.Column="1" Content="Обзор..." 
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding BrowseExeCommand}"
+                            IsEnabled="{Binding IsBasicTestMode, Converter={StaticResource InverseBoolConverter}}"
+                            Margin="0,0,16,0" Padding="12,0" Height="36"
+                            AutomationProperties.AutomationId="BrowseButton" VerticalAlignment="Center"/>
 
-                    <!-- Start Button (Unified) -->
-                    <Button
+                    <!-- Start Button -->
+                    <Button Grid.Column="2"
                             Content="{Binding StartButtonText}" 
                             Style="{StaticResource PrimaryButtonStyle}"
                             Command="{Binding StartLiveTestingCommand}"
-                            VerticalAlignment="Top"
-                            Margin="788,-60,149,0"
-                            AutomationProperties.AutomationId="StartButton" Height="40"/>
+                            Margin="0,0,16,0" Padding="20,0" Height="36"
+                            AutomationProperties.AutomationId="StartButton" VerticalAlignment="Center"/>
+
+                    <!-- Checkbox -->
+                    <CheckBox Grid.Column="3" 
+                              Content="Тест базовых сервисов (Google, YouTube, Discord)"
+                              IsChecked="{Binding IsBasicTestMode}"
+                              IsEnabled="{Binding IsStart}"
+                              AutomationProperties.AutomationId="BasicTestCheckbox" 
+                              VerticalAlignment="Center"/>
                 </Grid>
 
                 <!-- Bypass Control Panel (Пульт управления) -->
@@ -103,7 +95,16 @@
                             </StackPanel>
 
                             <!-- Status Badges -->
-                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                                <!-- Performance Indicator -->
+                                <Border Background="#F3F4F6" CornerRadius="6" Padding="8,4" Margin="0,0,8,0"
+                                        ToolTip="Среднее время обработки одного пакета движком TrafficEngine">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="⚡" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <TextBlock Text="{Binding TrafficEngineLatencyText}" FontWeight="SemiBold" FontSize="11" Foreground="{Binding TrafficEngineLatencyColor}"/>
+                                    </StackPanel>
+                                </Border>
+
                                 <!-- DoH Active Badge -->
                                 <Border Background="#DBEAFE" CornerRadius="6" Padding="10,4" Margin="0,0,8,0"
                                         Visibility="{Binding IsDoHActive, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -307,6 +308,8 @@
                         <!-- Header (Running) -->
                         <RowDefinition Height="Auto"/>
                         <!-- Header (Done) -->
+                        <RowDefinition Height="Auto"/>
+                        <!-- Performance -->
                         <RowDefinition Height="*"/>
                         <!-- DataGrid -->
                     </Grid.RowDefinitions>
@@ -349,31 +352,6 @@
                             <TextBlock Text="{Binding ConnectionsDiscovered, StringFormat='Соединений: {0}'}" Margin="0,0,12,0" Foreground="#374151" FontSize="12"/>
                             <TextBlock Text="{Binding FlowEventsCount, StringFormat='Событий Flow: {0}'}" Foreground="#6B7280" FontSize="12"/>
                         </StackPanel>
-
-                        <!-- Health Indicator -->
-                        <Grid Margin="0,12,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Стабильность (1 мин):" FontSize="12" Foreground="#4B5563" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                            <ProgressBar Grid.Column="1" 
-                                         Value="{Binding ResultsManager.HealthScore, Mode=OneWay}" 
-                                         Maximum="100" 
-                                         Height="6" 
-                                         BorderThickness="0"
-                                         Background="#E5E7EB"
-                                         Foreground="{Binding ResultsManager.HealthColor}"
-                                         VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" 
-                                       Text="{Binding ResultsManager.HealthScore, StringFormat='{}{0:F0}%'}" 
-                                       FontSize="12" 
-                                       FontWeight="SemiBold" 
-                                       Foreground="{Binding ResultsManager.HealthColor}"
-                                       Margin="8,0,0,0" 
-                                       VerticalAlignment="Center"/>
-                        </Grid>
                     </StackPanel>
 
                     <!-- Done Header -->
@@ -403,83 +381,10 @@
                                         FontSize="12"/>
                             </StackPanel>
                         </Grid>
-
-                        <!-- Health Indicator (Final) -->
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Итоговая стабильность:" FontSize="12" Foreground="#4B5563" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                            <ProgressBar Grid.Column="1" 
-                                         Value="{Binding ResultsManager.HealthScore, Mode=OneWay}" 
-                                         Maximum="100" 
-                                         Height="8" 
-                                         BorderThickness="0"
-                                         Background="#E5E7EB"
-                                         Foreground="{Binding ResultsManager.HealthColor}"
-                                         VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" 
-                                       Text="{Binding ResultsManager.HealthScore, StringFormat='{}{0:F0}%'}" 
-                                       FontSize="12" 
-                                       FontWeight="SemiBold" 
-                                       Foreground="{Binding ResultsManager.HealthColor}"
-                                       Margin="8,0,0,0" 
-                                       VerticalAlignment="Center"/>
-                        </Grid>
-
-                        <!-- Summary Stats -->
-                        <!--
-                        <Border Background="#F9FAFB" 
-                                CornerRadius="8" 
-                                Padding="12">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <StackPanel Grid.Row="0" Grid.Column="0">
-                                    <TextBlock Text="Успешно" Style="{StaticResource CaptionStyle}"/>
-                                    <TextBlock Text="{Binding PassCount}" Style="{StaticResource H2Style}" Foreground="{StaticResource PassBrush}"/>
-                                </StackPanel>
-
-                                <StackPanel Grid.Row="0" Grid.Column="1">
-                                    <TextBlock Text="Ошибки" Style="{StaticResource CaptionStyle}"/>
-                                    <TextBlock Text="{Binding FailCount}" Style="{StaticResource H2Style}" Foreground="{StaticResource FailBrush}"/>
-                                </StackPanel>
-
-                                <StackPanel Grid.Row="0" Grid.Column="2">
-                                    <TextBlock Text="Предупреждения" Style="{StaticResource CaptionStyle}"/>
-                                    <TextBlock Text="{Binding WarnCount}" Style="{StaticResource H2Style}" Foreground="{StaticResource WarnBrush}"/>
-                                </StackPanel>
-
-                                <Border Grid.Row="1" Grid.ColumnSpan="3" 
-                                        Margin="0,8,0,0" 
-                                        Background="#ECFDF5" 
-                                        BorderBrush="#A7F3D0" 
-                                        BorderThickness="1" 
-                                        CornerRadius="4" 
-                                        Padding="8,4"
-                                        Visibility="{Binding DiagnosticStatus, Converter={StaticResource StringToVisibilityConverter}}">
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                        <TextBlock Text="💾" Margin="0,0,8,0" FontSize="12"/>
-                                        <TextBlock Text="{Binding DiagnosticStatus}" Foreground="#047857" FontWeight="Medium" FontSize="12"/>
-                                    </StackPanel>
-                                </Border>
-                            </Grid>
-                        </Border>
-                        -->
                     </StackPanel>
 
                     <!-- Unified DataGrid -->
-                    <DataGrid Grid.Row="2"
+                    <DataGrid Grid.Row="3"
                               ItemsSource="{Binding TestResults}"
                               AutoGenerateColumns="False"
                               CanUserAddRows="False"

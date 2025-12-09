@@ -4,7 +4,7 @@ namespace IspAudit.Core.Traffic
 {
     public class PacketContext
     {
-        internal WinDivertNative.Address Address;
+        public WinDivertNative.Address Address;
         
         public bool IsOutbound => Address.Outbound;
         public bool IsLoopback => Address.Loopback;

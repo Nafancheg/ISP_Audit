@@ -32,7 +32,7 @@ namespace ISPAudit.ViewModels
         
         // Мониторинговые сервисы
         private ConnectionMonitorService? _connectionMonitor;
-        private TrafficEngine? _trafficEngine;
+        private readonly TrafficEngine _trafficEngine;
         private TrafficMonitorFilter? _trafficMonitorFilter;
         private TcpRetransmissionTracker? _tcpRetransmissionTracker;
         private HttpRedirectDetector? _httpRedirectDetector;
@@ -60,6 +60,11 @@ namespace ISPAudit.ViewModels
         public event Action<string>? OnLog;
         public event Action<string>? OnPipelineMessage;
         public event Action? OnDiagnosticComplete;
+
+        public DiagnosticOrchestrator(TrafficEngine trafficEngine)
+        {
+            _trafficEngine = trafficEngine;
+        }
 
         #region Properties
 
@@ -221,7 +226,7 @@ namespace ISPAudit.ViewModels
                 if (enableAutoBypass)
                 {
                     await bypassController.EnablePreemptiveBypassAsync();
-                    ((IProgress<string>?)progress)?.Report("✓ Bypass активирован (TLS-фрагментация + DROP_RST)");
+                    ((IProgress<string>?)progress)?.Report("✓ Bypass активирован (TLS_DISORDER + DROP_RST)");
                 }
 
                 // 6. Создание TrafficCollector (чистый сборщик)
@@ -243,7 +248,7 @@ namespace ISPAudit.ViewModels
                 _testingPipeline = new LiveTestingPipeline(
                     pipelineConfig, 
                     progress, 
-                    bypassController.BypassManager, 
+                    _trafficEngine, 
                     _dnsParser,
                     trafficFilter,
                     _tcpRetransmissionTracker != null
@@ -388,7 +393,7 @@ namespace ISPAudit.ViewModels
                 _testingPipeline = new LiveTestingPipeline(
                     pipelineConfig, 
                     progress, 
-                    bypassController.BypassManager, 
+                    _trafficEngine, 
                     null, // DNS parser не нужен для ретеста (уже есть IP)
                     new UnifiedTrafficFilter(),
                     null, // State store новый
@@ -642,7 +647,6 @@ namespace ISPAudit.ViewModels
             await _connectionMonitor.StartAsync(_cts!.Token).ConfigureAwait(false);
             
             // Traffic Engine (замена NetworkMonitorService)
-            _trafficEngine = new TrafficEngine(progress);
             _trafficMonitorFilter = new TrafficMonitorFilter();
             _trafficEngine.RegisterFilter(_trafficMonitorFilter);
             
@@ -685,17 +689,23 @@ namespace ISPAudit.ViewModels
                 Log("[Services] Остановка сервисов...");
                 if (_pidTracker != null) await _pidTracker.StopAsync().ConfigureAwait(false);
                 if (_dnsParser != null) await _dnsParser.StopAsync().ConfigureAwait(false);
-                if (_trafficEngine != null) await _trafficEngine.StopAsync().ConfigureAwait(false);
+                
+                // Don't stop TrafficEngine, just remove filter
+                if (_trafficMonitorFilter != null)
+                {
+                    _trafficEngine.RemoveFilter(_trafficMonitorFilter.Name);
+                }
+
                 if (_connectionMonitor != null) await _connectionMonitor.StopAsync().ConfigureAwait(false);
                 
                 _pidTracker?.Dispose();
                 _dnsParser?.Dispose();
-                _trafficEngine?.Dispose();
+                // _trafficEngine is shared, do not dispose
                 _connectionMonitor?.Dispose();
                 
                 _pidTracker = null;
                 _dnsParser = null;
-                _trafficEngine = null;
+                // _trafficEngine = null; // Cannot assign to readonly
                 _connectionMonitor = null;
                 _tcpRetransmissionTracker = null;
                 _httpRedirectDetector = null;

@@ -8,6 +8,7 @@ using IspAudit.Bypass;
 using IspAudit.Core.Interfaces;
 using IspAudit.Core.Models;
 using IspAudit.Core.Modules;
+using IspAudit.Core.Traffic;
 
 namespace IspAudit.Utils
 {
@@ -19,7 +20,7 @@ namespace IspAudit.Utils
     {
         private readonly PipelineConfig _config;
         private readonly IProgress<string>? _progress;
-        private readonly IspAudit.Bypass.WinDivertBypassManager? _bypassManager;
+        private readonly TrafficEngine? _trafficEngine;
         private readonly DnsParserService? _dnsParser;
         
         private readonly Channel<HostDiscovered> _snifferQueue;
@@ -51,7 +52,7 @@ namespace IspAudit.Utils
         public LiveTestingPipeline(
             PipelineConfig config, 
             IProgress<string>? progress = null, 
-            IspAudit.Bypass.WinDivertBypassManager? bypassManager = null, 
+            TrafficEngine? trafficEngine = null, 
             DnsParserService? dnsParser = null,
             ITrafficFilter? filter = null,
             IBlockageStateStore? stateStore = null,
@@ -64,15 +65,10 @@ namespace IspAudit.Utils
             // Используем переданный фильтр или создаем новый
             _filter = filter ?? new UnifiedTrafficFilter();
             
-            // Используем переданный менеджер или создаем новый если auto-bypass включен
-            if (bypassManager != null)
+            // Используем переданный движок
+            if (trafficEngine != null)
             {
-                _bypassManager = bypassManager;
-            }
-            // Если менеджер не передан, но нужен auto-bypass - создаем локальный (но это плохой сценарий для персистентности)
-            else if (_config.EnableAutoBypass && IspAudit.Bypass.WinDivertBypassManager.HasAdministratorRights)
-            {
-                _bypassManager = new IspAudit.Bypass.WinDivertBypassManager();
+                _trafficEngine = trafficEngine;
             }
 
             // Инициализация модулей
@@ -92,9 +88,9 @@ namespace IspAudit.Utils
             
             // BypassCoordinator — главный "мозг" управления bypass-стратегиями
             // Содержит логику: кеширование работающих стратегий, перебор, ретест
-            if (_bypassManager != null)
+            if (_trafficEngine != null)
             {
-                _coordinator = new BypassCoordinator(_bypassManager);
+                _coordinator = new BypassCoordinator(_trafficEngine);
             }
             
             // Создаем unbounded каналы для передачи данных между воркерами

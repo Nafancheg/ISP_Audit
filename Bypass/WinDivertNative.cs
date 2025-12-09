@@ -6,7 +6,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace IspAudit.Bypass
 {
-    internal static class WinDivertNative
+    public static class WinDivertNative
     {
         public const int ErrorOperationAborted = 995;
         public const int ErrorNoData = 232;
