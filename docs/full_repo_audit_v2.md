@@ -401,8 +401,8 @@ IspAudit.* везде (единый регистр)
 ```
 Обновить:
 - CLAUDE.md — убрать ссылки на мёртвый код
-- .github/copilot-instructions.md — актуализировать архитектуру
-- Добавить ARCHITECTURE_ACTUAL.md с текущим состоянием
+- [x] .github/copilot-instructions.md — актуализировать архитектуру (Выполнено 10.12.2025)
+- [x] Добавить ARCHITECTURE_ACTUAL.md с текущим состоянием (Создан ARCHITECTURE_CURRENT.md 10.12.2025)
 ```
 
 ---
