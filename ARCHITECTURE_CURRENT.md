@@ -1,36 +1,38 @@
-# ISP_Audit — Архитектура (v3.0)
+# ISP_Audit — Архитектура (v3.0 Extended)
 
 **Дата обновления:** 10.12.2025
-**Версия:** 3.0 (Unified Structure)
+**Версия:** 3.0 (Comprehensive)
 **Технологии:** .NET 9, WPF, WinDivert 2.2.0
 
 ---
 
-## 1. Обзор проекта
+## 1. Обзор системы
 
-**ISP_Audit** — это специализированный инструмент для диагностики сетевых блокировок на уровне провайдера (ISP). Приложение работает в режиме реального времени, анализируя исходящий трафик пользователя, и автоматически определяет наличие DPI (Deep Packet Inspection), DNS-фильтрации или TCP RST инъекций.
+**ISP_Audit** — это инструмент сетевой диагностики, предназначенный для выявления и анализа блокировок трафика на стороне интернет-провайдера (ISP). В отличие от классических утилит (ping/tracert), ISP_Audit работает на уровне перехвата пакетов (DPI), анализируя поведение TCP/UDP соединений в реальном времени.
 
-### Основные возможности
-*   **Passive Sniffing**: Перехват новых соединений через драйвер WinDivert без разрыва связи.
-*   **Active Testing**: Активная проверка подозрительных хостов (DNS, TCP, TLS).
-*   **Classification**: Эвристический анализ типа блокировки.
-*   **Bypass Strategies**: Встроенные методы обхода (Fragmentation, Disorder, Fake TTL).
+### Ключевые задачи
+1.  **Пассивный мониторинг**: Захват исходящих SYN-пакетов (TCP) и первых датаграмм (UDP) без влияния на работу приложений.
+2.  **Активное тестирование**: Проверка доступности хостов через независимые сокеты (DNS, TCP Handshake, TLS ClientHello).
+3.  **Классификация блокировок**: Определение типа вмешательства (DNS Spoofing, TCP RST Injection, HTTP Redirect, Packet Drop).
+4.  **Обход блокировок (Bypass)**: Применение стратегий модификации трафика (Fragmentation, Disorder, Fake TTL) для восстановления доступа.
 
 ---
 
-## 2. Архитектура (High-Level)
+## 2. Архитектура высокого уровня
+
+Система построена по принципу конвейера (Pipeline), где данные проходят через серию фильтров и анализаторов.
 
 ```mermaid
 graph TD
     User[Пользователь] --> UI[WPF UI (MainWindow)]
     UI --> VM[MainViewModelRefactored]
     
-    subgraph Orchestration
+    subgraph Orchestration [Orchestration Layer]
         VM --> Orchestrator[DiagnosticOrchestrator]
         Orchestrator --> Pipeline[LiveTestingPipeline]
     end
     
-    subgraph Core Logic
+    subgraph Core [Core Logic]
         Pipeline --> ConnectionMonitor[ConnectionMonitorService]
         ConnectionMonitor --> Sniffer[TrafficCollector]
         Sniffer --> NoiseFilter[NoiseHostFilter]
@@ -39,110 +41,204 @@ graph TD
         Classifier --> StateStore[InMemoryBlockageStateStore]
     end
     
-    subgraph Inspection Services
+    subgraph Inspection [Inspection Services]
         StateStore --> RstInspector[RstInspectionService]
         StateStore --> UdpInspector[UdpInspectionService]
         StateStore --> RetransTracker[TcpRetransmissionTracker]
         StateStore --> RedirectDetector[HttpRedirectDetector]
     end
     
-    subgraph Network Layer
+    subgraph Network [Network Layer]
         Sniffer --> WinDivert[WinDivert Driver]
-        Tester --> Network[Network Stack]
+        Tester --> NetworkStack[OS Network Stack]
         VM --> BypassCtrl[BypassController]
         BypassCtrl --> TrafficEngine[TrafficEngine]
     end
+    
+    TrafficEngine --> WinDivert
 ```
 
 ---
 
-## 3. Компоненты системы
+## 3. Детальное описание компонентов
 
 ### 3.1 UI Layer (WPF)
-*   **`MainWindow.xaml`**: Основной интерфейс на базе MaterialDesignInXaml.
-*   **`MainViewModelRefactored`**: Связующее звено между UI и бизнес-логикой.
-*   **`BypassController`**: Управление настройками обхода (Disorder, Fake, DoH).
 
-### 3.2 Core Modules (`IspAudit.Core`)
-*   **`TrafficCollector`**: Фильтрация и захват трафика.
-*   **`StandardHostTester`**: Исполнитель активных проверок (DNS Resolve, TCP Handshake, TLS Hello).
-*   **`StandardBlockageClassifier`**: Логика принятия решений (Blocked vs OK).
-*   **`InMemoryBlockageStateStore`**: Хранилище состояния (предотвращение дублей).
+*   **`MainWindow.xaml`**: Главное окно приложения. Использует библиотеку `MaterialDesignInXaml` для визуализации карточек с проблемами.
+*   **`MainViewModelRefactored`**: Центральная ViewModel.
+    *   Управляет состоянием UI (загрузка, ошибки, результаты).
+    *   Инициализирует `DiagnosticOrchestrator`.
+    *   Обрабатывает команды пользователя (Start/Stop, Open Report).
+*   **`BypassController`**: ViewModel, отвечающая за настройки обхода.
+    *   Связывает UI-тумблеры (Disorder, Fake, DoH) с логикой `TrafficEngine`.
+    *   Автоматически применяет настройки при старте, если они сохранены в профиле.
+*   **`TestResultsManager`**: Управляет коллекцией результатов (`ObservableCollection<TestResult>`). Отвечает за обновление UI в потоке диспетчера.
 
-### 3.3 Inspection Services
-Фоновые сервисы для глубокого анализа:
-*   **`RstInspectionService`**: Анализ TTL/IP-ID у RST пакетов.
-*   **`UdpInspectionService`**: Детекция блокировок QUIC/UDP.
-*   **`TcpRetransmissionTracker`**: Подсчет потерь пакетов.
-*   **`HttpRedirectDetector`**: Обнаружение заглушек провайдера.
+### 3.2 Orchestration Layer
 
-### 3.4 Bypass Layer (`IspAudit.Bypass`)
-*   **`TrafficEngine`**: Низкоуровневая работа с пакетами через WinDivert.
-*   **`BypassFilter`**: Реализация стратегий обхода (Desync, Fragmentation).
+*   **`DiagnosticOrchestrator`**: "Дирижер" всего процесса.
+    *   Запускает и останавливает `LiveTestingPipeline`.
+    *   Управляет жизненным циклом фоновых сервисов (`TrafficEngine`, `ConnectionMonitor`).
+    *   Следит за целевыми процессами (если задан фильтр по PID).
+*   **`LiveTestingPipeline`**: Асинхронный конвейер на базе `System.Threading.Channels`.
+    *   Связывает этапы: Sniffing → Testing → Classification → Reporting.
+    *   Обеспечивает параллельную обработку множества хостов.
+
+### 3.3 Core Modules (`IspAudit.Core`)
+
+*   **`TrafficCollector` (`Utils/TrafficCollector.cs`)**:
+    *   Слушает сетевой интерфейс через WinDivert (фильтр `outbound and (tcp.Syn or udp)`).
+    *   Использует `NoiseHostFilter` для отсеивания CDN, телеметрии Windows и антивирусов.
+    *   Передает уникальные `(IP, Hostname)` в пайплайн.
+*   **`StandardHostTester` (`Core/Modules/StandardHostTester.cs`)**:
+    *   Выполняет активные проверки для каждого обнаруженного хоста:
+        1.  **DNS**: Резолв домена через системный DNS.
+        2.  **TCP**: Попытка установить соединение (Syn -> SynAck).
+        3.  **TLS**: Отправка ClientHello и ожидание ServerHello (проверка SNI-блокировок).
+*   **`StandardBlockageClassifier` (`Core/Modules/StandardBlockageClassifier.cs`)**:
+    *   Анализирует результаты тестов (`HostTested`) и выносит вердикт.
+    *   Логика:
+        *   DNS ошибка → `DNS_BLOCKED`.
+        *   TCP Timeout → `TCP_TIMEOUT` (возможно Drop).
+        *   TCP Reset → `TCP_RESET` (активная блокировка).
+        *   TLS Timeout/Reset → `DPI_FILTER`.
+*   **`InMemoryBlockageStateStore` (`Core/Modules/InMemoryBlockageStateStore.cs`)**:
+    *   Хранит историю проверок за текущую сессию.
+    *   Предотвращает повторное тестирование одних и тех же хостов (дедупликация).
+    *   Уведомляет инспекционные сервисы о новых событиях.
+
+### 3.4 Inspection Services (Глубокий анализ)
+
+Эти сервисы работают параллельно с основным пайплайном и уточняют диагноз.
+
+*   **`RstInspectionService`**:
+    *   Перехватывает входящие TCP RST пакеты.
+    *   Сравнивает TTL и IP Identification пакета с эталонными значениями.
+    *   Если TTL резко отличается от обычного трафика с этого хоста → **RST Injection** (DPI).
+*   **`UdpInspectionService`**:
+    *   Анализирует UDP трафик (в основном QUIC и DNS).
+    *   Детектирует блокировки протокола QUIC (часто блокируется провайдерами для форсирования HTTP/TLS, которые легче фильтровать).
+*   **`TcpRetransmissionTracker`**:
+    *   Считает количество повторных отправок (Retransmissions) для каждого соединения.
+    *   Высокий % ретрансмиссий (>10%) при отсутствии RST указывает на **Packet Drop** (тихий дроп пакетов).
+*   **`HttpRedirectDetector`**:
+    *   Анализирует HTTP-ответы на предмет кодов 301/302/307.
+    *   Сравнивает URL редиректа со списком известных заглушек провайдеров (blockpage).
+
+### 3.5 Bypass Layer (`IspAudit.Bypass`)
+
+*   **`TrafficEngine` (`Core/Traffic/TrafficEngine.cs`)**:
+    *   Обертка над драйвером WinDivert.
+    *   Управляет загрузкой фильтров и инъекцией пакетов.
+*   **`BypassFilter` (`Core/Traffic/Filters/BypassFilter.cs`)**:
+    *   Реализует конкретные алгоритмы обхода:
+        *   **Fragmentation**: Разбиение ClientHello на 2+ TCP-сегмента.
+        *   **Disorder**: Отправка сегментов в неправильном порядке (1-й, потом 2-й), чтобы сбить с толку DPI.
+        *   **Fake TTL**: Отправка "фейкового" пакета с коротким TTL, который дойдет до DPI, но не до сервера.
 
 ---
 
-## 4. Структура проекта
+## 4. Поток данных (Data Flow)
+
+1.  **Захват (Capture)**: `ConnectionMonitorService` видит исходящий SYN-пакет к `example.com`.
+2.  **Идентификация (Identify)**: `PidTrackerService` определяет, какой процесс (PID) инициировал соединение.
+3.  **Парсинг (Parse)**: `DnsParserService` пытается извлечь доменное имя (из DNS-кэша или SNI).
+4.  **Фильтрация (Filter)**: `NoiseHostFilter` проверяет, не является ли хост "шумом" (Microsoft, Google Update).
+5.  **Очередь (Queue)**: Если хост новый и интересный, он попадает в `_snifferQueue`.
+6.  **Тестирование (Test)**: `StandardHostTester` забирает хост из очереди и проводит серию тестов (DNS, TCP, TLS).
+7.  **Инспекция (Inspect)**: Параллельно `RstInspectionService` и другие сервисы следят за пакетами этого соединения.
+8.  **Агрегация (Aggregate)**: Результаты тестов и инспекций собираются в `HostTested` модель.
+9.  **Классификация (Classify)**: `StandardBlockageClassifier` выносит вердикт (например, `DPI_REDIRECT`).
+10. **Отчет (Report)**: Результат отправляется в UI через `TestResultsManager`.
+11. **Реакция (React)**: Если включен авто-обход, `BypassController` активирует соответствующие фильтры в `TrafficEngine`.
+
+---
+
+## 5. Структура проекта
 
 ```
 ISP_Audit/
-├── Core/                       # Бизнес-логика и модели
-│   ├── Interfaces/             # Контракты (IHostTester, etc.)
-│   ├── Models/                 # DTO (HostTested, TestResult)
-│   ├── Modules/                # Реализация логики (Tester, Classifier)
-│   └── Traffic/                # Работа с сетью (TrafficEngine)
+├── Program.cs                  # Точка входа (инициализация WPF)
+├── App.xaml                    # Ресурсы приложения
+├── MainWindow.xaml             # Разметка UI
+├── Config.cs                   # Глобальные настройки (Singleton-like)
 │
-├── ViewModels/                 # MVVM
+├── Core/                       # ЯДРО СИСТЕМЫ
+│   ├── Interfaces/             # Интерфейсы (IHostTester, IBlockageClassifier)
+│   ├── Models/                 # Модели данных (HostDiscovered, TestResult)
+│   ├── Modules/                # Реализация логики
+│   │   ├── StandardHostTester.cs          # Активные тесты
+│   │   ├── StandardBlockageClassifier.cs  # Классификатор
+│   │   ├── InMemoryBlockageStateStore.cs  # Хранилище состояния
+│   │   ├── RstInspectionService.cs        # Анализ RST
+│   │   └── ...
+│   └── Traffic/                # Работа с сетью
+│       ├── TrafficEngine.cs    # Управление WinDivert
+│       └── Filters/            # Логика модификации пакетов
+│
+├── ViewModels/                 # MVVM (UI Logic)
 │   ├── MainViewModelRefactored.cs
-│   └── DiagnosticOrchestrator.cs
+│   ├── DiagnosticOrchestrator.cs
+│   ├── BypassController.cs
+│   └── TestResultsManager.cs
 │
-├── Utils/                      # Инфраструктура
-│   ├── LiveTestingPipeline.cs  # Основной конвейер
+├── Utils/                      # Вспомогательные классы
+│   ├── LiveTestingPipeline.cs  # Конвейер обработки
 │   ├── TrafficCollector.cs     # Сниффер
-│   └── FixService.cs           # Системные фиксы (DNS)
+│   ├── ConnectionMonitorService.cs
+│   ├── DnsParserService.cs
+│   ├── PidTrackerService.cs
+│   └── FixService.cs           # Системные исправления (DNS)
 │
-├── Bypass/                     # Логика обхода
-│   ├── StrategyMapping.cs      # Рекомендации
-│   └── WinDivertNative.cs      # P/Invoke
+├── Bypass/                     # Логика обхода (Legacy & Helpers)
+│   ├── StrategyMapping.cs      # Подбор стратегии по типу ошибки
+│   └── WinDivertNative.cs      # P/Invoke обертка
 │
 └── docs/                       # Документация
-    ├── ARCHITECTURE_CURRENT.md
-    └── WORK_PLAN.md
+    ├── ARCHITECTURE_CURRENT.md # Этот файл
+    ├── WORK_PLAN.md            # План работ
+    └── full_repo_audit_v2.md   # Полный аудит кода
 ```
 
 ---
 
-## 5. Известные ограничения (Known Issues)
+## 6. Известные ограничения (Known Issues)
 
-| Компонент | Ограничение | Влияние |
-|-----------|-------------|---------|
-| **WinDivert** | Требует права Администратора | Приложение не работает без UAC elevation. |
-| **Deployment** | Single-file ~160MB | Большой размер из-за встроенного .NET Runtime и WPF. |
-| **VPN** | Конфликт с TAP-адаптерами | Возможны ложные срабатывания или пропуск трафика при включенном VPN. |
-| **Locale** | CP866 (OEM) | Требует корректной кодировки для чтения вывода `tracert.exe` в русской Windows. |
-
----
-
-## 6. Технический долг (Technical Debt)
-
-1.  **Global State**: Использование статических `Config.ActiveProfile` и `Program.Targets` затрудняет тестирование.
-2.  **Singleton**: `NoiseHostFilter.Instance` создает скрытые зависимости.
-3.  **Manual Composition**: Отсутствие DI-контейнера, ручное создание графа объектов в `MainWindow`.
-4.  **Hardcoded Paths**: Пути к профилям и логам иногда зашиты в коде.
+| Компонент | Ограничение | Влияние на пользователя |
+|-----------|-------------|-------------------------|
+| **WinDivert** | Требует права Администратора | Приложение не запустится без UAC elevation. |
+| **VPN** | Конфликт с TAP/TUN адаптерами | При включенном VPN трафик может идти в обход WinDivert или дублироваться. Возможны ложные срабатывания. |
+| **Локализация** | CP866 (OEM) в консоли | `tracert.exe` в русской Windows выдает кракозябры, если не установить кодировку 866. |
+| **Размер** | Single-file ~160MB | Из-за включения .NET Runtime и WPF библиотек в один файл. |
+| **DNS** | DoH (DNS over HTTPS) | Приложение пока не умеет перехватывать и расшифровывать DoH трафик браузеров. |
 
 ---
 
-## 7. План развития (Roadmap)
+## 7. Технический долг (Technical Debt)
+
+1.  **Глобальное состояние**:
+    *   Использование статических свойств `Config.ActiveProfile` и `Program.Targets` делает код хрупким и сложным для тестирования.
+    *   Singleton `NoiseHostFilter.Instance` создает скрытые зависимости между модулями.
+2.  **Отсутствие DI**:
+    *   Граф объектов создается вручную в `MainWindow.xaml.cs`. Это усложняет замену компонентов (например, для мок-тестирования).
+3.  **Жесткие пути**:
+    *   Пути к логам и профилям иногда формируются конкатенацией строк, что может вызвать проблемы на нестандартных конфигурациях ОС.
+4.  **Обработка ошибок**:
+    *   В некоторых `async void` методах (особенно в старых ViewModel) исключения могут "проглатываться".
+
+---
+
+## 8. План развития (Roadmap)
 
 ### Phase 4: Refactoring (Q1 2026)
-*   [ ] Внедрение DI Container (Microsoft.Extensions.DependencyInjection).
-*   [ ] Уход от статических конфигов.
-*   [ ] Покрытие тестами `StandardBlockageClassifier`.
+*   [ ] **Внедрение DI Container**: Переход на `Microsoft.Extensions.DependencyInjection` для управления зависимостями.
+*   [ ] **Устранение глобального состояния**: Рефакторинг `Config` и `Program` в инжектируемые сервисы `IConfigurationService`.
+*   [ ] **Unit Tests**: Покрытие тестами критической логики (`StandardBlockageClassifier`, `BypassFilter`).
 
 ### Phase 5: Advanced Bypass
-*   [ ] Поддержка новых стратегий (Geneva, Kyber).
-*   [ ] Автоматический подбор стратегии (Auto-Tune).
+*   [ ] **Geneva Strategy**: Реализация стратегии, используемой в Geneva (TCP Window manipulation).
+*   [ ] **Auto-Tune**: Автоматический подбор параметров (TTL, размер фрагмента) на основе реакции DPI.
 
-### Phase 6: UI/UX
-*   [ ] Графики задержек в реальном времени.
-*   [ ] История проверок с экспортом в PDF.
+### Phase 6: UI/UX Improvements
+*   [ ] **Real-time Graphs**: Визуализация задержек и потерь пакетов.
+*   [ ] **History Export**: Возможность сохранения истории проверок в PDF/HTML отчет.
