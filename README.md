@@ -138,38 +138,28 @@ dotnet run
 
 ## Архитектура
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        MainViewModelRefactored                              │
-│                         (Тонкий координатор UI)                             │
-└───────────────────────────────────┬─────────────────────────────────────────┘
-                                    │
-         ┌──────────────────────────┼──────────────────────────┐
-         │                          │                          │
-         ▼                          ▼                          ▼
-┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐
-│  ConnectionOptimizer│  │DiagnosticOrchestrator│  │ TestResultsManager │
-│                     │  │                     │  │                     │
-│ • Toggle кнопки     │  │ • Lifecycle         │  │ • Результаты        │
-│ • VPN детекция      │  │ • Координация       │  │ • Эвристики         │
-│ • DoH управление    │  │ • Мониторинг        │  │ • UI обновления     │
-└──────────┬──────────┘  └──────────┬──────────┘  └─────────────────────┘
-           │                        │
-           │             ┌──────────┴──────────────────────────┐
-           │             │                                     │
-           ▼             ▼                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                               TrafficEngine                                 │
-│                     (Chain of Responsibility Pipeline)                      │
-│                                                                             │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐  │
-│  │ WinDivert    │──►│ OptimizeFilter│──►│TrafficMonitor│──►│ WinDivert    │  │
-│  │ Recv         │   │ (Modify/Drop)│   │Filter (Stats)│   │ Send         │  │
-│  └──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘  │
-│                                                                             │
-│  • Single Handle (No Race Conditions)                                       │
-│  • Performance Metrics (<0.5ms latency)                                     │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    User[Пользователь] --> UI[WPF UI]
+    UI --> VM[MainViewModel]
+    
+    subgraph Orchestration
+        VM --> Orchestrator[DiagnosticOrchestrator]
+        Orchestrator --> Pipeline[LiveTestingPipeline]
+    end
+    
+    subgraph Core Logic
+        Pipeline --> Sniffer[TrafficCollector]
+        Sniffer --> Tester[StandardHostTester]
+        Tester --> Classifier[BlockageClassifier]
+    end
+    
+    subgraph Network Layer
+        Sniffer --> WinDivert[WinDivert Driver]
+        VM --> BypassCtrl[BypassController]
+        BypassCtrl --> TrafficEngine[TrafficEngine]
+        TrafficEngine --> WinDivert
+    end
 ```
 
 ### Ключевые компоненты
@@ -182,15 +172,14 @@ dotnet run
 | `ViewModels/TestResultsManager.cs` | Результаты и эвристики |
 | `Core/Traffic/TrafficEngine.cs` | Ядро обработки трафика (Pipeline) |
 | `Core/Traffic/Filters/BypassFilter.cs` | Фильтр оптимизации пакетов |
-| `Core/Traffic/Filters/TrafficMonitorFilter.cs` | Фильтр анализа трафика |
 | `Utils/TrafficCollector.cs` | Сбор и обогащение соединений |
+| `Utils/ConnectionMonitorService.cs` | Мониторинг сокетов (WinDivert/IP Helper) |
 | `Utils/LiveTestingPipeline.cs` | Тестирование + классификация |
 | `Utils/DnsParserService.cs` | Парсинг DNS и SNI |
 | `Core/Modules/HttpRedirectDetector.cs` | Детекция HTTP-заглушек |
 | `Core/Modules/RstInspectionService.cs` | Анализ RST-пакетов (TTL) |
 | `Core/Modules/TcpRetransmissionTracker.cs` | Подсчет ретрансмиссий |
 | `Core/Modules/InMemoryBlockageStateStore.cs` | Агрегация сигналов и истории |
-| `Bypass/BypassCoordinator.cs` | Автовыбор методов оптимизации |
 
 ## Системные требования
 
@@ -228,4 +217,4 @@ MIT License. См. [LICENSE](LICENSE).
 
 - [WinDivert](https://github.com/basil00/Divert) — перехват пакетов
 - [MaterialDesignInXaml](https://github.com/MaterialDesignInXAML/MaterialDesignInXamlToolkit) — UI компоненты
- 
+
