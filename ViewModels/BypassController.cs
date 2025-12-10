@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Threading;
+using System.Windows.Media;
 using IspAudit.Bypass;
 using IspAudit.Core.Traffic;
 using IspAudit.Core.Traffic.Filters;
@@ -42,6 +43,8 @@ namespace IspAudit.ViewModels
         private string _compatibilityWarning = "";
         private string _bypassWarningText = "";
         private string _bypassMetricsText = "";
+        private System.Windows.Media.Brush _bypassVerdictBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
+        private string _bypassVerdictText = "";
         
         // DNS Presets
         private string _selectedDnsPreset = "Hybrid (CF + Yandex)";
@@ -334,6 +337,24 @@ namespace IspAudit.ViewModels
         {
             get => _bypassMetricsText;
             private set { _bypassMetricsText = value; OnPropertyChanged(nameof(BypassMetricsText)); }
+        }
+
+        /// <summary>
+        /// Цвет фона блока метрик (градация состояния)
+        /// </summary>
+        public System.Windows.Media.Brush BypassVerdictBrush
+        {
+            get => _bypassVerdictBrush;
+            private set { _bypassVerdictBrush = value; OnPropertyChanged(nameof(BypassVerdictBrush)); }
+        }
+
+        /// <summary>
+        /// Краткий вердикт по метрикам
+        /// </summary>
+        public string BypassVerdictText
+        {
+            get => _bypassVerdictText;
+            private set { _bypassVerdictText = value; OnPropertyChanged(nameof(BypassVerdictText)); }
         }
 
         #endregion
@@ -700,11 +721,44 @@ namespace IspAudit.ViewModels
             if (snapshot == null)
             {
                 BypassMetricsText = "Фрагментация выключена";
+                BypassVerdictText = "Bypass выключен";
+                BypassVerdictBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
                 return;
             }
 
             var plan = string.IsNullOrWhiteSpace(snapshot.Value.LastFragmentPlan) ? "-" : snapshot.Value.LastFragmentPlan;
-            BypassMetricsText = $"TLS: {snapshot.Value.TlsHandled}; Frag: {snapshot.Value.ClientHellosFragmented}; RST drop: {snapshot.Value.RstDropped}; Plan: {plan}";
+            BypassMetricsText = $"TLS обработано: {snapshot.Value.TlsHandled}; фрагментировано: {snapshot.Value.ClientHellosFragmented}; RST заблокировано: {snapshot.Value.RstDropped}; план: {plan}";
+
+            // Градация по отношению RST к числу фрагментированных ClientHello: зелёный — RST мало, жёлтый — умеренно, красный — много или нет фрагментаций
+            System.Windows.Media.Brush brush;
+            string verdict;
+            var fragments = Math.Max(1, snapshot.Value.ClientHellosFragmented); // избегаем деления на 0
+            var rst = snapshot.Value.RstDropped;
+            var ratio = (double)rst / fragments;
+
+            if (snapshot.Value.ClientHellosFragmented == 0)
+            {
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 226, 226)); // красный фон
+                verdict = "Внимание: нет фрагментаций — включите Fragment/Disorder";
+            }
+            else if (ratio > 2.0)
+            {
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 226, 226)); // красный фон
+                verdict = "Внимание: много RST относительно попыток TLS";
+            }
+            else if (ratio > 0.5)
+            {
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 249, 195)); // жёлтый фон
+                verdict = "Есть RST, но обход работает (умеренно)";
+            }
+            else
+            {
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 252, 231)); // зелёный фон
+                verdict = "Хорошо: RST мало, обход устойчив";
+            }
+
+            BypassVerdictBrush = brush;
+            BypassVerdictText = verdict;
         }
 
         private void PersistFragmentPreset()

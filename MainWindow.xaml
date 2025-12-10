@@ -317,22 +317,21 @@
                                           Margin="0,4,0,0"
                                           Height="32"
                                           ToolTip="Выберите готовый набор размеров фрагментов ClientHello">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Orientation="Vertical">
-                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
-                                                <TextBlock Text="{Binding Description}" FontSize="11" Foreground="#6B7280"/>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
+                                    <ComboBox.ItemContainerStyle>
+                                        <Style TargetType="ComboBoxItem">
+                                            <Setter Property="ToolTip" Value="{Binding Description}"/>
+                                        </Style>
+                                    </ComboBox.ItemContainerStyle>
                                 </ComboBox>
                                 <TextBlock Text="{Binding SelectedFragmentPresetLabel}" FontSize="11" Foreground="#6B7280" Margin="0,4,0,0"/>
                             </StackPanel>
 
-                            <Border Grid.Column="1" Background="#F3F4F6" CornerRadius="6" Padding="10" Margin="8,0,0,0">
+                            <Border Grid.Column="1" Background="{Binding BypassVerdictBrush}" CornerRadius="6" Padding="10" Margin="8,0,0,0">
                                 <StackPanel>
                                     <TextBlock Text="Метрики bypass" FontWeight="SemiBold" FontSize="12" Foreground="#111827"/>
                                     <TextBlock Text="{Binding BypassMetricsText}" FontSize="11" Foreground="#374151" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                    <TextBlock Text="{Binding BypassVerdictText}" FontSize="11" FontWeight="SemiBold" Foreground="#111827" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                    <TextBlock Text="Рост TLS/Фрагм — хорошо. RST заблокировано > 0 значит провайдер пытался рвать соединение." FontSize="10" Foreground="#6B7280" TextWrapping="Wrap" Margin="0,6,0,0"/>
                                 </StackPanel>
                             </Border>
                         </Grid>
