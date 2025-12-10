@@ -10,6 +10,8 @@
 
 **Workflow**: После завершения итерации редактирования кода делать `git push`.
 
+**Актуализация документации**: При изменении архитектуры, создании новых файлов, классов или процедур, ОБЯЗАТЕЛЬНО обновлять `ARCHITECTURE_CURRENT.md` и `docs\full_repo_audit_v2.md`, чтобы отразить текущее состояние проекта.
+
 ## Project Context
 Windows-native .NET 9 WPF application for diagnosing ISP-level network blocking (DNS filtering, DPI, TCP RST injection). Primary use case: Star Citizen connectivity issues. Ships as single-file executable (~164MB), GUI mode only.
 
