@@ -51,7 +51,7 @@
 - [x] **3.3 Обновить `ARCHITECTURE_CURRENT.md`:**
     - Привести в соответствие с версией 3.0 (Unified Structure).
     - Добавить разделы Known Issues, Technical Debt, Roadmap.
-- [ ] **3.4 Унификация пространств имен (Namespaces):**
+- [x] **3.4 Унификация пространств имен (Namespaces):**
     - Привести всё к единому стилю (выбрать `IspAudit` или `ISPAudit`). Сейчас смешаны `IspAudit`, `ISPAudit`, `ISPAudit.ViewModels`.
 
 ## Фаза 4: Рефакторинг (Refactoring)

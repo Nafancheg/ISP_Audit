@@ -528,3 +528,5 @@ Program.cs
     - Удалены устаревшие разделы.
 - [x] Верификация архитектуры:
     - Проверено соответствие диаграммы коду (`MainViewModelRefactored`, `DiagnosticOrchestrator`, `LiveTestingPipeline`).
+- [x] Унификация пространств имен (Namespaces):
+    - Приведено к единому стилю (выбран `IspAudit`).
