@@ -139,28 +139,71 @@ dotnet run
 ## Архитектура
 
 ```mermaid
-graph TD
-    User[Пользователь] --> UI[WPF UI]
-    UI --> VM[MainViewModel]
-    VM --> BypassCtrl[BypassController]
-    
-    subgraph Orchestration
-        VM --> Orchestrator[DiagnosticOrchestrator]
-        Orchestrator --> Pipeline[LiveTestingPipeline]
+graph TB
+    subgraph UI["🖥️ UI Layer"]
+        MainVM[MainViewModel]
+        BypassCtrl[BypassController]
+        TestResults[TestResultsManager]
     end
     
-    subgraph Core Logic
-        Pipeline --> Sniffer[TrafficCollector]
-        Sniffer --> Tester[StandardHostTester]
-        Tester --> Classifier[BlockageClassifier]
+    subgraph Orchestration["🎭 Orchestration"]
+        Orchestrator[DiagnosticOrchestrator]
+        Pipeline[LiveTestingPipeline<br/>Channels]
     end
     
-    subgraph Network Layer
-        Sniffer --> WinDivert[WinDivert Driver]
-        TrafficEngine[TrafficEngine] --> WinDivert
+    subgraph Core["⚙️ Core Logic"]
+        Collector[TrafficCollector<br/>Smart Sniffer]
+        Filters[NoiseFilter +<br/>UnifiedFilter]
+        Tester[StandardHostTester<br/>DNS/TCP/TLS]
+        Classifier[Blockage<br/>Classifier]
+        StateStore[BlockageStateStore]
     end
-
+    
+    subgraph Inspection["🔍 Inspection"]
+        Inspectors[RST/UDP/Retrans/<br/>Redirect Detectors]
+    end
+    
+    subgraph Network["🌐 Network"]
+        WinDivert[WinDivert Driver]
+        Services[ConnectionMonitor<br/>DnsParser<br/>PidTracker]
+        TrafficEngine[TrafficEngine +<br/>BypassFilter]
+    end
+    
+    %% Main Flow
+    MainVM --> Orchestrator
+    Orchestrator --> Pipeline
+    Orchestrator --> Collector
+    
+    Pipeline -.->|Queue| Tester
+    Pipeline -.->|Queue| Classifier
+    
+    Collector --> Filters
+    Filters --> Pipeline
+    Tester --> Classifier
+    Classifier --> StateStore
+    StateStore --> Inspectors
+    StateStore --> TestResults
+    
+    %% Network Layer
+    Services --> Collector
+    Services --> WinDivert
+    Tester -.-> WinDivert
+    
+    %% Bypass
     BypassCtrl --> TrafficEngine
+    TrafficEngine --> WinDivert
+    Classifier -.->|Recommendations| BypassCtrl
+    
+    %% Styling
+    classDef ui fill:#1976d2,stroke:#0d47a1,color:#fff
+    classDef core fill:#7b1fa2,stroke:#4a148c,color:#fff
+    classDef network fill:#388e3c,stroke:#1b5e20,color:#fff
+    classDef inspect fill:#f57c00,stroke:#e65100,color:#fff
+    
+    class MainVM,BypassCtrl,TestResults ui
+    class Collector,Filters,Tester,Classifier,StateStore core
+    class WinDivert,Services,TrafficEngine network
+    class Inspectors inspect
 ```
 
 ### Ключевые компоненты
