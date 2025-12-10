@@ -88,7 +88,7 @@ graph TD
 ### 3.3 Core Modules (`IspAudit.Core`)
 
 *   **`TrafficCollector` (`Utils/TrafficCollector.cs`)**:
-    *   Слушает сетевой интерфейс через WinDivert (фильтр `outbound and (tcp.Syn or udp)`).
+    *   Слушает события от `ConnectionMonitorService` (который управляется `DiagnosticOrchestrator`).
     *   Фильтрует трафик по PID целевого процесса (через `PidTrackerService`).
     *   Передает уникальные `(IP, Hostname)` в пайплайн.
 *   **`StandardHostTester` (`Core/Modules/StandardHostTester.cs`)**:
@@ -141,7 +141,7 @@ graph TD
 
 ## 4. Поток данных (Data Flow)
 
-1.  **Захват (Capture)**: `ConnectionMonitorService` видит исходящий SYN-пакет к `example.com`.
+1.  **Захват (Capture)**: `ConnectionMonitorService` (управляемый Оркестратором) видит исходящий SYN-пакет.
 2.  **Идентификация (Identify)**: `PidTrackerService` определяет, какой процесс (PID) инициировал соединение.
 3.  **Парсинг (Parse)**: `DnsParserService` пытается извлечь доменное имя (из DNS-кэша или SNI).
 4.  **Фильтрация (Filter)**: `NoiseHostFilter` проверяет, не является ли хост "шумом" (Microsoft, Google Update).
