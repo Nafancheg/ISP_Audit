@@ -12,12 +12,12 @@
 
 **Актуализация документации**: При изменении архитектуры, создании новых файлов, классов или процедур, ОБЯЗАТЕЛЬНО обновлять `ARCHITECTURE_CURRENT.md` и `docs\full_repo_audit_v2.md`, чтобы отразить текущее состояние проекта.
 
-## Project Context
-Windows-native .NET 9 WPF application for diagnosing ISP-level network blocking (DNS filtering, DPI, TCP RST injection). Primary use case: Star Citizen connectivity issues. Ships as single-file executable (~164MB), GUI mode only.
+## Контекст проекта
+Windows-native .NET 9 WPF приложение для диагностики блокировок сети на уровне провайдера (DNS фильтрация, DPI, инъекция TCP RST). Основной сценарий использования: проблемы с подключением к Star Citizen. Поставляется как single-file executable (~164MB), только GUI режим.
 
-**Tech**: .NET 9, WPF, MaterialDesignInXaml 5.1.0, WinDivert 2.2.0 (bypass module)
+**Технологии**: .NET 9, WPF, MaterialDesignInXaml 5.1.0, WinDivert 2.2.0 (модуль обхода блокировок)
 
-## Architecture at a Glance
+## Архитектура (Кратко)
 
 ```
 Program.cs → [GUI: App.xaml + MainWindow]
@@ -31,82 +31,82 @@ Program.cs → [GUI: App.xaml + MainWindow]
               Results → UI Updates (Live)
 ```
 
-**Entry point**: `Program.Main()` initializes GUI mode, hides console, loads default profile from `Profiles/`.
+**Точка входа**: `Program.Main()` инициализирует GUI режим, скрывает консоль, загружает профиль по умолчанию из `Profiles/`.
 
-**Test flow**: `LiveTestingPipeline` (Sniffer → Tester → Classifier) → `DiagnosticOrchestrator` updates GUI via `IProgress`.
-- **Sniffer**: `TrafficCollector` (WinDivert) captures new connections.
-- **Tester**: `StandardHostTester` checks DNS, TCP, TLS.
-- **Classifier**: `StandardBlockageClassifier` determines blockage type (DPI, RST, DNS).
+**Поток тестирования**: `LiveTestingPipeline` (Sniffer → Tester → Classifier) → `DiagnosticOrchestrator` обновляет GUI через `IProgress`.
+- **Sniffer**: `TrafficCollector` (WinDivert) захватывает новые соединения.
+- **Tester**: `StandardHostTester` проверяет DNS, TCP, TLS.
+- **Classifier**: `StandardBlockageClassifier` определяет тип блокировки (DPI, RST, DNS).
 
-**GUI**: MVVM pattern (`ViewModels/MainViewModelRefactored.cs`), Material Design cards shown ONLY when problems detected.
+**GUI**: Паттерн MVVM (`ViewModels/MainViewModelRefactored.cs`), карточки Material Design показываются ТОЛЬКО при обнаружении проблем.
 
-## Critical Code Patterns
+## Критические паттерны кода
 
-### 1. Async Rules (STRICT)
+### 1. Правила Async (СТРОГО)
 ```csharp
-// ✅ ALWAYS use ConfigureAwait(false) in library/test code
+// ✅ ВСЕГДА используй ConfigureAwait(false) в коде библиотек/тестов
 var result = await DoWorkAsync().ConfigureAwait(false);
 
-// ❌ NEVER block on async
-var result = DoWorkAsync().Result; // NO
-DoWorkAsync().Wait(); // NO
+// ❌ НИКОГДА не блокируй async
+var result = DoWorkAsync().Result; // НЕТ
+DoWorkAsync().Wait(); // НЕТ
 
-// ✅ Pass CancellationToken to long operations
+// ✅ Передавай CancellationToken в длительные операции
 await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
 ```
 
-### 2. Progress Reporting (GUI Contract)
+### 2. Отчет о прогрессе (Контракт GUI)
 ```csharp
-// Report string messages for UI log
+// Сообщай строковые сообщения для лога UI
 progress?.Report($"[TESTER] Checking {host}...");
 ```
 
-### 3. Traceroute Encoding (CRITICAL for Russian Windows)
+### 3. Кодировка Traceroute (КРИТИЧНО для русской Windows)
 ```csharp
-// System tracert.exe uses OEM866 (CP866) for Cyrillic output
+// System tracert.exe использует OEM866 (CP866) для кириллицы
 process.StandardOutput.CurrentEncoding = Encoding.GetEncoding(866);
-// Without this: русские хопы → ?????
+// Без этого: русские хопы → ?????
 ```
 
-### 4. DNS Logic (Simplified Decision Tree)
+### 4. Логика DNS (Упрощенное дерево решений)
 ```csharp
 // StandardHostTester.cs
-// 1. Reverse DNS (optional)
-// 2. Forward DNS (CRITICAL) - if fails, dnsOk = false
+// 1. Reverse DNS (опционально)
+// 2. Forward DNS (КРИТИЧНО) - если не удалось, dnsOk = false
 if (completedTask != dnsCheckTask) {
     dnsOk = false;
     dnsStatus = "DNS_TIMEOUT";
 }
 ```
 
-### 5. Critical Targets (Profile-Driven)
+### 5. Критические цели (На основе профиля)
 ```csharp
 // Profiles/Default.json
-// Targets are loaded from JSON profile.
-// Critical targets should be tested even if DNS fails (using FallbackIp if available).
+// Цели загружаются из JSON профиля.
+// Критические цели должны тестироваться даже если DNS не работает (используя FallbackIp если доступен).
 ```
 
-### 6. Material Design UI (Cards)
+### 6. Material Design UI (Карточки)
 ```xaml
-<!-- Default: collapsed -->
+<!-- По умолчанию: скрыто -->
 <materialDesign:Card x:Name="FirewallCard" Visibility="Collapsed">
   <TextBlock Text="• Problem 1&#x0a;• Problem 2&#x0a;&#x0a;Рекомендация: ..." />
 </materialDesign:Card>
 ```
-Show cards ONLY when `result.Status != "OK"`.
+Показывать карточки ТОЛЬКО когда `result.Status != "OK"`.
 
-### 7. VPN Detection (Adaptive Timeouts)
+### 7. Обнаружение VPN (Адаптивные таймауты)
 ```csharp
-if (NetUtils.LikelyVpnActive()) { // checks TAP/TUN adapters
-    config.HttpTimeoutSeconds = 12; // normal: 6
-    config.TcpTimeoutSeconds = 8;   // normal: 3
-    config.UdpTimeoutSeconds = 4;   // normal: 2
+if (NetUtils.LikelyVpnActive()) { // проверяет TAP/TUN адаптеры
+    config.HttpTimeoutSeconds = 12; // норма: 6
+    config.TcpTimeoutSeconds = 8;   // норма: 3
+    config.UdpTimeoutSeconds = 4;   // норма: 2
 }
 ```
 
-## Key Workflows
+## Ключевые рабочие процессы
 
-### Build & Run
+### Сборка и запуск
 ```powershell
 # Debug
 dotnet build -c Debug
@@ -114,20 +114,20 @@ dotnet build -c Debug
 # Single-file release
 dotnet publish -c Release -r win-x64 /p:PublishSingleFile=true /p:SelfContained=true /p:PublishTrimmed=false -o ./publish
 
-# GUI (hides console)
+# GUI (скрывает консоль)
 dotnet run
 
 # CLI
 dotnet run -- --targets youtube.com --report result.json --verbose
 ```
 
-### Add New Test
-1. `Tests/MyTest.cs`: async `RunAsync()` → return `MyTestResult`
-2. `AuditRunner.RunAsync()`: invoke with progress reports
-3. `ReportWriter.BuildSummary()`: aggregate status
-4. `MainWindow.UpdateProgress()`: GUI handling for new `TestKind`
+### Добавление нового теста
+1. `Tests/MyTest.cs`: async `RunAsync()` → возвращает `MyTestResult`
+2. `AuditRunner.RunAsync()`: вызов с отчетами о прогрессе
+3. `ReportWriter.BuildSummary()`: агрегация статуса
+4. `MainWindow.UpdateProgress()`: обработка GUI для нового `TestKind`
 
-### Modify GUI Cards
+### Изменение карточек GUI
 ```csharp
 // MainWindow.xaml.cs ShowResults()
 if (result.firewall.Status != "OK") {
@@ -136,52 +136,52 @@ if (result.firewall.Status != "OK") {
 }
 ```
 
-## Agent Workflow (Multi-Context Development)
+## Рабочий процесс агентов (Multi-Context Development)
 
-**IMPORTANT**: Agents run in separate contexts (new chat sessions). See `agents/README.md` for full workflow.
+**ВАЖНО**: Агенты работают в отдельных контекстах (новые сессии чата). См. `agents/README.md` для полного описания процесса.
 
-1. **Task Owner** (purple): Interactive → `agents/task_owner/current_task.md`
-2. **Research** (red): Deep analysis → `agents/research_agent/findings.md`
-3. **Planning** (blue): Subtasks → `agents/planning_agent/plan.md`
-4. **Coding** (green): Implement ONE subtask at a time (use Haiku for cost efficiency)
-5. **QA** (yellow): Validate → `agents/qa_agent/test_report.md`
-6. **Delivery** (cyan): Commit + changelog
+1. **Task Owner** (фиолетовый): Интерактив → `agents/task_owner/current_task.md`
+2. **Research** (красный): Глубокий анализ → `agents/research_agent/findings.md`
+3. **Planning** (синий): Подзадачи → `agents/planning_agent/plan.md`
+4. **Coding** (зеленый): Реализация ОДНОЙ подзадачи за раз (используй Haiku для экономии)
+5. **QA** (желтый): Валидация → `agents/qa_agent/test_report.md`
+6. **Delivery** (циан): Коммит + changelog
 
-**When coding**: Check `agents/task_owner/current_task.md` for context, use `agents/planning_agent/plan.md` as single source of truth, read ONLY files relevant to current subtask.
+**При кодировании**: Проверяй `agents/task_owner/current_task.md` для контекста, используй `agents/planning_agent/plan.md` как единственный источник истины, читай ТОЛЬКО файлы, относящиеся к текущей подзадаче.
 
-## Common Mistakes
+## Частые ошибки
 
-1. **OEM866 traceroute**: Forget encoding → Cyrillic becomes garbage
-2. **DoH in DNS logic**: Use DoH for decisions → false FILTERED warnings
-3. **Show all cards**: Show cards by default → cluttered UI
-4. **Blocking async**: `.Result`/`.Wait()` → deadlocks in GUI
-5. **Skip critical targets**: DNS fails → skip launcher → game unplayable
-6. **Hardcode Cloudflare**: Apply DNS fix → test ALL DoH providers first (1.1.1.1, 8.8.8.8, 9.9.9.9)
-7. **Registry DNS changes**: Requires reboot → use `netsh` (immediate effect, requires UAC)
+1. **OEM866 traceroute**: Забытая кодировка → Кириллица превращается в мусор
+2. **DoH в логике DNS**: Использование DoH для принятия решений → ложные предупреждения FILTERED
+3. **Показ всех карточек**: Показ карточек по умолчанию → перегруженный UI
+4. **Блокировка async**: `.Result`/`.Wait()` → дедлоки в GUI
+5. **Пропуск критических целей**: DNS не работает → пропуск лаунчера → игра не запускается
+6. **Хардкод Cloudflare**: Применение фикса DNS → сначала протестируй ВСЕХ провайдеров DoH (1.1.1.1, 8.8.8.8, 9.9.9.9)
+7. **Изменения DNS в реестре**: Требует перезагрузки → используй `netsh` (мгновенный эффект, требует UAC)
 
-## Test Scenarios (Manual Only)
+## Сценарии тестирования (Только ручные)
 
-- VPN: Enable VPN → verify adaptive timeouts, no false DNS_FILTERED
-- DNS block: Point DNS to 0.0.0.0 → verify FILTERED + Fix button appears
-- Firewall: Block ports 8000-8003 → FirewallCard appears with ports listed
-- No admin: Verify Firewall/ISP tests return UNKNOWN gracefully
+- VPN: Включи VPN → проверь адаптивные таймауты, отсутствие ложных DNS_FILTERED
+- Блокировка DNS: Направь DNS на 0.0.0.0 → проверь FILTERED + появление кнопки исправления
+- Firewall: Заблокируй порты 8000-8003 → появление FirewallCard со списком портов
+- Нет прав админа: Проверь, что тесты Firewall/ISP возвращают UNKNOWN корректно
 
-## Key Files
+## Ключевые файлы
 
-**Entry**: `Program.cs` (mode detect), `AuditRunner.cs` (orchestrator), `Config.cs` (CLI parse)  
-**Tests**: `Tests/{DnsTest,TcpTest,HttpTest,TracerouteTest,FirewallTest,IspTest,RouterTest,SoftwareTest}.cs`  
+**Вход**: `Program.cs` (определение режима), `AuditRunner.cs` (оркестратор), `Config.cs` (парсинг CLI)  
+**Тесты**: `Tests/{DnsTest,TcpTest,HttpTest,TracerouteTest,FirewallTest,IspTest,RouterTest,SoftwareTest}.cs`  
 **GUI**: `ViewModels/MainViewModel.cs`, `MainWindow.xaml`, `Wpf/ServiceItemViewModel.cs`  
-**Output**: `Output/ReportWriter.cs`, `Output/{Firewall,Isp,Router,Software}TestResult.cs`  
-**Bypass**: `Bypass/WinDivertBypassManager.cs` (admin required)  
-**Data**: `star_citizen_targets.json`, `Profiles/StarCitizen.json`, `bypass_profile.json`
+**Вывод**: `Output/ReportWriter.cs`, `Output/{Firewall,Isp,Router,Software}TestResult.cs`  
+**Bypass**: `Bypass/WinDivertBypassManager.cs` (требует админа)  
+**Данные**: `star_citizen_targets.json`, `Profiles/StarCitizen.json`, `bypass_profile.json`
 
-## Quick Reference
+## Быстрые ссылки
 
-- **Detailed architecture**: `CLAUDE.md` (Russian, 500+ lines)
-- **User docs**: `README.md` (Russian, usage examples)
-- **Agent methodology**: `agents/README.md` (API cost optimization strategy)
-- **CI/CD**: `.github/workflows/build.yml` (single-file artifact)
+- **Детальная архитектура**: `CLAUDE.md` (Русский, 500+ строк)
+- **Документация пользователя**: `README.md` (Русский, примеры использования)
+- **Методология агентов**: `agents/README.md` (Стратегия оптимизации затрат API)
+- **CI/CD**: `.github/workflows/build.yml` (single-file артефакт)
 
 ---
 
-**When in doubt**: Check `CLAUDE.md` → `README.md` → code examples in `Tests/` or `AuditRunner.cs`.
+**При сомнениях**: Проверь `CLAUDE.md` → `README.md` → примеры кода в `Tests/` или `AuditRunner.cs`.
