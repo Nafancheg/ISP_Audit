@@ -1,49 +1,57 @@
-# ISP_Audit — Архитектура (v2)
+# ISP_Audit — Архитектура (v3.0)
 
 **Дата обновления:** 10.12.2025
-**Версия:** 2.0 (GUI-only)
+**Версия:** 3.0 (Unified Structure)
 **Технологии:** .NET 9, WPF, WinDivert 2.2.0
 
 ---
 
-## 1. Обзор
+## 1. Обзор проекта
 
-ISP_Audit — это Windows-приложение для диагностики сетевых блокировок (DPI, DNS-фильтрация, TCP RST injection) и автоматического подбора методов обхода. Приложение работает в режиме реального времени, анализируя исходящий трафик пользователя.
+**ISP_Audit** — это специализированный инструмент для диагностики сетевых блокировок на уровне провайдера (ISP). Приложение работает в режиме реального времени, анализируя исходящий трафик пользователя, и автоматически определяет наличие DPI (Deep Packet Inspection), DNS-фильтрации или TCP RST инъекций.
 
-### Ключевые особенности
-*   **Passive Sniffing**: Захват новых TCP/UDP соединений через WinDivert.
-*   **Active Testing**: Проверка доступности хостов (DNS, TCP Handshake, TLS Handshake).
-*   **Classification**: Определение типа блокировки (DNS, TCP RST, DPI Redirect, и т.д.).
-*   **Auto-Bypass**: Автоматический подбор стратегий обхода (Fragmentation, Disorder, Fake TTL).
+### Основные возможности
+*   **Passive Sniffing**: Перехват новых соединений через драйвер WinDivert без разрыва связи.
+*   **Active Testing**: Активная проверка подозрительных хостов (DNS, TCP, TLS).
+*   **Classification**: Эвристический анализ типа блокировки.
+*   **Bypass Strategies**: Встроенные методы обхода (Fragmentation, Disorder, Fake TTL).
 
 ---
 
-## 2. Архитектура высокого уровня
+## 2. Архитектура (High-Level)
 
 ```mermaid
 graph TD
     User[Пользователь] --> UI[WPF UI (MainWindow)]
     UI --> VM[MainViewModelRefactored]
     
-    subgraph Orchestration Layer
+    subgraph Orchestration
         VM --> Orchestrator[DiagnosticOrchestrator]
         Orchestrator --> Pipeline[LiveTestingPipeline]
     end
     
     subgraph Core Logic
-        Pipeline --> Sniffer[TrafficCollector]
-        Pipeline --> Tester[StandardHostTester]
-        Pipeline --> Classifier[StandardBlockageClassifier]
-        Pipeline --> BypassCoord[BypassCoordinator]
+        Pipeline --> ConnectionMonitor[ConnectionMonitorService]
+        ConnectionMonitor --> Sniffer[TrafficCollector]
+        Sniffer --> NoiseFilter[NoiseHostFilter]
+        NoiseFilter --> Tester[StandardHostTester]
+        Tester --> Classifier[StandardBlockageClassifier]
+        Classifier --> StateStore[InMemoryBlockageStateStore]
+    end
+    
+    subgraph Inspection Services
+        StateStore --> RstInspector[RstInspectionService]
+        StateStore --> UdpInspector[UdpInspectionService]
+        StateStore --> RetransTracker[TcpRetransmissionTracker]
+        StateStore --> RedirectDetector[HttpRedirectDetector]
     end
     
     subgraph Network Layer
         Sniffer --> WinDivert[WinDivert Driver]
         Tester --> Network[Network Stack]
-        BypassCoord --> TrafficEngine[TrafficEngine]
+        VM --> BypassCtrl[BypassController]
+        BypassCtrl --> TrafficEngine[TrafficEngine]
     end
-    
-    TrafficEngine --> WinDivert
 ```
 
 ---
@@ -51,78 +59,90 @@ graph TD
 ## 3. Компоненты системы
 
 ### 3.1 UI Layer (WPF)
-*   **`MainWindow.xaml`**: Основное окно. Использует MaterialDesignInXaml.
-*   **`MainViewModelRefactored`**: Главная ViewModel. Управляет состоянием UI, командами и связью с оркестратором.
-*   **`BypassController`**: ViewModel для управления настройками обхода (Disorder, Fake, DoH).
+*   **`MainWindow.xaml`**: Основной интерфейс на базе MaterialDesignInXaml.
+*   **`MainViewModelRefactored`**: Связующее звено между UI и бизнес-логикой.
+*   **`BypassController`**: Управление настройками обхода (Disorder, Fake, DoH).
 
-### 3.2 Orchestration Layer
-*   **`DiagnosticOrchestrator`**: Центральный класс, управляющий жизненным циклом диагностики. Запускает/останавливает пайплайн, следит за процессами.
-*   **`LiveTestingPipeline`**: Конвейер обработки данных. Связывает компоненты через асинхронные каналы (`System.Threading.Channels`).
+### 3.2 Core Modules (`IspAudit.Core`)
+*   **`TrafficCollector`**: Фильтрация и захват трафика.
+*   **`StandardHostTester`**: Исполнитель активных проверок (DNS Resolve, TCP Handshake, TLS Hello).
+*   **`StandardBlockageClassifier`**: Логика принятия решений (Blocked vs OK).
+*   **`InMemoryBlockageStateStore`**: Хранилище состояния (предотвращение дублей).
 
-### 3.3 Core Modules
-*   **`TrafficCollector`**: Слушает сетевой интерфейс через WinDivert. Фильтрует "шумные" хосты (CDN, Microsoft, Google) и передает новые уникальные IP/Host в пайплайн.
-*   **`StandardHostTester`**: Выполняет активные проверки:
-    1.  **DNS**: Резолвинг имени (System DNS).
-    2.  **TCP**: Попытка соединения (Syn/Ack).
-    3.  **TLS**: Проверка Handshake (ClientHello).
-*   **`StandardBlockageClassifier`**: Анализирует результаты тестов и определяет тип проблемы:
-    *   `DNS_TIMEOUT` / `DNS_ERROR`: Проблемы с DNS.
-    *   `TCP_RST`: Сброс соединения (активный DPI).
-    *   `TCP_TIMEOUT`: Дроп пакетов.
-    *   `TLS_DPI`: Блокировка на этапе Handshake.
-*   **`BypassCoordinator`**: Если обнаружена блокировка, пробует применить стратегии обхода и делает ретест.
+### 3.3 Inspection Services
+Фоновые сервисы для глубокого анализа:
+*   **`RstInspectionService`**: Анализ TTL/IP-ID у RST пакетов.
+*   **`UdpInspectionService`**: Детекция блокировок QUIC/UDP.
+*   **`TcpRetransmissionTracker`**: Подсчет потерь пакетов.
+*   **`HttpRedirectDetector`**: Обнаружение заглушек провайдера.
 
-### 3.4 Bypass Layer
-*   **`TrafficEngine`**: Обертка над WinDivert. Управляет правилами фильтрации и модификации пакетов.
-*   **`BypassFilter`**: Реализует логику модификации пакетов (разбиение на фрагменты, перестановка, подмена TTL).
+### 3.4 Bypass Layer (`IspAudit.Bypass`)
+*   **`TrafficEngine`**: Низкоуровневая работа с пакетами через WinDivert.
+*   **`BypassFilter`**: Реализация стратегий обхода (Desync, Fragmentation).
 
 ---
 
-## 4. Поток данных (Data Flow)
-
-1.  **Sniffing**: Пользователь открывает браузер. `TrafficCollector` перехватывает SYN-пакет к `example.com`.
-2.  **Queueing**: Хост `example.com` попадает в канал `_snifferQueue`.
-3.  **Testing**: Воркер забирает хост и запускает `StandardHostTester`.
-    *   Проверяется DNS.
-    *   Проверяется TCP/TLS.
-4.  **Classification**: Результат теста передается в `StandardBlockageClassifier`.
-5.  **Decision**:
-    *   Если `Status == OK` -> Результат отправляется в UI (зеленый).
-    *   Если `Status != OK` -> `BypassCoordinator` пробует включить стратегию (например, `Disorder`).
-    *   Проводится ретест.
-6.  **Reporting**: Итоговый результат (с блокировкой или успешным обходом) отображается в `TestResultsManager` -> `DataGrid`.
-
----
-
-## 5. Структура проекта
+## 4. Структура проекта
 
 ```
 ISP_Audit/
-├── Core/                   # Ядро логики
-│   ├── Modules/            # Тестеры, Классификаторы
-│   ├── Models/             # DTO (HostDiscovered, TestResult)
-│   └── Traffic/            # Работа с трафиком
-├── Utils/                  # Утилиты и сервисы (Pipeline, Collector)
-├── ViewModels/             # MVVM ViewModels
-├── Views/                  # XAML окна и контролы
-├── Bypass/                 # Логика обхода (WinDivert)
-├── Profiles/               # JSON профили целей
-└── legacy/                 # Устаревший код (Tests/)
+├── Core/                       # Бизнес-логика и модели
+│   ├── Interfaces/             # Контракты (IHostTester, etc.)
+│   ├── Models/                 # DTO (HostTested, TestResult)
+│   ├── Modules/                # Реализация логики (Tester, Classifier)
+│   └── Traffic/                # Работа с сетью (TrafficEngine)
+│
+├── ViewModels/                 # MVVM
+│   ├── MainViewModelRefactored.cs
+│   └── DiagnosticOrchestrator.cs
+│
+├── Utils/                      # Инфраструктура
+│   ├── LiveTestingPipeline.cs  # Основной конвейер
+│   ├── TrafficCollector.cs     # Сниффер
+│   └── FixService.cs           # Системные фиксы (DNS)
+│
+├── Bypass/                     # Логика обхода
+│   ├── StrategyMapping.cs      # Рекомендации
+│   └── WinDivertNative.cs      # P/Invoke
+│
+└── docs/                       # Документация
+    ├── ARCHITECTURE_CURRENT.md
+    └── WORK_PLAN.md
 ```
 
 ---
 
-## 6. Ключевые технические решения
+## 5. Известные ограничения (Known Issues)
 
-*   **Asynchronous I/O**: Весь I/O (сеть, файлы) строго асинхронный (`async/await`).
-*   **Bounded Channels**: Для передачи данных между этапами пайплайна используются ограниченные каналы (Backpressure protection).
-*   **Single-File Deployment**: Приложение собирается в один EXE файл (Self-contained).
-*   **WinDivert**: Используется как для пассивного мониторинга, так и для активного вмешательства в трафик (Bypass).
+| Компонент | Ограничение | Влияние |
+|-----------|-------------|---------|
+| **WinDivert** | Требует права Администратора | Приложение не работает без UAC elevation. |
+| **Deployment** | Single-file ~160MB | Большой размер из-за встроенного .NET Runtime и WPF. |
+| **VPN** | Конфликт с TAP-адаптерами | Возможны ложные срабатывания или пропуск трафика при включенном VPN. |
+| **Locale** | CP866 (OEM) | Требует корректной кодировки для чтения вывода `tracert.exe` в русской Windows. |
 
 ---
 
-## 7. Известные ограничения
+## 6. Технический долг (Technical Debt)
 
-*   Требуются права администратора (для драйвера WinDivert).
-*   Несовместимость с некоторыми античитами (из-за подписанного драйвера, но нестандартного использования).
-*   Только Windows (x64).
+1.  **Global State**: Использование статических `Config.ActiveProfile` и `Program.Targets` затрудняет тестирование.
+2.  **Singleton**: `NoiseHostFilter.Instance` создает скрытые зависимости.
+3.  **Manual Composition**: Отсутствие DI-контейнера, ручное создание графа объектов в `MainWindow`.
+4.  **Hardcoded Paths**: Пути к профилям и логам иногда зашиты в коде.
+
+---
+
+## 7. План развития (Roadmap)
+
+### Phase 4: Refactoring (Q1 2026)
+*   [ ] Внедрение DI Container (Microsoft.Extensions.DependencyInjection).
+*   [ ] Уход от статических конфигов.
+*   [ ] Покрытие тестами `StandardBlockageClassifier`.
+
+### Phase 5: Advanced Bypass
+*   [ ] Поддержка новых стратегий (Geneva, Kyber).
+*   [ ] Автоматический подбор стратегии (Auto-Tune).
+
+### Phase 6: UI/UX
+*   [ ] Графики задержек в реальном времени.
+*   [ ] История проверок с экспортом в PDF.
