@@ -504,7 +504,19 @@ Program.cs
 
 ## 10. Выполненные работы (10.12.2025)
 
-### Документация
+### Критические исправления (Phase 1)
+- [x] Исправлена логика DNS в `StandardHostTester.cs` (теперь `dnsOk=false` при ошибке).
+- [x] Исправлен `async void` в `BypassController.cs` (заменен на `async Task`).
+- [x] Удалено синхронное логирование на Рабочий стол в `App.xaml.cs`.
+- [x] Ограничен размер каналов (Channels) в `LiveTestingPipeline.cs` и `TrafficCollector.cs` (BoundedChannel).
+
+### Очистка мёртвого кода (Phase 2)
+- [x] Удалены неиспользуемые файлы: `TargetCatalog.cs`, `Wpf/ServiceItemViewModel.cs`, `Windows/CapturedTargetsWindow.xaml`, `Utils/GuiProfileStorage.cs`, `Utils/DnsFixApplicator.cs`, `Utils/BypassStrategyPlanner.cs`, `Utils/NetworkMonitorService.cs`, `Utils/ProblemClassifier.cs`.
+- [x] Удалены неиспользуемые ресурсы: `game_targets.json`, `bypass_profile_fshud_google.json`.
+- [x] Очищен `Config.cs` (удалены `NoTrace`, `Ports`, `UdpProbes`).
+- [x] Удалена папка `Tests/` (логика перенесена в `Core/Modules`).
+
+### Документация (Phase 3)
 - [x] Создан `ARCHITECTURE_CURRENT.md` (v3.0 Extended) — полное описание текущей архитектуры.
 - [x] Обновлен `README.md`:
     - Заменена ASCII схема на Mermaid диаграмму.
