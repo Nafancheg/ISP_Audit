@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using System.Windows.Threading;
 using IspAudit.Bypass;
 using IspAudit.Core.Traffic;
 using IspAudit.Core.Traffic.Filters;
@@ -24,6 +25,10 @@ namespace IspAudit.ViewModels
     {
         private readonly TrafficEngine _trafficEngine;
         private readonly BypassProfile _baseProfile;
+        private readonly DispatcherTimer _metricsTimer;
+        private BypassFilter? _currentFilter;
+        private IReadOnlyList<int> _currentFragmentSizes;
+        private FragmentPreset? _selectedPreset;
         
         // Независимые флаги для каждой опции bypass
         private bool _isFragmentEnabled;
@@ -36,6 +41,7 @@ namespace IspAudit.ViewModels
         private string _vpnWarningText = "";
         private string _compatibilityWarning = "";
         private string _bypassWarningText = "";
+        private string _bypassMetricsText = "";
         
         // DNS Presets
         private string _selectedDnsPreset = "Hybrid (CF + Yandex)";
@@ -56,10 +62,40 @@ namespace IspAudit.ViewModels
         /// </summary>
         public event Action<string>? OnLog;
 
+        public List<FragmentPreset> FragmentPresets { get; }
+
+        public FragmentPreset? SelectedFragmentPreset
+        {
+            get => _selectedPreset;
+            set
+            {
+                if (value != null && _selectedPreset != value)
+                {
+                    _selectedPreset = value;
+                    _currentFragmentSizes = value.Sizes;
+                    OnPropertyChanged(nameof(SelectedFragmentPreset));
+                    OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
+                    PersistFragmentPreset();
+                    _ = ApplyBypassOptionsAsync();
+                }
+            }
+        }
+
+        public string SelectedFragmentPresetLabel => _selectedPreset != null ? $"{_selectedPreset.Name} ({string.Join('/', _selectedPreset.Sizes)})" : string.Empty;
+
         public BypassController(TrafficEngine trafficEngine)
         {
             _trafficEngine = trafficEngine;
             _baseProfile = BypassProfile.CreateDefault();
+            _currentFragmentSizes = _baseProfile.TlsFragmentSizes ?? new List<int> { _baseProfile.TlsFirstFragmentSize };
+            FragmentPresets = new List<FragmentPreset>
+            {
+                new("Стандарт", new List<int>{64}, "Баланс: один фрагмент 64 байта"),
+                new("Умеренный", new List<int>{96}, "Чуть крупнее фрагмент для совместимости"),
+                new("Агрессивный", new List<int>{32,32}, "Два мелких фрагмента для сложных DPI"),
+                new("Профиль", _currentFragmentSizes, "Из файла профиля")
+            };
+            _selectedPreset = FragmentPresets.FirstOrDefault();
             SetDnsPresetCommand = new RelayCommand(param => 
             {
                 if (param is string preset)
@@ -67,6 +103,13 @@ namespace IspAudit.ViewModels
                     SelectedDnsPreset = preset;
                 }
             }, _ => true);
+
+            _metricsTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(2)
+            };
+            _metricsTimer.Tick += (_, _) => UpdateMetrics();
+            _metricsTimer.Start();
         }
 
         #region Properties
@@ -284,6 +327,15 @@ namespace IspAudit.ViewModels
         public bool IsDropRstActive => IsDropRstEnabled && IsBypassActive;
         public bool IsDoHActive => IsDoHEnabled;
 
+        /// <summary>
+        /// Текстовое представление метрик bypass (фрагментации/RST)
+        /// </summary>
+        public string BypassMetricsText
+        {
+            get => _bypassMetricsText;
+            private set { _bypassMetricsText = value; OnPropertyChanged(nameof(BypassMetricsText)); }
+        }
+
         #endregion
 
         #region Initialization
@@ -412,7 +464,7 @@ namespace IspAudit.ViewModels
                 else if (IsFragmentEnabled)
                     tlsStrategy = TlsBypassStrategy.Fragment;
 
-                var fragmentSizes = _baseProfile.TlsFragmentSizes ?? Array.Empty<int>();
+                var fragmentSizes = _currentFragmentSizes ?? Array.Empty<int>();
 
                 var profile = new BypassProfile
                 {
@@ -443,6 +495,8 @@ namespace IspAudit.ViewModels
                     NotifyActiveStatesChanged();
                     var chunks = fragmentSizes.Any() ? string.Join('/', fragmentSizes) : "default";
                     Log($"[Bypass] Options applied: {CurrentBypassStrategy} | TLS chunks: {chunks}, threshold: {profile.TlsFragmentThreshold}");
+                    _currentFilter = filter;
+                    UpdateMetrics();
                 });
             }
             catch (Exception ex)
@@ -640,6 +694,37 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(IsDropRstActive));
         }
 
+        private void UpdateMetrics()
+        {
+            var snapshot = _currentFilter?.GetMetrics();
+            if (snapshot == null)
+            {
+                BypassMetricsText = "Фрагментация выключена";
+                return;
+            }
+
+            var plan = string.IsNullOrWhiteSpace(snapshot.Value.LastFragmentPlan) ? "-" : snapshot.Value.LastFragmentPlan;
+            BypassMetricsText = $"TLS: {snapshot.Value.TlsHandled}; Frag: {snapshot.Value.ClientHellosFragmented}; RST drop: {snapshot.Value.RstDropped}; Plan: {plan}";
+        }
+
+        private void PersistFragmentPreset()
+        {
+            var merged = new BypassProfile
+            {
+                DropTcpRst = _baseProfile.DropTcpRst,
+                FragmentTlsClientHello = _baseProfile.FragmentTlsClientHello,
+                TlsStrategy = _baseProfile.TlsStrategy,
+                TlsFirstFragmentSize = _baseProfile.TlsFirstFragmentSize,
+                TlsFragmentThreshold = _baseProfile.TlsFragmentThreshold,
+                TlsFragmentSizes = _currentFragmentSizes,
+                TtlTrick = _baseProfile.TtlTrick,
+                TtlTrickValue = _baseProfile.TtlTrickValue,
+                RedirectRules = _baseProfile.RedirectRules
+            };
+
+            BypassProfile.Save(merged);
+        }
+
         private void Log(string message)
         {
             OnLog?.Invoke(message);
@@ -649,6 +734,8 @@ namespace IspAudit.ViewModels
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
+
+        public record FragmentPreset(string Name, IReadOnlyList<int> Sizes, string Description);
 
         #endregion
     }

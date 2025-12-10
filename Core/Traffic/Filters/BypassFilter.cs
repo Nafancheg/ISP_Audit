@@ -18,6 +18,8 @@ namespace IspAudit.Core.Traffic.Filters
         private long _packetsProcessed;
         private long _rstDropped;
         private long _clientHellosFragmented;
+        private long _tlsHandled;
+        private string _lastFragmentPlan = string.Empty;
 
         public string Name => "BypassFilter";
         public int Priority => 100; // High priority
@@ -61,6 +63,8 @@ namespace IspAudit.Core.Traffic.Filters
                     if (ProcessTlsStrategy(packet, context, sender, isNewConnection, fragmentPlan))
                     {
                         Interlocked.Increment(ref _clientHellosFragmented);
+                        Interlocked.Increment(ref _tlsHandled);
+                        _lastFragmentPlan = fragmentPlan != null ? string.Join('/', fragmentPlan.Select(f => f.PayloadLength)) : "";
                         return false; // Packet handled (fragmented/faked), drop original
                     }
                 }
@@ -265,6 +269,27 @@ namespace IspAudit.Core.Traffic.Filters
             uint sequence = BinaryPrimitives.ReadUInt32BigEndian(packet.AsSpan(offset, 4));
             sequence += delta;
             BinaryPrimitives.WriteUInt32BigEndian(packet.AsSpan(offset, 4), sequence);
+        }
+
+        public BypassMetricsSnapshot GetMetrics()
+        {
+            return new BypassMetricsSnapshot
+            {
+                PacketsProcessed = Interlocked.Read(ref _packetsProcessed),
+                RstDropped = Interlocked.Read(ref _rstDropped),
+                ClientHellosFragmented = Interlocked.Read(ref _clientHellosFragmented),
+                TlsHandled = Interlocked.Read(ref _tlsHandled),
+                LastFragmentPlan = _lastFragmentPlan
+            };
+        }
+
+        public readonly struct BypassMetricsSnapshot
+        {
+            public long PacketsProcessed { get; init; }
+            public long RstDropped { get; init; }
+            public long ClientHellosFragmented { get; init; }
+            public long TlsHandled { get; init; }
+            public string LastFragmentPlan { get; init; }
         }
 
         private readonly struct FragmentSlice

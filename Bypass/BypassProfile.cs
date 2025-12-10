@@ -69,17 +69,54 @@ namespace IspAudit.Bypass
 
         public static BypassProfile CreateDefault() => _default.Value;
 
+        public static void Save(BypassProfile profile)
+        {
+            try
+            {
+                var options = new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                };
+                options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+
+                var doc = new BypassProfileDocument
+                {
+                    DropTcpRst = profile.DropTcpRst,
+                    FragmentTlsClientHello = profile.FragmentTlsClientHello,
+                    TlsStrategy = profile.TlsStrategy,
+                    TlsFirstFragmentSize = profile.TlsFirstFragmentSize,
+                    TlsFragmentThreshold = profile.TlsFragmentThreshold,
+                    TlsFragmentSizes = profile.TlsFragmentSizes?.ToList() ?? new List<int>(),
+                    RedirectRules = profile.RedirectRules?
+                        .Select(r => new BypassRedirectRuleDocument
+                        {
+                            Name = r.Name,
+                            Protocol = r.Protocol,
+                            Port = r.Port,
+                            RedirectIp = r.RedirectIp,
+                            RedirectPort = r.RedirectPort,
+                            Enabled = r.Enabled,
+                            Hosts = r.Hosts?.ToList()
+                        })
+                        .ToList()
+                };
+
+                var json = JsonSerializer.Serialize(doc, options);
+                var path = GetProfilePath();
+                File.WriteAllText(path, json);
+            }
+            catch
+            {
+                // Игнорируем ошибки записи, чтобы не падать в GUI сценариях
+            }
+        }
+
         private static BypassProfile? TryLoadFromFile()
         {
             try
             {
-                var baseDir = AppContext.BaseDirectory;
-                var candidate = Path.Combine(baseDir, ProfileFileName);
-                if (!File.Exists(candidate))
-                {
-                    candidate = Path.Combine(Directory.GetCurrentDirectory(), ProfileFileName);
-                    if (!File.Exists(candidate)) return null;
-                }
+                var candidate = GetProfilePath();
+                if (!File.Exists(candidate)) return null;
 
                 var json = File.ReadAllText(candidate);
                 if (string.IsNullOrWhiteSpace(json)) return null;
@@ -114,6 +151,15 @@ namespace IspAudit.Bypass
             {
                 return null;
             }
+        }
+
+        private static string GetProfilePath()
+        {
+            var baseDir = AppContext.BaseDirectory;
+            var candidate = Path.Combine(baseDir, ProfileFileName);
+            if (File.Exists(candidate)) return candidate;
+            candidate = Path.Combine(Directory.GetCurrentDirectory(), ProfileFileName);
+            return candidate;
         }
 
         private static BypassProfile BuildFallback()

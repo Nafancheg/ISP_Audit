@@ -216,6 +216,10 @@ namespace IspAudit.ViewModels
         public bool IsTlsFakeActive => Bypass.IsTlsFakeActive;
         public bool IsDropRstActive => Bypass.IsDropRstActive;
         public bool IsDoHActive => Bypass.IsDoHActive;
+        public List<BypassController.FragmentPreset> FragmentPresets => Bypass.FragmentPresets;
+        public BypassController.FragmentPreset? SelectedFragmentPreset { get => Bypass.SelectedFragmentPreset; set => Bypass.SelectedFragmentPreset = value; }
+        public string SelectedFragmentPresetLabel => Bypass.SelectedFragmentPresetLabel;
+        public string BypassMetricsText => Bypass.BypassMetricsText;
 
         // Traffic Engine Performance
         private double _trafficEngineLatency;
