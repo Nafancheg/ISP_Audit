@@ -50,6 +50,12 @@ namespace IspAudit.Bypass
         public int TlsFragmentThreshold { get; init; } = 128;
 
         /// <summary>
+        /// Набор размеров фрагментов ClientHello (последний фрагмент = остаток).
+        /// Первый элемент должен быть > 0, список должен давать хотя бы 2 фрагмента.
+        /// </summary>
+        public IReadOnlyList<int> TlsFragmentSizes { get; init; } = new List<int> { 64 };
+
+        /// <summary>
         /// Использовать TTL Trick (отправка копии пакета с малым TTL).
         /// </summary>
         public bool TtlTrick { get; init; } = false;
@@ -95,6 +101,7 @@ namespace IspAudit.Bypass
                     TlsStrategy = doc.TlsStrategy,
                     TlsFirstFragmentSize = doc.TlsFirstFragmentSize > 0 ? doc.TlsFirstFragmentSize : 64,
                     TlsFragmentThreshold = doc.TlsFragmentThreshold > 0 ? doc.TlsFragmentThreshold : 128,
+                    TlsFragmentSizes = NormalizeFragmentSizes(doc.TlsFragmentSizes, doc.TlsFirstFragmentSize),
                     RedirectRules = doc.RedirectRules?
                         .Select(r => r.ToRule())
                         .Where(r => r != null)!
@@ -144,8 +151,26 @@ namespace IspAudit.Bypass
                 TlsStrategy = TlsBypassStrategy.Fragment,
                 TlsFirstFragmentSize = 64,
                 TlsFragmentThreshold = 128,
+                TlsFragmentSizes = new List<int> { 64 },
                 RedirectRules = new[] { defaultRule, defaultTcpRule }
             };
+        }
+
+        private static IReadOnlyList<int> NormalizeFragmentSizes(IEnumerable<int>? sizes, int fallbackSize)
+        {
+            var normalized = sizes?
+                .Where(v => v > 0)
+                .Select(v => v)
+                .Take(4) // ограничиваем разумно, чтобы не ломать стабильность
+                .ToList();
+
+            if (normalized is { Count: > 0 })
+            {
+                return normalized;
+            }
+
+            var safeSize = fallbackSize > 0 ? fallbackSize : 64;
+            return new List<int> { safeSize };
         }
 
         private sealed class BypassProfileDocument
@@ -155,6 +180,7 @@ namespace IspAudit.Bypass
             public TlsBypassStrategy TlsStrategy { get; set; } = TlsBypassStrategy.Fragment;
             public int TlsFirstFragmentSize { get; set; } = 64;
             public int TlsFragmentThreshold { get; set; } = 128;
+            public List<int>? TlsFragmentSizes { get; set; }
             public List<BypassRedirectRuleDocument>? RedirectRules { get; set; }
         }
 

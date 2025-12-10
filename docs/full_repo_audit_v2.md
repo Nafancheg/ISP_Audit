@@ -61,7 +61,8 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                    BYPASS LAYER                                 │
 │  ├── BypassCoordinator (выбор стратегии)                       │
-│  ├── BypassFilter (TLS fragment/disorder/fake)                 │
+│  ├── BypassFilter (TLS fragment/disorder/fake, параметризуемые │
+│      размеры)                                                  │
 │  ├── BypassProfile (конфигурация)                              │
 │  ├── StrategyMapping (блокировка → стратегия)                  │
 │  └── WinDivertNative (P/Invoke)                                │

@@ -3,5 +3,6 @@
   "fragmentTlsClientHello": true,
   "tlsFirstFragmentSize": 64,
   "tlsFragmentThreshold": 128,
+  "tlsFragmentSizes": [64],
   "redirectRules": []
 }

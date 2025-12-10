@@ -72,6 +72,7 @@ graph TD
 *   **`BypassController`**: ViewModel, отвечающая за настройки обхода.
     *   Связывает UI-тумблеры (Disorder, Fake, DoH) с логикой `TrafficEngine`.
     *   Автоматически применяет настройки при старте, если они сохранены в профиле.
+    *   Использует параметры фрагментации из `bypass_profile.json` (`TlsFragmentSizes`, `TlsFragmentThreshold`, `TlsStrategy`), логирует выбранный пресет.
 *   **`TestResultsManager`**: Управляет коллекцией результатов (`ObservableCollection<TestResult>`). Отвечает за обновление UI в потоке диспетчера.
 
 ### 3.2 Orchestration Layer
@@ -133,8 +134,8 @@ graph TD
     *   Управляет загрузкой фильтров и инъекцией пакетов.
 *   **`BypassFilter` (`Core/Traffic/Filters/BypassFilter.cs`)**:
     *   Реализует конкретные алгоритмы обхода:
-        *   **Fragmentation**: Разбиение ClientHello на 2+ TCP-сегмента.
-        *   **Disorder**: Отправка сегментов в неправильном порядке (1-й, потом 2-й), чтобы сбить с толку DPI.
+        *   **Fragmentation**: Разбиение ClientHello на 2+ TCP-сегмента по списку размеров из `TlsFragmentSizes`.
+        *   **Disorder**: Отправка сегментов в обратном порядке при сохранении корректных seq/len, чтобы сбить DPI.
         *   **Fake TTL**: Отправка "фейкового" пакета с коротким TTL, который дойдет до DPI, но не до сервера.
 
 ---

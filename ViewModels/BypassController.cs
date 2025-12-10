@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using IspAudit.Bypass;
@@ -22,6 +23,7 @@ namespace IspAudit.ViewModels
     public class BypassController : INotifyPropertyChanged
     {
         private readonly TrafficEngine _trafficEngine;
+        private readonly BypassProfile _baseProfile;
         
         // Независимые флаги для каждой опции bypass
         private bool _isFragmentEnabled;
@@ -57,6 +59,7 @@ namespace IspAudit.ViewModels
         public BypassController(TrafficEngine trafficEngine)
         {
             _trafficEngine = trafficEngine;
+            _baseProfile = BypassProfile.CreateDefault();
             SetDnsPresetCommand = new RelayCommand(param => 
             {
                 if (param is string preset)
@@ -409,14 +412,19 @@ namespace IspAudit.ViewModels
                 else if (IsFragmentEnabled)
                     tlsStrategy = TlsBypassStrategy.Fragment;
 
+                var fragmentSizes = _baseProfile.TlsFragmentSizes ?? Array.Empty<int>();
+
                 var profile = new BypassProfile
                 {
                     DropTcpRst = IsDropRstEnabled,
                     FragmentTlsClientHello = IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled,
                     TlsStrategy = tlsStrategy,
-                    TlsFirstFragmentSize = 2,
-                    TlsFragmentThreshold = 16,
-                    RedirectRules = Array.Empty<BypassRedirectRule>()
+                    TlsFirstFragmentSize = _baseProfile.TlsFirstFragmentSize,
+                    TlsFragmentThreshold = _baseProfile.TlsFragmentThreshold,
+                    TlsFragmentSizes = fragmentSizes,
+                    TtlTrick = _baseProfile.TtlTrick,
+                    TtlTrickValue = _baseProfile.TtlTrickValue,
+                    RedirectRules = _baseProfile.RedirectRules
                 };
 
                 // Create and register filter
@@ -433,7 +441,8 @@ namespace IspAudit.ViewModels
                 {
                     IsBypassActive = true;
                     NotifyActiveStatesChanged();
-                    Log($"[Bypass] Options applied: {CurrentBypassStrategy}");
+                    var chunks = fragmentSizes.Any() ? string.Join('/', fragmentSizes) : "default";
+                    Log($"[Bypass] Options applied: {CurrentBypassStrategy} | TLS chunks: {chunks}, threshold: {profile.TlsFragmentThreshold}");
                 });
             }
             catch (Exception ex)

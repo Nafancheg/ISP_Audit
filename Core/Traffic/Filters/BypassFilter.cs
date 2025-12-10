@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading;
+using System.Linq;
 using IspAudit.Bypass;
 using IspAudit.Core.Traffic;
 
@@ -55,7 +56,9 @@ namespace IspAudit.Core.Traffic.Filters
                     bool isNewConnection = !_processedConnections.ContainsKey(connectionKey);
                     _processedConnections[connectionKey] = Environment.TickCount64;
 
-                    if (ProcessTlsStrategy(packet, context, sender, isNewConnection))
+                    var fragmentPlan = BuildFragmentPlan(packet);
+
+                    if (ProcessTlsStrategy(packet, context, sender, isNewConnection, fragmentPlan))
                     {
                         Interlocked.Increment(ref _clientHellosFragmented);
                         return false; // Packet handled (fragmented/faked), drop original
@@ -85,7 +88,12 @@ namespace IspAudit.Core.Traffic.Filters
             }
         }
 
-        private bool ProcessTlsStrategy(InterceptedPacket packet, PacketContext context, IPacketSender sender, bool isNewConnection)
+        private bool ProcessTlsStrategy(
+            InterceptedPacket packet,
+            PacketContext context,
+            IPacketSender sender,
+            bool isNewConnection,
+            List<FragmentSlice>? fragmentPlan)
         {
             bool handled = false;
 
@@ -99,18 +107,18 @@ namespace IspAudit.Core.Traffic.Filters
                 }
             }
 
-            if (_profile.TlsStrategy == TlsBypassStrategy.Fragment || 
-                _profile.TlsStrategy == TlsBypassStrategy.FakeFragment)
+            if ((_profile.TlsStrategy == TlsBypassStrategy.Fragment || 
+                _profile.TlsStrategy == TlsBypassStrategy.FakeFragment) && fragmentPlan != null)
             {
-                if (ApplyFragmentStrategy(packet, context, sender))
+                if (ApplyFragmentStrategy(packet, context, sender, fragmentPlan))
                 {
                     handled = true;
                 }
             }
-            else if (_profile.TlsStrategy == TlsBypassStrategy.Disorder || 
-                     _profile.TlsStrategy == TlsBypassStrategy.FakeDisorder)
+            else if ((_profile.TlsStrategy == TlsBypassStrategy.Disorder || 
+                     _profile.TlsStrategy == TlsBypassStrategy.FakeDisorder) && fragmentPlan != null)
             {
-                if (ApplyDisorderStrategy(packet, context, sender))
+                if (ApplyDisorderStrategy(packet, context, sender, fragmentPlan))
                 {
                     handled = true;
                 }
@@ -143,80 +151,88 @@ namespace IspAudit.Core.Traffic.Filters
             }
         }
 
-        private bool ApplyFragmentStrategy(InterceptedPacket packet, PacketContext context, IPacketSender sender)
+        private bool ApplyFragmentStrategy(InterceptedPacket packet, PacketContext context, IPacketSender sender, List<FragmentSlice> fragments)
         {
-            int firstLen = Math.Min(_profile.TlsFirstFragmentSize, packet.Info.PayloadLength - 1);
-            int secondLen = packet.Info.PayloadLength - firstLen;
-
-            if (firstLen <= 0 || secondLen <= 0) return false;
-
-            int headerLen = packet.Info.IpHeaderLength + packet.Info.TcpHeaderLength;
-            var firstBuffer = ArrayPool<byte>.Shared.Rent(headerLen + firstLen);
-            var secondBuffer = ArrayPool<byte>.Shared.Rent(headerLen + secondLen);
-
-            try
-            {
-                var addr = context.Address;
-
-                // First Fragment
-                Buffer.BlockCopy(packet.Buffer, 0, firstBuffer, 0, headerLen);
-                Buffer.BlockCopy(packet.Buffer, packet.Info.PayloadOffset, firstBuffer, headerLen, firstLen);
-                AdjustPacketLengths(firstBuffer, packet.Info.IpHeaderLength, packet.Info.TcpHeaderLength, firstLen, packet.Info.IsIpv4);
-                sender.Send(firstBuffer, headerLen + firstLen, ref addr);
-
-                // Second Fragment
-                Buffer.BlockCopy(packet.Buffer, 0, secondBuffer, 0, headerLen);
-                Buffer.BlockCopy(packet.Buffer, packet.Info.PayloadOffset + firstLen, secondBuffer, headerLen, secondLen);
-                IncrementTcpSequence(secondBuffer, packet.Info.IpHeaderLength, (uint)firstLen);
-                AdjustPacketLengths(secondBuffer, packet.Info.IpHeaderLength, packet.Info.TcpHeaderLength, secondLen, packet.Info.IsIpv4);
-                sender.Send(secondBuffer, headerLen + secondLen, ref addr);
-
-                return true;
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(firstBuffer);
-                ArrayPool<byte>.Shared.Return(secondBuffer);
-            }
+            return SendFragments(packet, context, sender, fragments, reverseOrder: false);
         }
 
-        private bool ApplyDisorderStrategy(InterceptedPacket packet, PacketContext context, IPacketSender sender)
+        private bool ApplyDisorderStrategy(InterceptedPacket packet, PacketContext context, IPacketSender sender, List<FragmentSlice> fragments)
         {
-            int firstLen = Math.Min(_profile.TlsFirstFragmentSize, packet.Info.PayloadLength - 1);
-            int secondLen = packet.Info.PayloadLength - firstLen;
+            return SendFragments(packet, context, sender, fragments, reverseOrder: true);
+        }
 
-            if (firstLen <= 0 || secondLen <= 0) return false;
+        private bool SendFragments(InterceptedPacket packet, PacketContext context, IPacketSender sender, List<FragmentSlice> fragments, bool reverseOrder)
+        {
+            if (fragments.Count < 2) return false;
 
             int headerLen = packet.Info.IpHeaderLength + packet.Info.TcpHeaderLength;
-            var firstBuffer = ArrayPool<byte>.Shared.Rent(headerLen + firstLen);
-            var secondBuffer = ArrayPool<byte>.Shared.Rent(headerLen + secondLen);
+            var addr = context.Address;
+            var ordered = reverseOrder ? fragments.AsEnumerable().Reverse() : fragments;
 
-            try
+            foreach (var fragment in ordered)
             {
-                var addr = context.Address;
+                var buffer = ArrayPool<byte>.Shared.Rent(headerLen + fragment.PayloadLength);
+                try
+                {
+                    Buffer.BlockCopy(packet.Buffer, 0, buffer, 0, headerLen);
+                    Buffer.BlockCopy(packet.Buffer, fragment.PayloadOffset, buffer, headerLen, fragment.PayloadLength);
 
-                // Prepare First Fragment (sent SECOND)
-                Buffer.BlockCopy(packet.Buffer, 0, firstBuffer, 0, headerLen);
-                Buffer.BlockCopy(packet.Buffer, packet.Info.PayloadOffset, firstBuffer, headerLen, firstLen);
-                AdjustPacketLengths(firstBuffer, packet.Info.IpHeaderLength, packet.Info.TcpHeaderLength, firstLen, packet.Info.IsIpv4);
+                    if (fragment.SeqOffset > 0)
+                    {
+                        IncrementTcpSequence(buffer, packet.Info.IpHeaderLength, (uint)fragment.SeqOffset);
+                    }
 
-                // Prepare Second Fragment (sent FIRST)
-                Buffer.BlockCopy(packet.Buffer, 0, secondBuffer, 0, headerLen);
-                Buffer.BlockCopy(packet.Buffer, packet.Info.PayloadOffset + firstLen, secondBuffer, headerLen, secondLen);
-                IncrementTcpSequence(secondBuffer, packet.Info.IpHeaderLength, (uint)firstLen);
-                AdjustPacketLengths(secondBuffer, packet.Info.IpHeaderLength, packet.Info.TcpHeaderLength, secondLen, packet.Info.IsIpv4);
-
-                // Send in REVERSE order
-                sender.Send(secondBuffer, headerLen + secondLen, ref addr);
-                sender.Send(firstBuffer, headerLen + firstLen, ref addr);
-
-                return true;
+                    AdjustPacketLengths(buffer, packet.Info.IpHeaderLength, packet.Info.TcpHeaderLength, fragment.PayloadLength, packet.Info.IsIpv4);
+                    sender.Send(buffer, headerLen + fragment.PayloadLength, ref addr);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
             }
-            finally
+
+            return true;
+        }
+
+        private List<FragmentSlice>? BuildFragmentPlan(InterceptedPacket packet)
+        {
+            var configuredSizes = _profile.TlsFragmentSizes ?? Array.Empty<int>();
+            var safeSizes = configuredSizes.Where(v => v > 0).Take(4).ToList();
+
+            if (safeSizes.Count == 0 && _profile.TlsFirstFragmentSize > 0)
             {
-                ArrayPool<byte>.Shared.Return(firstBuffer);
-                ArrayPool<byte>.Shared.Return(secondBuffer);
+                safeSizes.Add(_profile.TlsFirstFragmentSize);
             }
+
+            if (safeSizes.Count == 0)
+            {
+                return null;
+            }
+
+            var fragments = new List<FragmentSlice>();
+            var remaining = packet.Info.PayloadLength;
+            var consumed = 0;
+
+            foreach (var size in safeSizes)
+            {
+                if (remaining - size <= 0)
+                {
+                    break;
+                }
+
+                fragments.Add(new FragmentSlice(packet.Info.PayloadOffset + consumed, size, consumed));
+                remaining -= size;
+                consumed += size;
+            }
+
+            if (remaining <= 0)
+            {
+                return null;
+            }
+
+            fragments.Add(new FragmentSlice(packet.Info.PayloadOffset + consumed, remaining, consumed));
+
+            return fragments.Count >= 2 ? fragments : null;
         }
 
         private static bool IsClientHello(ReadOnlySpan<byte> payload)
@@ -249,6 +265,20 @@ namespace IspAudit.Core.Traffic.Filters
             uint sequence = BinaryPrimitives.ReadUInt32BigEndian(packet.AsSpan(offset, 4));
             sequence += delta;
             BinaryPrimitives.WriteUInt32BigEndian(packet.AsSpan(offset, 4), sequence);
+        }
+
+        private readonly struct FragmentSlice
+        {
+            public FragmentSlice(int payloadOffset, int payloadLength, int seqOffset)
+            {
+                PayloadOffset = payloadOffset;
+                PayloadLength = payloadLength;
+                SeqOffset = seqOffset;
+            }
+
+            public int PayloadOffset { get; }
+            public int PayloadLength { get; }
+            public int SeqOffset { get; }
         }
 
         private readonly struct ConnectionKey : IEquatable<ConnectionKey>
