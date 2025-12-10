@@ -142,6 +142,7 @@ dotnet run
 graph TD
     User[Пользователь] --> UI[WPF UI]
     UI --> VM[MainViewModel]
+    VM --> BypassCtrl[BypassController]
     
     subgraph Orchestration
         VM --> Orchestrator[DiagnosticOrchestrator]
@@ -156,10 +157,10 @@ graph TD
     
     subgraph Network Layer
         Sniffer --> WinDivert[WinDivert Driver]
-        VM --> BypassCtrl[BypassController]
-        BypassCtrl --> TrafficEngine[TrafficEngine]
-        TrafficEngine --> WinDivert
+        TrafficEngine[TrafficEngine] --> WinDivert
     end
+
+    BypassCtrl --> TrafficEngine
 ```
 
 ### Ключевые компоненты
