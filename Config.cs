@@ -25,10 +25,6 @@ namespace IspAudit
         public int TcpTimeoutSeconds { get; set; } = 2;
         public int UdpTimeoutSeconds { get; set; } = 2;
 
-        // Список портов для TCP проверок
-        public List<int> Ports { get; set; } = new() { 80, 443 };
-        public List<UdpProbeDefinition> UdpProbes { get; set; } = new();
-
         // Переключатели тестов (используются в GUI)
         public bool EnableDns { get; set; } = true;
         public bool EnableTcp { get; set; } = true;
@@ -38,9 +34,6 @@ namespace IspAudit
         public bool EnableRst { get; set; } = false; // Отключено по умолчанию — сложная эвристика, мало информативна
         public bool EnableAutoBypass { get; set; } = false; // Автоматическое применение обхода блокировок
         
-        // Legacy свойства (сохранены для совместимости, но не используются в GUI)
-        public bool NoTrace { get; set; } = false;
-
         public static Config Default() => new Config();
 
         public List<TargetDefinition> ResolveTargets()

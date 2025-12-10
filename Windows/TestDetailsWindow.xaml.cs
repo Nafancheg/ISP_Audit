@@ -1,7 +1,7 @@
 using System.Windows;
-using ISPAudit.Models;
+using IspAudit.Models;
 
-namespace ISPAudit.Windows
+namespace IspAudit.Windows
 {
     public partial class TestDetailsWindow : Window
     {

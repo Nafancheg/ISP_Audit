@@ -7,13 +7,12 @@ using IspAudit.Bypass;
 using IspAudit.Core.Traffic;
 using IspAudit.Core.Traffic.Filters;
 using IspAudit.Utils;
-using ISPAudit.Utils;
 using IspAudit.Wpf;
 
 // Явно указываем WPF Application вместо WinForms
 using Application = System.Windows.Application;
 
-namespace ISPAudit.ViewModels
+namespace IspAudit.ViewModels
 {
     /// <summary>
     /// Контроллер bypass-стратегий.
@@ -289,7 +288,7 @@ namespace ISPAudit.ViewModels
         /// <summary>
         /// Инициализация bypass и DoH при запуске приложения
         /// </summary>
-        public async void InitializeOnStartupAsync()
+        public async Task InitializeOnStartupAsync()
         {
             // Проверка VPN
             CheckVpnStatus();
@@ -304,10 +303,10 @@ namespace ISPAudit.ViewModels
             {
                 Log("[Bypass] Initializing bypass on application startup...");
                 
-                // Включаем Disorder + DROP RST при старте (как наиболее эффективную стратегию)
-                _isDisorderEnabled = true;
-                _isFragmentEnabled = false;
-                _isDropRstEnabled = true;
+                // Автоматическое включение отключено по результатам аудита (риск скрытого поведения)
+                // _isDisorderEnabled = true;
+                // _isFragmentEnabled = false;
+                // _isDropRstEnabled = true;
                 
                 // Предварительная установка DoH по наличию бэкапа (чтобы UI не прыгал)
                 if (FixService.HasBackupFile)

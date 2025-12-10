@@ -1,7 +1,7 @@
-<Application x:Class="ISPAudit.App"
+<Application x:Class="IspAudit.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:converters="clr-namespace:ISPAudit.Converters">
+             xmlns:converters="clr-namespace:IspAudit.Converters">
     <Application.Resources>
         <ResourceDictionary>
             <!-- Converters -->

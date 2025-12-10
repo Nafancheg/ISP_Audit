@@ -2,10 +2,10 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using ISPAudit.Models;
-using ISPAudit.Utils;
+using IspAudit.Models;
+using IspAudit.Utils;
 
-namespace ISPAudit.Controls
+namespace IspAudit.Controls
 {
     public partial class TestCard : System.Windows.Controls.UserControl
     {
@@ -109,7 +109,7 @@ namespace ISPAudit.Controls
         {
             if (TestResult == null) return;
             
-            var detailsWindow = new ISPAudit.Windows.TestDetailsWindow(TestResult)
+            var detailsWindow = new IspAudit.Windows.TestDetailsWindow(TestResult)
             {
                 Owner = System.Windows.Application.Current.MainWindow
             };

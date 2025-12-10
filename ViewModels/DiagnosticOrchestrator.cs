@@ -10,7 +10,7 @@ using IspAudit.Utils;
 using IspAudit.Core.Modules;
 using IspAudit.Core.Traffic;
 using IspAudit.Core.Traffic.Filters;
-using ISPAudit.Windows;
+using IspAudit.Windows;
 using IspAudit;
 
 // Явно указываем WPF вместо WinForms
@@ -19,7 +19,7 @@ using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
 
-namespace ISPAudit.ViewModels
+namespace IspAudit.ViewModels
 {
     /// <summary>
     /// Оркестратор диагностики.
@@ -369,7 +369,7 @@ namespace ISPAudit.ViewModels
         /// Повторная диагностика списка целей (для проверки эффективности bypass)
         /// </summary>
         public async Task RetestTargetsAsync(
-            System.Collections.Generic.IEnumerable<ISPAudit.Models.Target> targets,
+            System.Collections.Generic.IEnumerable<IspAudit.Models.Target> targets,
             BypassController bypassController)
         {
             if (IsDiagnosticRunning)

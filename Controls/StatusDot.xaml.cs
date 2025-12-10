@@ -1,8 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
-using ISPAudit.Models;
+using IspAudit.Models;
 
-namespace ISPAudit.Controls
+namespace IspAudit.Controls
 {
     public partial class StatusDot : System.Windows.Controls.UserControl
     {

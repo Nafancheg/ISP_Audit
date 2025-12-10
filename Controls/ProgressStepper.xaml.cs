@@ -3,7 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
-namespace ISPAudit.Controls
+namespace IspAudit.Controls
 {
     public partial class ProgressStepper : System.Windows.Controls.UserControl
     {

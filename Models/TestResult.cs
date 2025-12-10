@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace ISPAudit.Models
+namespace IspAudit.Models
 {
     public enum TestStatus
     {

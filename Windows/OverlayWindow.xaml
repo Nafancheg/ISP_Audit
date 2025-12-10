@@ -1,4 +1,4 @@
-<Window x:Class="ISPAudit.Windows.OverlayWindow"
+<Window x:Class="IspAudit.Windows.OverlayWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ISP Audit Overlay" 

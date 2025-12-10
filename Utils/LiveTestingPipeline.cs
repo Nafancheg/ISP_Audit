@@ -47,7 +47,6 @@ namespace IspAudit.Utils
         private readonly IHostTester _tester;
         private readonly IBlockageClassifier _classifier;
         private readonly IBlockageStateStore _stateStore;
-        private readonly BypassCoordinator? _coordinator; // Главный координатор bypass-стратегий
         
         public LiveTestingPipeline(
             PipelineConfig config, 
@@ -86,17 +85,11 @@ namespace IspAudit.Utils
             }
             _classifier = stdClassifier;
             
-            // BypassCoordinator — главный "мозг" управления bypass-стратегиями
-            // Содержит логику: кеширование работающих стратегий, перебор, ретест
-            if (_trafficEngine != null)
-            {
-                _coordinator = new BypassCoordinator(_trafficEngine);
-            }
-            
-            // Создаем unbounded каналы для передачи данных между воркерами
-            _snifferQueue = Channel.CreateUnbounded<HostDiscovered>();
-            _testerQueue = Channel.CreateUnbounded<HostTested>();
-            _bypassQueue = Channel.CreateUnbounded<HostBlocked>();
+            // Создаем bounded каналы для передачи данных между воркерами (защита от OOM)
+            var channelOptions = new BoundedChannelOptions(1000) { FullMode = BoundedChannelFullMode.DropOldest };
+            _snifferQueue = Channel.CreateBounded<HostDiscovered>(channelOptions);
+            _testerQueue = Channel.CreateBounded<HostTested>(channelOptions);
+            _bypassQueue = Channel.CreateBounded<HostBlocked>(channelOptions);
             
             // Запускаем воркеры
             _workers = new[]

@@ -4,7 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 
-namespace ISPAudit.Windows
+namespace IspAudit.Windows
 {
     public partial class OverlayWindow : Window
     {

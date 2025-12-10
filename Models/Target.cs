@@ -1,4 +1,4 @@
-namespace ISPAudit.Models
+namespace IspAudit.Models
 {
     public class Target
     {

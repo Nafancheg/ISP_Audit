@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 
-namespace ISPAudit.Converters
+namespace IspAudit.Converters
 {
     public class StringToVisibilityConverter : IValueConverter
     {

@@ -5,9 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using ISPAudit.Models;
+using IspAudit.Models;
 using IspAudit.Wpf;
-using IspAudit.Tests;
 
 // Явно указываем WPF вместо WinForms
 using Application = System.Windows.Application;
@@ -15,7 +14,7 @@ using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
 
-namespace ISPAudit.ViewModels
+namespace IspAudit.ViewModels
 {
     /// <summary>
     /// Главная ViewModel.
@@ -354,10 +353,13 @@ namespace ISPAudit.ViewModels
             }, 
                 _ => ShowBypassPanel && (IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled || IsDropRstEnabled));
 
-            // Инициализация bypass при старте
-            Bypass.InitializeOnStartupAsync();
-
             Log("✓ MainViewModelRefactored инициализирован");
+        }
+
+        public async Task InitializeAsync()
+        {
+            // Инициализация bypass при старте
+            await Bypass.InitializeOnStartupAsync();
         }
 
         #endregion
@@ -484,7 +486,7 @@ namespace ISPAudit.ViewModels
             
             try
             {
-                var window = new ISPAudit.Windows.TestDetailsWindow(result)
+                var window = new IspAudit.Windows.TestDetailsWindow(result)
                 {
                     Owner = Application.Current.MainWindow
                 };

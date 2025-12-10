@@ -20,7 +20,11 @@ Windows-native .NET 9 WPF application for diagnosing ISP-level network blocking 
 ```
 Program.cs → [GUI: App.xaml + MainWindow]
                            ↓
-              DiagnosticOrchestrator orchestrates LiveTestingPipeline
+              MainViewModelRefactored
+                           ↓
+              DiagnosticOrchestrator
+                           ↓
+              LiveTestingPipeline (Sniffer → Tester → Classifier)
                            ↓
               Results → UI Updates (Live)
 ```
@@ -28,8 +32,11 @@ Program.cs → [GUI: App.xaml + MainWindow]
 **Entry point**: `Program.Main()` initializes GUI mode, hides console, loads default profile from `Profiles/`.
 
 **Test flow**: `LiveTestingPipeline` (Sniffer → Tester → Classifier) → `DiagnosticOrchestrator` updates GUI via `IProgress`.
+- **Sniffer**: `TrafficCollector` (WinDivert) captures new connections.
+- **Tester**: `StandardHostTester` checks DNS, TCP, TLS.
+- **Classifier**: `StandardBlockageClassifier` determines blockage type (DPI, RST, DNS).
 
-**GUI**: MVVM pattern (`ViewModels/MainViewModel.cs`), Material Design cards shown ONLY when problems detected (Firewall/ISP/Router/Software cards).
+**GUI**: MVVM pattern (`ViewModels/MainViewModelRefactored.cs`), Material Design cards shown ONLY when problems detected.
 
 ## Critical Code Patterns
 
@@ -48,14 +55,8 @@ await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
 
 ### 2. Progress Reporting (GUI Contract)
 ```csharp
-// Start test
-progress?.Report(new TestProgress(TestKind.DNS, $"{targetName}: старт"));
-
-// Complete test
-progress?.Report(new TestProgress(TestKind.DNS, $"{targetName}: завершено", success, status));
-
-// Summary (after all targets)
-progress?.Report(new TestProgress(TestKind.DNS, "сводка", !hasFails, message));
+// Report string messages for UI log
+progress?.Report($"[TESTER] Checking {host}...");
 ```
 
 ### 3. Traceroute Encoding (CRITICAL for Russian Windows)
@@ -67,23 +68,21 @@ process.StandardOutput.CurrentEncoding = Encoding.GetEncoding(866);
 
 ### 4. DNS Logic (Simplified Decision Tree)
 ```csharp
-// ONLY System DNS determines status (DoH/Google for info only)
-if (systemDns.Count == 0) return DNS_FILTERED;
-if (systemDns.Any(IsBogusIPv4)) return DNS_BOGUS; // 0.0.0.0, 127.x, 10.x, 192.168.x
-return OK;
+// StandardHostTester.cs
+// 1. Reverse DNS (optional)
+// 2. Forward DNS (CRITICAL) - if fails, dnsOk = false
+if (completedTask != dnsCheckTask) {
+    dnsOk = false;
+    dnsStatus = "DNS_TIMEOUT";
+}
 ```
-**Do NOT** use DoH results in decision logic — it may be blocked itself.
 
 ### 5. Critical Targets (Profile-Driven)
 ```csharp
-// Profiles/StarCitizen.json: {critical: true, fallbackIp: "1.2.3.4"}
-if (dnsFailure && target.Critical && !string.IsNullOrEmpty(target.FallbackIp)) {
-    // Use fallback IP, continue testing (NEVER skip)
-} else if (dnsFailure && !target.Critical) {
-    // Skip target, continue with others
-}
+// Profiles/Default.json
+// Targets are loaded from JSON profile.
+// Critical targets should be tested even if DNS fails (using FallbackIp if available).
 ```
-AuditRunner must NOT early-exit for critical targets.
 
 ### 6. Material Design UI (Cards)
 ```xaml

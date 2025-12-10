@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace ISPAudit.Utils
+namespace IspAudit.Utils
 {
     public static class DebugLogger
     {

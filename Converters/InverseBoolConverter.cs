@@ -2,7 +2,7 @@ using System;
 using System.Globalization;
 using System.Windows.Data;
 
-namespace ISPAudit.Converters
+namespace IspAudit.Converters
 {
     public class InverseBoolConverter : IValueConverter
     {

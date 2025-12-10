@@ -7,7 +7,7 @@ using System.Net.NetworkInformation;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-namespace ISPAudit.Utils
+namespace IspAudit.Utils
 {
     public record DnsPreset(string Name, string PrimaryIp, string PrimaryDoH, string SecondaryIp, string SecondaryDoH);
 

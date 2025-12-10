@@ -30,37 +30,6 @@ namespace IspAudit.Bypass
 
     public static class StrategyMapping
     {
-        public static StrategyRecommendation GetStrategiesFor(TargetReport target)
-        {
-            var rec = new StrategyRecommendation();
-
-            // 0. Analyze DNS issues
-            if (target.dns_status == "DNS_FILTERED" || target.dns_status == "DNS_BOGUS")
-            {
-                rec.AddManual("DOH");
-            }
-
-            // 1. Analyze HTTP/TLS issues
-            bool httpFailed = target.http_enabled && target.http.Any(h => !h.success || h.is_block_page == true);
-            bool tcpOpen = target.tcp_enabled && target.tcp.Any(t => t.open);
-
-            if (httpFailed && tcpOpen)
-            {
-                AddTlsStrategies(rec);
-            }
-
-            // 2. Analyze TCP issues
-            bool tcpFailed = target.tcp_enabled && !target.tcp.Any(t => t.open);
-            if (tcpFailed)
-            {
-                var minElapsed = target.tcp.Any() ? target.tcp.Min(t => t.elapsed_ms) : 0;
-                // TargetReport doesn't have explicit BlockageType per se, usually inferred.
-                // We rely on timing.
-                AnalyzeTcpFailure(rec, minElapsed, null);
-            }
-
-            return rec;
-        }
 
         public static StrategyRecommendation GetStrategiesFor(HostTested result)
         {

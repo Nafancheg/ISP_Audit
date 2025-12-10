@@ -59,7 +59,34 @@ namespace IspAudit.Core.Modules
                     }
                     catch
                     {
-                        // Не критично, продолжаем
+                        // Не критично, продолжаем - отсутствие PTR записи не означает блокировку
+                    }
+                }
+
+                // 1.1 Проверка Forward DNS (если есть hostname) - реальная проверка на DNS блокировку
+                if (!string.IsNullOrEmpty(hostname))
+                {
+                    try
+                    {
+                        var dnsCheckTask = System.Net.Dns.GetHostEntryAsync(hostname);
+                        var timeoutTask = Task.Delay(2000, ct);
+                        
+                        var completedTask = await Task.WhenAny(dnsCheckTask, timeoutTask).ConfigureAwait(false);
+                        if (completedTask != dnsCheckTask)
+                        {
+                            dnsOk = false;
+                            dnsStatus = "DNS_TIMEOUT";
+                        }
+                        else
+                        {
+                            await dnsCheckTask.ConfigureAwait(false);
+                            // Если успешно разрезолвилось - DNS работает
+                        }
+                    }
+                    catch
+                    {
+                        dnsOk = false;
+                        dnsStatus = "DNS_ERROR";
                     }
                 }
 

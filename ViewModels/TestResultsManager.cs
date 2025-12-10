@@ -4,11 +4,11 @@ using System.ComponentModel;
 using System.Linq;
 using System.Net;
 using System.Collections.Concurrent;
-using ISPAudit.Models;
+using IspAudit.Models;
 using IspAudit;
 using IspAudit.Utils;
 
-namespace ISPAudit.ViewModels
+namespace IspAudit.ViewModels
 {
     /// <summary>
     /// Менеджер результатов тестирования.

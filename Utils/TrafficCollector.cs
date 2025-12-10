@@ -106,10 +106,14 @@ namespace IspAudit.Utils
                 : "(до ручной остановки)";
             _progress?.Report($"Старт захвата трафика {timeoutText}");
 
-            // Канал для передачи обнаруженных хостов
-            var hostChannel = System.Threading.Channels.Channel.CreateUnbounded<HostDiscovered>();
+            // Канал для передачи обнаруженных хостов (ограничен 1000, старые отбрасываются при переполнении)
+            var hostChannel = System.Threading.Channels.Channel.CreateBounded<HostDiscovered>(
+                new System.Threading.Channels.BoundedChannelOptions(1000) 
+                { 
+                    FullMode = System.Threading.Channels.BoundedChannelFullMode.DropOldest 
+                });
             var writer = hostChannel.Writer;
-            _activeWriter = writer; // Сохраняем для возможности завершить при Dispose
+            _activeWriter = writer;
             
             // Настройка таймаута
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
