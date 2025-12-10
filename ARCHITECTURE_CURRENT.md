@@ -82,14 +82,14 @@ graph TD
     *   Следит за целевыми процессами (если задан фильтр по PID).
 *   **`LiveTestingPipeline`**: Асинхронный конвейер на базе `System.Threading.Channels`.
     *   Связывает этапы: Sniffing → Testing → Classification → Reporting.
+    *   Использует `UnifiedTrafficFilter` для валидации, дедупликации и фильтрации шума.
     *   Обеспечивает параллельную обработку множества хостов.
 
 ### 3.3 Core Modules (`IspAudit.Core`)
 
 *   **`TrafficCollector` (`Utils/TrafficCollector.cs`)**:
     *   Слушает сетевой интерфейс через WinDivert (фильтр `outbound and (tcp.Syn or udp)`).
-    *   Использует `NoiseHostFilter` для отсеивания CDN, телеметрии Windows и антивирусов.
-    *   Применяет `UnifiedTrafficFilter` для проверки соответствия правилам (IP, порты, протоколы).
+    *   Фильтрует трафик по PID целевого процесса (через `PidTrackerService`).
     *   Передает уникальные `(IP, Hostname)` в пайплайн.
 *   **`StandardHostTester` (`Core/Modules/StandardHostTester.cs`)**:
     *   Выполняет активные проверки для каждого обнаруженного хоста:
@@ -145,8 +145,8 @@ graph TD
 2.  **Идентификация (Identify)**: `PidTrackerService` определяет, какой процесс (PID) инициировал соединение.
 3.  **Парсинг (Parse)**: `DnsParserService` пытается извлечь доменное имя (из DNS-кэша или SNI).
 4.  **Фильтрация (Filter)**: `NoiseHostFilter` проверяет, не является ли хост "шумом" (Microsoft, Google Update).
-5.  **Валидация (Validate)**: `UnifiedTrafficFilter` проверяет соответствие хоста правилам профиля (порты, исключения).
-6.  **Очередь (Queue)**: Если хост новый и интересный, он попадает в `_snifferQueue`.
+5.  **Очередь (Queue)**: Хост попадает в входную очередь `LiveTestingPipeline`.
+6.  **Валидация (Validate)**: `UnifiedTrafficFilter` проверяет хост перед тестом (дедупликация, фильтрация шума).
 7.  **Тестирование (Test)**: `StandardHostTester` забирает хост из очереди и проводит серию тестов (DNS, TCP, TLS).
 8.  **Инспекция (Inspect)**: Параллельно `RstInspectionService` и другие сервисы следят за пакетами этого соединения.
 9.  **Агрегация (Aggregate)**: Результаты тестов и инспекций собираются в `HostTested` модель.
