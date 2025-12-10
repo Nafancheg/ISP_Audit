@@ -208,22 +208,44 @@ graph TB
 
 ### Ключевые компоненты
 
-| Файл | Назначение |
-|------|------------|
-| `ViewModels/MainViewModelRefactored.cs` | Тонкий координатор UI |
-| `ViewModels/BypassController.cs` | Управление стабилизацией соединения |
-| `ViewModels/DiagnosticOrchestrator.cs` | Координация диагностики |
-| `ViewModels/TestResultsManager.cs` | Результаты и эвристики |
-| `Core/Traffic/TrafficEngine.cs` | Ядро обработки трафика (Pipeline) |
-| `Core/Traffic/Filters/BypassFilter.cs` | Фильтр оптимизации пакетов |
-| `Utils/TrafficCollector.cs` | Сбор и обогащение соединений |
-| `Utils/ConnectionMonitorService.cs` | Мониторинг сокетов (WinDivert/IP Helper) |
-| `Utils/LiveTestingPipeline.cs` | Тестирование + классификация |
-| `Utils/DnsParserService.cs` | Парсинг DNS и SNI |
-| `Core/Modules/HttpRedirectDetector.cs` | Детекция HTTP-заглушек |
-| `Core/Modules/RstInspectionService.cs` | Анализ RST-пакетов (TTL) |
-| `Core/Modules/TcpRetransmissionTracker.cs` | Подсчет ретрансмиссий |
-| `Core/Modules/InMemoryBlockageStateStore.cs` | Агрегация сигналов и истории |
+#### 🖥️ UI Layer
+| Компонент | Файл | Описание |
+|-----------|------|----------|
+| MainViewModel | `ViewModels/MainViewModelRefactored.cs` | Корневая ViewModel, связывает UI и логику |
+| BypassController | `ViewModels/BypassController.cs` | Управление стратегиями обхода (Bypass) |
+| TestResultsManager | `ViewModels/TestResultsManager.cs` | Управление результатами тестов и рекомендациями |
+
+#### 🎭 Orchestration
+| Компонент | Файл | Описание |
+|-----------|------|----------|
+| DiagnosticOrchestrator | `ViewModels/DiagnosticOrchestrator.cs` | Координатор процесса диагностики |
+| LiveTestingPipeline | `Utils/LiveTestingPipeline.cs` | Конвейер обработки: Sniffer → Tester → Classifier |
+
+#### ⚙️ Core Logic
+| Компонент | Файл | Описание |
+|-----------|------|----------|
+| TrafficCollector | `Utils/TrafficCollector.cs` | Сбор сетевых событий и обогащение данными |
+| UnifiedTrafficFilter | `Utils/UnifiedTrafficFilter.cs` | Фильтрация шума и дедупликация |
+| StandardHostTester | `Core/Modules/StandardHostTester.cs` | Активное тестирование хостов (DNS, TCP, TLS) |
+| BlockageClassifier | `Core/Modules/StandardBlockageClassifier.cs` | Анализ результатов и определение типа блокировки |
+| BlockageStateStore | `Core/Modules/InMemoryBlockageStateStore.cs` | Хранение состояния блокировок и истории |
+
+#### 🔍 Inspection
+| Компонент | Файл | Описание |
+|-----------|------|----------|
+| RstInspectionService | `Core/Modules/RstInspectionService.cs` | Анализ TCP RST пакетов (TTL, Flags) |
+| HttpRedirectDetector | `Core/Modules/HttpRedirectDetector.cs` | Детекция HTTP-заглушек провайдера |
+| TcpRetransmissionTracker | `Core/Modules/TcpRetransmissionTracker.cs` | Подсчет потерь пакетов (Retransmissions) |
+| UdpInspectionService | `Core/Modules/UdpInspectionService.cs` | Анализ UDP трафика (QUIC/DTLS) |
+
+#### 🌐 Network
+| Компонент | Файл | Описание |
+|-----------|------|----------|
+| TrafficEngine | `Core/Traffic/TrafficEngine.cs` | Движок перехвата пакетов (WinDivert wrapper) |
+| BypassFilter | `Core/Traffic/Filters/BypassFilter.cs` | Применение стратегий обхода на уровне пакетов |
+| ConnectionMonitor | `Utils/ConnectionMonitorService.cs` | Мониторинг сокетов (WinDivert/IP Helper) |
+| DnsParser | `Utils/DnsSnifferService.cs` | Парсинг DNS-пакетов и SNI |
+| PidTracker | `Utils/PidTrackerService.cs` | Отслеживание PID целевого процесса |
 
 ## Системные требования
 
