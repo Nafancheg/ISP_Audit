@@ -73,25 +73,7 @@ process.StandardOutput.CurrentEncoding = Encoding.GetEncoding(866);
 // Без этого: русские хопы → ?????
 ```
 
-### 4. Логика DNS (Упрощенное дерево решений)
-```csharp
-// StandardHostTester.cs
-// 1. Reverse DNS (опционально)
-// 2. Forward DNS (КРИТИЧНО) - если не удалось, dnsOk = false
-if (completedTask != dnsCheckTask) {
-    dnsOk = false;
-    dnsStatus = "DNS_TIMEOUT";
-}
-```
-
-### 5. Критические цели (На основе профиля)
-```csharp
-// Profiles/Default.json
-// Цели загружаются из JSON профиля.
-// Критические цели должны тестироваться даже если DNS не работает (используя FallbackIp если доступен).
-```
-
-### 6. Material Design UI (Карточки)
+### 4. Material Design UI (Карточки)
 ```xaml
 <!-- По умолчанию: скрыто -->
 <materialDesign:Card x:Name="FirewallCard" Visibility="Collapsed">
@@ -100,7 +82,7 @@ if (completedTask != dnsCheckTask) {
 ```
 Показывать карточки ТОЛЬКО когда `result.Status != "OK"`.
 
-### 7. Обнаружение VPN (Адаптивные таймауты)
+### 5. Обнаружение VPN (Адаптивные таймауты)
 ```csharp
 if (NetUtils.LikelyVpnActive()) { // проверяет TAP/TUN адаптеры
     config.HttpTimeoutSeconds = 12; // норма: 6
@@ -108,85 +90,3 @@ if (NetUtils.LikelyVpnActive()) { // проверяет TAP/TUN адаптеры
     config.UdpTimeoutSeconds = 4;   // норма: 2
 }
 ```
-
-## Ключевые рабочие процессы
-
-### Сборка и запуск
-```powershell
-# Debug
-dotnet build -c Debug
-
-# Single-file release
-dotnet publish -c Release -r win-x64 /p:PublishSingleFile=true /p:SelfContained=true /p:PublishTrimmed=false -o ./publish
-
-# GUI (скрывает консоль)
-dotnet run
-
-# CLI
-dotnet run -- --targets youtube.com --report result.json --verbose
-```
-
-### Добавление нового теста
-1. `Tests/MyTest.cs`: async `RunAsync()` → возвращает `MyTestResult`
-2. `AuditRunner.RunAsync()`: вызов с отчетами о прогрессе
-3. `ReportWriter.BuildSummary()`: агрегация статуса
-4. `MainWindow.UpdateProgress()`: обработка GUI для нового `TestKind`
-
-### Изменение карточек GUI
-```csharp
-// MainWindow.xaml.cs ShowResults()
-if (result.firewall.Status != "OK") {
-    FirewallCard.Visibility = Visibility.Visible;
-    FirewallText.Text = $"• {string.Join("\n• ", issues)}\n\nРекомендация: {fix}";
-}
-```
-
-## Рабочий процесс агентов (Multi-Context Development)
-
-**ВАЖНО**: Агенты работают в отдельных контекстах (новые сессии чата). См. `agents/README.md` для полного описания процесса.
-
-1. **Task Owner** (фиолетовый): Интерактив → `agents/task_owner/current_task.md`
-2. **Research** (красный): Глубокий анализ → `agents/research_agent/findings.md`
-3. **Planning** (синий): Подзадачи → `agents/planning_agent/plan.md`
-4. **Coding** (зеленый): Реализация ОДНОЙ подзадачи за раз (используй Haiku для экономии)
-5. **QA** (желтый): Валидация → `agents/qa_agent/test_report.md`
-6. **Delivery** (циан): Коммит + changelog
-
-**При кодировании**: Проверяй `agents/task_owner/current_task.md` для контекста, используй `agents/planning_agent/plan.md` как единственный источник истины, читай ТОЛЬКО файлы, относящиеся к текущей подзадаче.
-
-## Частые ошибки
-
-1. **OEM866 traceroute**: Забытая кодировка → Кириллица превращается в мусор
-2. **DoH в логике DNS**: Использование DoH для принятия решений → ложные предупреждения FILTERED
-3. **Показ всех карточек**: Показ карточек по умолчанию → перегруженный UI
-4. **Блокировка async**: `.Result`/`.Wait()` → дедлоки в GUI
-5. **Пропуск критических целей**: DNS не работает → пропуск лаунчера → игра не запускается
-6. **Хардкод Cloudflare**: Применение фикса DNS → сначала протестируй ВСЕХ провайдеров DoH (1.1.1.1, 8.8.8.8, 9.9.9.9)
-7. **Изменения DNS в реестре**: Требует перезагрузки → используй `netsh` (мгновенный эффект, требует UAC)
-
-## Сценарии тестирования (Только ручные)
-
-- VPN: Включи VPN → проверь адаптивные таймауты, отсутствие ложных DNS_FILTERED
-- Блокировка DNS: Направь DNS на 0.0.0.0 → проверь FILTERED + появление кнопки исправления
-- Firewall: Заблокируй порты 8000-8003 → появление FirewallCard со списком портов
-- Нет прав админа: Проверь, что тесты Firewall/ISP возвращают UNKNOWN корректно
-
-## Ключевые файлы
-
-**Вход**: `Program.cs` (определение режима), `AuditRunner.cs` (оркестратор), `Config.cs` (парсинг CLI)  
-**Тесты**: `Tests/{DnsTest,TcpTest,HttpTest,TracerouteTest,FirewallTest,IspTest,RouterTest,SoftwareTest}.cs`  
-**GUI**: `ViewModels/MainViewModel.cs`, `MainWindow.xaml`, `Wpf/ServiceItemViewModel.cs`  
-**Вывод**: `Output/ReportWriter.cs`, `Output/{Firewall,Isp,Router,Software}TestResult.cs`  
-**Bypass**: `Bypass/WinDivertBypassManager.cs` (требует админа)  
-**Данные**: `star_citizen_targets.json`, `Profiles/StarCitizen.json`, `bypass_profile.json`
-
-## Быстрые ссылки
-
-- **Детальная архитектура**: `CLAUDE.md` (Русский, 500+ строк)
-- **Документация пользователя**: `README.md` (Русский, примеры использования)
-- **Методология агентов**: `agents/README.md` (Стратегия оптимизации затрат API)
-- **CI/CD**: `.github/workflows/build.yml` (single-file артефакт)
-
----
-
-**При сомнениях**: Проверь `CLAUDE.md` → `README.md` → примеры кода в `Tests/` или `AuditRunner.cs`.
