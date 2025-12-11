@@ -131,14 +131,17 @@ namespace IspAudit.Bypass
                 var doc = JsonSerializer.Deserialize<BypassProfileDocument>(json, options);
                 if (doc == null) return null;
 
+                var threshold = doc.TlsFragmentThreshold > 0 ? doc.TlsFragmentThreshold : 128;
+                var normalizedSizes = NormalizeFragmentSizes(doc.TlsFragmentSizes, doc.TlsFirstFragmentSize, threshold);
+
                 return new BypassProfile
                 {
                     DropTcpRst = doc.DropTcpRst,
                     FragmentTlsClientHello = doc.FragmentTlsClientHello,
                     TlsStrategy = doc.TlsStrategy,
                     TlsFirstFragmentSize = doc.TlsFirstFragmentSize > 0 ? doc.TlsFirstFragmentSize : 64,
-                    TlsFragmentThreshold = doc.TlsFragmentThreshold > 0 ? doc.TlsFragmentThreshold : 128,
-                    TlsFragmentSizes = NormalizeFragmentSizes(doc.TlsFragmentSizes, doc.TlsFirstFragmentSize),
+                    TlsFragmentThreshold = threshold,
+                    TlsFragmentSizes = normalizedSizes,
                     RedirectRules = doc.RedirectRules?
                         .Select(r => r.ToRule())
                         .Where(r => r != null)!
@@ -202,20 +205,34 @@ namespace IspAudit.Bypass
             };
         }
 
-        private static IReadOnlyList<int> NormalizeFragmentSizes(IEnumerable<int>? sizes, int fallbackSize)
+        private static IReadOnlyList<int> NormalizeFragmentSizes(IEnumerable<int>? sizes, int fallbackSize, int minClientHelloSize)
         {
+            const int maxTlsRecord = 16384;
+            const int minChunk = 4;
+
             var normalized = sizes?
                 .Where(v => v > 0)
-                .Select(v => v)
+                .Select(v => Math.Max(minChunk, v))
                 .Take(4) // ограничиваем разумно, чтобы не ломать стабильность
                 .ToList();
 
             if (normalized is { Count: > 0 })
             {
+                var sum = normalized.Sum();
+                if (sum < minClientHelloSize || sum > maxTlsRecord)
+                {
+                    return BuildFallbackSizes(fallbackSize);
+                }
                 return normalized;
             }
 
-            var safeSize = fallbackSize > 0 ? fallbackSize : 64;
+            return BuildFallbackSizes(fallbackSize);
+        }
+
+        private static IReadOnlyList<int> BuildFallbackSizes(int fallbackSize)
+        {
+            const int minChunk = 4;
+            var safeSize = Math.Max(minChunk, fallbackSize > 0 ? fallbackSize : 64);
             return new List<int> { safeSize };
         }
 

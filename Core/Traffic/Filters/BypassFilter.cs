@@ -14,6 +14,8 @@ namespace IspAudit.Core.Traffic.Filters
     public class BypassFilter : IPacketFilter
     {
         private readonly BypassProfile _profile;
+        private readonly Action<string>? _log;
+        private readonly string _presetName;
         private readonly ConcurrentDictionary<ConnectionKey, ConnectionState> _connections = new();
         private long _packetsProcessed;
         private long _rstDropped;
@@ -25,9 +27,11 @@ namespace IspAudit.Core.Traffic.Filters
         public string Name => "BypassFilter";
         public int Priority => 100; // High priority
 
-        public BypassFilter(BypassProfile profile)
+        public BypassFilter(BypassProfile profile, Action<string>? logAction = null, string presetName = "")
         {
             _profile = profile;
+            _log = logAction;
+            _presetName = presetName;
         }
 
         public bool Process(InterceptedPacket packet, PacketContext context, IPacketSender sender)
@@ -45,6 +49,7 @@ namespace IspAudit.Core.Traffic.Filters
                     if (_connections.TryGetValue(key, out var state) && state.BypassApplied)
                     {
                         Interlocked.Increment(ref _rstDroppedRelevant);
+                        _log?.Invoke($"[Bypass][RST] preset={_presetName}, rst@443 after bypass, conn={packet.Info.SrcIpInt}->{packet.Info.DstIpInt}:{packet.Info.DstPort}");
                     }
                 }
                 // Drop packet
@@ -74,6 +79,7 @@ namespace IspAudit.Core.Traffic.Filters
                         Interlocked.Increment(ref _clientHellosFragmented);
                         Interlocked.Increment(ref _tlsHandled);
                         _lastFragmentPlan = fragmentPlan != null ? string.Join('/', fragmentPlan.Select(f => f.PayloadLength)) : "";
+                        _log?.Invoke($"[Bypass][TLS] preset={_presetName}, payload={packet.Info.PayloadLength}, plan={_lastFragmentPlan}, strategy={_profile.TlsStrategy}, result=fragmented");
                         _connections.AddOrUpdate(connectionKey,
                             _ => new ConnectionState(Environment.TickCount64, true),
                             (_, existing) => new ConnectionState(existing.FirstSeen, true));

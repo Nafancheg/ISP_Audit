@@ -47,6 +47,11 @@ namespace IspAudit.ViewModels
         private string _bypassVerdictText = "";
         private string _bypassPlanText = "-";
         private string _bypassMetricsSince = "-";
+        private string _bypassVerdictReason = "";
+        private bool _isAutoAdjustAggressive;
+        private DateTime? _greenSince;
+        private bool _autoAdjustedDown;
+        private bool _autoAdjustedUp;
         
         // DNS Presets
         private string _selectedDnsPreset = "Hybrid (CF + Yandex)";
@@ -93,11 +98,12 @@ namespace IspAudit.ViewModels
             _trafficEngine = trafficEngine;
             _baseProfile = BypassProfile.CreateDefault();
             _currentFragmentSizes = _baseProfile.TlsFragmentSizes ?? new List<int> { _baseProfile.TlsFirstFragmentSize };
+            _currentFragmentSizes = _currentFragmentSizes.Select(v => Math.Max(4, v)).ToList();
             FragmentPresets = new List<FragmentPreset>
             {
                 new("Стандарт", new List<int>{64}, "Баланс: один фрагмент 64 байта"),
                 new("Умеренный", new List<int>{96}, "Чуть крупнее фрагмент для совместимости"),
-                new("Агрессивный", new List<int>{32,32}, "Два мелких фрагмента для сложных DPI"),
+                new("Агрессивный", new List<int>{32,32}.Select(v => Math.Max(4, v)).ToList(), "Два мелких фрагмента для сложных DPI (мин. 4 байта)"),
                 new("Профиль", _currentFragmentSizes, "Из файла профиля")
             };
             _selectedPreset = FragmentPresets.FirstOrDefault();
@@ -360,6 +366,32 @@ namespace IspAudit.ViewModels
         }
 
         /// <summary>
+        /// Причина текущего вердикта (для tooltip)
+        /// </summary>
+        public string BypassVerdictReason
+        {
+            get => _bypassVerdictReason;
+            private set { _bypassVerdictReason = value; OnPropertyChanged(nameof(BypassVerdictReason)); }
+        }
+
+        /// <summary>
+        /// Автокоррекция агрессивного пресета по метрикам
+        /// </summary>
+        public bool IsAutoAdjustAggressive
+        {
+            get => _isAutoAdjustAggressive;
+            set
+            {
+                if (_isAutoAdjustAggressive != value)
+                {
+                    _isAutoAdjustAggressive = value;
+                    OnPropertyChanged(nameof(IsAutoAdjustAggressive));
+                    ResetAutoAdjustState();
+                }
+            }
+        }
+
+        /// <summary>
         /// Цвет фона блока метрик (градация состояния)
         /// </summary>
         public System.Windows.Media.Brush BypassVerdictBrush
@@ -521,7 +553,7 @@ namespace IspAudit.ViewModels
                 };
 
                 // Create and register filter
-                var filter = new BypassFilter(profile);
+                var filter = new BypassFilter(profile, Log, _selectedPreset?.Name ?? "");
                 _trafficEngine.RegisterFilter(filter);
 
                 // Ensure engine is running
@@ -538,6 +570,7 @@ namespace IspAudit.ViewModels
                     Log($"[Bypass] Options applied: {CurrentBypassStrategy} | TLS chunks: {chunks}, threshold: {profile.TlsFragmentThreshold}");
                     _currentFilter = filter;
                     BypassMetricsSince = DateTime.Now.ToString("HH:mm:ss");
+                    ResetAutoAdjustState();
                     UpdateMetrics();
                 });
             }
@@ -761,35 +794,111 @@ namespace IspAudit.ViewModels
             var rstRelevant = snapshot.Value.RstDroppedRelevant;
             var rstEffective = Math.Max(0, rstRelevant - 5); // шум до 5 RST
             var ratio = fragmentsRaw == 0 ? double.PositiveInfinity : (double)rstEffective / fragments;
+            string reason;
 
             if (fragmentsRaw == 0)
             {
                 brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 226, 226));
                 verdict = "Внимание: нет фрагментаций — включите Fragment/Disorder";
+                reason = "Фрагментаций нет";
             }
             else if (fragmentsRaw < 10)
             {
                 brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
                 verdict = "Мало данных: <10 фрагментаций";
+                reason = "Собираем статистику";
             }
             else if (ratio > 4.0)
             {
                 brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 226, 226));
                 verdict = "Внимание: много RST относительно фрагментаций";
+                reason = $"ratio={ratio:F2} > 4";
             }
             else if (ratio > 1.5)
             {
                 brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 249, 195));
                 verdict = "Есть RST, но обход работает (умеренно)";
+                reason = $"ratio={ratio:F2} > 1.5";
             }
             else
             {
                 brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 252, 231));
                 verdict = "Хорошо: RST мало, обход устойчив";
+                reason = $"ratio={ratio:F2} в норме";
             }
 
             BypassVerdictBrush = brush;
             BypassVerdictText = verdict;
+            BypassVerdictReason = reason;
+
+            EvaluateAutoAdjust(snapshot.Value, brush, ratio);
+        }
+
+        private void EvaluateAutoAdjust(BypassFilter.BypassMetricsSnapshot snapshot, System.Windows.Media.Brush verdictBrush, double ratio)
+        {
+            if (!_isAutoAdjustAggressive)
+            {
+                return;
+            }
+
+            if (!string.Equals(_selectedPreset?.Name, "Агрессивный", StringComparison.OrdinalIgnoreCase))
+            {
+                ResetAutoAdjustState();
+                return;
+            }
+
+            var fragments = snapshot.ClientHellosFragmented;
+            var rstRelevant = snapshot.RstDroppedRelevant;
+
+            // Правило 1: ранние частые RST — ужать самый маленький чанк до 4 байт
+            if (!_autoAdjustedDown && fragments >= 5 && fragments <= 20 && rstRelevant > 2 * fragments)
+            {
+                var adjusted = _currentFragmentSizes.Select(v => Math.Max(4, v)).ToList();
+                var min = adjusted.Min();
+                var idx = adjusted.IndexOf(min);
+                adjusted[idx] = 4;
+                _currentFragmentSizes = adjusted;
+                OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
+                Log($"[Bypass][AutoAdjust] Aggressive: high RST ratio ({rstRelevant}/{fragments}), set min chunk=4");
+                _autoAdjustedDown = true;
+                _ = ApplyBypassOptionsAsync();
+                return;
+            }
+
+            // Правило 2: стабильный зелёный > 30 сек — усилить (слегка уменьшить минимальный чанк, но не ниже 4)
+            var isGreen = verdictBrush is SolidColorBrush sc && sc.Color == System.Windows.Media.Color.FromRgb(220, 252, 231);
+            if (isGreen)
+            {
+                _greenSince ??= DateTime.Now;
+            }
+            else
+            {
+                _greenSince = null;
+            }
+
+            if (isGreen && !_autoAdjustedUp && _greenSince.HasValue && DateTime.Now - _greenSince.Value > TimeSpan.FromSeconds(30))
+            {
+                var adjusted = _currentFragmentSizes.Select(v => Math.Max(4, v)).ToList();
+                var min = adjusted.Min();
+                var idx = adjusted.IndexOf(min);
+                var newVal = Math.Max(4, min - 4);
+                if (newVal < min)
+                {
+                    adjusted[idx] = newVal;
+                    _currentFragmentSizes = adjusted;
+                    OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
+                    Log("[Bypass][AutoAdjust] Aggressive: stable green 30s, slightly tightening fragmentation");
+                    _autoAdjustedUp = true;
+                    _ = ApplyBypassOptionsAsync();
+                }
+            }
+        }
+
+        private void ResetAutoAdjustState()
+        {
+            _greenSince = null;
+            _autoAdjustedDown = false;
+            _autoAdjustedUp = false;
         }
 
         private void PersistFragmentPreset()
