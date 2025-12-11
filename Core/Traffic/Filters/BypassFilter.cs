@@ -14,9 +14,10 @@ namespace IspAudit.Core.Traffic.Filters
     public class BypassFilter : IPacketFilter
     {
         private readonly BypassProfile _profile;
-        private readonly ConcurrentDictionary<ConnectionKey, long> _processedConnections = new();
+        private readonly ConcurrentDictionary<ConnectionKey, ConnectionState> _connections = new();
         private long _packetsProcessed;
         private long _rstDropped;
+        private long _rstDroppedRelevant;
         private long _clientHellosFragmented;
         private long _tlsHandled;
         private string _lastFragmentPlan = string.Empty;
@@ -37,6 +38,15 @@ namespace IspAudit.Core.Traffic.Filters
             if (_profile.DropTcpRst && packet.Info.IsTcp && packet.Info.IsRst)
             {
                 Interlocked.Increment(ref _rstDropped);
+
+                if (packet.Info.DstPort == 443)
+                {
+                    var key = new ConnectionKey(packet.Info.SrcIpInt, packet.Info.DstIpInt, packet.Info.SrcPort, packet.Info.DstPort);
+                    if (_connections.TryGetValue(key, out var state) && state.BypassApplied)
+                    {
+                        Interlocked.Increment(ref _rstDroppedRelevant);
+                    }
+                }
                 // Drop packet
                 return false;
             }
@@ -55,8 +65,7 @@ namespace IspAudit.Core.Traffic.Filters
                     }
 
                     var connectionKey = new ConnectionKey(packet.Info.SrcIpInt, packet.Info.DstIpInt, packet.Info.SrcPort, packet.Info.DstPort);
-                    bool isNewConnection = !_processedConnections.ContainsKey(connectionKey);
-                    _processedConnections[connectionKey] = Environment.TickCount64;
+                    bool isNewConnection = _connections.TryAdd(connectionKey, new ConnectionState(Environment.TickCount64, false));
 
                     var fragmentPlan = BuildFragmentPlan(packet);
 
@@ -65,6 +74,9 @@ namespace IspAudit.Core.Traffic.Filters
                         Interlocked.Increment(ref _clientHellosFragmented);
                         Interlocked.Increment(ref _tlsHandled);
                         _lastFragmentPlan = fragmentPlan != null ? string.Join('/', fragmentPlan.Select(f => f.PayloadLength)) : "";
+                        _connections.AddOrUpdate(connectionKey,
+                            _ => new ConnectionState(Environment.TickCount64, true),
+                            (_, existing) => new ConnectionState(existing.FirstSeen, true));
                         return false; // Packet handled (fragmented/faked), drop original
                     }
                 }
@@ -277,6 +289,7 @@ namespace IspAudit.Core.Traffic.Filters
             {
                 PacketsProcessed = Interlocked.Read(ref _packetsProcessed),
                 RstDropped = Interlocked.Read(ref _rstDropped),
+                RstDroppedRelevant = Interlocked.Read(ref _rstDroppedRelevant),
                 ClientHellosFragmented = Interlocked.Read(ref _clientHellosFragmented),
                 TlsHandled = Interlocked.Read(ref _tlsHandled),
                 LastFragmentPlan = _lastFragmentPlan
@@ -287,9 +300,22 @@ namespace IspAudit.Core.Traffic.Filters
         {
             public long PacketsProcessed { get; init; }
             public long RstDropped { get; init; }
+            public long RstDroppedRelevant { get; init; }
             public long ClientHellosFragmented { get; init; }
             public long TlsHandled { get; init; }
             public string LastFragmentPlan { get; init; }
+        }
+
+        private readonly struct ConnectionState
+        {
+            public ConnectionState(long firstSeen, bool bypassApplied)
+            {
+                FirstSeen = firstSeen;
+                BypassApplied = bypassApplied;
+            }
+
+            public long FirstSeen { get; }
+            public bool BypassApplied { get; }
         }
 
         private readonly struct FragmentSlice

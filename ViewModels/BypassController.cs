@@ -45,6 +45,8 @@ namespace IspAudit.ViewModels
         private string _bypassMetricsText = "";
         private System.Windows.Media.Brush _bypassVerdictBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
         private string _bypassVerdictText = "";
+        private string _bypassPlanText = "-";
+        private string _bypassMetricsSince = "-";
         
         // DNS Presets
         private string _selectedDnsPreset = "Hybrid (CF + Yandex)";
@@ -340,6 +342,24 @@ namespace IspAudit.ViewModels
         }
 
         /// <summary>
+        /// План фрагментации, применённый в фильтре
+        /// </summary>
+        public string BypassPlanText
+        {
+            get => _bypassPlanText;
+            private set { _bypassPlanText = value; OnPropertyChanged(nameof(BypassPlanText)); }
+        }
+
+        /// <summary>
+        /// Метрики считаются с момента последнего применения опций
+        /// </summary>
+        public string BypassMetricsSince
+        {
+            get => _bypassMetricsSince;
+            private set { _bypassMetricsSince = value; OnPropertyChanged(nameof(BypassMetricsSince)); }
+        }
+
+        /// <summary>
         /// Цвет фона блока метрик (градация состояния)
         /// </summary>
         public System.Windows.Media.Brush BypassVerdictBrush
@@ -517,6 +537,7 @@ namespace IspAudit.ViewModels
                     var chunks = fragmentSizes.Any() ? string.Join('/', fragmentSizes) : "default";
                     Log($"[Bypass] Options applied: {CurrentBypassStrategy} | TLS chunks: {chunks}, threshold: {profile.TlsFragmentThreshold}");
                     _currentFilter = filter;
+                    BypassMetricsSince = DateTime.Now.ToString("HH:mm:ss");
                     UpdateMetrics();
                 });
             }
@@ -723,37 +744,47 @@ namespace IspAudit.ViewModels
                 BypassMetricsText = "Фрагментация выключена";
                 BypassVerdictText = "Bypass выключен";
                 BypassVerdictBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
+                BypassPlanText = "-";
+                BypassMetricsSince = "-";
                 return;
             }
 
             var plan = string.IsNullOrWhiteSpace(snapshot.Value.LastFragmentPlan) ? "-" : snapshot.Value.LastFragmentPlan;
-            BypassMetricsText = $"TLS обработано: {snapshot.Value.TlsHandled}; фрагментировано: {snapshot.Value.ClientHellosFragmented}; RST заблокировано: {snapshot.Value.RstDropped}; план: {plan}";
+            BypassPlanText = plan;
+            BypassMetricsText = $"TLS обработано: {snapshot.Value.TlsHandled}; фрагментировано: {snapshot.Value.ClientHellosFragmented}; RST(443,bypass): {snapshot.Value.RstDroppedRelevant}; RST(всего): {snapshot.Value.RstDropped}; план: {plan}";
 
-            // Градация по отношению RST к числу фрагментированных ClientHello: зелёный — RST мало, жёлтый — умеренно, красный — много или нет фрагментаций
+            // Градация по релевантным RST: считаем только RST на 443 для соединений, где применялась фрагментация; первые 5 RST считаем шумом
             System.Windows.Media.Brush brush;
             string verdict;
-            var fragments = Math.Max(1, snapshot.Value.ClientHellosFragmented); // избегаем деления на 0
-            var rst = snapshot.Value.RstDropped;
-            var ratio = (double)rst / fragments;
+            var fragmentsRaw = snapshot.Value.ClientHellosFragmented;
+            var fragments = Math.Max(1, fragmentsRaw);
+            var rstRelevant = snapshot.Value.RstDroppedRelevant;
+            var rstEffective = Math.Max(0, rstRelevant - 5); // шум до 5 RST
+            var ratio = fragmentsRaw == 0 ? double.PositiveInfinity : (double)rstEffective / fragments;
 
-            if (snapshot.Value.ClientHellosFragmented == 0)
+            if (fragmentsRaw == 0)
             {
-                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 226, 226)); // красный фон
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 226, 226));
                 verdict = "Внимание: нет фрагментаций — включите Fragment/Disorder";
             }
-            else if (ratio > 2.0)
+            else if (fragmentsRaw < 10)
             {
-                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 226, 226)); // красный фон
-                verdict = "Внимание: много RST относительно попыток TLS";
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
+                verdict = "Мало данных: <10 фрагментаций";
             }
-            else if (ratio > 0.5)
+            else if (ratio > 4.0)
             {
-                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 249, 195)); // жёлтый фон
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 226, 226));
+                verdict = "Внимание: много RST относительно фрагментаций";
+            }
+            else if (ratio > 1.5)
+            {
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 249, 195));
                 verdict = "Есть RST, но обход работает (умеренно)";
             }
             else
             {
-                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 252, 231)); // зелёный фон
+                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 252, 231));
                 verdict = "Хорошо: RST мало, обход устойчив";
             }
 

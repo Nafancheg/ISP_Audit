@@ -330,6 +330,8 @@
                                 <StackPanel>
                                     <TextBlock Text="Метрики bypass" FontWeight="SemiBold" FontSize="12" Foreground="#111827"/>
                                     <TextBlock Text="{Binding BypassMetricsText}" FontSize="11" Foreground="#374151" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                    <TextBlock Text="{Binding BypassPlanText, StringFormat=План: {0}}" FontSize="10" Foreground="#4B5563" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding BypassMetricsSince, StringFormat=Метрики с {0}}" FontSize="10" Foreground="#4B5563" TextWrapping="Wrap" Margin="0,2,0,0"/>
                                     <TextBlock Text="{Binding BypassVerdictText}" FontSize="11" FontWeight="SemiBold" Foreground="#111827" TextWrapping="Wrap" Margin="0,6,0,0"/>
                                     <TextBlock Text="Рост TLS/Фрагм — хорошо. RST заблокировано > 0 значит провайдер пытался рвать соединение." FontSize="10" Foreground="#6B7280" TextWrapping="Wrap" Margin="0,6,0,0"/>
                                 </StackPanel>
