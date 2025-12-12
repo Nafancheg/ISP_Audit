@@ -1,9 +1,25 @@
 <Application x:Class="IspAudit.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:converters="clr-namespace:IspAudit.Converters">
     <Application.Resources>
         <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Material Design Theme (переключается программно) -->
+                <materialDesign:BundledTheme BaseTheme="Light" PrimaryColor="Blue" SecondaryColor="Cyan" />
+                
+                <!-- Material Design 3 Defaults -->
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesign3.Defaults.xaml" />
+                <!-- Базовые стили контролов, чтобы гарантированно были ключи MaterialDesign* -->
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.TextBox.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Button.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.ToggleButton.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.ComboBox.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.RadioButton.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.DataGrid.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
             <!-- Converters -->
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
             <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
@@ -11,228 +27,124 @@
             <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
             <converters:EqualityConverter x:Key="EqualityConverter"/>
 
-            <!-- Colors -->
-            <SolidColorBrush x:Key="BgBrush" Color="#FAFAFB"/>
-            <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF"/>
-            <SolidColorBrush x:Key="TextBrush" Color="#0B1220"/>
-            <SolidColorBrush x:Key="MutedBrush" Color="#667085"/>
-            <SolidColorBrush x:Key="BorderBrush" Color="#E5E7EB"/>
-            <SolidColorBrush x:Key="PrimaryBrush" Color="#2563EB"/>
-            <SolidColorBrush x:Key="PrimaryHoverBrush" Color="#1E55D7"/>
-            <SolidColorBrush x:Key="PassBrush" Color="#10B981"/>
-            <SolidColorBrush x:Key="FailBrush" Color="#EF4444"/>
-            <SolidColorBrush x:Key="WarnBrush" Color="#EAB308"/>
-            <SolidColorBrush x:Key="IdleBrush" Color="#9CA3AF"/>
-            <SolidColorBrush x:Key="RunningBrush" Color="#2563EB"/>
+            <!-- Статусные цвета (фиксированные) -->
+            <SolidColorBrush x:Key="PassBrush" Color="#4CAF50"/>
+            <SolidColorBrush x:Key="FailBrush" Color="#F44336"/>
+            <SolidColorBrush x:Key="WarnBrush" Color="#FF9800"/>
+            <SolidColorBrush x:Key="IdleBrush" Color="#9E9E9E"/>
+            <SolidColorBrush x:Key="RunningBrush" Color="#2196F3"/>
 
-            <!-- Typography Styles -->
-            <Style x:Key="H1Style" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="28"/>
-                <Setter Property="FontWeight" Value="Bold"/>
-                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-            </Style>
+            <!-- 
+                 Алиасы для совместимости со старым кодом.
+                 ВАЖНО: MaterialDesignPaper, MaterialDesignBody и т.д. — это BRUSH-ы, а не Color!
+                 Поэтому используем их напрямую через DynamicResource, без SolidColorBrush-обёртки.
+            -->
+            <!-- BgBrush и PanelBrush — фон окна/панелей -->
+            <!-- TextBrush — основной текст -->
+            <!-- MutedBrush — приглушённый текст -->
+            <!-- BorderBrush — разделители -->
+            <!-- PrimaryBrush — основной акцент -->
+            
+            <!-- Фиксированный светло-голубой для hover состояния -->
+            <SolidColorBrush x:Key="Primary200" Color="#BBDEFB"/>
 
-            <Style x:Key="H2Style" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="18"/>
-                <Setter Property="FontWeight" Value="SemiBold"/>
-                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-            </Style>
+            <!-- Typography Styles (на базе MD) -->
+            <Style x:Key="H1Style" TargetType="TextBlock" BasedOn="{StaticResource MaterialDesignHeadline4TextBlock}"/>
 
-            <Style x:Key="BodyStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="14"/>
-                <Setter Property="FontWeight" Value="Normal"/>
-                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-            </Style>
+            <Style x:Key="H2Style" TargetType="TextBlock" BasedOn="{StaticResource MaterialDesignHeadline6TextBlock}"/>
 
-            <Style x:Key="CaptionStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="12"/>
-                <Setter Property="FontWeight" Value="Normal"/>
-                <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
-            </Style>
+            <Style x:Key="BodyStyle" TargetType="TextBlock" BasedOn="{StaticResource MaterialDesignBody2TextBlock}"/>
 
-            <!-- Primary Button Style -->
-            <Style x:Key="PrimaryButtonStyle" TargetType="Button">
-                <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
-                <Setter Property="Foreground" Value="White"/>
-                <Setter Property="FontSize" Value="14"/>
-                <Setter Property="FontWeight" Value="Medium"/>
-                <Setter Property="Height" Value="40"/>
-                <Setter Property="Padding" Value="24,0"/>
+            <Style x:Key="CaptionStyle" TargetType="TextBlock" BasedOn="{StaticResource MaterialDesignCaptionTextBlock}"/>
+
+            <!-- Алиасы кнопок для совместимости (используют стандартные MD стили) -->
+            <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}"/>
+
+            <Style x:Key="SecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}"/>
+
+            <!-- Safe Fallback for Icon Button -->
+            <Style x:Key="ThemeToggleButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
                 <Setter Property="BorderThickness" Value="0"/>
-                <Setter Property="Cursor" Value="Hand"/>
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="Button">
-                            <Border Background="{TemplateBinding Background}"
-                                    CornerRadius="12"
-                                    Padding="{TemplateBinding Padding}">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="{StaticResource PrimaryHoverBrush}"/>
-                                </Trigger>
-                                <Trigger Property="IsEnabled" Value="False">
-                                    <Setter Property="Opacity" Value="0.5"/>
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
+                <Setter Property="Padding" Value="4"/>
+                <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBody}"/>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource MaterialDesignSelection}"/>
+                    </Trigger>
+                </Style.Triggers>
             </Style>
 
-            <!-- Secondary Button Style -->
-            <Style x:Key="SecondaryButtonStyle" TargetType="Button">
-                <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
-                <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
-                <Setter Property="FontSize" Value="14"/>
-                <Setter Property="FontWeight" Value="Medium"/>
-                <Setter Property="Height" Value="40"/>
-                <Setter Property="Padding" Value="16,0"/>
-                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
-                <Setter Property="BorderThickness" Value="1"/>
-                <Setter Property="Cursor" Value="Hand"/>
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="Button">
-                            <Border Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="12"
-                                    Padding="{TemplateBinding Padding}">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#F9FAFB"/>
-                                </Trigger>
-                                <Trigger Property="IsEnabled" Value="False">
-                                    <Setter Property="Opacity" Value="0.5"/>
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
-
-            <!-- Card Style -->
+            <!-- Card Style (используем MD Card через Border) -->
             <Style x:Key="CardStyle" TargetType="Border">
-                <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
-                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
-                <Setter Property="BorderThickness" Value="1"/>
-                <Setter Property="CornerRadius" Value="12"/>
+                <Setter Property="Background" Value="{DynamicResource MaterialDesignCardBackground}"/>
+                <Setter Property="CornerRadius" Value="8"/>
                 <Setter Property="Effect">
                     <Setter.Value>
-                        <DropShadowEffect Color="#10182820" BlurRadius="3" ShadowDepth="1" Opacity="0.08"/>
+                        <DropShadowEffect Color="#20000000" BlurRadius="8" ShadowDepth="2" Opacity="0.25"/>
                     </Setter.Value>
                 </Setter>
             </Style>
 
-            <!-- TextBox Style -->
-            <Style x:Key="ModernTextBoxStyle" TargetType="TextBox">
-                <Setter Property="Height" Value="40"/>
-                <Setter Property="Padding" Value="12,0"/>
-                <Setter Property="FontSize" Value="14"/>
-                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
-                <Setter Property="BorderThickness" Value="1"/>
-                <Setter Property="Background" Value="White"/>
-                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <!-- TextBox Style (MD Outlined) -->
+            <Style x:Key="ModernTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource MaterialDesignTextBox}">
+                <Setter Property="materialDesign:HintAssist.IsFloating" Value="False"/>
+                <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBody}"/>
+                <Setter Property="CaretBrush" Value="{DynamicResource MaterialDesignBody}"/>
                 <Setter Property="VerticalContentAlignment" Value="Center"/>
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="TextBox">
-                            <Border Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="12">
-                                <ScrollViewer x:Name="PART_ContentHost" 
-                                            Margin="{TemplateBinding Padding}"
-                                            VerticalAlignment="Center"/>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsEnabled" Value="False">
-                                    <Setter Property="Background" Value="#F9FAFB"/>
-                                    <Setter Property="Foreground" Value="{StaticResource IdleBrush}"/>
-                                </Trigger>
-                                <Trigger Property="IsFocused" Value="True">
-                                    <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
-                                    <Setter Property="BorderThickness" Value="2"/>
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
+                <Setter Property="Padding" Value="12,8"/>
+                <Setter Property="Height" Value="Auto"/>
+                <Setter Property="MinHeight" Value="42"/>
             </Style>
 
-            <!-- ComboBox Style -->
-            <Style x:Key="ModernComboBoxStyle" TargetType="ComboBox">
-                <Setter Property="Height" Value="40"/>
-                <Setter Property="Padding" Value="12,0"/>
-                <Setter Property="FontSize" Value="14"/>
-                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <!-- Bypass Toggle Button Style -->
+            <Style x:Key="BypassToggleButtonStyle" TargetType="ToggleButton" BasedOn="{StaticResource MaterialDesignSwitchToggleButton}">
+                <Setter Property="Height" Value="36"/>
+                <Setter Property="Margin" Value="2"/>
+                <Setter Property="Padding" Value="8,4"/>
+                <Setter Property="FontSize" Value="11"/>
                 <Setter Property="BorderThickness" Value="1"/>
-                <Setter Property="Background" Value="White"/>
-                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="ComboBox">
-                            <Border Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="12">
-                                <Grid>
-                                    <ContentPresenter Margin="{TemplateBinding Padding}"
-                                                    VerticalAlignment="Center"
-                                                    HorizontalAlignment="Left"
-                                                    Content="{TemplateBinding SelectionBoxItem}"/>
-                                    <ToggleButton Grid.Column="0" 
-                                                IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
-                                                Background="Transparent"
-                                                BorderThickness="0"/>
-                                </Grid>
-                            </Border>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
+                <!-- Default (Unchecked) State: используем PrimaryHueMidBrush -->
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                
+                <Style.Triggers>
+                    <!-- Checked State -->
+                    <Trigger Property="IsChecked" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                        <Setter Property="Foreground" Value="White"/>
+                        <Setter Property="BorderBrush" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                    </Trigger>
+                    
+                    <!-- Hover State (Unchecked) -->
+                    <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                            <Condition Property="IsMouseOver" Value="True"/>
+                            <Condition Property="IsChecked" Value="False"/>
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Background" Value="{DynamicResource Primary200}"/> <!-- Light Blue -->
+                        <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                    </MultiTrigger>
+
+                    <!-- Hover State (Checked) -->
+                    <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                            <Condition Property="IsMouseOver" Value="True"/>
+                            <Condition Property="IsChecked" Value="True"/>
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Background" Value="{DynamicResource PrimaryHueDarkBrush}"/> <!-- Darker Blue -->
+                        <Setter Property="Foreground" Value="White"/>
+                    </MultiTrigger>
+                </Style.Triggers>
             </Style>
+
+            <!-- ComboBox Style (MD Outlined) -->
+            <Style x:Key="ModernComboBoxStyle" TargetType="ComboBox" BasedOn="{StaticResource MaterialDesignComboBox}"/>
 
             <!-- RadioButton Toggle Style -->
-            <Style x:Key="ToggleRadioButtonStyle" TargetType="RadioButton">
-                <Setter Property="Height" Value="36"/>
-                <Setter Property="Padding" Value="20,0"/>
-                <Setter Property="FontSize" Value="14"/>
-                <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
-                <Setter Property="Cursor" Value="Hand"/>
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="RadioButton">
-                            <Border x:Name="border"
-                                    Background="Transparent"
-                                    CornerRadius="8"
-                                    Padding="{TemplateBinding Padding}">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsChecked" Value="True">
-                                    <Setter TargetName="border" Property="Background" Value="White"/>
-                                    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-                                    <Setter TargetName="border" Property="Effect">
-                                        <Setter.Value>
-                                            <DropShadowEffect Color="#10182820" BlurRadius="2" ShadowDepth="1" Opacity="0.1"/>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Trigger>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-                                </Trigger>
-                                <Trigger Property="IsEnabled" Value="False">
-                                    <Setter Property="Opacity" Value="0.5"/>
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
+            <Style x:Key="ToggleRadioButtonStyle" TargetType="RadioButton" BasedOn="{StaticResource MaterialDesignRadioButton}"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

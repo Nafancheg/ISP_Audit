@@ -83,12 +83,14 @@ namespace IspAudit.Utils
                 int ipHeaderLen;
                 int protocol;
                 string destIp;
+                IPAddress? destAddress;
 
                 if (ipVersion == 4)
                 {
                     ipHeaderLen = (buffer[0] & 0x0F) * 4;
                     protocol = buffer[9];
-                    destIp = new IPAddress(new byte[] { buffer[16], buffer[17], buffer[18], buffer[19] }).ToString();
+                    destAddress = new IPAddress(new byte[] { buffer[16], buffer[17], buffer[18], buffer[19] });
+                    destIp = destAddress.ToString();
                 }
                 else if (ipVersion == 6)
                 {
@@ -96,7 +98,8 @@ namespace IspAudit.Utils
                     protocol = buffer[6]; // Next Header (simplified, doesn't handle extension headers)
                     var ipBytes = new byte[16];
                     Array.Copy(buffer, 24, ipBytes, 0, 16);
-                    destIp = new IPAddress(ipBytes).ToString();
+                    destAddress = new IPAddress(ipBytes);
+                    destIp = destAddress.ToString();
                 }
                 else return;
 
@@ -107,6 +110,7 @@ namespace IspAudit.Utils
                 if (tcpOffset + 20 > length) return;
                 
                 int tcpHeaderLen = ((buffer[tcpOffset + 12] >> 4) & 0x0F) * 4;
+                int destPort = (buffer[tcpOffset + 2] << 8) | buffer[tcpOffset + 3];
                 int payloadOffset = tcpOffset + tcpHeaderLen;
                 
                 if (payloadOffset >= length) return; // No payload
@@ -197,6 +201,10 @@ namespace IspAudit.Utils
                                             _dnsCache[destIp] = lowerName;
                                             OnHostnameUpdated?.Invoke(destIp, lowerName);
                                             _progress?.Report($"[SNI] Detected: {destIp} -> {lowerName}");
+                                            if (destAddress != null)
+                                            {
+                                                OnSniDetected?.Invoke(destAddress, destPort, lowerName);
+                                            }
                                         }
                                     }
                                 }
@@ -518,6 +526,11 @@ namespace IspAudit.Utils
         /// Событие при обновлении/добавлении hostname для IP (IP, Hostname)
         /// </summary>
         public event Action<string, string>? OnHostnameUpdated;
+
+        /// <summary>
+        /// Событие при обнаружении SNI в TLS ClientHello (IP, порт, hostname)
+        /// </summary>
+        public event Action<IPAddress, int, string>? OnSniDetected;
     }
 
     public class DnsFailureInfo

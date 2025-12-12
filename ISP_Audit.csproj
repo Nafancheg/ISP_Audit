@@ -4,7 +4,8 @@
     <OutputType>WinExe</OutputType>
     <!-- Use the windows-specific TF to enable WPF on Windows -->
     <TargetFramework>net9.0-windows</TargetFramework>
-    <SupportedOSPlatformVersion>6.1</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -40,6 +41,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="MaterialDesignThemes" Version="5.3.0" />
     <PackageReference Include="System.Drawing.Common" Version="9.0.10" />
     <PackageReference Include="System.Management" Version="9.0.0" />
   </ItemGroup>

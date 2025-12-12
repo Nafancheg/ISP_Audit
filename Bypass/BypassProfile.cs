@@ -40,6 +40,16 @@ namespace IspAudit.Bypass
         public TlsBypassStrategy TlsStrategy { get; init; } = TlsBypassStrategy.Fragment;
 
         /// <summary>
+        /// Последний выбранный пресет фрагментации (для восстановления UI).
+        /// </summary>
+        public string FragmentPresetName { get; init; } = "Профиль";
+
+        /// <summary>
+        /// Флаг автокоррекции для агрессивного пресета.
+        /// </summary>
+        public bool AutoAdjustAggressive { get; init; }
+
+        /// <summary>
         /// Размер первой части ClientHello после фрагментации.
         /// </summary>
         public int TlsFirstFragmentSize { get; init; } = 64;
@@ -98,7 +108,9 @@ namespace IspAudit.Bypass
                             Enabled = r.Enabled,
                             Hosts = r.Hosts?.ToList()
                         })
-                        .ToList()
+                        .ToList(),
+                    FragmentPresetName = profile.FragmentPresetName,
+                    AutoAdjustAggressive = profile.AutoAdjustAggressive
                 };
 
                 var json = JsonSerializer.Serialize(doc, options);
@@ -133,6 +145,7 @@ namespace IspAudit.Bypass
 
                 var threshold = doc.TlsFragmentThreshold > 0 ? doc.TlsFragmentThreshold : 128;
                 var normalizedSizes = NormalizeFragmentSizes(doc.TlsFragmentSizes, doc.TlsFirstFragmentSize, threshold);
+                var presetName = string.IsNullOrWhiteSpace(doc.FragmentPresetName) ? "Профиль" : doc.FragmentPresetName;
 
                 return new BypassProfile
                 {
@@ -142,6 +155,8 @@ namespace IspAudit.Bypass
                     TlsFirstFragmentSize = doc.TlsFirstFragmentSize > 0 ? doc.TlsFirstFragmentSize : 64,
                     TlsFragmentThreshold = threshold,
                     TlsFragmentSizes = normalizedSizes,
+                    FragmentPresetName = presetName,
+                    AutoAdjustAggressive = doc.AutoAdjustAggressive,
                     RedirectRules = doc.RedirectRules?
                         .Select(r => r.ToRule())
                         .Where(r => r != null)!
@@ -201,6 +216,8 @@ namespace IspAudit.Bypass
                 TlsFirstFragmentSize = 64,
                 TlsFragmentThreshold = 128,
                 TlsFragmentSizes = new List<int> { 64 },
+                FragmentPresetName = "Профиль",
+                AutoAdjustAggressive = false,
                 RedirectRules = new[] { defaultRule, defaultTcpRule }
             };
         }
@@ -244,6 +261,8 @@ namespace IspAudit.Bypass
             public int TlsFirstFragmentSize { get; set; } = 64;
             public int TlsFragmentThreshold { get; set; } = 128;
             public List<int>? TlsFragmentSizes { get; set; }
+            public string? FragmentPresetName { get; set; }
+            public bool AutoAdjustAggressive { get; set; }
             public List<BypassRedirectRuleDocument>? RedirectRules { get; set; }
         }
 

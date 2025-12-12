@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using MaterialDesignThemes.Wpf;
+using IspAudit.Bypass;
 using IspAudit.Models;
 using IspAudit.Wpf;
 
@@ -95,6 +97,21 @@ namespace IspAudit.ViewModels
         private bool _enableLiveTesting = true;
         private bool _enableAutoBypass = true;
         private bool _isBasicTestMode = false;
+        private bool _isDarkTheme = false;
+
+        public bool IsDarkTheme
+        {
+            get => _isDarkTheme;
+            set
+            {
+                if (_isDarkTheme != value)
+                {
+                    _isDarkTheme = value;
+                    OnPropertyChanged(nameof(IsDarkTheme));
+                    ApplyTheme(value);
+                }
+            }
+        }
 
         public string ScreenState
         {
@@ -150,13 +167,23 @@ namespace IspAudit.ViewModels
         public string CurrentAction
         {
             get => _currentAction;
-            set { _currentAction = value; OnPropertyChanged(nameof(CurrentAction)); }
+            set
+            {
+                if (string.Equals(_currentAction, value, StringComparison.Ordinal)) return;
+                _currentAction = value;
+                OnPropertyChanged(nameof(CurrentAction));
+            }
         }
 
         public string UserMessage
         {
             get => _userMessage;
-            set { _userMessage = value; OnPropertyChanged(nameof(UserMessage)); }
+            set
+            {
+                if (string.Equals(_userMessage, value, StringComparison.Ordinal)) return;
+                _userMessage = value;
+                OnPropertyChanged(nameof(UserMessage));
+            }
         }
 
         public bool EnableLiveTesting
@@ -196,6 +223,14 @@ namespace IspAudit.ViewModels
         public string FlowModeText => Orchestrator.FlowModeText;
         public string DiagnosticStatus => Orchestrator.DiagnosticStatus;
         public bool IsDiagnosticRunning => Orchestrator.IsDiagnosticRunning;
+        public string AutoBypassStatus => Orchestrator.AutoBypassStatus;
+        public string AutoBypassVerdict => Orchestrator.AutoBypassVerdict;
+        public string AutoBypassMetrics => Orchestrator.AutoBypassMetrics;
+        public System.Windows.Media.Brush AutoBypassStatusBrush => Orchestrator.AutoBypassStatusBrush;
+        public bool HasRecommendations => Orchestrator.HasRecommendations;
+        public string RecommendedStrategiesText => Orchestrator.RecommendedStrategiesText;
+        public string ManualRecommendationsText => Orchestrator.ManualRecommendationsText;
+        public string RecommendationHintText => Orchestrator.RecommendationHintText;
 
         // Прокси-свойства для BypassController
         public bool ShowBypassPanel => Bypass.ShowBypassPanel;
@@ -216,8 +251,8 @@ namespace IspAudit.ViewModels
         public bool IsTlsFakeActive => Bypass.IsTlsFakeActive;
         public bool IsDropRstActive => Bypass.IsDropRstActive;
         public bool IsDoHActive => Bypass.IsDoHActive;
-        public List<BypassController.FragmentPreset> FragmentPresets => Bypass.FragmentPresets;
-        public BypassController.FragmentPreset? SelectedFragmentPreset { get => Bypass.SelectedFragmentPreset; set => Bypass.SelectedFragmentPreset = value; }
+        public List<TlsFragmentPreset> FragmentPresets => Bypass.FragmentPresets;
+        public TlsFragmentPreset? SelectedFragmentPreset { get => Bypass.SelectedFragmentPreset; set => Bypass.SelectedFragmentPreset = value; }
         public string SelectedFragmentPresetLabel => Bypass.SelectedFragmentPresetLabel;
         public string BypassMetricsText => Bypass.BypassMetricsText;
         public System.Windows.Media.Brush BypassVerdictBrush => Bypass.BypassVerdictBrush;
@@ -260,6 +295,7 @@ namespace IspAudit.ViewModels
         public ICommand ReportCommand { get; }
         public ICommand DetailsCommand { get; }
         public ICommand BrowseExeCommand { get; }
+        public ICommand ToggleThemeCommand { get; }
         
         // Bypass Toggle Commands
         public ICommand ToggleFragmentCommand { get; }
@@ -268,6 +304,7 @@ namespace IspAudit.ViewModels
         public ICommand ToggleDropRstCommand { get; }
         public ICommand ToggleDoHCommand { get; }
         public ICommand DisableAllBypassCommand { get; }
+        public ICommand ApplyRecommendationsCommand { get; }
 
         #endregion
 
@@ -325,6 +362,10 @@ namespace IspAudit.ViewModels
                     OnPropertyChanged(nameof(StartButtonText));
                     CheckTrafficEngineState();
                 }
+                if (e.PropertyName == nameof(Orchestrator.HasRecommendations))
+                {
+                    CommandManager.InvalidateRequerySuggested();
+                }
             };
 
             Results.OnLog += Log;
@@ -345,6 +386,7 @@ namespace IspAudit.ViewModels
             ReportCommand = new RelayCommand(_ => GenerateReport(), _ => IsDone);
             DetailsCommand = new RelayCommand(param => ShowDetailsDialog(param as TestResult), _ => true);
             BrowseExeCommand = new RelayCommand(_ => BrowseExe(), _ => !IsRunning);
+            ToggleThemeCommand = new RelayCommand(_ => IsDarkTheme = !IsDarkTheme);
 
             // Bypass Commands
             ToggleFragmentCommand = new RelayCommand(_ => Bypass.IsFragmentEnabled = !Bypass.IsFragmentEnabled, _ => ShowBypassPanel);
@@ -358,6 +400,8 @@ namespace IspAudit.ViewModels
                 EnableAutoBypass = false; // Также отключаем авто-включение при следующем старте
             }, 
                 _ => ShowBypassPanel && (IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled || IsDropRstEnabled));
+
+            ApplyRecommendationsCommand = new RelayCommand(async _ => await Orchestrator.ApplyRecommendationsAsync(Bypass), _ => HasRecommendations);
 
             Log("✓ MainViewModelRefactored инициализирован");
         }
@@ -573,6 +617,14 @@ namespace IspAudit.ViewModels
             
             // Запускаем ретест
             await Orchestrator.RetestTargetsAsync(failedTargets, Bypass);
+        }
+
+        private void ApplyTheme(bool isDark)
+        {
+            var paletteHelper = new PaletteHelper();
+            var theme = paletteHelper.GetTheme();
+            theme.SetBaseTheme(isDark ? BaseTheme.Dark : BaseTheme.Light);
+            paletteHelper.SetTheme(theme);
         }
 
         private void CheckTrafficEngineState()

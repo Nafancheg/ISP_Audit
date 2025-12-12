@@ -22,7 +22,7 @@
 │                     UI LAYER (WPF)                              │
 │  App.xaml → MainWindow.xaml → MainViewModelRefactored           │
 │                              ↓                                  │
-│  ├── BypassController (toggle bypass)                           │
+│  ├── BypassController (прокси к TlsBypassService)              │
 │  ├── DiagnosticOrchestrator (запуск диагностики)               │
 │  └── TestResultsManager (UI коллекция результатов)             │
 └─────────────────────────────────────────────────────────────────┘
@@ -61,6 +61,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                    BYPASS LAYER                                 │
 │  ├── BypassCoordinator (выбор стратегии)                       │
+│  ├── TlsBypassService (применение опций/пресетов, события метрик)│
 │  ├── BypassFilter (TLS fragment/disorder/fake, параметризуемые │
 │      размеры)                                                  │
 │  ├── BypassProfile (конфигурация)                              │
@@ -419,8 +420,9 @@ Program.cs
     └── MainWindow.xaml
         └── MainViewModelRefactored
             ├── BypassController
-            │   ├── TrafficEngine
-            │   │   └── BypassFilter
+            │   ├── TlsBypassService
+            │   │   ├── TrafficEngine
+            │   │   │   └── BypassFilter
             │   └── FixService
             ├── DiagnosticOrchestrator
             │   ├── TrafficCollector
@@ -499,7 +501,7 @@ Program.cs
 
 ---
 
-**Статус документа:** Актуален на 10.12.2025  
+**Статус документа:** Актуален на 12.12.2025 (TLS bypass Phase2)
 **Очистка документации:** Выполнена (79 → 25 .md файлов)
 
 ---
@@ -532,3 +534,14 @@ Program.cs
     - Проверено соответствие диаграммы коду (`MainViewModelRefactored`, `DiagnosticOrchestrator`, `LiveTestingPipeline`).
 - [x] Унификация пространств имен (Namespaces):
     - Приведено к единому стилю (выбран `IspAudit`).
+
+---
+
+## 11. Обновления TLS bypass (12.12.2025)
+
+- **Архитектура**: `TlsBypassService` — единый источник опций/пресетов, сам регистрирует `BypassFilter`, публикует `MetricsUpdated/VerdictChanged/StateChanged`; `BypassController` стал прокси без таймера (тумблеры + сохранение пресета/автокоррекции).
+- **Метрики**: сервис считает ClientHello (все/короткие/не 443), фрагментации, релевантные RST, план фрагментов, активный пресет, порог и минимальный чанк, время начала; UI читает только события сервиса (план + таймстамп в badge).
+- **Вердикты/UX**: добавлены статусы «нет TLS 443», «TLS не на 443», «ClientHello короче threshold», «обход активен, но не применён», «мало данных»; карточка не шумит на серые статусы, tooltip даёт next steps (снизить threshold/сменить пресет/включить Drop RST).
+- **Автокоррекция**: флаг `AutoAdjustAggressive` (только пресет «Агрессивный»); ранний всплеск RST -> минимальный чанк=4; зелёный >30с -> лёгкое усиление (не ниже 4); переприменение опций делает сервис.
+- **Риски/пробелы**: нет unit-тестов на `TlsBypassService`/вердикты; таймер метрик 2с может лагать в UI; авто-коррекция не сбрасывает флаг при смене пресета (пока пользователь не переключит); обход не применяется к ClientHello без SNI или не на 443; preemptive режим зависит от успешного старта `TrafficEngine`.
+- **UX-фидбек**: статус auto-bypass и вердикт сервиса показываются в оркестраторе; карточка окрашивается по цвету вердикта (зелёный не считается проблемой); badge включает план фрагментации + активный пресет.

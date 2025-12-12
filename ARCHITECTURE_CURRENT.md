@@ -1,6 +1,6 @@
 # ISP_Audit — Архитектура (v3.0 Extended)
 
-**Дата обновления:** 10.12.2025
+**Дата обновления:** 12.12.2025
 **Версия:** 3.0 (Comprehensive)
 **Технологии:** .NET 9, WPF, WinDivert 2.2.0
 
@@ -52,7 +52,8 @@ graph TD
         Sniffer --> WinDivert[WinDivert Driver]
         Tester --> NetworkStack[OS Network Stack]
         VM --> BypassCtrl[BypassController]
-        BypassCtrl --> TrafficEngine[TrafficEngine]
+        BypassCtrl --> TlsSvc[TlsBypassService]
+        TlsSvc --> TrafficEngine[TrafficEngine]
     end
     
     TrafficEngine --> WinDivert
@@ -70,11 +71,10 @@ graph TD
     *   Инициализирует `DiagnosticOrchestrator`.
     *   Обрабатывает команды пользователя (Start/Stop, Open Report).
 *   **`BypassController`**: ViewModel, отвечающая за настройки обхода.
-    *   Связывает UI-тумблеры (Disorder, Fake, DoH) с логикой `TrafficEngine`.
-    *   Автоматически применяет настройки при старте, если они сохранены в профиле.
-    *   Использует параметры фрагментации из `bypass_profile.json` (`TlsFragmentSizes`, `TlsFragmentThreshold`, `TlsStrategy`), логирует выбранный пресет.
-    *   Отдаёт готовые пресеты фрагментации в UI (стандарт/умеренный/агрессивный), сохраняет выбор в `bypass_profile.json` без ручного редактирования.
-    *   Публикует метрики bypass (фрагментации/RST) для отображения в UI.
+    *   Связывает UI-тумблеры (Fragment/Disorder/Fake/Drop RST/DoH) с `TlsBypassService` (регистрация фильтра управляется сервисом).
+    *   Восстанавливает пресет/автокоррекцию из `bypass_profile.json`, но сами опции включаются вручную или через auto-bypass; сохраняет выбранный пресет обратно в профиль.
+    *   Пресеты фрагментации (стандарт/умеренный/агрессивный/профиль) и логика автокоррекции живут в сервисе, контроллер лишь проксирует выбор без собственного таймера.
+    *   Метрики/вердикт приходят из событий `TlsBypassService` (`MetricsUpdated/VerdictChanged/StateChanged`): UI показывает план фрагментации, таймстамп начала метрик, активный пресет/мин. чанк и не подсвечивает карточку при серых статусах «нет данных/не 443».
 *   **`TestResultsManager`**: Управляет коллекцией результатов (`ObservableCollection<TestResult>`). Отвечает за обновление UI в потоке диспетчера.
 
 ### 3.2 Orchestration Layer
@@ -134,12 +134,17 @@ graph TD
 *   **`TrafficEngine` (`Core/Traffic/TrafficEngine.cs`)**:
     *   Обертка над драйвером WinDivert.
     *   Управляет загрузкой фильтров и инъекцией пакетов.
+*   **`TlsBypassService` (`Bypass/TlsBypassService.cs`)**:
+    *   Единственный источник правды для TLS обхода: применяет опции, держит пресеты и автокоррекцию, сам регистрирует/удаляет `BypassFilter` в `TrafficEngine`.
+    *   Каждые 2 секунды собирает метрики фильтра: сколько ClientHello увидено/коротких/не 443, сколько фрагментировано, релевантные RST, план фрагментации, активный пресет, порог/минимальный чанк, время начала сбора.
+    *   Вычисляет вердикты: нет TLS 443 в трафике, TLS идёт не на 443, ClientHello короче порога (совет снизить threshold/взять агрессивный пресет), обход активен но не применён, мало данных, ratio RST/фрагм >4 (красный) или >1.5 (жёлтый), иначе зелёный; публикует `MetricsUpdated/VerdictChanged/StateChanged` для UI/оркестратора.
+    *   Автокоррекция работает только для пресета «Агрессивный» с флагом `AutoAdjustAggressive`: при раннем всплеске RST ужимает минимальный чанк до 4, при стабильном зелёном >30с слегка уменьшает минимальный чанк (не ниже 4) и переприменяет опции.
 *   **`BypassFilter` (`Core/Traffic/Filters/BypassFilter.cs`)**:
     *   Реализует конкретные алгоритмы обхода:
         *   **Fragmentation**: Разбиение ClientHello на 2+ TCP-сегмента по списку размеров из `TlsFragmentSizes`.
         *   **Disorder**: Отправка сегментов в обратном порядке при сохранении корректных seq/len, чтобы сбить DPI.
         *   **Fake TTL**: Отправка "фейкового" пакета с коротким TTL, который дойдет до DPI, но не до сервера.
-    *   Собирает метрики (обработанные TLS ClientHello, фрагментации, сброшенные RST, последний план фрагментов) для индикации в UI.
+    *   Собирает метрики (обработанные TLS ClientHello, фрагментации, сброшенные RST, последний план фрагментов) для индикации в UI; обрабатывает только ClientHello на 443 с SNI и длиной ≥ threshold, короткие/не443 считаются отдельно.
 
 ---
 
@@ -156,7 +161,7 @@ graph TD
 9.  **Агрегация (Aggregate)**: Результаты тестов и инспекций собираются в `HostTested` модель.
 10. **Классификация (Classify)**: `StandardBlockageClassifier` выносит вердикт (например, `DPI_REDIRECT`).
 11. **Отчет (Report)**: Результат отправляется в UI через `TestResultsManager`.
-12. **Реакция (React)**: Если включен авто-обход, `BypassController` активирует соответствующие фильтры в `TrafficEngine`.
+12. **Реакция (React)**: Если включен авто-обход, `BypassController` вызывает `TlsBypassService` применить стратегии; сервис сам регистрирует фильтр в `TrafficEngine` и через события отдаёт план/метрики/вердикт в UI (badge + карточка) и оркестратору (статус auto-bypass).
 
 ---
 

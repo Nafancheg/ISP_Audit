@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.Versioning;
@@ -12,6 +14,7 @@ using IspAudit.Core.Traffic;
 using IspAudit.Core.Traffic.Filters;
 using IspAudit.Windows;
 using IspAudit;
+using System.Windows.Media;
 
 // Явно указываем WPF вместо WinForms
 using Application = System.Windows.Application;
@@ -44,6 +47,7 @@ namespace IspAudit.ViewModels
         // Новые компоненты (после рефакторинга)
         private TrafficCollector? _trafficCollector;
         private LiveTestingPipeline? _testingPipeline;
+        private readonly ConcurrentQueue<HostDiscovered> _pendingSniHosts = new();
 
         private bool _isDiagnosticRunning;
         private string _diagnosticStatus = "";
@@ -51,6 +55,29 @@ namespace IspAudit.ViewModels
         private int _connectionsDiscovered;
         private string _flowModeText = "WinDivert";
         private string? _stopReason;
+
+        // Статус авто-bypass (показываем в UI во время диагностики)
+        private string _autoBypassStatus = "";
+        private string _autoBypassVerdict = "";
+        private string _autoBypassMetrics = "";
+        private System.Windows.Media.Brush _autoBypassStatusBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
+        private TlsBypassService? _observedTlsService;
+
+        // Рекомендации от классификатора/тестера (агрегируем без дублей)
+        private readonly HashSet<string> _recommendedStrategies = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _manualRecommendations = new(StringComparer.OrdinalIgnoreCase);
+        private string _recommendedStrategiesText = "Нет рекомендаций";
+        private string _manualRecommendationsText = "";
+
+        private static readonly HashSet<string> ServiceStrategies = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "TLS_FRAGMENT",
+            "TLS_DISORDER",
+            "TLS_FAKE",
+            "TLS_FAKE_FRAGMENT",
+            "DROP_RST",
+            "DOH"
+        };
         
         // Настройки
         public int SilenceTimeoutSeconds { get; set; } = 60;
@@ -119,6 +146,71 @@ namespace IspAudit.ViewModels
             }
         }
 
+        public string AutoBypassStatus
+        {
+            get => _autoBypassStatus;
+            private set
+            {
+                _autoBypassStatus = value;
+                OnPropertyChanged(nameof(AutoBypassStatus));
+            }
+        }
+
+        public string AutoBypassVerdict
+        {
+            get => _autoBypassVerdict;
+            private set
+            {
+                _autoBypassVerdict = value;
+                OnPropertyChanged(nameof(AutoBypassVerdict));
+            }
+        }
+
+        public string AutoBypassMetrics
+        {
+            get => _autoBypassMetrics;
+            private set
+            {
+                _autoBypassMetrics = value;
+                OnPropertyChanged(nameof(AutoBypassMetrics));
+            }
+        }
+
+        public System.Windows.Media.Brush AutoBypassStatusBrush
+        {
+            get => _autoBypassStatusBrush;
+            private set
+            {
+                _autoBypassStatusBrush = value;
+                OnPropertyChanged(nameof(AutoBypassStatusBrush));
+            }
+        }
+
+        public bool HasRecommendations => _recommendedStrategies.Count > 0;
+
+        public string RecommendedStrategiesText
+        {
+            get => _recommendedStrategiesText;
+            private set
+            {
+                _recommendedStrategiesText = value;
+                OnPropertyChanged(nameof(RecommendedStrategiesText));
+            }
+        }
+
+        public string ManualRecommendationsText
+        {
+            get => _manualRecommendationsText;
+            private set
+            {
+                _manualRecommendationsText = value;
+                OnPropertyChanged(nameof(ManualRecommendationsText));
+            }
+        }
+
+        public string RecommendationHintText =>
+            "TLS обход применяет только ClientHello с hostname (SNI) на порту 443; для IP без имени сначала откройте сайт/игру, чтобы появился SNI.";
+
         #endregion
 
         #region Core Methods
@@ -143,6 +235,8 @@ namespace IspAudit.ViewModels
             try
             {
                 Log($"[Orchestrator] Старт диагностики: {targetExePath}");
+
+                ResetRecommendations();
                 
                 if (!OperatingSystem.IsWindows() || !IsAdministrator())
                 {
@@ -187,6 +281,7 @@ namespace IspAudit.ViewModels
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
                         DiagnosticStatus = msg;
+                        TrackRecommendation(msg, bypassController);
                         Log($"[Pipeline] {msg}");
                         OnPipelineMessage?.Invoke(msg);
                         UpdateOverlayStatus(overlay, msg);
@@ -246,11 +341,25 @@ namespace IspAudit.ViewModels
                 
                 DiagnosticStatus = "Анализ трафика...";
 
-                // 5. Преимптивный bypass
+                // 5. Преимптивный bypass (через сервис, с телеметрией в UI)
+                ResetAutoBypassUi(enableAutoBypass);
                 if (enableAutoBypass)
                 {
-                    await bypassController.EnablePreemptiveBypassAsync();
-                    ((IProgress<string>?)progress)?.Report("✓ Bypass активирован (TLS_DISORDER + DROP_RST)");
+                    AttachAutoBypassTelemetry(bypassController);
+                    try
+                    {
+                        await bypassController.TlsService.ApplyPreemptiveAsync(_cts.Token).ConfigureAwait(false);
+                        ((IProgress<string>?)progress)?.Report("✓ Bypass активирован (TLS_DISORDER + DROP_RST)");
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"[Orchestrator] Ошибка auto-bypass: {ex.Message}");
+                        Application.Current?.Dispatcher.Invoke(() =>
+                        {
+                            UpdateAutoBypassStatus($"Auto-bypass: ошибка ({ex.Message})", CreateBrush(254, 226, 226));
+                        });
+                        ((IProgress<string>?)progress)?.Report("❌ Auto-bypass не применён");
+                    }
                 }
 
                 // 6. Создание TrafficCollector (чистый сборщик)
@@ -278,6 +387,10 @@ namespace IspAudit.ViewModels
                     _tcpRetransmissionTracker != null
                         ? new InMemoryBlockageStateStore(_tcpRetransmissionTracker, _httpRedirectDetector, _rstInspectionService, _udpInspectionService)
                         : null);
+                while (_pendingSniHosts.TryDequeue(out var sniHost))
+                {
+                    await _testingPipeline.EnqueueHostAsync(sniHost).ConfigureAwait(false);
+                }
                 Log("[Orchestrator] ✓ TrafficCollector + LiveTestingPipeline созданы");
 
                 // Подписываемся на события UDP блокировок для ретеста
@@ -357,6 +470,7 @@ namespace IspAudit.ViewModels
             {
                 _testingPipeline?.Dispose();
                 _trafficCollector?.Dispose();
+                DetachAutoBypassTelemetry();
                 await StopMonitoringServicesAsync();
                 IsDiagnosticRunning = false;
                 _cts?.Dispose();
@@ -384,12 +498,15 @@ namespace IspAudit.ViewModels
                 IsDiagnosticRunning = true;
                 DiagnosticStatus = "Ретест...";
                 _cts = new CancellationTokenSource();
+                DetachAutoBypassTelemetry();
+                ResetAutoBypassUi(false);
 
                 var progress = new Progress<string>(msg => 
                 {
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
                         DiagnosticStatus = msg;
+                        TrackRecommendation(msg, bypassController);
                         Log($"[Retest] {msg}");
                         OnPipelineMessage?.Invoke(msg);
                     });
@@ -647,6 +764,91 @@ namespace IspAudit.ViewModels
 
         #region Private Methods
 
+        private void AttachAutoBypassTelemetry(BypassController bypassController)
+        {
+            DetachAutoBypassTelemetry();
+            _observedTlsService = bypassController.TlsService;
+            _observedTlsService.MetricsUpdated += HandleAutoBypassMetrics;
+            _observedTlsService.VerdictChanged += HandleAutoBypassVerdict;
+            _observedTlsService.StateChanged += HandleAutoBypassState;
+        }
+
+        private void DetachAutoBypassTelemetry()
+        {
+            if (_observedTlsService == null) return;
+
+            _observedTlsService.MetricsUpdated -= HandleAutoBypassMetrics;
+            _observedTlsService.VerdictChanged -= HandleAutoBypassVerdict;
+            _observedTlsService.StateChanged -= HandleAutoBypassState;
+            _observedTlsService = null;
+        }
+
+        private void ResetAutoBypassUi(bool autoBypassEnabled)
+        {
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                if (!autoBypassEnabled)
+                {
+                    UpdateAutoBypassStatus("Auto-bypass выключен", CreateBrush(243, 244, 246));
+                    AutoBypassVerdict = "";
+                    AutoBypassMetrics = "";
+                    return;
+                }
+
+                UpdateAutoBypassStatus("Auto-bypass включается...", CreateBrush(254, 249, 195));
+                AutoBypassVerdict = "";
+                AutoBypassMetrics = "";
+            });
+        }
+
+        private void HandleAutoBypassMetrics(TlsBypassMetrics metrics)
+        {
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                AutoBypassMetrics =
+                    $"Hello@443: {metrics.ClientHellosObserved}; <thr: {metrics.ClientHellosShort}; !=443: {metrics.ClientHellosNon443}; Frag: {metrics.ClientHellosFragmented}; RST: {metrics.RstDroppedRelevant}; План: {metrics.Plan}; Пресет: {metrics.PresetName}; с {metrics.Since}";
+            });
+        }
+
+        private void HandleAutoBypassVerdict(TlsBypassVerdict verdict)
+        {
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                AutoBypassVerdict = verdict.Text;
+                AutoBypassStatusBrush = verdict.Color switch
+                {
+                    VerdictColor.Green => CreateBrush(220, 252, 231),
+                    VerdictColor.Yellow => CreateBrush(254, 249, 195),
+                    VerdictColor.Red => CreateBrush(254, 226, 226),
+                    _ => CreateBrush(243, 244, 246)
+                };
+            });
+        }
+
+        private void HandleAutoBypassState(TlsBypassState state)
+        {
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                var planText = string.IsNullOrWhiteSpace(state.Plan) ? "-" : state.Plan;
+                var statusText = state.IsActive
+                    ? $"Auto-bypass активен (план: {planText})"
+                    : "Auto-bypass выключен";
+
+                UpdateAutoBypassStatus(statusText, state.IsActive ? CreateBrush(220, 252, 231) : CreateBrush(243, 244, 246));
+            });
+        }
+
+        private void UpdateAutoBypassStatus(string status, System.Windows.Media.Brush brush)
+        {
+            AutoBypassStatus = status;
+            AutoBypassStatusBrush = brush;
+        }
+
+        private static System.Windows.Media.Brush CreateBrush(byte r, byte g, byte b)
+        {
+            return new SolidColorBrush(System.Windows.Media.Color.FromRgb(r, g, b));
+        }
+
         private async Task StartMonitoringServicesAsync(IProgress<string> progress, OverlayWindow? overlay)
         {
             Log("[Services] Запуск мониторинговых сервисов...");
@@ -706,9 +908,45 @@ namespace IspAudit.ViewModels
                     OnPipelineMessage?.Invoke($"DNS сбой: {hostname} - {error}");
                 });
             };
+            _dnsParser.OnSniDetected += HandleSniDetected;
             await _dnsParser.StartAsync().ConfigureAwait(false);
             
             Log("[Services] ✓ Все сервисы запущены");
+        }
+
+        private void HandleSniDetected(System.Net.IPAddress ip, int port, string hostname)
+        {
+            try
+            {
+                if (NoiseHostFilter.Instance.IsNoiseHost(hostname))
+                {
+                    Log($"[SNI] Пропущен шумовой хост: {hostname}");
+                    return;
+                }
+
+                var host = new HostDiscovered(
+                    Key: $"{ip}:{port}:TCP",
+                    RemoteIp: ip,
+                    RemotePort: port,
+                    Protocol: IspAudit.Bypass.TransportProtocol.Tcp,
+                    DiscoveredAt: DateTime.UtcNow)
+                {
+                    Hostname = hostname
+                };
+
+                if (_testingPipeline != null)
+                {
+                    _ = _testingPipeline.EnqueueHostAsync(host);
+                }
+                else
+                {
+                    _pendingSniHosts.Enqueue(host);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[SNI] Ошибка обработки: {ex.Message}");
+            }
         }
 
         private async Task StopMonitoringServicesAsync()
@@ -728,7 +966,11 @@ namespace IspAudit.ViewModels
                 if (_connectionMonitor != null) await _connectionMonitor.StopAsync().ConfigureAwait(false);
                 
                 _pidTracker?.Dispose();
-                _dnsParser?.Dispose();
+                if (_dnsParser != null)
+                {
+                    _dnsParser.OnSniDetected -= HandleSniDetected;
+                    _dnsParser.Dispose();
+                }
                 // _trafficEngine is shared, do not dispose
                 _connectionMonitor?.Dispose();
                 
@@ -763,6 +1005,105 @@ namespace IspAudit.ViewModels
             else if (msg.Contains("Анализ трафика"))
                 overlay.UpdateStatus("Анализ сетевого трафика...");
         }
+
+        #region Recommendations
+
+        private void TrackRecommendation(string msg, BypassController bypassController)
+        {
+            if (string.IsNullOrWhiteSpace(msg)) return;
+
+            // Нас интересуют строки вида "💡 Рекомендация: TLS_FRAGMENT" или "→ Стратегия: DROP_RST"
+            if (!(msg.Contains("Рекомендация:", StringComparison.OrdinalIgnoreCase) ||
+                  msg.Contains("Стратегия:", StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            var parts = msg.Split(':');
+            if (parts.Length < 2) return;
+
+            var raw = parts[1].Trim();
+            var paren = raw.IndexOf('(');
+            if (paren > 0)
+            {
+                raw = raw.Substring(0, paren).Trim();
+            }
+
+            if (string.IsNullOrWhiteSpace(raw)) return;
+
+            if (IsStrategyActive(raw, bypassController))
+            {
+                // Уже включено — удаляем из списка, чтобы не спамить UI
+                _recommendedStrategies.Remove(raw);
+                UpdateRecommendationTexts(bypassController);
+                return;
+            }
+
+            if (ServiceStrategies.Contains(raw))
+            {
+                _recommendedStrategies.Add(raw);
+            }
+            else
+            {
+                _manualRecommendations.Add(raw);
+            }
+
+            UpdateRecommendationTexts(bypassController);
+        }
+
+        public async Task ApplyRecommendationsAsync(BypassController bypassController)
+        {
+            if (_recommendedStrategies.Count == 0) return;
+
+            var toApply = _recommendedStrategies.ToList();
+            await bypassController.ApplyRecommendedAsync(toApply).ConfigureAwait(false);
+
+            ResetRecommendations();
+        }
+
+        private void ResetRecommendations()
+        {
+            _recommendedStrategies.Clear();
+            _manualRecommendations.Clear();
+            RecommendedStrategiesText = "Нет рекомендаций";
+            ManualRecommendationsText = "";
+            OnPropertyChanged(nameof(HasRecommendations));
+        }
+
+        private void UpdateRecommendationTexts(BypassController bypassController)
+        {
+            RecommendedStrategiesText = _recommendedStrategies.Count == 0
+                ? "Нет рекомендаций"
+                : $"Включить: {string.Join(", ", _recommendedStrategies)}";
+
+            ManualRecommendationsText = _manualRecommendations.Count == 0
+                ? ""
+                : $"Ручные действия: {string.Join(", ", _manualRecommendations)}";
+
+            OnPropertyChanged(nameof(HasRecommendations));
+
+            // Подсказка остаётся статичной, но триггерим обновление, чтобы UI мог показать tooltip
+            OnPropertyChanged(nameof(RecommendationHintText));
+
+            // Убираем рекомендации, если всё уже включено (актуально при ручном переключении)
+            _recommendedStrategies.RemoveWhere(s => IsStrategyActive(s, bypassController));
+        }
+
+        private static bool IsStrategyActive(string strategy, BypassController bypassController)
+        {
+            return strategy.ToUpperInvariant() switch
+            {
+                "TLS_FRAGMENT" => bypassController.IsFragmentEnabled,
+                "TLS_DISORDER" => bypassController.IsDisorderEnabled,
+                "TLS_FAKE" => bypassController.IsFakeEnabled,
+                "TLS_FAKE_FRAGMENT" => bypassController.IsFakeEnabled && bypassController.IsFragmentEnabled,
+                "DROP_RST" => bypassController.IsDropRstEnabled,
+                "DOH" => bypassController.IsDoHEnabled,
+                _ => false
+            };
+        }
+
+        #endregion
 
         private async Task SaveProfileAsync(string targetExePath, DiagnosticProfile profile)
         {

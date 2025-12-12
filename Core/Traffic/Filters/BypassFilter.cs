@@ -16,6 +16,7 @@ namespace IspAudit.Core.Traffic.Filters
         private readonly BypassProfile _profile;
         private readonly Action<string>? _log;
         private readonly string _presetName;
+        private static bool _verbosePacketLog = false; // выключаем пометку каждого пакета, чтобы не раздувать лог
         private readonly ConcurrentDictionary<ConnectionKey, ConnectionState> _connections = new();
         private long _packetsProcessed;
         private long _rstDropped;
@@ -23,6 +24,9 @@ namespace IspAudit.Core.Traffic.Filters
         private long _clientHellosFragmented;
         private long _tlsHandled;
         private string _lastFragmentPlan = string.Empty;
+        private long _tlsClientHellosObserved;
+        private long _tlsClientHellosShort;
+        private long _tlsClientHellosNon443;
 
         public string Name => "BypassFilter";
         public int Priority => 100; // High priority
@@ -38,6 +42,34 @@ namespace IspAudit.Core.Traffic.Filters
         {
             Interlocked.Increment(ref _packetsProcessed);
 
+            var payloadLength = packet.Info.PayloadLength;
+            var isTcp = packet.Info.IsTcp;
+            var isClientHello = false;
+            ReadOnlySpan<byte> payloadSpan = default;
+
+            if (isTcp && payloadLength >= 7)
+            {
+                payloadSpan = packet.Buffer.AsSpan(packet.Info.PayloadOffset, payloadLength);
+                isClientHello = IsClientHello(payloadSpan);
+
+                if (isClientHello)
+                {
+                    if (packet.Info.DstPort != 443)
+                    {
+                        Interlocked.Increment(ref _tlsClientHellosNon443);
+                    }
+                    else
+                    {
+                        Interlocked.Increment(ref _tlsClientHellosObserved);
+
+                        if (payloadLength < _profile.TlsFragmentThreshold)
+                        {
+                            Interlocked.Increment(ref _tlsClientHellosShort);
+                        }
+                    }
+                }
+            }
+
             // 1. RST Blocking
             if (_profile.DropTcpRst && packet.Info.IsTcp && packet.Info.IsRst)
             {
@@ -49,7 +81,10 @@ namespace IspAudit.Core.Traffic.Filters
                     if (_connections.TryGetValue(key, out var state) && state.BypassApplied)
                     {
                         Interlocked.Increment(ref _rstDroppedRelevant);
-                        _log?.Invoke($"[Bypass][RST] preset={_presetName}, rst@443 after bypass, conn={packet.Info.SrcIpInt}->{packet.Info.DstIpInt}:{packet.Info.DstPort}");
+                        if (_verbosePacketLog)
+                        {
+                            _log?.Invoke($"[Bypass][RST] preset={_presetName}, rst@443 after bypass, conn={packet.Info.SrcIpInt}->{packet.Info.DstIpInt}:{packet.Info.DstPort}");
+                        }
                     }
                 }
                 // Drop packet
@@ -57,34 +92,35 @@ namespace IspAudit.Core.Traffic.Filters
             }
 
             // 2. TLS Fragmentation / Fake / Disorder
-            if (packet.Info.IsTcp && 
-                packet.Info.PayloadLength >= _profile.TlsFragmentThreshold && 
-                packet.Info.DstPort == 443)
+            if (isTcp && 
+                payloadLength >= _profile.TlsFragmentThreshold && 
+                packet.Info.DstPort == 443 &&
+                isClientHello)
             {
-                if (IsClientHello(packet.Buffer.AsSpan(packet.Info.PayloadOffset, packet.Info.PayloadLength)))
+                // 2.1 TTL Trick (send fake packet with low TTL)
+                if (_profile.TtlTrick)
                 {
-                    // 2.1 TTL Trick (send fake packet with low TTL)
-                    if (_profile.TtlTrick)
+                    ApplyTtlTrick(packet, context, sender);
+                }
+
+                var connectionKey = new ConnectionKey(packet.Info.SrcIpInt, packet.Info.DstIpInt, packet.Info.SrcPort, packet.Info.DstPort);
+                bool isNewConnection = _connections.TryAdd(connectionKey, new ConnectionState(Environment.TickCount64, false));
+
+                var fragmentPlan = BuildFragmentPlan(packet);
+
+                if (ProcessTlsStrategy(packet, context, sender, isNewConnection, fragmentPlan))
+                {
+                    Interlocked.Increment(ref _clientHellosFragmented);
+                    Interlocked.Increment(ref _tlsHandled);
+                    _lastFragmentPlan = fragmentPlan != null ? string.Join('/', fragmentPlan.Select(f => f.PayloadLength)) : "";
+                    if (_verbosePacketLog)
                     {
-                        ApplyTtlTrick(packet, context, sender);
-                    }
-
-                    var connectionKey = new ConnectionKey(packet.Info.SrcIpInt, packet.Info.DstIpInt, packet.Info.SrcPort, packet.Info.DstPort);
-                    bool isNewConnection = _connections.TryAdd(connectionKey, new ConnectionState(Environment.TickCount64, false));
-
-                    var fragmentPlan = BuildFragmentPlan(packet);
-
-                    if (ProcessTlsStrategy(packet, context, sender, isNewConnection, fragmentPlan))
-                    {
-                        Interlocked.Increment(ref _clientHellosFragmented);
-                        Interlocked.Increment(ref _tlsHandled);
-                        _lastFragmentPlan = fragmentPlan != null ? string.Join('/', fragmentPlan.Select(f => f.PayloadLength)) : "";
                         _log?.Invoke($"[Bypass][TLS] preset={_presetName}, payload={packet.Info.PayloadLength}, plan={_lastFragmentPlan}, strategy={_profile.TlsStrategy}, result=fragmented");
-                        _connections.AddOrUpdate(connectionKey,
-                            _ => new ConnectionState(Environment.TickCount64, true),
-                            (_, existing) => new ConnectionState(existing.FirstSeen, true));
-                        return false; // Packet handled (fragmented/faked), drop original
                     }
+                    _connections.AddOrUpdate(connectionKey,
+                        _ => new ConnectionState(Environment.TickCount64, true),
+                        (_, existing) => new ConnectionState(existing.FirstSeen, true));
+                    return false; // Packet handled (fragmented/faked), drop original
                 }
             }
 
@@ -298,7 +334,10 @@ namespace IspAudit.Core.Traffic.Filters
                 RstDroppedRelevant = Interlocked.Read(ref _rstDroppedRelevant),
                 ClientHellosFragmented = Interlocked.Read(ref _clientHellosFragmented),
                 TlsHandled = Interlocked.Read(ref _tlsHandled),
-                LastFragmentPlan = _lastFragmentPlan
+                LastFragmentPlan = _lastFragmentPlan,
+                ClientHellosObserved = Interlocked.Read(ref _tlsClientHellosObserved),
+                ClientHellosShort = Interlocked.Read(ref _tlsClientHellosShort),
+                ClientHellosNon443 = Interlocked.Read(ref _tlsClientHellosNon443)
             };
         }
 
@@ -310,6 +349,9 @@ namespace IspAudit.Core.Traffic.Filters
             public long ClientHellosFragmented { get; init; }
             public long TlsHandled { get; init; }
             public string LastFragmentPlan { get; init; }
+            public long ClientHellosObserved { get; init; }
+            public long ClientHellosShort { get; init; }
+            public long ClientHellosNon443 { get; init; }
         }
 
         private readonly struct ConnectionState

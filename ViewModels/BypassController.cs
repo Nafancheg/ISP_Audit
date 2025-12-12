@@ -4,11 +4,9 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using System.Windows.Threading;
 using System.Windows.Media;
 using IspAudit.Bypass;
 using IspAudit.Core.Traffic;
-using IspAudit.Core.Traffic.Filters;
 using IspAudit.Utils;
 using IspAudit.Wpf;
 
@@ -20,22 +18,16 @@ namespace IspAudit.ViewModels
     /// <summary>
     /// Контроллер bypass-стратегий.
     /// Управляет toggle-кнопками (Fragment, Disorder, Fake, DROP_RST, DoH),
-    /// использует TrafficEngine и BypassFilter.
+    /// работает через TlsBypassService (TrafficEngine управляется сервисом).
     /// </summary>
     public class BypassController : INotifyPropertyChanged
     {
-        private readonly TrafficEngine _trafficEngine;
+        private readonly TlsBypassService _tlsService;
         private readonly BypassProfile _baseProfile;
-        private readonly DispatcherTimer _metricsTimer;
-        private BypassFilter? _currentFilter;
-        private IReadOnlyList<int> _currentFragmentSizes;
-        private FragmentPreset? _selectedPreset;
-        
-        // Независимые флаги для каждой опции bypass
-        private bool _isFragmentEnabled;
-        private bool _isDisorderEnabled;
-        private bool _isFakeEnabled;
-        private bool _isDropRstEnabled;
+        private TlsBypassOptions _currentOptions;
+        private TlsFragmentPreset? _selectedPreset;
+
+        // Флаги, не связанные напрямую с TLS bypass сервисом
         private bool _isDoHEnabled;
         private bool _isBypassActive;
         private bool _isVpnDetected;
@@ -48,10 +40,6 @@ namespace IspAudit.ViewModels
         private string _bypassPlanText = "-";
         private string _bypassMetricsSince = "-";
         private string _bypassVerdictReason = "";
-        private bool _isAutoAdjustAggressive;
-        private DateTime? _greenSince;
-        private bool _autoAdjustedDown;
-        private bool _autoAdjustedUp;
         
         // DNS Presets
         private string _selectedDnsPreset = "Hybrid (CF + Yandex)";
@@ -72,9 +60,9 @@ namespace IspAudit.ViewModels
         /// </summary>
         public event Action<string>? OnLog;
 
-        public List<FragmentPreset> FragmentPresets { get; }
+        public List<TlsFragmentPreset> FragmentPresets { get; }
 
-        public FragmentPreset? SelectedFragmentPreset
+        public TlsFragmentPreset? SelectedFragmentPreset
         {
             get => _selectedPreset;
             set
@@ -82,7 +70,11 @@ namespace IspAudit.ViewModels
                 if (value != null && _selectedPreset != value)
                 {
                     _selectedPreset = value;
-                    _currentFragmentSizes = value.Sizes;
+                    _currentOptions = _currentOptions with
+                    {
+                        FragmentSizes = value.Sizes,
+                        PresetName = value.Name
+                    };
                     OnPropertyChanged(nameof(SelectedFragmentPreset));
                     OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
                     PersistFragmentPreset();
@@ -91,36 +83,48 @@ namespace IspAudit.ViewModels
             }
         }
 
-        public string SelectedFragmentPresetLabel => _selectedPreset != null ? $"{_selectedPreset.Name} ({string.Join('/', _selectedPreset.Sizes)})" : string.Empty;
+        public string SelectedFragmentPresetLabel => _selectedPreset != null ? $"{_selectedPreset.Name} ({string.Join('/', _currentOptions.FragmentSizes)})" : string.Empty;
 
         public BypassController(TrafficEngine trafficEngine)
         {
-            _trafficEngine = trafficEngine;
             _baseProfile = BypassProfile.CreateDefault();
-            _currentFragmentSizes = _baseProfile.TlsFragmentSizes ?? new List<int> { _baseProfile.TlsFirstFragmentSize };
-            _currentFragmentSizes = _currentFragmentSizes.Select(v => Math.Max(4, v)).ToList();
-            FragmentPresets = new List<FragmentPreset>
+            _tlsService = new TlsBypassService(trafficEngine, _baseProfile, Log);
+            _currentOptions = _tlsService.GetOptionsSnapshot();
+
+            // По умолчанию при старте всё выключено (в т.ч. DROP RST)
+            _currentOptions = _currentOptions with
             {
-                new("Стандарт", new List<int>{64}, "Баланс: один фрагмент 64 байта"),
-                new("Умеренный", new List<int>{96}, "Чуть крупнее фрагмент для совместимости"),
-                new("Агрессивный", new List<int>{32,32}.Select(v => Math.Max(4, v)).ToList(), "Два мелких фрагмента для сложных DPI (мин. 4 байта)"),
-                new("Профиль", _currentFragmentSizes, "Из файла профиля")
+                FragmentEnabled = false,
+                DisorderEnabled = false,
+                FakeEnabled = false,
+                DropRstEnabled = false
             };
-            _selectedPreset = FragmentPresets.FirstOrDefault();
-            SetDnsPresetCommand = new RelayCommand(param => 
+
+            FragmentPresets = _tlsService.FragmentPresets.ToList();
+            _selectedPreset = FragmentPresets
+                .FirstOrDefault(p => string.Equals(p.Name, _currentOptions.PresetName, StringComparison.OrdinalIgnoreCase))
+                ?? FragmentPresets.FirstOrDefault();
+
+            if (_selectedPreset != null)
+            {
+                _currentOptions = _currentOptions with
+                {
+                    FragmentSizes = _selectedPreset.Sizes,
+                    PresetName = _selectedPreset.Name
+                };
+            }
+
+            _tlsService.MetricsUpdated += OnMetricsUpdated;
+            _tlsService.VerdictChanged += OnVerdictChanged;
+            _tlsService.StateChanged += OnStateChanged;
+
+            SetDnsPresetCommand = new RelayCommand(param =>
             {
                 if (param is string preset)
                 {
                     SelectedDnsPreset = preset;
                 }
             }, _ => true);
-
-            _metricsTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromSeconds(2)
-            };
-            _metricsTimer.Tick += (_, _) => UpdateMetrics();
-            _metricsTimer.Start();
         }
 
         #region Properties
@@ -152,6 +156,11 @@ namespace IspAudit.ViewModels
         public bool ShowBypassPanel => TrafficEngine.HasAdministratorRights;
 
         /// <summary>
+        /// Сервис TLS bypass (единый источник настроек и метрик).
+        /// </summary>
+        public TlsBypassService TlsService => _tlsService;
+
+        /// <summary>
         /// Bypass активен в данный момент
         /// </summary>
         public bool IsBypassActive
@@ -165,22 +174,23 @@ namespace IspAudit.ViewModels
         /// </summary>
         public bool IsFragmentEnabled
         {
-            get => _isFragmentEnabled;
-            set 
-            { 
-                if (_isFragmentEnabled != value)
+            get => _currentOptions.FragmentEnabled;
+            set
+            {
+                if (_currentOptions.FragmentEnabled == value) return;
+
+                var updated = _currentOptions with { FragmentEnabled = value };
+                if (value && updated.DisorderEnabled)
                 {
-                    _isFragmentEnabled = value;
-                    // Fragment и Disorder взаимоисключающие
-                    if (value && _isDisorderEnabled)
-                    {
-                        _isDisorderEnabled = false;
-                        OnPropertyChanged(nameof(IsDisorderEnabled));
-                    }
-                    OnPropertyChanged(nameof(IsFragmentEnabled));
-                    CheckCompatibility();
-                    _ = ApplyBypassOptionsAsync();
+                    updated = updated with { DisorderEnabled = false };
+                    OnPropertyChanged(nameof(IsDisorderEnabled));
                 }
+
+                _currentOptions = updated;
+                OnPropertyChanged(nameof(IsFragmentEnabled));
+                NotifyActiveStatesChanged();
+                CheckCompatibility();
+                _ = ApplyBypassOptionsAsync();
             }
         }
 
@@ -189,22 +199,23 @@ namespace IspAudit.ViewModels
         /// </summary>
         public bool IsDisorderEnabled
         {
-            get => _isDisorderEnabled;
-            set 
-            { 
-                if (_isDisorderEnabled != value)
+            get => _currentOptions.DisorderEnabled;
+            set
+            {
+                if (_currentOptions.DisorderEnabled == value) return;
+
+                var updated = _currentOptions with { DisorderEnabled = value };
+                if (value && updated.FragmentEnabled)
                 {
-                    _isDisorderEnabled = value;
-                    // Fragment и Disorder взаимоисключающие
-                    if (value && _isFragmentEnabled)
-                    {
-                        _isFragmentEnabled = false;
-                        OnPropertyChanged(nameof(IsFragmentEnabled));
-                    }
-                    OnPropertyChanged(nameof(IsDisorderEnabled));
-                    CheckCompatibility();
-                    _ = ApplyBypassOptionsAsync();
+                    updated = updated with { FragmentEnabled = false };
+                    OnPropertyChanged(nameof(IsFragmentEnabled));
                 }
+
+                _currentOptions = updated;
+                OnPropertyChanged(nameof(IsDisorderEnabled));
+                NotifyActiveStatesChanged();
+                CheckCompatibility();
+                _ = ApplyBypassOptionsAsync();
             }
         }
 
@@ -213,16 +224,16 @@ namespace IspAudit.ViewModels
         /// </summary>
         public bool IsFakeEnabled
         {
-            get => _isFakeEnabled;
-            set 
-            { 
-                if (_isFakeEnabled != value)
-                {
-                    _isFakeEnabled = value; 
-                    OnPropertyChanged(nameof(IsFakeEnabled));
-                    CheckCompatibility();
-                    _ = ApplyBypassOptionsAsync();
-                }
+            get => _currentOptions.FakeEnabled;
+            set
+            {
+                if (_currentOptions.FakeEnabled == value) return;
+
+                _currentOptions = _currentOptions with { FakeEnabled = value };
+                OnPropertyChanged(nameof(IsFakeEnabled));
+                NotifyActiveStatesChanged();
+                CheckCompatibility();
+                _ = ApplyBypassOptionsAsync();
             }
         }
 
@@ -231,16 +242,16 @@ namespace IspAudit.ViewModels
         /// </summary>
         public bool IsDropRstEnabled
         {
-            get => _isDropRstEnabled;
-            set 
-            { 
-                if (_isDropRstEnabled != value)
-                {
-                    _isDropRstEnabled = value; 
-                    OnPropertyChanged(nameof(IsDropRstEnabled));
-                    CheckCompatibility();
-                    _ = ApplyBypassOptionsAsync();
-                }
+            get => _currentOptions.DropRstEnabled;
+            set
+            {
+                if (_currentOptions.DropRstEnabled == value) return;
+
+                _currentOptions = _currentOptions with { DropRstEnabled = value };
+                OnPropertyChanged(nameof(IsDropRstEnabled));
+                NotifyActiveStatesChanged();
+                CheckCompatibility();
+                _ = ApplyBypassOptionsAsync();
             }
         }
 
@@ -379,15 +390,15 @@ namespace IspAudit.ViewModels
         /// </summary>
         public bool IsAutoAdjustAggressive
         {
-            get => _isAutoAdjustAggressive;
+            get => _currentOptions.AutoAdjustAggressive;
             set
             {
-                if (_isAutoAdjustAggressive != value)
-                {
-                    _isAutoAdjustAggressive = value;
-                    OnPropertyChanged(nameof(IsAutoAdjustAggressive));
-                    ResetAutoAdjustState();
-                }
+                if (_currentOptions.AutoAdjustAggressive == value) return;
+
+                _currentOptions = _currentOptions with { AutoAdjustAggressive = value };
+                OnPropertyChanged(nameof(IsAutoAdjustAggressive));
+                PersistFragmentPreset();
+                _ = ApplyBypassOptionsAsync();
             }
         }
 
@@ -489,8 +500,8 @@ namespace IspAudit.ViewModels
                 
                 // Применяем WinDivert bypass
                 await ApplyBypassOptionsAsync().ConfigureAwait(false);
-                
-                Log("[Bypass] Startup complete: Disorder + DROP RST");
+
+                Log($"[Bypass] Startup complete: {_currentOptions.ToReadableStrategy()}");
             }
             catch (Exception ex)
             {
@@ -509,69 +520,13 @@ namespace IspAudit.ViewModels
         {
             try
             {
-                // Remove old filter
-                _trafficEngine.RemoveFilter("BypassFilter");
-
-                // Если ничего не включено — отключаем bypass
-                if (!IsFragmentEnabled && !IsDisorderEnabled && !IsFakeEnabled && !IsDropRstEnabled)
-                {
-                    Application.Current?.Dispatcher.Invoke(() =>
-                    {
-                        IsBypassActive = false;
-                        NotifyActiveStatesChanged();
-                        Log("[Bypass] All options disabled");
-                    });
-                    return;
-                }
-
-                // Собираем профиль из текущих флагов
-                var tlsStrategy = TlsBypassStrategy.None;
-                if (IsDisorderEnabled && IsFakeEnabled)
-                    tlsStrategy = TlsBypassStrategy.FakeDisorder;
-                else if (IsFragmentEnabled && IsFakeEnabled)
-                    tlsStrategy = TlsBypassStrategy.FakeFragment;
-                else if (IsDisorderEnabled)
-                    tlsStrategy = TlsBypassStrategy.Disorder;
-                else if (IsFakeEnabled)
-                    tlsStrategy = TlsBypassStrategy.Fake;
-                else if (IsFragmentEnabled)
-                    tlsStrategy = TlsBypassStrategy.Fragment;
-
-                var fragmentSizes = _currentFragmentSizes ?? Array.Empty<int>();
-
-                var profile = new BypassProfile
-                {
-                    DropTcpRst = IsDropRstEnabled,
-                    FragmentTlsClientHello = IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled,
-                    TlsStrategy = tlsStrategy,
-                    TlsFirstFragmentSize = _baseProfile.TlsFirstFragmentSize,
-                    TlsFragmentThreshold = _baseProfile.TlsFragmentThreshold,
-                    TlsFragmentSizes = fragmentSizes,
-                    TtlTrick = _baseProfile.TtlTrick,
-                    TtlTrickValue = _baseProfile.TtlTrickValue,
-                    RedirectRules = _baseProfile.RedirectRules
-                };
-
-                // Create and register filter
-                var filter = new BypassFilter(profile, Log, _selectedPreset?.Name ?? "");
-                _trafficEngine.RegisterFilter(filter);
-
-                // Ensure engine is running
-                if (!_trafficEngine.IsRunning)
-                {
-                    await _trafficEngine.StartAsync().ConfigureAwait(false);
-                }
+                var normalized = _currentOptions.Normalize();
+                _currentOptions = normalized;
+                await _tlsService.ApplyAsync(normalized).ConfigureAwait(false);
 
                 Application.Current?.Dispatcher.Invoke(() =>
                 {
-                    IsBypassActive = true;
                     NotifyActiveStatesChanged();
-                    var chunks = fragmentSizes.Any() ? string.Join('/', fragmentSizes) : "default";
-                    Log($"[Bypass] Options applied: {CurrentBypassStrategy} | TLS chunks: {chunks}, threshold: {profile.TlsFragmentThreshold}");
-                    _currentFilter = filter;
-                    BypassMetricsSince = DateTime.Now.ToString("HH:mm:ss");
-                    ResetAutoAdjustState();
-                    UpdateMetrics();
                 });
             }
             catch (Exception ex)
@@ -647,17 +602,96 @@ namespace IspAudit.ViewModels
         /// </summary>
         public async Task DisableAllAsync()
         {
-            _isFragmentEnabled = false;
-            _isDisorderEnabled = false;
-            _isFakeEnabled = false;
-            _isDropRstEnabled = false;
-            
+            _currentOptions = _currentOptions with
+            {
+                FragmentEnabled = false,
+                DisorderEnabled = false,
+                FakeEnabled = false,
+                DropRstEnabled = false
+            };
+
             OnPropertyChanged(nameof(IsFragmentEnabled));
             OnPropertyChanged(nameof(IsDisorderEnabled));
             OnPropertyChanged(nameof(IsFakeEnabled));
             OnPropertyChanged(nameof(IsDropRstEnabled));
-            
+            NotifyActiveStatesChanged();
+            CheckCompatibility();
+
             await ApplyBypassOptionsAsync().ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Применить рекомендации из классификатора (без повторного включения активных стратегий).
+        /// </summary>
+        public async Task ApplyRecommendedAsync(IEnumerable<string> strategies)
+        {
+            if (strategies == null) return;
+
+            var unique = strategies
+                .Select(s => s?.Trim())
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s!.ToUpperInvariant())
+                .Distinct()
+                .ToList();
+
+            if (!unique.Any()) return;
+
+            var updated = _currentOptions;
+            var enableDoH = false;
+
+            foreach (var strategy in unique)
+            {
+                switch (strategy)
+                {
+                    case "TLS_FRAGMENT":
+                        updated = updated with { FragmentEnabled = true, DisorderEnabled = false };
+                        break;
+                    case "TLS_DISORDER":
+                        updated = updated with { DisorderEnabled = true, FragmentEnabled = false };
+                        break;
+                    case "TLS_FAKE":
+                        updated = updated with { FakeEnabled = true };
+                        break;
+                    case "TLS_FAKE_FRAGMENT":
+                        updated = updated with { FakeEnabled = true, FragmentEnabled = true, DisorderEnabled = false };
+                        break;
+                    case "DROP_RST":
+                        updated = updated with { DropRstEnabled = true };
+                        break;
+                    case "DOH":
+                        enableDoH = true;
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            _currentOptions = updated;
+
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                OnPropertyChanged(nameof(IsFragmentEnabled));
+                OnPropertyChanged(nameof(IsDisorderEnabled));
+                OnPropertyChanged(nameof(IsFakeEnabled));
+                OnPropertyChanged(nameof(IsDropRstEnabled));
+                NotifyActiveStatesChanged();
+                CheckCompatibility();
+            });
+
+            await ApplyBypassOptionsAsync().ConfigureAwait(false);
+
+            if (enableDoH && !IsDoHEnabled)
+            {
+                _isDoHEnabled = true;
+                Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    OnPropertyChanged(nameof(IsDoHEnabled));
+                    OnPropertyChanged(nameof(IsDoHActive));
+                });
+                await ApplyDoHAsync().ConfigureAwait(false);
+            }
+
+            Log($"[Bypass] Применены рекомендации: {string.Join(',', unique)}");
         }
 
         /// <summary>
@@ -671,23 +705,26 @@ namespace IspAudit.ViewModels
             
             try
             {
-                // Fix: Actually enable Disorder, not Fragment
-                _isDisorderEnabled = true; 
-                _isFragmentEnabled = false;
-                _isDropRstEnabled = true;
-                // Note: DoH state is NOT changed here. It remains as set by user or startup logic.
-                
-                await ApplyBypassOptionsAsync().ConfigureAwait(false);
-                
-                Application.Current?.Dispatcher.Invoke(() => 
+                _currentOptions = _currentOptions with
                 {
-                    IsBypassActive = true;
+                    FragmentEnabled = false,
+                    DisorderEnabled = true,
+                    FakeEnabled = false,
+                    DropRstEnabled = true
+                };
+
+                await _tlsService.ApplyPreemptiveAsync().ConfigureAwait(false);
+                _currentOptions = _tlsService.GetOptionsSnapshot();
+
+                Application.Current?.Dispatcher.Invoke(() =>
+                {
                     OnPropertyChanged(nameof(IsDisorderEnabled));
                     OnPropertyChanged(nameof(IsFragmentEnabled));
+                    OnPropertyChanged(nameof(IsFakeEnabled));
                     OnPropertyChanged(nameof(IsDropRstEnabled));
                     NotifyActiveStatesChanged();
                 });
-                
+
                 Log("[Bypass] Preemptive bypass enabled");
             }
             catch (Exception ex)
@@ -769,136 +806,61 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(IsDropRstActive));
         }
 
-        private void UpdateMetrics()
+        private void OnMetricsUpdated(TlsBypassMetrics metrics)
         {
-            var snapshot = _currentFilter?.GetMetrics();
-            if (snapshot == null)
+            Application.Current?.Dispatcher.Invoke(() =>
             {
-                BypassMetricsText = "Фрагментация выключена";
-                BypassVerdictText = "Bypass выключен";
-                BypassVerdictBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
-                BypassPlanText = "-";
-                BypassMetricsSince = "-";
-                return;
-            }
-
-            var plan = string.IsNullOrWhiteSpace(snapshot.Value.LastFragmentPlan) ? "-" : snapshot.Value.LastFragmentPlan;
-            BypassPlanText = plan;
-            BypassMetricsText = $"TLS обработано: {snapshot.Value.TlsHandled}; фрагментировано: {snapshot.Value.ClientHellosFragmented}; RST(443,bypass): {snapshot.Value.RstDroppedRelevant}; RST(всего): {snapshot.Value.RstDropped}; план: {plan}";
-
-            // Градация по релевантным RST: считаем только RST на 443 для соединений, где применялась фрагментация; первые 5 RST считаем шумом
-            System.Windows.Media.Brush brush;
-            string verdict;
-            var fragmentsRaw = snapshot.Value.ClientHellosFragmented;
-            var fragments = Math.Max(1, fragmentsRaw);
-            var rstRelevant = snapshot.Value.RstDroppedRelevant;
-            var rstEffective = Math.Max(0, rstRelevant - 5); // шум до 5 RST
-            var ratio = fragmentsRaw == 0 ? double.PositiveInfinity : (double)rstEffective / fragments;
-            string reason;
-
-            if (fragmentsRaw == 0)
-            {
-                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 226, 226));
-                verdict = "Внимание: нет фрагментаций — включите Fragment/Disorder";
-                reason = "Фрагментаций нет";
-            }
-            else if (fragmentsRaw < 10)
-            {
-                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
-                verdict = "Мало данных: <10 фрагментаций";
-                reason = "Собираем статистику";
-            }
-            else if (ratio > 4.0)
-            {
-                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 226, 226));
-                verdict = "Внимание: много RST относительно фрагментаций";
-                reason = $"ratio={ratio:F2} > 4";
-            }
-            else if (ratio > 1.5)
-            {
-                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 249, 195));
-                verdict = "Есть RST, но обход работает (умеренно)";
-                reason = $"ratio={ratio:F2} > 1.5";
-            }
-            else
-            {
-                brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 252, 231));
-                verdict = "Хорошо: RST мало, обход устойчив";
-                reason = $"ratio={ratio:F2} в норме";
-            }
-
-            BypassVerdictBrush = brush;
-            BypassVerdictText = verdict;
-            BypassVerdictReason = reason;
-
-            EvaluateAutoAdjust(snapshot.Value, brush, ratio);
-        }
-
-        private void EvaluateAutoAdjust(BypassFilter.BypassMetricsSnapshot snapshot, System.Windows.Media.Brush verdictBrush, double ratio)
-        {
-            if (!_isAutoAdjustAggressive)
-            {
-                return;
-            }
-
-            if (!string.Equals(_selectedPreset?.Name, "Агрессивный", StringComparison.OrdinalIgnoreCase))
-            {
-                ResetAutoAdjustState();
-                return;
-            }
-
-            var fragments = snapshot.ClientHellosFragmented;
-            var rstRelevant = snapshot.RstDroppedRelevant;
-
-            // Правило 1: ранние частые RST — ужать самый маленький чанк до 4 байт
-            if (!_autoAdjustedDown && fragments >= 5 && fragments <= 20 && rstRelevant > 2 * fragments)
-            {
-                var adjusted = _currentFragmentSizes.Select(v => Math.Max(4, v)).ToList();
-                var min = adjusted.Min();
-                var idx = adjusted.IndexOf(min);
-                adjusted[idx] = 4;
-                _currentFragmentSizes = adjusted;
+                _currentOptions = _tlsService.GetOptionsSnapshot();
                 OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
-                Log($"[Bypass][AutoAdjust] Aggressive: high RST ratio ({rstRelevant}/{fragments}), set min chunk=4");
-                _autoAdjustedDown = true;
-                _ = ApplyBypassOptionsAsync();
-                return;
-            }
 
-            // Правило 2: стабильный зелёный > 30 сек — усилить (слегка уменьшить минимальный чанк, но не ниже 4)
-            var isGreen = verdictBrush is SolidColorBrush sc && sc.Color == System.Windows.Media.Color.FromRgb(220, 252, 231);
-            if (isGreen)
-            {
-                _greenSince ??= DateTime.Now;
-            }
-            else
-            {
-                _greenSince = null;
-            }
-
-            if (isGreen && !_autoAdjustedUp && _greenSince.HasValue && DateTime.Now - _greenSince.Value > TimeSpan.FromSeconds(30))
-            {
-                var adjusted = _currentFragmentSizes.Select(v => Math.Max(4, v)).ToList();
-                var min = adjusted.Min();
-                var idx = adjusted.IndexOf(min);
-                var newVal = Math.Max(4, min - 4);
-                if (newVal < min)
-                {
-                    adjusted[idx] = newVal;
-                    _currentFragmentSizes = adjusted;
-                    OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
-                    Log("[Bypass][AutoAdjust] Aggressive: stable green 30s, slightly tightening fragmentation");
-                    _autoAdjustedUp = true;
-                    _ = ApplyBypassOptionsAsync();
-                }
-            }
+                var plan = string.IsNullOrWhiteSpace(metrics.Plan) ? "-" : metrics.Plan;
+                var planWithPreset = string.IsNullOrWhiteSpace(metrics.PresetName) ? plan : $"{plan} · {metrics.PresetName}";
+                BypassPlanText = string.IsNullOrWhiteSpace(planWithPreset) ? "-" : planWithPreset;
+                BypassMetricsSince = metrics.Since;
+                BypassMetricsText =
+                    $"TLS: {metrics.TlsHandled}; thr: {metrics.FragmentThreshold}; min: {metrics.MinChunk}; Hello@443: {metrics.ClientHellosObserved}; <thr: {metrics.ClientHellosShort}; !=443: {metrics.ClientHellosNon443}; фрагм.: {metrics.ClientHellosFragmented}; RST(443,bypass): {metrics.RstDroppedRelevant}; RST(всего): {metrics.RstDropped}";
+            });
         }
 
-        private void ResetAutoAdjustState()
+        private void OnVerdictChanged(TlsBypassVerdict verdict)
         {
-            _greenSince = null;
-            _autoAdjustedDown = false;
-            _autoAdjustedUp = false;
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                BypassVerdictText = verdict.Text;
+                BypassVerdictReason = verdict.Reason;
+                BypassVerdictBrush = verdict.Color switch
+                {
+                    VerdictColor.Green => new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 252, 231)),
+                    VerdictColor.Yellow => new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 249, 195)),
+                    VerdictColor.Red => new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 226, 226)),
+                    _ => new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246))
+                };
+            });
+        }
+
+        private void OnStateChanged(TlsBypassState state)
+        {
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                var oldOptions = _currentOptions;
+                _currentOptions = _tlsService.GetOptionsSnapshot();
+                IsBypassActive = state.IsActive;
+                
+                var planWithPreset = string.IsNullOrWhiteSpace(state.Plan)
+                    ? _currentOptions.PresetName
+                    : $"{state.Plan} · {_currentOptions.PresetName}";
+                BypassPlanText = string.IsNullOrWhiteSpace(planWithPreset) ? "-" : planWithPreset;
+                BypassMetricsSince = state.Since;
+
+                if (oldOptions.FragmentEnabled != _currentOptions.FragmentEnabled) OnPropertyChanged(nameof(IsFragmentEnabled));
+                if (oldOptions.DisorderEnabled != _currentOptions.DisorderEnabled) OnPropertyChanged(nameof(IsDisorderEnabled));
+                if (oldOptions.FakeEnabled != _currentOptions.FakeEnabled) OnPropertyChanged(nameof(IsFakeEnabled));
+                if (oldOptions.DropRstEnabled != _currentOptions.DropRstEnabled) OnPropertyChanged(nameof(IsDropRstEnabled));
+                
+                OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
+                CheckCompatibility();
+                NotifyActiveStatesChanged();
+            });
         }
 
         private void PersistFragmentPreset()
@@ -910,10 +872,12 @@ namespace IspAudit.ViewModels
                 TlsStrategy = _baseProfile.TlsStrategy,
                 TlsFirstFragmentSize = _baseProfile.TlsFirstFragmentSize,
                 TlsFragmentThreshold = _baseProfile.TlsFragmentThreshold,
-                TlsFragmentSizes = _currentFragmentSizes,
+                TlsFragmentSizes = _currentOptions.FragmentSizes,
                 TtlTrick = _baseProfile.TtlTrick,
                 TtlTrickValue = _baseProfile.TtlTrickValue,
-                RedirectRules = _baseProfile.RedirectRules
+                RedirectRules = _baseProfile.RedirectRules,
+                FragmentPresetName = _currentOptions.PresetName,
+                AutoAdjustAggressive = _currentOptions.AutoAdjustAggressive
             };
 
             BypassProfile.Save(merged);
@@ -928,8 +892,6 @@ namespace IspAudit.ViewModels
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
-
-        public record FragmentPreset(string Name, IReadOnlyList<int> Sizes, string Description);
 
         #endregion
     }
