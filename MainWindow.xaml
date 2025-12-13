@@ -360,8 +360,9 @@
                     </DataGrid.Resources>
 
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Сервис" Binding="{Binding Target.Name}" Width="1.2*" FontWeight="SemiBold"/>
-                        <DataGridTextColumn Header="Хост / IP" Binding="{Binding Target.Host}" Width="1*"/>
+                        <DataGridTextColumn Header="SNI" Binding="{Binding Target.SniHost}" Width="1.4*" FontWeight="SemiBold"/>
+                        <DataGridTextColumn Header="IP" Binding="{Binding Target.Host}" Width="0.9*"/>
+                        <DataGridTextColumn Header="rDNS" Binding="{Binding Target.ReverseDnsHost}" Width="1.4*"/>
                         
                         <DataGridTemplateColumn Header="Статус" Width="0.8*">
                             <DataGridTemplateColumn.CellTemplate>
