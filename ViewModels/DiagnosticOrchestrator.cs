@@ -1303,21 +1303,42 @@ namespace IspAudit.ViewModels
         {
             try
             {
+                // ipconfig /flushdns на русской Windows часто пишет OEM866
+                var oem866 = System.Text.Encoding.GetEncoding(866);
                 var startInfo = new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = "ipconfig",
                     Arguments = "/flushdns",
                     UseShellExecute = false,
                     CreateNoWindow = true,
-                    RedirectStandardOutput = true
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    StandardOutputEncoding = oem866,
+                    StandardErrorEncoding = oem866
                 };
 
                 using var process = System.Diagnostics.Process.Start(startInfo);
                 if (process != null)
                 {
-                    await process.WaitForExitAsync();
-                    var output = await process.StandardOutput.ReadToEndAsync();
-                    Log($"[DNS] Flush result: {output.Trim()}");
+                    var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                    var stderrTask = process.StandardError.ReadToEndAsync();
+                    await process.WaitForExitAsync().ConfigureAwait(false);
+
+                    var output = (await stdoutTask.ConfigureAwait(false)).Trim();
+                    var error = (await stderrTask.ConfigureAwait(false)).Trim();
+
+                    if (!string.IsNullOrWhiteSpace(output))
+                    {
+                        Log($"[DNS] Flush result: {output}");
+                    }
+                    else if (!string.IsNullOrWhiteSpace(error))
+                    {
+                        Log($"[DNS] Flush error: {error}");
+                    }
+                    else
+                    {
+                        Log("[DNS] Flush completed");
+                    }
                 }
             }
             catch (Exception ex)

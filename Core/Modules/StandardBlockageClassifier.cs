@@ -32,13 +32,19 @@ namespace IspAudit.Core.Modules
             string strategy;
             string action;
             
-            // Проверка на Fake IP (198.18.0.0/15) или openwrt.lan
-            if (IsFakeIp(tested.Host.RemoteIp) || 
-                (tested.Hostname != null && tested.Hostname.Equals("openwrt.lan", StringComparison.OrdinalIgnoreCase)))
+            // Проверка на Fake IP (198.18.0.0/15): это служебный диапазон для тестирования/бенчмарков,
+            // поэтому помечаем как FAKE_IP, но НЕ спамим рекомендацией ROUTER_REDIRECT.
+            if (IsFakeIp(tested.Host.RemoteIp))
+            {
+                strategy = "NONE";
+                action = $"Обнаружен служебный адрес ({tested.Host.RemoteIp}). Это может быть нормальным при VPN/обходе/виртуализации сети.";
+                tested = tested with { BlockageType = "FAKE_IP" };
+            }
+            // Явный локальный шлюз/роутер — оставляем рекомендацию
+            else if (tested.Hostname != null && tested.Hostname.Equals("openwrt.lan", StringComparison.OrdinalIgnoreCase))
             {
                 strategy = "ROUTER_REDIRECT";
-                action = $"Обнаружен служебный адрес ({tested.Hostname ?? tested.Host.RemoteIp.ToString()}). Трафик маршрутизируется через VPN или локальный шлюз.";
-                // Обновляем BlockageType в результате теста для UI
+                action = "Обнаружен локальный шлюз (openwrt.lan). Трафик маршрутизируется через роутер/локальную сеть.";
                 tested = tested with { BlockageType = "FAKE_IP" };
             }
             else if (tested.BlockageType == "PORT_CLOSED")
