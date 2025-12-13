@@ -15,6 +15,8 @@ namespace IspAudit.Core.Traffic
         private CancellationTokenSource? _cts;
         private Task? _loopTask;
         private readonly IProgress<string>? _progress;
+        private readonly object _stateLock = new();
+        private bool _isStopping;
         
         // Performance metrics
         public event Action<double>? OnPerformanceUpdate;
@@ -81,7 +83,10 @@ namespace IspAudit.Core.Traffic
 
         public Task StartAsync(CancellationToken cancellationToken = default)
         {
-            if (IsRunning) return Task.CompletedTask;
+            lock (_stateLock)
+            {
+                if (IsRunning || _isStopping) return Task.CompletedTask;
+            }
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             
@@ -110,20 +115,38 @@ namespace IspAudit.Core.Traffic
 
         public async Task StopAsync()
         {
-            if (!IsRunning) return;
+            Task? loopTask;
+            lock (_stateLock)
+            {
+                if (_isStopping) return;
+                _isStopping = true;
+                loopTask = _loopTask;
+                if (loopTask == null)
+                {
+                    _isStopping = false;
+                    return;
+                }
+            }
 
             _progress?.Report("[TrafficEngine] Stopping...");
             _cts?.Cancel();
             
             // Closing handle breaks the Recv loop
-            _handle?.Dispose();
-            _handle = null;
+            // Важно: не обнуляем _handle до завершения loop, иначе loop может передать null в WinDivertSend.
+            try
+            {
+                _handle?.Dispose();
+            }
+            catch
+            {
+                // Игнорируем ошибки при закрытии handle во время остановки
+            }
 
-            if (_loopTask != null)
+            if (loopTask != null)
             {
                 try
                 {
-                    await _loopTask.ConfigureAwait(false);
+                    await loopTask.ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -135,7 +158,14 @@ namespace IspAudit.Core.Traffic
                 }
             }
             
-            _loopTask = null;
+            lock (_stateLock)
+            {
+                _loopTask = null;
+                _handle = null;
+                _cts?.Dispose();
+                _cts = null;
+                _isStopping = false;
+            }
             _progress?.Report("[TrafficEngine] Stopped.");
         }
 
@@ -148,10 +178,11 @@ namespace IspAudit.Core.Traffic
             {
                 while (!token.IsCancellationRequested)
                 {
-                    if (_handle == null || _handle.IsInvalid || _handle.IsClosed) break;
+                    var handle = _handle;
+                    if (handle == null || handle.IsInvalid || handle.IsClosed) break;
 
                     // This blocks until packet received or handle closed
-                    if (!WinDivertNative.WinDivertRecv(_handle, buffer, (uint)buffer.Length, out var readLen, out addr))
+                    if (!WinDivertNative.WinDivertRecv(handle, buffer, (uint)buffer.Length, out var readLen, out addr))
                     {
                         // If handle closed, this returns false.
                         continue;
@@ -186,10 +217,22 @@ namespace IspAudit.Core.Traffic
 
                     if (!drop)
                     {
-                        // Recalculate checksums if modified
-                        WinDivertNative.WinDivertHelperCalcChecksums(packet.Buffer, (uint)packet.Length, ref addr, 0);
-                        
-                        WinDivertNative.WinDivertSend(_handle, packet.Buffer, (uint)packet.Length, out _, in addr);
+                        try
+                        {
+                            // Recalculate checksums if modified
+                            WinDivertNative.WinDivertHelperCalcChecksums(packet.Buffer, (uint)packet.Length, ref addr, 0);
+                            WinDivertNative.WinDivertSend(handle, packet.Buffer, (uint)packet.Length, out _, in addr);
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                            // Остановка: handle мог быть закрыт между Recv и Send
+                            break;
+                        }
+                        catch (ArgumentNullException)
+                        {
+                            // Защита от гонки: не должен происходить, но лучше не падать
+                            break;
+                        }
                     }
 
                     var endTicks = DateTime.UtcNow.Ticks;
@@ -223,12 +266,13 @@ namespace IspAudit.Core.Traffic
 
         public bool Send(byte[] packet, int length, ref WinDivertNative.Address addr)
         {
-            if (_handle == null || _handle.IsInvalid) return false;
+            var handle = _handle;
+            if (handle == null || handle.IsInvalid) return false;
 
             // Recalculate checksums before sending
             WinDivertNative.WinDivertHelperCalcChecksums(packet, (uint)length, ref addr, 0);
 
-            return WinDivertNative.WinDivertSend(_handle, packet, (uint)length, out _, in addr);
+            return WinDivertNative.WinDivertSend(handle, packet, (uint)length, out _, in addr);
         }
 
         public void Dispose()
