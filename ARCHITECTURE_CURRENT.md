@@ -95,6 +95,7 @@ graph TD
 *   **`TrafficCollector` (`Utils/TrafficCollector.cs`)**:
     *   Слушает события от `ConnectionMonitorService` (который управляется `DiagnosticOrchestrator`).
     *   Фильтрует трафик по PID целевого процесса (через `PidTrackerService`).
+    *   До логирования/попадания в UI применяет `UnifiedTrafficFilter` (loopback, шум, дедупликация), чтобы не создавать «вечные» карточки для отброшенных целей.
     *   Передает уникальные `(IP, Hostname)` в пайплайн.
     *   В UI и сообщениях пайплайна ключом для карточек считается **IP** (стабильная идентичность); дополнительные варианты имени (SNI / reverse DNS) передаются отдельно.
 *   **`StandardHostTester` (`Core/Modules/StandardHostTester.cs`)**:
@@ -102,6 +103,7 @@ graph TD
         1.  **DNS**: Резолв домена через системный DNS.
         2.  **TCP**: Попытка установить соединение (Syn -> SynAck).
         3.  **TLS**: Отправка ClientHello и ожидание ServerHello (проверка SNI-блокировок).
+        4.  **rDNS (PTR)**: Короткая попытка reverse DNS для IP (как дополнительное поле в UI).
 *   **`StandardBlockageClassifier` (`Core/Modules/StandardBlockageClassifier.cs`)**:
     *   Анализирует результаты тестов (`HostTested`) и выносит вердикт.
     *   Логика:
@@ -109,6 +111,7 @@ graph TD
         *   TCP Timeout → `TCP_TIMEOUT` (возможно Drop).
         *   TCP Reset → `TCP_RESET` (активная блокировка).
         *   TLS Timeout/Reset → `DPI_FILTER`.
+        *   `198.18.0.0/15` → `FAKE_IP` (часто редирект/маршрутизация через роутер/шлюз), рекомендация `ROUTER_REDIRECT` (не предлагается повторно, если уже активна).
 *   **`InMemoryBlockageStateStore` (`Core/Modules/InMemoryBlockageStateStore.cs`)**:
     *   Хранит историю проверок за текущую сессию.
     *   Предотвращает повторное тестирование одних и тех же хостов (дедупликация).
@@ -175,7 +178,7 @@ graph TD
 
 ```
 ISP_Audit/
-├── Program.cs                  # Точка входа (инициализация WPF)
+├── Program.cs                  # Точка входа (инициализация WPF, регистрация CodePages для OEM866)
 ├── App.xaml                    # Ресурсы приложения
 ├── MainWindow.xaml             # Разметка UI
 ├── Config.cs                   # Глобальные настройки (Singleton-like)

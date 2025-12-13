@@ -32,12 +32,12 @@ namespace IspAudit.Core.Modules
             string strategy;
             string action;
             
-            // Проверка на Fake IP (198.18.0.0/15): это служебный диапазон для тестирования/бенчмарков,
-            // поэтому помечаем как FAKE_IP, но НЕ спамим рекомендацией ROUTER_REDIRECT.
+            // Проверка на Fake IP (198.18.0.0/15): часто используется роутерами/шлюзами для локального редиректа
+            // (в т.ч. списки обхода/VPN на уровне роутера). Это важно подсвечивать пользователю.
             if (IsFakeIp(tested.Host.RemoteIp))
             {
-                strategy = "NONE";
-                action = $"Обнаружен служебный адрес ({tested.Host.RemoteIp}). Это может быть нормальным при VPN/обходе/виртуализации сети.";
+                strategy = ActiveStrategies.Contains("ROUTER_REDIRECT") ? "NONE" : "ROUTER_REDIRECT";
+                action = $"Обнаружен служебный адрес ({tested.Host.RemoteIp}). Это похоже на редирект через роутер/локальный шлюз (VPN/обход на уровне маршрутизатора).";
                 tested = tested with { BlockageType = "FAKE_IP" };
             }
             // Явный локальный шлюз/роутер — оставляем рекомендацию

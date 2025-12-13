@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 
 namespace IspAudit
 {
@@ -11,6 +12,10 @@ namespace IspAudit
         [STAThread]
         private static int Main(string[] args)
         {
+            // В .NET (Core/5+) кодировки вроде OEM866 требуют регистрации провайдера.
+            // Без этого: Encoding.GetEncoding(866) бросает исключение.
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
             // Загружаем профиль по умолчанию
             Config.SetActiveProfile("Default");
 

@@ -60,7 +60,7 @@ namespace IspAudit.Core.Modules
                 try
                 {
                     var rdnsTask = System.Net.Dns.GetHostEntryAsync(ipString);
-                    var timeoutTask = Task.Delay(800, ct);
+                    var timeoutTask = Task.Delay(1500, ct);
                     var completedTask = await Task.WhenAny(rdnsTask, timeoutTask).ConfigureAwait(false);
                     if (completedTask == rdnsTask)
                     {

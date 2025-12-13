@@ -150,6 +150,12 @@ namespace IspAudit.Utils
                     return;
                 }
 
+                // Loopback (127.0.0.0/8, ::1) не должен попадать в карточки
+                if (IPAddress.IsLoopback(remoteIp))
+                {
+                    return;
+                }
+
                 // Игнорируем 0.0.0.0 (часто бывает при биндинге или ошибках)
                 if (remoteIp.Equals(IPAddress.Any) || remoteIp.Equals(IPAddress.IPv6Any))
                 {
@@ -176,26 +182,32 @@ namespace IspAudit.Utils
                     {
                         _connections[key].Hostname = hostname;
                     }
+
+                    // До создания карточки/логирования применяем единый фильтр (loopback/шум/дубликаты)
+                    var candidate = new HostDiscovered(
+                        Key: key,
+                        RemoteIp: remoteIp,
+                        RemotePort: remotePort,
+                        Protocol: protocol == 6 ? IspAudit.Bypass.TransportProtocol.Tcp : IspAudit.Bypass.TransportProtocol.Udp,
+                        DiscoveredAt: DateTime.UtcNow)
+                    {
+                        Hostname = hostname
+                    };
+
+                    var decision = _filter.ShouldTest(candidate, hostname);
+                    if (decision.Action == FilterAction.Drop)
+                    {
+                        return;
+                    }
                     
                     // В UI ключом всегда остаётся IP, hostname передаём как доп.метаданные
                     var displayIp = remoteIp.ToString();
                     var dnsSuffix = string.IsNullOrWhiteSpace(hostname) ? "" : $" DNS={hostname}";
                     _progress?.Report($"[Collector] Новое соединение #{_connections.Count}: {displayIp}:{remotePort}{dnsSuffix} (proto={protocol}, pid={pid})");
-                    
-                    var host = new HostDiscovered(
-                        Key: key,
-                        RemoteIp: remoteIp,
-                        RemotePort: remotePort,
-                        Protocol: protocol == 6 ? IspAudit.Bypass.TransportProtocol.Tcp : IspAudit.Bypass.TransportProtocol.Udp,
-                        DiscoveredAt: DateTime.UtcNow
-                    )
-                    {
-                        Hostname = hostname
-                    };
-                    
-                    // Передаём дальше — фильтрация будет в Pipeline
-                    writer.TryWrite(host);
-                    OnHostDiscovered?.Invoke(host);
+
+                    // Передаём дальше — Pipeline продолжит обработку
+                    writer.TryWrite(candidate);
+                    OnHostDiscovered?.Invoke(candidate);
                 }
             }
             
