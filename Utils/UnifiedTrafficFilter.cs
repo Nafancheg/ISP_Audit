@@ -18,6 +18,12 @@ namespace IspAudit.Utils
 
         public FilterDecision ShouldTest(HostDiscovered host, string? knownHostname = null)
         {
+            // 0. Loopback — почти всегда шум для ISP-диагностики
+            if (System.Net.IPAddress.IsLoopback(host.RemoteIp))
+            {
+                return new FilterDecision(FilterAction.Drop, "Loopback");
+            }
+
             // 1. Проверка на шум (если hostname известен)
             if (!string.IsNullOrEmpty(knownHostname) && NoiseHostFilter.Instance.IsNoiseHost(knownHostname))
             {

@@ -51,7 +51,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                    SERVICES LAYER                               │
 │  ├── ConnectionMonitorService (WinDivert Socket/Polling)       │
-│  ├── DnsParserService (SNI/DNS парсинг)                        │
+│  ├── DnsParserService (SNI/DNS парсинг; отдельные кеши DNS/SNI) │
 │  ├── PidTrackerService (отслеживание PID)                      │
 │  ├── TcpConnectionWatcher (IP Helper API polling)              │
 │  ├── NoiseHostFilter (фильтрация шумных хостов)                │
@@ -69,6 +69,8 @@
 │  └── WinDivertNative (P/Invoke)                                │
 └─────────────────────────────────────────────────────────────────┘
 * Панель Bypass Control в UI: тумблеры Fragment/Disorder/Fake/Drop RST/DoH, бейдж статуса/latency, выпадающий список пресетов фрагментации (стандарт/умеренный/агрессивный) и метрики фрагментации/RST.
+
+Примечание (UI/идентификация хостов): карточки результатов привязаны к **IP** (стабильный ключ), а варианты имени (SNI / обратный резолв) отображаются как дополнительные поля.
 ```
 
 ### 1.2 Ключевые узлы с максимальным числом связей

@@ -16,6 +16,11 @@ namespace IspAudit.Core.Models
     )
     {
         public string? Hostname { get; init; }
+
+        /// <summary>
+        /// SNI (TLS ClientHello), если удалось извлечь
+        /// </summary>
+        public string? SniHostname { get; init; }
     }
 
     /// <summary>
@@ -28,6 +33,8 @@ namespace IspAudit.Core.Models
         bool TlsOk,
         string? DnsStatus,             // OK, DNS_FILTERED, DNS_BOGUS, DNS_BYPASS
         string? Hostname,              // Резолвленное имя
+        string? SniHostname,           // SNI из трафика (если был)
+        string? ReverseDnsHostname,     // PTR / reverse DNS (если делали)
         int? TcpLatencyMs,
         string? BlockageType,          // null, TCP_RST, TLS_DPI, UDP_DROP
         DateTime TestedAt

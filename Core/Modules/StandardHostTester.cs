@@ -26,45 +26,63 @@ namespace IspAudit.Core.Modules
             bool tlsOk = false;
             string dnsStatus = "OK";
             string? hostname = null;
+            string? sniHostname = null;
+            string? reverseDnsHostname = null;
             string? blockageType = null;
             int tcpLatencyMs = 0;
 
             try
             {
+                var hostnameFromCacheOrInput = false;
+
+                var ipString = host.RemoteIp.ToString();
+
                 // 0. Проверка переданного hostname или DNS кеша
-                if (!string.IsNullOrEmpty(host.Hostname))
+                if (!string.IsNullOrEmpty(host.SniHostname))
+                {
+                    sniHostname = host.SniHostname;
+                    hostname = host.SniHostname;
+                    hostnameFromCacheOrInput = true;
+                }
+                else if (!string.IsNullOrEmpty(host.Hostname))
                 {
                     hostname = host.Hostname;
+                    hostnameFromCacheOrInput = true;
                 }
                 else if (_dnsCache != null && _dnsCache.TryGetValue(host.RemoteIp.ToString(), out var cachedName))
                 {
                     hostname = cachedName;
+                    hostnameFromCacheOrInput = true;
                 }
 
-                // 1. Reverse DNS (если нет в кеше)
-                if (string.IsNullOrEmpty(hostname))
+                // 1. Reverse DNS (PTR) — сохраняем отдельно, даже если hostname уже есть.
+                // ВАЖНО: reverse DNS не используем как "достоверное" имя для TLS/SNI.
+                try
                 {
-                    try
+                    var rdnsTask = System.Net.Dns.GetHostEntryAsync(ipString);
+                    var timeoutTask = Task.Delay(800, ct);
+                    var completedTask = await Task.WhenAny(rdnsTask, timeoutTask).ConfigureAwait(false);
+                    if (completedTask == rdnsTask)
                     {
-                        // Используем таймаут 2с для DNS, чтобы не зависать
-                        var dnsTask = System.Net.Dns.GetHostEntryAsync(host.RemoteIp.ToString());
-                        var timeoutTask = Task.Delay(2000, ct);
-                        
-                        var completedTask = await Task.WhenAny(dnsTask, timeoutTask).ConfigureAwait(false);
-                        if (completedTask == dnsTask)
+                        var hostEntry = await rdnsTask.ConfigureAwait(false);
+                        if (!string.IsNullOrWhiteSpace(hostEntry.HostName))
                         {
-                            var hostEntry = await dnsTask.ConfigureAwait(false);
-                            hostname = hostEntry.HostName;
+                            reverseDnsHostname = hostEntry.HostName;
                         }
                     }
-                    catch
-                    {
-                        // Не критично, продолжаем - отсутствие PTR записи не означает блокировку
-                    }
+                }
+                catch
+                {
+                }
+
+                // Если совсем нет hostname (SNI/DNS), можем использовать reverse DNS только как fallback для UI
+                if (string.IsNullOrEmpty(hostname) && !string.IsNullOrWhiteSpace(reverseDnsHostname))
+                {
+                    hostname = reverseDnsHostname;
                 }
 
                 // 1.1 Проверка Forward DNS (если есть hostname) - реальная проверка на DNS блокировку
-                if (!string.IsNullOrEmpty(hostname))
+                if (!string.IsNullOrEmpty(hostname) && hostnameFromCacheOrInput)
                 {
                     try
                     {
@@ -130,7 +148,7 @@ namespace IspAudit.Core.Modules
                 }
 
                 // 3. TLS handshake (только для порта 443 и если TCP прошел)
-                if (tcpOk && host.RemotePort == 443 && !string.IsNullOrEmpty(hostname))
+                if (tcpOk && host.RemotePort == 443 && !string.IsNullOrEmpty(hostname) && hostnameFromCacheOrInput)
                 {
                     try
                     {
@@ -194,6 +212,8 @@ namespace IspAudit.Core.Modules
                 tlsOk,
                 dnsStatus,
                 hostname,
+                sniHostname,
+                reverseDnsHostname,
                 tcpLatencyMs,
                 blockageType,
                 DateTime.UtcNow

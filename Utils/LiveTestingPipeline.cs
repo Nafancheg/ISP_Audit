@@ -162,7 +162,7 @@ namespace IspAudit.Utils
                 Interlocked.Decrement(ref _pendingInSniffer);
                 
                 // Получаем hostname из объекта или кеша (если есть) для более умной дедупликации
-                var hostname = host.Hostname;
+                var hostname = host.SniHostname ?? host.Hostname;
                 if (string.IsNullOrEmpty(hostname))
                 {
                     hostname = _dnsParser?.DnsCache.TryGetValue(host.RemoteIp.ToString(), out var name) == true 
@@ -218,14 +218,18 @@ namespace IspAudit.Utils
                     var decision = _filter.ShouldDisplay(blocked);
 
                     // Пытаемся обновить hostname из кеша (мог появиться за время теста)
-                    var hostname = tested.Hostname;
+                    var hostname = tested.SniHostname ?? tested.Hostname;
                     if (string.IsNullOrEmpty(hostname) && _dnsParser != null)
                     {
                         _dnsParser.DnsCache.TryGetValue(tested.Host.RemoteIp.ToString(), out hostname);
                     }
-                    
-                    // Используем hostname или IP
-                    var displayHost = hostname ?? tested.Host.RemoteIp.ToString();
+
+                    // В UI ключом всегда остается IP, чтобы не "переименовывать" карточки
+                    var displayHost = tested.Host.RemoteIp.ToString();
+
+                    var sni = tested.SniHostname;
+                    var rdns = tested.ReverseDnsHostname;
+                    var namesSuffix = $" SNI={(string.IsNullOrWhiteSpace(sni) ? "-" : sni)} RDNS={(string.IsNullOrWhiteSpace(rdns) ? "-" : rdns)}";
                     
                     // Перепроверяем шум с обновлённым hostname
                     if (!string.IsNullOrEmpty(hostname) && NoiseHostFilter.Instance.IsNoiseHost(hostname))
@@ -244,7 +248,7 @@ namespace IspAudit.Utils
                         // Хост работает - просто логируем (не отправляем в UI)
                         var port = tested.Host.RemotePort;
                         var latency = tested.TcpLatencyMs > 0 ? $" ({tested.TcpLatencyMs}ms)" : "";
-                        _progress?.Report($"✓ {displayHost}:{port}{latency}");
+                        _progress?.Report($"✓ {displayHost}:{port}{latency}{namesSuffix}");
                     }
                     else if (decision.Action == FilterAction.Drop)
                     {
@@ -272,11 +276,15 @@ namespace IspAudit.Utils
             {
                 try
                 {
-                    var host = blocked.TestResult.Hostname ?? blocked.TestResult.Host.RemoteIp.ToString();
+                    var host = blocked.TestResult.Host.RemoteIp.ToString();
                     var port = blocked.TestResult.Host.RemotePort;
+
+                    var sni = blocked.TestResult.SniHostname;
+                    var rdns = blocked.TestResult.ReverseDnsHostname;
+                    var namesSuffix = $" SNI={(string.IsNullOrWhiteSpace(sni) ? "-" : sni)} RDNS={(string.IsNullOrWhiteSpace(rdns) ? "-" : rdns)}";
                     
                     // Формируем детальное сообщение
-                    var details = $"{host}:{port}";
+                    var details = $"{host}:{port}{namesSuffix}";
                     if (blocked.TestResult.TcpLatencyMs > 0)
                     {
                         details += $" ({blocked.TestResult.TcpLatencyMs}ms)";

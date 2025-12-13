@@ -57,7 +57,21 @@ namespace IspAudit.Controls
                 statusDot.Status = TestResult.Status;
                 titleText.Text = target.Name;
                 serviceText.Text = target.Service;
-                hostText.Text = target.Host;
+
+                var ip = string.Empty;
+                if (!string.IsNullOrWhiteSpace(target.Host) && System.Net.IPAddress.TryParse(target.Host, out _))
+                {
+                    ip = target.Host;
+                }
+                else if (!string.IsNullOrWhiteSpace(target.FallbackIp))
+                {
+                    ip = target.FallbackIp;
+                }
+
+                var sni = string.IsNullOrWhiteSpace(target.SniHost) ? "—" : target.SniHost;
+                var ipText = string.IsNullOrWhiteSpace(ip) ? "—" : ip;
+                var rdns = string.IsNullOrWhiteSpace(target.ReverseDnsHost) ? "—" : target.ReverseDnsHost;
+                hostText.Text = $"SNI: {sni}\nIP: {ipText}\nОбратный резолв: {rdns}";
 
                 criticalBadge.Visibility = target.Critical ? Visibility.Visible : Visibility.Collapsed;
 

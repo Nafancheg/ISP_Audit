@@ -378,6 +378,16 @@ namespace IspAudit.ViewModels
                     MaxConcurrentTests = 5,
                     TestTimeout = TimeSpan.FromSeconds(3)
                 };
+
+                // Собираем активные стратегии (чтобы классификатор не рекомендовал уже включённое)
+                var activeStrategies = new System.Collections.Generic.List<string>();
+                if (bypassController.IsFragmentEnabled) activeStrategies.Add("TLS_FRAGMENT");
+                if (bypassController.IsDisorderEnabled) activeStrategies.Add("TLS_DISORDER");
+                if (bypassController.IsFakeEnabled) activeStrategies.Add("TLS_FAKE");
+                if (bypassController.IsFragmentEnabled && bypassController.IsFakeEnabled) activeStrategies.Add("TLS_FAKE_FRAGMENT");
+                if (bypassController.IsDropRstEnabled) activeStrategies.Add("DROP_RST");
+                if (bypassController.IsDoHEnabled) activeStrategies.Add("DOH");
+
                 _testingPipeline = new LiveTestingPipeline(
                     pipelineConfig, 
                     progress, 
@@ -386,7 +396,8 @@ namespace IspAudit.ViewModels
                     trafficFilter,
                     _tcpRetransmissionTracker != null
                         ? new InMemoryBlockageStateStore(_tcpRetransmissionTracker, _httpRedirectDetector, _rstInspectionService, _udpInspectionService)
-                        : null);
+                        : null,
+                    activeStrategies);
                 while (_pendingSniHosts.TryDequeue(out var sniHost))
                 {
                     await _testingPipeline.EnqueueHostAsync(sniHost).ConfigureAwait(false);
@@ -931,7 +942,8 @@ namespace IspAudit.ViewModels
                     Protocol: IspAudit.Bypass.TransportProtocol.Tcp,
                     DiscoveredAt: DateTime.UtcNow)
                 {
-                    Hostname = hostname
+                    Hostname = hostname,
+                    SniHostname = hostname
                 };
 
                 if (_testingPipeline != null)

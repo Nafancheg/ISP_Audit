@@ -15,6 +15,7 @@ namespace IspAudit.Utils
         private readonly TrafficMonitorFilter _filter;
         private readonly IProgress<string>? _progress;
         private readonly ConcurrentDictionary<string, string> _dnsCache;
+        private readonly ConcurrentDictionary<string, string> _sniCache;
         private static readonly bool VerboseDnsLogging = false;
         
         // Хранение активных запросов: TransactionID -> (Hostname, Timestamp)
@@ -33,6 +34,11 @@ namespace IspAudit.Utils
         public IReadOnlyDictionary<string, string> DnsCache => _dnsCache;
 
         /// <summary>
+        /// Кеш SNI: IP → hostname (из TLS ClientHello)
+        /// </summary>
+        public IReadOnlyDictionary<string, string> SniCache => _sniCache;
+
+        /// <summary>
         /// Список доменов, для которых DNS-запрос завершился ошибкой или таймаутом
         /// </summary>
         public IReadOnlyDictionary<string, DnsFailureInfo> FailedRequests => _failedRequests;
@@ -42,6 +48,7 @@ namespace IspAudit.Utils
             _filter = filter ?? throw new ArgumentNullException(nameof(filter));
             _progress = progress;
             _dnsCache = new ConcurrentDictionary<string, string>();
+            _sniCache = new ConcurrentDictionary<string, string>();
 
             // Запускаем очистку старых pending запросов (таймауты)
             _ = CleanupPendingRequestsLoop(_cts.Token);
@@ -198,8 +205,7 @@ namespace IspAudit.Utils
                                         
                                         if (isNew)
                                         {
-                                            _dnsCache[destIp] = lowerName;
-                                            OnHostnameUpdated?.Invoke(destIp, lowerName);
+                                            _sniCache[destIp] = lowerName;
                                             _progress?.Report($"[SNI] Detected: {destIp} -> {lowerName}");
                                             if (destAddress != null)
                                             {
@@ -502,7 +508,7 @@ namespace IspAudit.Utils
         public Task StopAsync()
         {
             _filter.OnPacketReceived -= OnPacketReceived;
-            _progress?.Report($"[DnsParser] Завершение. Распарсено ответов: {ParsedCount}, кеш: {_dnsCache.Count} записей");
+            _progress?.Report($"[DnsParser] Завершение. Распарсено ответов: {ParsedCount}, DNS-кеш: {_dnsCache.Count} записей, SNI-кеш: {_sniCache.Count} записей");
             return Task.CompletedTask;
         }
 

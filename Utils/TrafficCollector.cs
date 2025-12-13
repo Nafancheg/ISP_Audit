@@ -177,9 +177,10 @@ namespace IspAudit.Utils
                         _connections[key].Hostname = hostname;
                     }
                     
-                    // Логируем с hostname если есть
-                    var displayName = hostname ?? remoteIp.ToString();
-                    _progress?.Report($"[Collector] Новое соединение #{_connections.Count}: {displayName}:{remotePort} (proto={protocol}, pid={pid})");
+                    // В UI ключом всегда остаётся IP, hostname передаём как доп.метаданные
+                    var displayIp = remoteIp.ToString();
+                    var dnsSuffix = string.IsNullOrWhiteSpace(hostname) ? "" : $" DNS={hostname}";
+                    _progress?.Report($"[Collector] Новое соединение #{_connections.Count}: {displayIp}:{remotePort}{dnsSuffix} (proto={protocol}, pid={pid})");
                     
                     var host = new HostDiscovered(
                         Key: key,

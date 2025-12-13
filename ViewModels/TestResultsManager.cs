@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Net;
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using IspAudit.Models;
 using IspAudit;
 using IspAudit.Utils;
@@ -277,6 +278,8 @@ namespace IspAudit.ViewModels
                         // Обновляем существующую карточку или создаём новую
                         UpdateTestResult(host, TestStatus.Pass, msg);
                         _lastUpdatedHost = host;
+
+                        ApplyNameTokensFromMessage(host, msg);
                     }
                 }
                 else if (msg.Contains("[Collector] Новое соединение"))
@@ -300,6 +303,8 @@ namespace IspAudit.ViewModels
                             
                             UpdateTestResult(host, TestStatus.Running, "Обнаружено соединение...");
                             _lastUpdatedHost = host;
+
+                            ApplyNameTokensFromMessage(host, msg);
                         }
                     }
                 }
@@ -326,45 +331,29 @@ namespace IspAudit.ViewModels
                             return;
                         }
                         
-                        // Проверяем, есть ли уже карточка с таким hostname (дедупликация)
-                        var existingByHostname = TestResults.FirstOrDefault(t => 
-                            t.Target.Host.Equals(newHostname, StringComparison.OrdinalIgnoreCase) ||
-                            t.Target.Name.Equals(newHostname, StringComparison.OrdinalIgnoreCase));
-                        
-                        // Находим карточку для IP
-                        var existingByIp = TestResults.FirstOrDefault(t => t.Target.Host == ipPart);
-                        
-                        if (existingByHostname != null && existingByIp != null && existingByHostname != existingByIp)
-                        {
-                            // ДУБЛИКАТ! Удаляем карточку для IP, оставляем существующую для hostname
-                            TestResults.Remove(existingByIp);
-                            Log($"[UI] Удален дубликат: {ipPart} → {newHostname} (уже есть карточка)");
-                            NotifyCountersChanged();
-                            _lastUpdatedHost = newHostname;
-                            return;
-                        }
-                        
+                        // Ключ карточки остаётся IP. Обновляем только отображаемое имя,
+                        // если SNI ещё не известен.
+                        var existingByIp = TestResults.FirstOrDefault(t => t.Target.Host == ipPart || t.Target.FallbackIp == ipPart);
                         if (existingByIp != null)
                         {
-                            // Обновляем имя цели
-                            var oldTarget = existingByIp.Target;
-                            existingByIp.Target = new Target 
-                            { 
-                                Name = newHostname, 
-                                Host = newHostname, // Используем имя как хост
-                                Service = oldTarget.Service,
-                                Critical = oldTarget.Critical,
-                                FallbackIp = ipPart // Сохраняем IP как fallback
-                            };
-                            
-                            // Если это был "Running", обновляем детали
-                            if (existingByIp.Status == TestStatus.Running)
+                            if (string.IsNullOrWhiteSpace(existingByIp.Target.SniHost))
                             {
-                                existingByIp.Details = $"Hostname: {newHostname}";
+                                // Используем DNS имя как заголовок, но не меняем Host (ключ)
+                                if (existingByIp.Target.Name == ipPart)
+                                {
+                                    var old = existingByIp.Target;
+                                    existingByIp.Target = new Target
+                                    {
+                                        Name = newHostname,
+                                        Host = old.Host,
+                                        Service = old.Service,
+                                        Critical = old.Critical,
+                                        FallbackIp = old.FallbackIp,
+                                        SniHost = old.SniHost,
+                                        ReverseDnsHost = old.ReverseDnsHost
+                                    };
+                                }
                             }
-                            
-                            // Обновляем мапу
-                            _lastUpdatedHost = newHostname;
                         }
                     }
                 }
@@ -430,6 +419,8 @@ namespace IspAudit.ViewModels
                             
                             UpdateTestResult(host, status, msg);
                             _lastUpdatedHost = host;
+
+                            ApplyNameTokensFromMessage(host, msg);
                         }
                     }
                 }
@@ -512,6 +503,62 @@ namespace IspAudit.ViewModels
                 }
             }
             catch { }
+        }
+
+        private void ApplyNameTokensFromMessage(string hostKey, string msg)
+        {
+            try
+            {
+                // Формат добавляется pipeline: "SNI=... RDNS=..." (значения без пробелов)
+                var sni = ExtractToken(msg, "SNI");
+                var rdns = ExtractToken(msg, "RDNS");
+
+                if (string.IsNullOrWhiteSpace(sni) && string.IsNullOrWhiteSpace(rdns)) return;
+
+                var result = TestResults.FirstOrDefault(t => t.Target.Host == hostKey || t.Target.FallbackIp == hostKey);
+                if (result == null) return;
+
+                if (!string.IsNullOrWhiteSpace(sni) && sni != "-")
+                {
+                    var old = result.Target;
+                    var newName = !string.Equals(old.Name, sni, StringComparison.OrdinalIgnoreCase) ? sni : old.Name;
+                    result.Target = new Target
+                    {
+                        Name = newName,
+                        Host = old.Host,
+                        Service = old.Service,
+                        Critical = old.Critical,
+                        FallbackIp = old.FallbackIp,
+                        SniHost = sni,
+                        ReverseDnsHost = old.ReverseDnsHost
+                    };
+                }
+
+                if (!string.IsNullOrWhiteSpace(rdns) && rdns != "-")
+                {
+                    var old = result.Target;
+                    result.Target = new Target
+                    {
+                        Name = old.Name,
+                        Host = old.Host,
+                        Service = old.Service,
+                        Critical = old.Critical,
+                        FallbackIp = old.FallbackIp,
+                        SniHost = old.SniHost,
+                        ReverseDnsHost = rdns
+                    };
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private static string? ExtractToken(string msg, string token)
+        {
+            // token=VALUE, VALUE до пробела или '|'
+            var m = Regex.Match(msg, $@"\b{Regex.Escape(token)}=([^\s\|]+)", RegexOptions.IgnoreCase);
+            return m.Success ? m.Groups[1].Value.Trim() : null;
         }
 
         #endregion
