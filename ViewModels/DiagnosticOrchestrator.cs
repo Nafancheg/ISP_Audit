@@ -307,7 +307,9 @@ namespace IspAudit.ViewModels
                     if (alreadyRunning != null)
                     {
                         pid = alreadyRunning.Id;
-                        Log($"[Orchestrator] ⚠ Процесс уже запущен: {processName} (PID={pid}). SNI может быть недоступен для части соединений. Для полного захвата запустите диагностику ДО запуска приложения или перезапустите приложение.");
+                        var warning = $"⚠ Приложение уже запущено (Steam/attach). Ранний TLS (SNI) мог пройти до старта перехвата — колонка SNI может быть пустой для части соединений. Для полного захвата запустите диагностику ДО запуска приложения или перезапустите приложение.";
+                        DiagnosticStatus = warning;
+                        Log($"[Orchestrator] ⚠ Процесс уже запущен: {processName} (PID={pid}). {warning}");
                     }
                     
                     while (!_cts.Token.IsCancellationRequested)

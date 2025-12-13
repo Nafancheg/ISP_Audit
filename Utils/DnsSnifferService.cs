@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Net;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using IspAudit.Core.Traffic.Filters;
 
 namespace IspAudit.Utils
@@ -23,6 +25,11 @@ namespace IspAudit.Utils
         
         // Хранение обнаруженных сбоев: Hostname -> Info
         private readonly ConcurrentDictionary<string, DnsFailureInfo> _failedRequests = new();
+
+        // Минимальный реассемблинг TCP payload для извлечения SNI (TLS ClientHello может быть разбит на несколько сегментов)
+        private readonly ConcurrentDictionary<string, TlsFlowBuffer> _tlsFlows = new();
+        private static readonly int TlsFlowMaxBytes = 32 * 1024; // достаточно для ClientHello
+        private static readonly TimeSpan TlsFlowTtl = TimeSpan.FromSeconds(20);
 
         public int ParsedCount { get; private set; }
 
@@ -52,6 +59,8 @@ namespace IspAudit.Utils
 
             // Запускаем очистку старых pending запросов (таймауты)
             _ = CleanupPendingRequestsLoop(_cts.Token);
+            // Очистка старых TLS-flow буферов (реассемблинг SNI)
+            _ = CleanupTlsFlowsLoop(_cts.Token);
         }
 
         public Task StartAsync()
@@ -85,28 +94,36 @@ namespace IspAudit.Utils
         {
             try
             {
-                // 1. Parse IP Header to find Protocol and DestIP
+                // 1. Parse IP Header to find Protocol and (Src/Dst) IP
                 int ipVersion = (buffer[0] >> 4);
                 int ipHeaderLen;
                 int protocol;
                 string destIp;
+                string srcIp;
                 IPAddress? destAddress;
+                IPAddress? srcAddress;
 
                 if (ipVersion == 4)
                 {
                     ipHeaderLen = (buffer[0] & 0x0F) * 4;
                     protocol = buffer[9];
+                    srcAddress = new IPAddress(new byte[] { buffer[12], buffer[13], buffer[14], buffer[15] });
                     destAddress = new IPAddress(new byte[] { buffer[16], buffer[17], buffer[18], buffer[19] });
                     destIp = destAddress.ToString();
+                    srcIp = srcAddress.ToString();
                 }
                 else if (ipVersion == 6)
                 {
                     ipHeaderLen = 40;
                     protocol = buffer[6]; // Next Header (simplified, doesn't handle extension headers)
                     var ipBytes = new byte[16];
+                    var srcBytes = new byte[16];
+                    Array.Copy(buffer, 8, srcBytes, 0, 16);
+                    srcAddress = new IPAddress(srcBytes);
                     Array.Copy(buffer, 24, ipBytes, 0, 16);
                     destAddress = new IPAddress(ipBytes);
                     destIp = destAddress.ToString();
+                    srcIp = srcAddress.ToString();
                 }
                 else return;
 
@@ -117,112 +134,191 @@ namespace IspAudit.Utils
                 if (tcpOffset + 20 > length) return;
                 
                 int tcpHeaderLen = ((buffer[tcpOffset + 12] >> 4) & 0x0F) * 4;
+                int srcPort = (buffer[tcpOffset + 0] << 8) | buffer[tcpOffset + 1];
                 int destPort = (buffer[tcpOffset + 2] << 8) | buffer[tcpOffset + 3];
                 int payloadOffset = tcpOffset + tcpHeaderLen;
                 
                 if (payloadOffset >= length) return; // No payload
 
-                // 3. Parse TLS Record
-                // Content Type (1) + Version (2) + Length (2)
-                if (payloadOffset + 5 > length) return;
-                
-                byte contentType = buffer[payloadOffset];
-                if (contentType != 22) return; // Not Handshake
+                var payloadLen = length - payloadOffset;
+                if (payloadLen <= 0) return;
 
-                // 4. Parse Handshake Protocol
-                // Handshake Type (1) + Length (3)
-                int handshakeOffset = payloadOffset + 5;
-                if (handshakeOffset + 4 > length) return;
-                
-                byte handshakeType = buffer[handshakeOffset];
-                if (handshakeType != 1) return; // Not Client Hello
-
-                // 5. Parse Client Hello
-                int pos = handshakeOffset + 4;
-                
-                // Version (2) + Random (32)
-                pos += 34;
-                if (pos >= length) return;
-
-                // Session ID
-                if (pos + 1 > length) return;
-                int sessionIdLen = buffer[pos];
-                pos += 1 + sessionIdLen;
-                if (pos >= length) return;
-
-                // Cipher Suites
-                if (pos + 2 > length) return;
-                int cipherSuitesLen = (buffer[pos] << 8) | buffer[pos + 1];
-                pos += 2 + cipherSuitesLen;
-                if (pos >= length) return;
-
-                // Compression Methods
-                if (pos + 1 > length) return;
-                int compMethodsLen = buffer[pos];
-                pos += 1 + compMethodsLen;
-                if (pos >= length) return;
-
-                // Extensions
-                if (pos + 2 > length) return;
-                int extensionsLen = (buffer[pos] << 8) | buffer[pos + 1];
-                pos += 2;
-                
-                int extensionsEnd = pos + extensionsLen;
-                if (extensionsEnd > length) extensionsEnd = length;
-
-                while (pos + 4 <= extensionsEnd)
+                // Быстрый путь: если SNI можно достать из одного сегмента
+                if (TryExtractSniFromTlsClientHello(buffer, payloadOffset, length, out var oneShotHostname))
                 {
-                    int extType = (buffer[pos] << 8) | buffer[pos + 1];
-                    int extLen = (buffer[pos + 2] << 8) | buffer[pos + 3];
-                    pos += 4;
+                    ReportSni(destIp, destAddress, destPort, oneShotHostname);
+                    return;
+                }
 
-                    if (extType == 0) // Server Name (SNI)
+                // Реассемблинг: накапливаем payload для flow и пытаемся распарсить по накопленным данным
+                // Flow ключ: srcIp:srcPort -> destIp:destPort
+                var flowKey = $"{srcIp}:{srcPort}->{destIp}:{destPort}";
+                var flow = _tlsFlows.GetOrAdd(flowKey, _ => new TlsFlowBuffer());
+                flow.Touch();
+
+                // Не раздуваем буфер бесконечно
+                if (flow.Buffer.Count < TlsFlowMaxBytes)
+                {
+                    var toCopy = Math.Min(payloadLen, TlsFlowMaxBytes - flow.Buffer.Count);
+                    for (int i = 0; i < toCopy; i++)
                     {
-                        if (pos + 2 <= extensionsEnd)
-                        {
-                            int listLen = (buffer[pos] << 8) | buffer[pos + 1];
-                            int sniPos = pos + 2;
-                            
-                            if (sniPos + 3 <= extensionsEnd)
-                            {
-                                byte nameType = buffer[sniPos]; // 0 = host_name
-                                int nameLen = (buffer[sniPos + 1] << 8) | buffer[sniPos + 2];
-                                
-                                if (nameType == 0 && sniPos + 3 + nameLen <= extensionsEnd)
-                                {
-                                    var hostname = System.Text.Encoding.ASCII.GetString(buffer, sniPos + 3, nameLen);
-                                    if (!string.IsNullOrEmpty(hostname))
-                                    {
-                                        // Found SNI!
-                                        var lowerName = hostname.ToLowerInvariant();
-                                        
-                                        // Update cache
-                                        var isNew = true;
-                                        if (_dnsCache.TryGetValue(destIp, out var existingName))
-                                        {
-                                            if (existingName == lowerName) isNew = false;
-                                        }
-                                        
-                                        if (isNew)
-                                        {
-                                            _sniCache[destIp] = lowerName;
-                                            _progress?.Report($"[SNI] Detected: {destIp} -> {lowerName}");
-                                            if (destAddress != null)
-                                            {
-                                                OnSniDetected?.Invoke(destAddress, destPort, lowerName);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        break; // Found SNI, stop parsing extensions
+                        flow.Buffer.Add(buffer[payloadOffset + i]);
                     }
+                }
 
-                    pos += extLen;
+                // Пробуем распарсить из накопленного
+                if (TryExtractSniFromTlsClientHello(CollectionsMarshal.AsSpan(flow.Buffer), out var reassembledHostname))
+                {
+                    flow.MarkDone();
+                    ReportSni(destIp, destAddress, destPort, reassembledHostname);
+                }
+
+                return;
+
+            }
+            catch
+            {
+            }
+        }
+
+        private void ReportSni(string destIp, IPAddress? destAddress, int destPort, string hostname)
+        {
+            if (string.IsNullOrWhiteSpace(hostname)) return;
+
+            var lowerName = hostname.ToLowerInvariant();
+            var isNew = true;
+            if (_sniCache.TryGetValue(destIp, out var existingName) && existingName == lowerName)
+            {
+                isNew = false;
+            }
+
+            if (isNew)
+            {
+                _sniCache[destIp] = lowerName;
+                _progress?.Report($"[SNI] Detected: {destIp} -> {lowerName}");
+                if (destAddress != null)
+                {
+                    OnSniDetected?.Invoke(destAddress, destPort, lowerName);
                 }
             }
-            catch { }
+        }
+
+        private static bool TryExtractSniFromTlsClientHello(byte[] packetBuffer, int payloadOffset, int packetLength, out string hostname)
+        {
+            hostname = string.Empty;
+            if (payloadOffset < 0 || payloadOffset >= packetLength) return false;
+
+            var spanLen = packetLength - payloadOffset;
+            if (spanLen <= 0) return false;
+
+            return TryExtractSniFromTlsClientHello(packetBuffer.AsSpan(payloadOffset, spanLen), out hostname);
+        }
+
+        private static bool TryExtractSniFromTlsClientHello(ReadOnlySpan<byte> payload, out string hostname)
+        {
+            hostname = string.Empty;
+
+            // TLS Record: ContentType(1)=22 + Version(2) + Length(2)
+            if (payload.Length < 9) return false;
+            if (payload[0] != 22) return false; // Handshake
+
+            // Handshake starts at +5: Type(1)=1 + Len(3)
+            if (payload[5] != 1) return false; // ClientHello
+
+            int pos = 5 + 4; // handshake header
+
+            // Version(2) + Random(32)
+            if (pos + 34 > payload.Length) return false;
+            pos += 34;
+
+            // SessionID
+            if (pos + 1 > payload.Length) return false;
+            int sessionIdLen = payload[pos];
+            pos += 1 + sessionIdLen;
+            if (pos > payload.Length) return false;
+
+            // CipherSuites
+            if (pos + 2 > payload.Length) return false;
+            int cipherSuitesLen = (payload[pos] << 8) | payload[pos + 1];
+            pos += 2 + cipherSuitesLen;
+            if (pos > payload.Length) return false;
+
+            // CompressionMethods
+            if (pos + 1 > payload.Length) return false;
+            int compLen = payload[pos];
+            pos += 1 + compLen;
+            if (pos > payload.Length) return false;
+
+            // Extensions
+            if (pos + 2 > payload.Length) return false;
+            int extensionsLen = (payload[pos] << 8) | payload[pos + 1];
+            pos += 2;
+            int end = Math.Min(payload.Length, pos + extensionsLen);
+
+            while (pos + 4 <= end)
+            {
+                int extType = (payload[pos] << 8) | payload[pos + 1];
+                int extLen = (payload[pos + 2] << 8) | payload[pos + 3];
+                pos += 4;
+                if (pos + extLen > end) return false;
+
+                if (extType == 0)
+                {
+                    // server_name
+                    if (extLen < 5) return false;
+                    int listLen = (payload[pos] << 8) | payload[pos + 1];
+                    int sniPos = pos + 2;
+                    if (sniPos + 3 > pos + extLen) return false;
+
+                    byte nameType = payload[sniPos];
+                    int nameLen = (payload[sniPos + 1] << 8) | payload[sniPos + 2];
+                    int nameStart = sniPos + 3;
+                    if (nameType != 0) return false;
+                    if (nameStart + nameLen > pos + extLen) return false;
+
+                    hostname = System.Text.Encoding.ASCII.GetString(payload.Slice(nameStart, nameLen));
+                    return !string.IsNullOrWhiteSpace(hostname);
+                }
+
+                pos += extLen;
+            }
+
+            return false;
+        }
+
+        private async Task CleanupTlsFlowsLoop(CancellationToken token)
+        {
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    await Task.Delay(2000, token).ConfigureAwait(false);
+
+                    var cutoff = DateTime.UtcNow - TlsFlowTtl;
+                    foreach (var kv in _tlsFlows)
+                    {
+                        var flow = kv.Value;
+                        if (flow.IsDone) { _tlsFlows.TryRemove(kv.Key, out _); continue; }
+                        if (flow.LastSeenUtc < cutoff)
+                        {
+                            _tlsFlows.TryRemove(kv.Key, out _);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private sealed class TlsFlowBuffer
+        {
+            public List<byte> Buffer { get; } = new List<byte>(4096);
+            public DateTime LastSeenUtc { get; private set; } = DateTime.UtcNow;
+            public bool IsDone { get; private set; }
+
+            public void Touch() => LastSeenUtc = DateTime.UtcNow;
+            public void MarkDone() => IsDone = true;
         }
 
         private void TryParseDnsRequest(byte[] buffer, int length)

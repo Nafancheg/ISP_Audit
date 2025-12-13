@@ -6,7 +6,9 @@ namespace IspAudit.Core.Traffic.Filters
     public class TrafficMonitorFilter : IPacketFilter
     {
         public string Name => "TrafficMonitor";
-        public int Priority => 0;
+        // ДОЛЖЕН выполняться раньше модифицирующих фильтров (например BypassFilter),
+        // чтобы мониторинг видел исходный (неизменённый) пакет.
+        public int Priority => int.MaxValue;
 
         public event Action<PacketData>? OnPacketReceived;
         public int PacketsCount { get; private set; }
