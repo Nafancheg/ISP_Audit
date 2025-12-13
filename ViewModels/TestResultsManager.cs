@@ -338,21 +338,18 @@ namespace IspAudit.ViewModels
                         {
                             if (string.IsNullOrWhiteSpace(existingByIp.Target.SniHost))
                             {
-                                // Используем DNS имя как заголовок, но не меняем Host (ключ)
-                                if (existingByIp.Target.Name == ipPart)
+                                // Если SNI ещё не пойман — заполняем колонку SNI DNS-именем
+                                var old = existingByIp.Target;
+                                existingByIp.Target = new Target
                                 {
-                                    var old = existingByIp.Target;
-                                    existingByIp.Target = new Target
-                                    {
-                                        Name = newHostname,
-                                        Host = old.Host,
-                                        Service = old.Service,
-                                        Critical = old.Critical,
-                                        FallbackIp = old.FallbackIp,
-                                        SniHost = old.SniHost,
-                                        ReverseDnsHost = old.ReverseDnsHost
-                                    };
-                                }
+                                    Name = old.Name,
+                                    Host = old.Host,
+                                    Service = old.Service,
+                                    Critical = old.Critical,
+                                    FallbackIp = old.FallbackIp,
+                                    SniHost = newHostname,
+                                    ReverseDnsHost = old.ReverseDnsHost
+                                };
                             }
                         }
                     }
@@ -511,6 +508,7 @@ namespace IspAudit.ViewModels
             {
                 // Формат добавляется pipeline: "SNI=... RDNS=..." (значения без пробелов)
                 var sni = ExtractToken(msg, "SNI");
+                var dns = ExtractToken(msg, "DNS");
                 var rdns = ExtractToken(msg, "RDNS");
 
                 if (string.IsNullOrWhiteSpace(sni) && string.IsNullOrWhiteSpace(rdns)) return;
@@ -518,6 +516,7 @@ namespace IspAudit.ViewModels
                 var result = TestResults.FirstOrDefault(t => t.Target.Host == hostKey || t.Target.FallbackIp == hostKey);
                 if (result == null) return;
 
+                // 1) Настоящий SNI имеет приоритет
                 if (!string.IsNullOrWhiteSpace(sni) && sni != "-")
                 {
                     var old = result.Target;
@@ -530,6 +529,21 @@ namespace IspAudit.ViewModels
                         Critical = old.Critical,
                         FallbackIp = old.FallbackIp,
                         SniHost = sni,
+                        ReverseDnsHost = old.ReverseDnsHost
+                    };
+                }
+                // 2) Если SNI не пойман — используем DNS как "хост" для колонки SNI
+                else if (!string.IsNullOrWhiteSpace(dns) && dns != "-" && string.IsNullOrWhiteSpace(result.Target.SniHost))
+                {
+                    var old = result.Target;
+                    result.Target = new Target
+                    {
+                        Name = old.Name,
+                        Host = old.Host,
+                        Service = old.Service,
+                        Critical = old.Critical,
+                        FallbackIp = old.FallbackIp,
+                        SniHost = dns,
                         ReverseDnsHost = old.ReverseDnsHost
                     };
                 }
@@ -567,6 +581,7 @@ namespace IspAudit.ViewModels
             {
                 // Убираем хвост вида " SNI=... RDNS=..." (в любом порядке, если появится)
                 var cleaned = Regex.Replace(msg, @"\s+SNI=[^\s\|]+", string.Empty, RegexOptions.IgnoreCase);
+                cleaned = Regex.Replace(cleaned, @"\s+DNS=[^\s\|]+", string.Empty, RegexOptions.IgnoreCase);
                 cleaned = Regex.Replace(cleaned, @"\s+RDNS=[^\s\|]+", string.Empty, RegexOptions.IgnoreCase);
                 // Сжимаем лишние пробелы
                 cleaned = Regex.Replace(cleaned, @"\s{2,}", " ").Trim();

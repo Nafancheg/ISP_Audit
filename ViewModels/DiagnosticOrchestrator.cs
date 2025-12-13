@@ -299,9 +299,21 @@ namespace IspAudit.ViewModels
                     var processName = Path.GetFileNameWithoutExtension(targetExePath);
                     DiagnosticStatus = $"Ожидание запуска {processName}...";
                     Log($"[Orchestrator] Режим Steam: ожидание процесса {processName}");
+
+                    // ВАЖНО: если приложение уже запущено, мы подключаемся "поздно".
+                    // В этом случае ранние TLS ClientHello могли пройти до старта перехвата,
+                    // поэтому SNI может не определиться для уже существующих соединений.
+                    var alreadyRunning = System.Diagnostics.Process.GetProcessesByName(processName).FirstOrDefault();
+                    if (alreadyRunning != null)
+                    {
+                        pid = alreadyRunning.Id;
+                        Log($"[Orchestrator] ⚠ Процесс уже запущен: {processName} (PID={pid}). SNI может быть недоступен для части соединений. Для полного захвата запустите диагностику ДО запуска приложения или перезапустите приложение.");
+                    }
                     
                     while (!_cts.Token.IsCancellationRequested)
                     {
+                        if (pid != 0) break;
+
                         var found = System.Diagnostics.Process.GetProcessesByName(processName).FirstOrDefault();
                         if (found != null)
                         {
