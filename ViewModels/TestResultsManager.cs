@@ -301,8 +301,17 @@ namespace IspAudit.ViewModels
                                 return;
                             }
                             
-                            UpdateTestResult(host, TestStatus.Running, "Обнаружено соединение...");
-                            _lastUpdatedHost = host;
+                            // ВАЖНО: событие "Новое соединение" может прийти позже итогового результата теста.
+                            // Не перетираем Pass/Fail/Warn обратно в Running, иначе UI выглядит "зависшим".
+                            var existing = TestResults.FirstOrDefault(t =>
+                                t.Target.Host.Equals(host, StringComparison.OrdinalIgnoreCase) ||
+                                t.Target.Name.Equals(host, StringComparison.OrdinalIgnoreCase) ||
+                                t.Target.FallbackIp == host);
+                            if (existing == null || existing.Status == TestStatus.Idle || existing.Status == TestStatus.Running)
+                            {
+                                UpdateTestResult(host, TestStatus.Running, "Обнаружено соединение...");
+                                _lastUpdatedHost = host;
+                            }
 
                             ApplyNameTokensFromMessage(host, msg);
                         }
