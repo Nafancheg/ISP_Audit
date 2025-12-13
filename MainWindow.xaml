@@ -13,7 +13,7 @@
         FontFamily="{DynamicResource MaterialDesignFont}"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         TextElement.FontWeight="Regular"
-        TextElement.FontSize="13"
+        TextElement.FontSize="14"
         TextOptions.TextFormattingMode="Ideal"
         TextOptions.TextRenderingMode="Auto">
 
@@ -31,7 +31,7 @@
 
     <Grid Margin="12">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="380" MinWidth="350"/>
+            <ColumnDefinition Width="480" MinWidth="450"/>
             <ColumnDefinition Width="8"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
@@ -121,57 +121,47 @@
                                 </StackPanel>
                             </Grid>
 
-                            <!-- VPN Warning -->
-                            <Border Background="#FEF3C7" BorderBrush="#FCD34D" BorderThickness="1" CornerRadius="4" 
-                                    Padding="8,4" Margin="0,0,0,8"
-                                    Visibility="{Binding IsVpnDetected, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <StackPanel Orientation="Horizontal">
-                                    <materialDesign:PackIcon Kind="Vpn" Width="16" Height="16" Margin="0,0,4,0" Foreground="#92400E"/>
-                                    <TextBlock Text="{Binding VpnWarningText}" FontSize="11" Foreground="#92400E" TextWrapping="Wrap"/>
-                                </StackPanel>
-                            </Border>
-
                             <!-- Recommendations -->
                             <Border Background="#EBF5FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="4"
-                                    Padding="8" Margin="0,0,0,8"
+                                    Padding="10" Margin="0,0,0,8"
                                     Visibility="{Binding HasRecommendations, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                        <materialDesign:PackIcon Kind="LightbulbOutline" Width="14" Height="14" Margin="0,0,4,0" Foreground="#1E40AF"/>
-                                        <TextBlock Text="Рекомендации" FontWeight="SemiBold" FontSize="11" Foreground="#1E40AF"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                        <materialDesign:PackIcon Kind="LightbulbOutline" Width="16" Height="16" Margin="0,0,6,0" Foreground="#1E40AF"/>
+                                        <TextBlock Text="Рекомендации" FontWeight="SemiBold" FontSize="14" Foreground="#1E40AF"/>
                                     </StackPanel>
-                                    <TextBlock Text="{Binding RecommendedStrategiesText}" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding RecommendedStrategiesText}" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,6"/>
                                     <Button Content="Применить" Command="{Binding ApplyRecommendationsCommand}"
-                                            Style="{StaticResource PrimaryButtonStyle}" Padding="8,3" FontSize="11" HorizontalAlignment="Left" Height="24"/>
+                                            Style="{StaticResource PrimaryButtonStyle}" Padding="12,6" FontSize="13" HorizontalAlignment="Left" Height="32"/>
                                 </StackPanel>
                             </Border>
 
                             <!-- Tabs for Bypass Options -->
                             <TabControl Margin="0,0,0,8">
-                                <TabItem Header="Стратегии" FontSize="11">
+                                <TabItem Header="Стратегии" FontSize="13">
                                     <StackPanel Margin="0,8,0,0">
                                         <!-- Кнопки в две колонки -->
                                         <UniformGrid Columns="2" Rows="3" HorizontalAlignment="Stretch">
                                             <ToggleButton IsChecked="{Binding IsFragmentEnabled, Mode=TwoWay}"
-                                                          Content="FRAGMENT"
+                                                          Content="TLS Fragment"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="TLS Фрагментация ClientHello"
                                                           Margin="0,0,4,4"/>
 
                                             <ToggleButton IsChecked="{Binding IsDisorderEnabled, Mode=TwoWay}"
-                                                          Content="DISORDER"
+                                                          Content="TLS Disorder"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="Фрагменты в обратном порядке"
                                                           Margin="4,0,0,4"/>
 
                                             <ToggleButton IsChecked="{Binding IsFakeEnabled, Mode=TwoWay}"
-                                                          Content="FAKE"
+                                                          Content="TLS Fake"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="Fake TTL пакет"
                                                           Margin="0,0,4,4"/>
 
                                             <ToggleButton IsChecked="{Binding IsDropRstEnabled, Mode=TwoWay}"
-                                                          Content="DROP_RST"
+                                                          Content="Drop RST"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="Блокировка TCP RST пакетов"
                                                           Margin="4,0,0,4"/>
@@ -194,11 +184,11 @@
                                                 </ToggleButton.ContextMenu>
                                             </ToggleButton>
 
-                                            <Button Command="{Binding DisableAllBypassCommand}" Height="36" FontSize="11" Margin="4,0,0,0"
+                                            <Button Command="{Binding DisableAllBypassCommand}" Height="36" FontSize="12" Margin="4,0,0,0"
                                                     ToolTip="Отключить всё">
                                                 <Button.Style>
                                                     <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
-                                                        <Setter Property="Content" Value="✕ ВЫКЛ"/>
+                                                        <Setter Property="Content" Value="✕ Выкл"/>
                                                         <Setter Property="Background" Value="#FEE2E2"/>
                                                         <Setter Property="Foreground" Value="#DC2626"/>
                                                         <Setter Property="BorderBrush" Value="#FECACA"/>
@@ -214,32 +204,32 @@
                                     </StackPanel>
                                 </TabItem>
 
-                                <TabItem Header="Настройки" FontSize="11">
+                                <TabItem Header="Настройки" FontSize="13">
                                     <StackPanel Margin="0,8,0,0">
-                                        <TextBlock Text="Пресет фрагментации" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Пресет фрагментации" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,4"/>
                                         <ComboBox ItemsSource="{Binding FragmentPresets}"
                                                   SelectedItem="{Binding SelectedFragmentPreset, Mode=TwoWay}"
                                                   DisplayMemberPath="Name"
                                                   Style="{StaticResource ModernComboBoxStyle}"
-                                                  Height="32" FontSize="11"/>
-                                        <TextBlock Text="{Binding SelectedFragmentPresetLabel}" FontSize="10" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,4,0,0"/>
+                                                  Height="36" FontSize="13"/>
+                                        <TextBlock Text="{Binding SelectedFragmentPresetLabel}" FontSize="12" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,4,0,0"/>
                                         
-                                        <CheckBox Content="Автокоррекция агрессивного пресета" Margin="0,12,0,0" FontSize="11"
+                                        <CheckBox Content="Автокоррекция агрессивного пресета" Margin="0,12,0,0" FontSize="13"
                                                   IsChecked="{Binding IsAutoAdjustAggressive}"
                                                   ToolTip="Динамически подстраивает размеры фрагментов"/>
                                     </StackPanel>
                                 </TabItem>
 
-                                <TabItem Header="Метрики" FontSize="11">
+                                <TabItem Header="Метрики" FontSize="13">
                                     <StackPanel Margin="0,8,0,0">
-                                        <Border Background="{Binding BypassVerdictBrush}" CornerRadius="4" Padding="8">
+                                        <Border Background="{Binding BypassVerdictBrush}" CornerRadius="4" Padding="10">
                                             <StackPanel>
-                                                <TextBlock Text="⚡ Производительность" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
-                                                <TextBlock Text="{Binding TrafficEngineLatencyText}" FontSize="10" Margin="0,0,0,2"/>
+                                                <TextBlock Text="⚡ Производительность" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,6"/>
+                                                <TextBlock Text="{Binding TrafficEngineLatencyText}" FontSize="12" Margin="0,0,0,4"/>
                                                 
-                                                <TextBlock Text="📊 Статистика bypass" FontWeight="SemiBold" FontSize="11" Margin="0,8,0,4"/>
-                                                <TextBlock Text="{Binding BypassMetricsText}" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,2"/>
-                                                <TextBlock Text="{Binding BypassVerdictText}" FontSize="10" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                                                <TextBlock Text="📊 Статистика bypass" FontWeight="SemiBold" FontSize="13" Margin="0,8,0,6"/>
+                                                <TextBlock Text="{Binding BypassMetricsText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding BypassVerdictText}" FontSize="12" FontWeight="SemiBold" Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
                                     </StackPanel>
@@ -250,21 +240,21 @@
 
                     <!-- Running Status - Компактная версия -->
                     <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="6" 
-                            Padding="12,8" Margin="0,16,0,0"
+                            Padding="12,10" Margin="0,16,0,0"
                             Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel>
-                            <TextBlock Text="⚙️ Диагностика выполняется..." FontWeight="Bold" FontSize="12" Margin="0,0,0,4"/>
-                            <TextBlock Text="{Binding CurrentAction}" FontSize="11" Foreground="#4B5563" TextWrapping="Wrap" Margin="0,0,0,4"/>
-                            <ProgressBar IsIndeterminate="True" Height="2" BorderThickness="0"/>
+                            <TextBlock Text="⚙️ Диагностика выполняется..." FontWeight="Bold" FontSize="14" Margin="0,0,0,6"/>
+                            <TextBlock Text="{Binding CurrentAction}" FontSize="13" Foreground="#4B5563" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                            <ProgressBar IsIndeterminate="True" Height="3" BorderThickness="0"/>
                             
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                <TextBlock Text="{Binding ConnectionsDiscovered, StringFormat='Соединений: {0}'}" FontSize="10" Margin="0,0,8,0"/>
-                                <TextBlock Text="{Binding FlowEventsCount, StringFormat='События: {0}'}" FontSize="10"/>
+                                <TextBlock Text="{Binding ConnectionsDiscovered, StringFormat='Соединений: {0}'}" FontSize="12" Margin="0,0,12,0"/>
+                                <TextBlock Text="{Binding FlowEventsCount, StringFormat='События: {0}'}" FontSize="12"/>
                             </StackPanel>
 
-                            <Border Background="{Binding AutoBypassStatusBrush}" CornerRadius="4" Padding="6" Margin="0,8,0,0"
+                            <Border Background="{Binding AutoBypassStatusBrush}" CornerRadius="4" Padding="8" Margin="0,8,0,0"
                                     Visibility="{Binding AutoBypassStatus, Converter={StaticResource StringToVisibilityConverter}}">
-                                <TextBlock Text="{Binding AutoBypassStatus}" FontSize="10" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding AutoBypassStatus}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"/>
                             </Border>
                         </StackPanel>
                     </Border>
@@ -280,12 +270,23 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
+                <!-- VPN Warning Banner -->
+                <Border Grid.Row="0" Background="#FEF3C7" BorderBrush="#FCD34D" BorderThickness="0,0,0,1"
+                        Padding="16,10"
+                        Visibility="{Binding IsVpnDetected, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Alert" Width="20" Height="20" Margin="0,0,8,0" Foreground="#92400E" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding VpnWarningText}" FontSize="13" Foreground="#92400E" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- Start State -->
-                <StackPanel Grid.Row="0" Grid.RowSpan="2"
+                <StackPanel Grid.Row="1" Grid.RowSpan="2"
                             Visibility="{Binding IsStart, Converter={StaticResource BoolToVisibilityConverter}}"
                             VerticalAlignment="Center" HorizontalAlignment="Center" Margin="16">
                     <materialDesign:PackIcon Kind="ChartBar" Width="48" Height="48" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,16"/>
@@ -297,7 +298,7 @@
                 </StackPanel>
 
                 <!-- Results Header -->
-                <Grid Grid.Row="0" Margin="16,16,16,8"
+                <Grid Grid.Row="1" Margin="16,16,16,8"
                       Visibility="{Binding IsStart, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="📋 Результаты тестирования" Style="{StaticResource H2Style}"/>
@@ -317,7 +318,7 @@
                 </Grid>
 
                 <!-- DataGrid -->
-                <DataGrid Grid.Row="1" x:Name="ResultsGrid"
+                <DataGrid Grid.Row="2" x:Name="ResultsGrid"
                           ItemsSource="{Binding TestResults}"
                           AutoGenerateColumns="False"
                           CanUserAddRows="False"
@@ -395,7 +396,7 @@
                 </DataGrid>
 
                 <!-- Footer -->
-                <Border Grid.Row="2" Background="{DynamicResource MaterialDesignPaper}" Padding="12,8" Margin="0,8,0,0" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="0,1,0,0">
+                <Border Grid.Row="3" Background="{DynamicResource MaterialDesignPaper}" Padding="12,8" Margin="0,8,0,0" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="0,1,0,0">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                         <materialDesign:PackIcon Kind="InformationOutline" Margin="0,0,8,0" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding UserMessage}" FontWeight="Medium" Foreground="{DynamicResource MaterialDesignBody}" FontSize="12" VerticalAlignment="Center"/>

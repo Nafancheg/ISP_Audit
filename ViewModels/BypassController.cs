@@ -179,15 +179,19 @@ namespace IspAudit.ViewModels
             {
                 if (_currentOptions.FragmentEnabled == value) return;
 
-                var updated = _currentOptions with { FragmentEnabled = value };
-                if (value && updated.DisorderEnabled)
+                // Взаимоисключение с Disorder
+                if (value && _currentOptions.DisorderEnabled)
                 {
-                    updated = updated with { DisorderEnabled = false };
+                    _currentOptions = _currentOptions with { DisorderEnabled = false, FragmentEnabled = true };
                     OnPropertyChanged(nameof(IsDisorderEnabled));
+                    OnPropertyChanged(nameof(IsFragmentEnabled));
+                }
+                else
+                {
+                    _currentOptions = _currentOptions with { FragmentEnabled = value };
+                    OnPropertyChanged(nameof(IsFragmentEnabled));
                 }
 
-                _currentOptions = updated;
-                OnPropertyChanged(nameof(IsFragmentEnabled));
                 NotifyActiveStatesChanged();
                 CheckCompatibility();
                 _ = ApplyBypassOptionsAsync();
@@ -204,15 +208,19 @@ namespace IspAudit.ViewModels
             {
                 if (_currentOptions.DisorderEnabled == value) return;
 
-                var updated = _currentOptions with { DisorderEnabled = value };
-                if (value && updated.FragmentEnabled)
+                // Взаимоисключение с Fragment
+                if (value && _currentOptions.FragmentEnabled)
                 {
-                    updated = updated with { FragmentEnabled = false };
+                    _currentOptions = _currentOptions with { FragmentEnabled = false, DisorderEnabled = true };
                     OnPropertyChanged(nameof(IsFragmentEnabled));
+                    OnPropertyChanged(nameof(IsDisorderEnabled));
+                }
+                else
+                {
+                    _currentOptions = _currentOptions with { DisorderEnabled = value };
+                    OnPropertyChanged(nameof(IsDisorderEnabled));
                 }
 
-                _currentOptions = updated;
-                OnPropertyChanged(nameof(IsDisorderEnabled));
                 NotifyActiveStatesChanged();
                 CheckCompatibility();
                 _ = ApplyBypassOptionsAsync();

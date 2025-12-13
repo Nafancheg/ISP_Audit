@@ -98,46 +98,80 @@
                 <Setter Property="MinHeight" Value="42"/>
             </Style>
 
-            <!-- Bypass Toggle Button Style -->
-            <Style x:Key="BypassToggleButtonStyle" TargetType="ToggleButton" BasedOn="{StaticResource MaterialDesignSwitchToggleButton}">
-                <Setter Property="Height" Value="36"/>
+            <!-- 
+                 Стиль Outlined ToggleButton для панели обхода блокировок
+                 Аналог MaterialDesignOutlinedButton, но для ToggleButton
+            -->
+            <Style x:Key="BypassToggleButtonStyle" TargetType="ToggleButton">
+                <Setter Property="Height" Value="40"/>
+                <Setter Property="MinWidth" Value="110"/>
                 <Setter Property="Margin" Value="2"/>
-                <Setter Property="Padding" Value="8,4"/>
-                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="Padding" Value="16,0"/>
+                <Setter Property="FontSize" Value="14"/>
+                <Setter Property="FontWeight" Value="Medium"/>
                 <Setter Property="BorderThickness" Value="1"/>
-                <!-- Default (Unchecked) State: используем PrimaryHueMidBrush -->
-                <Setter Property="Background" Value="Transparent"/>
                 <Setter Property="BorderBrush" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                <Setter Property="Background" Value="Transparent"/>
                 <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
-                
-                <Style.Triggers>
-                    <!-- Checked State -->
-                    <Trigger Property="IsChecked" Value="True">
-                        <Setter Property="Background" Value="{DynamicResource PrimaryHueMidBrush}"/>
-                        <Setter Property="Foreground" Value="White"/>
-                        <Setter Property="BorderBrush" Value="{DynamicResource PrimaryHueMidBrush}"/>
-                    </Trigger>
-                    
-                    <!-- Hover State (Unchecked) -->
-                    <MultiTrigger>
-                        <MultiTrigger.Conditions>
-                            <Condition Property="IsMouseOver" Value="True"/>
-                            <Condition Property="IsChecked" Value="False"/>
-                        </MultiTrigger.Conditions>
-                        <Setter Property="Background" Value="{DynamicResource Primary200}"/> <!-- Light Blue -->
-                        <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
-                    </MultiTrigger>
-
-                    <!-- Hover State (Checked) -->
-                    <MultiTrigger>
-                        <MultiTrigger.Conditions>
-                            <Condition Property="IsMouseOver" Value="True"/>
-                            <Condition Property="IsChecked" Value="True"/>
-                        </MultiTrigger.Conditions>
-                        <Setter Property="Background" Value="{DynamicResource PrimaryHueDarkBrush}"/> <!-- Darker Blue -->
-                        <Setter Property="Foreground" Value="White"/>
-                    </MultiTrigger>
-                </Style.Triggers>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="materialDesign:RippleAssist.Feedback" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                <Setter Property="materialDesign:RippleAssist.RippleOnTop" Value="True"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Grid>
+                                <Border x:Name="border"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="4">
+                                    <materialDesign:Ripple x:Name="ripple"
+                                                           ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                           Content="{TemplateBinding Content}"
+                                                           Padding="{TemplateBinding Padding}"
+                                                           HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                           VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                           Focusable="False"
+                                                           SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"
+                                                           Feedback="{TemplateBinding Foreground}"/>
+                                </Border>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <!-- Checked: голубой фон с тёмно-синим текстом -->
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="border" Property="Background" Value="#E3F2FD"/>
+                                    <Setter TargetName="border" Property="BorderBrush" Value="#1976D2"/>
+                                    <Setter Property="Foreground" Value="#1565C0"/>
+                                    <Setter TargetName="ripple" Property="Feedback" Value="#1976D2"/>
+                                </Trigger>
+                                <!-- Hover (unchecked) -->
+                                <MultiTrigger>
+                                    <MultiTrigger.Conditions>
+                                        <Condition Property="IsMouseOver" Value="True"/>
+                                        <Condition Property="IsChecked" Value="False"/>
+                                    </MultiTrigger.Conditions>
+                                    <Setter TargetName="border" Property="Background" Value="#E3F2FD"/>
+                                </MultiTrigger>
+                                <!-- Hover (checked): более насыщенный голубой -->
+                                <MultiTrigger>
+                                    <MultiTrigger.Conditions>
+                                        <Condition Property="IsMouseOver" Value="True"/>
+                                        <Condition Property="IsChecked" Value="True"/>
+                                    </MultiTrigger.Conditions>
+                                    <Setter TargetName="border" Property="Background" Value="#BBDEFB"/>
+                                    <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource PrimaryHueDarkBrush}"/>
+                                    <Setter Property="Foreground" Value="#0D47A1"/>
+                                </MultiTrigger>
+                                <!-- Disabled -->
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.38"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
             <!-- ComboBox Style (MD Outlined) -->
