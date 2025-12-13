@@ -1,6 +1,6 @@
 # ISP_Audit — Архитектура (v3.0 Extended)
 
-**Дата обновления:** 12.12.2025
+**Дата обновления:** 13.12.2025
 **Версия:** 3.0 (Comprehensive)
 **Технологии:** .NET 9, WPF, WinDivert 2.2.0
 
@@ -83,6 +83,8 @@ graph TD
     *   Запускает и останавливает `LiveTestingPipeline`.
     *   Управляет жизненным циклом фоновых сервисов (`TrafficEngine`, `ConnectionMonitor`).
     *   Следит за целевыми процессами (если задан фильтр по PID).
+    *   Важное правило: события SNI из `DnsParserService` **гейтятся по PID**. Так как WinDivert Network Layer не предоставляет PID, оркестратор сопоставляет SNI с событиями соединений `ConnectionMonitorService` (remote endpoint → PID) и пропускает в пайплайн только то, что относится к `PidTrackerService.TrackedPids`.
+        *   Для Steam/attach поддерживается короткий буфер (несколько секунд), чтобы не терять ранний SNI до появления PID.
 *   **`LiveTestingPipeline`**: Асинхронный конвейер на базе `System.Threading.Channels`.
     *   Связывает этапы: Sniffing → Testing → Classification → Reporting.
     *   Использует `UnifiedTrafficFilter` для валидации, дедупликации и фильтрации шума.
@@ -156,6 +158,7 @@ graph TD
 2.  **Идентификация (Identify)**: `PidTrackerService` определяет, какой процесс (PID) инициировал соединение.
 3.  **Парсинг (Parse)**: `DnsParserService` пытается извлечь доменное имя (из DNS-кэша или SNI).
     *   Примечание: извлечение SNI делается по исходящему TLS ClientHello и поддерживает сценарий, когда ClientHello разбит на несколько TCP-сегментов (минимальный реассемблинг первых байт потока).
+    *   Важно: SNI сам по себе не означает, что трафик относится к целевому процессу. В оркестраторе SNI-триггеры дополнительно фильтруются по PID через корреляцию remote endpoint → PID.
 4.  **Фильтрация (Filter)**: `NoiseHostFilter` проверяет, не является ли хост "шумом" (Microsoft, Google Update).
 5.  **Очередь (Queue)**: Хост попадает в входную очередь `LiveTestingPipeline`.
 6.  **Валидация (Validate)**: `UnifiedTrafficFilter` проверяет хост перед тестом (дедупликация, фильтрация шума).

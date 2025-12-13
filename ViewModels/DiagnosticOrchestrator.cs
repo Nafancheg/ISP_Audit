@@ -49,12 +49,22 @@ namespace IspAudit.ViewModels
         private LiveTestingPipeline? _testingPipeline;
         private readonly ConcurrentQueue<HostDiscovered> _pendingSniHosts = new();
 
+        // Гейтинг SNI-триггеров по PID:
+        // WinDivert Network Layer не даёт PID, поэтому сопоставляем SNI с событиями соединений (remote endpoint -> pid)
+        // из ConnectionMonitor (IP Helper / Socket Layer) и пропускаем только то, что относится к отслеживаемым PID.
+        private readonly ConcurrentDictionary<string, (int Pid, DateTime LastSeenUtc)> _remoteEndpointPid = new();
+        private readonly ConcurrentDictionary<string, PendingSni> _pendingSniByEndpoint = new();
+        private static readonly TimeSpan PendingSniTtl = TimeSpan.FromSeconds(5);
+        private Task? _pendingSniCleanupTask;
+
         private bool _isDiagnosticRunning;
         private string _diagnosticStatus = "";
         private int _flowEventsCount;
         private int _connectionsDiscovered;
         private string _flowModeText = "WinDivert";
         private string? _stopReason;
+
+        private readonly record struct PendingSni(System.Net.IPAddress RemoteIp, string Hostname, int Port, DateTime SeenUtc);
 
         // Статус авто-bypass (показываем в UI во время диагностики)
         private string _autoBypassStatus = "";
@@ -349,6 +359,10 @@ namespace IspAudit.ViewModels
                 // 3. PID Tracker
                 _pidTracker = new PidTrackerService(pid, progress);
                 await _pidTracker.StartAsync(_cts.Token).ConfigureAwait(false);
+
+                // Если SNI пришёл до того, как PID-tracker успел подняться (Steam/attach),
+                // пытаемся добрать из буфера по уже известным remote endpoint -> pid.
+                FlushPendingSniForTrackedPids();
                 
                 // 4. Pre-resolve целей (параллельно)
                 _ = resultsManager.PreResolveTargetsAsync();
@@ -412,6 +426,9 @@ namespace IspAudit.ViewModels
                         ? new InMemoryBlockageStateStore(_tcpRetransmissionTracker, _httpRedirectDetector, _rstInspectionService, _udpInspectionService)
                         : null,
                     activeStrategies);
+
+                // Повторно флешим pending SNI — на случай, если endpoint->pid уже есть, а событий соединения больше не будет.
+                FlushPendingSniForTrackedPids();
                 while (_pendingSniHosts.TryDequeue(out var sniHost))
                 {
                     await _testingPipeline.EnqueueHostAsync(sniHost).ConfigureAwait(false);
@@ -888,6 +905,12 @@ namespace IspAudit.ViewModels
             
             _connectionMonitor.OnConnectionEvent += (count, pid, proto, remoteIp, remotePort, localPort) => 
             {
+                // Обновляем сопоставление remote endpoint -> pid, чтобы потом гейтить SNI-триггеры
+                TrackRemoteEndpoint(pid, proto, remoteIp, remotePort);
+
+                // Если раньше прилетел SNI, а PID появился позже (polling/attach) — попробуем добрать из буфера
+                TryFlushPendingSniForEndpoint(pid, proto, remoteIp, remotePort);
+
                 if (count % 10 == 0)
                 {
                     Application.Current?.Dispatcher.Invoke(() => 
@@ -935,8 +958,83 @@ namespace IspAudit.ViewModels
             };
             _dnsParser.OnSniDetected += HandleSniDetected;
             await _dnsParser.StartAsync().ConfigureAwait(false);
+
+            // Очистка буфера SNI (на случай, если PID так и не появился)
+            _pendingSniCleanupTask = Task.Run(() => CleanupPendingSniLoop(_cts!.Token), _cts.Token);
             
             Log("[Services] ✓ Все сервисы запущены");
+        }
+
+        private static string BuildRemoteEndpointKey(byte proto, System.Net.IPAddress remoteIp, ushort remotePort)
+            => $"{proto}:{remoteIp}:{remotePort}";
+
+        private void TrackRemoteEndpoint(int pid, byte proto, System.Net.IPAddress remoteIp, ushort remotePort)
+        {
+            var key = BuildRemoteEndpointKey(proto, remoteIp, remotePort);
+            _remoteEndpointPid[key] = (pid, DateTime.UtcNow);
+        }
+
+        private bool IsTrackedPid(int pid)
+        {
+            if (_pidTracker == null) return false;
+            try
+            {
+                return _pidTracker.TrackedPids.Contains(pid);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private bool TryResolveTrackedPidForEndpoint(byte proto, System.Net.IPAddress remoteIp, ushort remotePort, out int pid)
+        {
+            pid = 0;
+            var key = BuildRemoteEndpointKey(proto, remoteIp, remotePort);
+            if (_remoteEndpointPid.TryGetValue(key, out var entry) && IsTrackedPid(entry.Pid))
+            {
+                pid = entry.Pid;
+                return true;
+            }
+            return false;
+        }
+
+        private void TryFlushPendingSniForEndpoint(int pid, byte proto, System.Net.IPAddress remoteIp, ushort remotePort)
+        {
+            if (!IsTrackedPid(pid)) return;
+
+            var key = BuildRemoteEndpointKey(proto, remoteIp, remotePort);
+            if (_pendingSniByEndpoint.TryRemove(key, out var pending))
+            {
+                EnqueueSniHost(remoteIp, pending.Port, pending.Hostname);
+            }
+        }
+
+        private async Task CleanupPendingSniLoop(CancellationToken token)
+        {
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    await Task.Delay(1000, token).ConfigureAwait(false);
+
+                    var cutoff = DateTime.UtcNow - PendingSniTtl;
+                    foreach (var kv in _pendingSniByEndpoint)
+                    {
+                        if (kv.Value.SeenUtc < cutoff)
+                        {
+                            _pendingSniByEndpoint.TryRemove(kv.Key, out _);
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+            }
+            catch
+            {
+                // Не валим оркестратор из-за фоновой очистки
+            }
         }
 
         private void HandleSniDetected(System.Net.IPAddress ip, int port, string hostname)
@@ -949,29 +1047,68 @@ namespace IspAudit.ViewModels
                     return;
                 }
 
-                var host = new HostDiscovered(
-                    Key: $"{ip}:{port}:TCP",
-                    RemoteIp: ip,
-                    RemotePort: port,
-                    Protocol: IspAudit.Bypass.TransportProtocol.Tcp,
-                    DiscoveredAt: DateTime.UtcNow)
+                // Гейт по PID: пропускаем SNI только если есть недавнее событие соединения от отслеживаемого PID.
+                // Если PID/endpoint ещё не известны (polling лаг, Steam attach), буферим коротко.
+                var proto = (byte)6; // TCP
+                if (TryResolveTrackedPidForEndpoint(proto, ip, (ushort)port, out _))
                 {
-                    Hostname = hostname,
-                    SniHostname = hostname
-                };
-
-                if (_testingPipeline != null)
-                {
-                    _ = _testingPipeline.EnqueueHostAsync(host);
+                    EnqueueSniHost(ip, port, hostname);
                 }
                 else
                 {
-                    _pendingSniHosts.Enqueue(host);
+                    var key = BuildRemoteEndpointKey(proto, ip, (ushort)port);
+                    _pendingSniByEndpoint[key] = new PendingSni(ip, hostname, port, DateTime.UtcNow);
                 }
             }
             catch (Exception ex)
             {
                 Log($"[SNI] Ошибка обработки: {ex.Message}");
+            }
+        }
+
+        private void FlushPendingSniForTrackedPids()
+        {
+            // Вызываем после старта PID-tracker и/или после создания pipeline,
+            // чтобы не потерять ранний SNI в Steam/attach.
+            foreach (var kv in _pendingSniByEndpoint)
+            {
+                if (!_remoteEndpointPid.TryGetValue(kv.Key, out var entry))
+                {
+                    continue;
+                }
+
+                if (!IsTrackedPid(entry.Pid))
+                {
+                    continue;
+                }
+
+                if (_pendingSniByEndpoint.TryRemove(kv.Key, out var pending))
+                {
+                    EnqueueSniHost(pending.RemoteIp, pending.Port, pending.Hostname);
+                }
+            }
+        }
+
+        private void EnqueueSniHost(System.Net.IPAddress ip, int port, string hostname)
+        {
+            var host = new HostDiscovered(
+                Key: $"{ip}:{port}:TCP",
+                RemoteIp: ip,
+                RemotePort: port,
+                Protocol: IspAudit.Bypass.TransportProtocol.Tcp,
+                DiscoveredAt: DateTime.UtcNow)
+            {
+                Hostname = hostname,
+                SniHostname = hostname
+            };
+
+            if (_testingPipeline != null)
+            {
+                _ = _testingPipeline.EnqueueHostAsync(host);
+            }
+            else
+            {
+                _pendingSniHosts.Enqueue(host);
             }
         }
 
