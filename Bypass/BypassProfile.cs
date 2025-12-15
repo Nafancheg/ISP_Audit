@@ -97,6 +97,8 @@ namespace IspAudit.Bypass
                     TlsFirstFragmentSize = profile.TlsFirstFragmentSize,
                     TlsFragmentThreshold = profile.TlsFragmentThreshold,
                     TlsFragmentSizes = profile.TlsFragmentSizes?.ToList() ?? new List<int>(),
+                    TtlTrick = profile.TtlTrick,
+                    TtlTrickValue = profile.TtlTrickValue,
                     RedirectRules = profile.RedirectRules?
                         .Select(r => new BypassRedirectRuleDocument
                         {
@@ -157,6 +159,8 @@ namespace IspAudit.Bypass
                     TlsFragmentSizes = normalizedSizes,
                     FragmentPresetName = presetName,
                     AutoAdjustAggressive = doc.AutoAdjustAggressive,
+                    TtlTrick = doc.TtlTrick,
+                    TtlTrickValue = doc.TtlTrickValue > 0 ? doc.TtlTrickValue : 3,
                     RedirectRules = doc.RedirectRules?
                         .Select(r => r.ToRule())
                         .Where(r => r != null)!
@@ -261,6 +265,8 @@ namespace IspAudit.Bypass
             public int TlsFirstFragmentSize { get; set; } = 64;
             public int TlsFragmentThreshold { get; set; } = 128;
             public List<int>? TlsFragmentSizes { get; set; }
+            public bool TtlTrick { get; set; }
+            public int TtlTrickValue { get; set; } = 3;
             public string? FragmentPresetName { get; set; }
             public bool AutoAdjustAggressive { get; set; }
             public List<BypassRedirectRuleDocument>? RedirectRules { get; set; }

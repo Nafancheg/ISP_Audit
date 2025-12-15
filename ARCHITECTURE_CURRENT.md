@@ -157,7 +157,7 @@ graph TD
 
 ## 4. Поток данных (Data Flow)
 
-1.  **Захват (Capture)**: `ConnectionMonitorService` (управляемый Оркестратором) видит исходящий SYN-пакет.
+1.  **Захват (Capture)**: `ConnectionMonitorService` (управляемый Оркестратором) фиксирует события/снимки соединений (Socket Layer WinDivert или polling через IP Helper API).
 2.  **Идентификация (Identify)**: `PidTrackerService` определяет, какой процесс (PID) инициировал соединение.
 3.  **Парсинг (Parse)**: `DnsParserService` пытается извлечь доменное имя (из DNS-кэша или SNI).
     *   Примечание: извлечение SNI делается по исходящему TLS ClientHello и поддерживает сценарий, когда ClientHello разбит на несколько TCP-сегментов (минимальный реассемблинг первых байт потока).
@@ -170,7 +170,7 @@ graph TD
 9.  **Агрегация (Aggregate)**: Результаты тестов и инспекций собираются в `HostTested` модель.
 10. **Классификация (Classify)**: `StandardBlockageClassifier` выносит вердикт (например, `DPI_REDIRECT`).
 11. **Отчет (Report)**: Результат отправляется в UI через `TestResultsManager`.
-12. **Реакция (React)**: Если включен авто-обход, `BypassController` вызывает `TlsBypassService` применить стратегии; сервис сам регистрирует фильтр в `TrafficEngine` и через события отдаёт план/метрики/вердикт в UI (badge + карточка) и оркестратору (статус auto-bypass).
+12. **Реакция (React)**: Если включен авто-обход, `DiagnosticOrchestrator` включает преемптивный TLS bypass через `BypassController.TlsService.ApplyPreemptiveAsync` (обычно `TLS_DISORDER + DROP_RST`); сам `TlsBypassService` регистрирует/удаляет `BypassFilter` в `TrafficEngine` и через события отдаёт план/метрики/вердикт в UI и оркестратору.
 
 ---
 
@@ -206,7 +206,7 @@ ISP_Audit/
 │   ├── LiveTestingPipeline.cs  # Конвейер обработки
 │   ├── TrafficCollector.cs     # Сниффер
 │   ├── ConnectionMonitorService.cs
-│   ├── DnsParserService.cs
+│   ├── DnsSnifferService.cs    # содержит DnsParserService (DNS + SNI)
 │   ├── PidTrackerService.cs
 │   └── FixService.cs           # Системные исправления (DNS)
 │
@@ -240,7 +240,7 @@ ISP_Audit/
     *   Использование статических свойств `Config.ActiveProfile` и `Program.Targets` делает код хрупким и сложным для тестирования.
     *   Singleton `NoiseHostFilter.Instance` создает скрытые зависимости между модулями.
 2.  **Отсутствие DI**:
-    *   Граф объектов создается вручную в `MainWindow.xaml.cs`. Это усложняет замену компонентов (например, для мок-тестирования).
+    *   Граф объектов создаётся вручную внутри `MainViewModelRefactored` (DataContext создаётся в XAML). Это усложняет замену компонентов (например, для мок-тестирования).
 3.  **Жесткие пути**:
     *   Пути к логам и профилям иногда формируются конкатенацией строк, что может вызвать проблемы на нестандартных конфигурациях ОС.
 4.  **Обработка ошибок**:
