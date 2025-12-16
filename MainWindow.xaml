@@ -234,6 +234,29 @@
                                         </Border>
                                     </StackPanel>
                                 </TabItem>
+
+                                <TabItem Header="Hostlist" FontSize="13">
+                                    <StackPanel Margin="0,8,0,0">
+                                        <CheckBox Content="Авто-hostlist (показывать кандидатов)"
+                                                  IsChecked="{Binding Bypass.IsAutoHostlistEnabled}"
+                                                  FontSize="13"/>
+
+                                        <TextBlock Text="{Binding Bypass.AutoHostlistCount, StringFormat='Кандидатов: {0}'}"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                   Margin="0,6,0,6"/>
+
+                                        <TextBox Style="{StaticResource ModernTextBoxStyle}"
+                                                 Text="{Binding Bypass.AutoHostlistText}"
+                                                 IsReadOnly="True"
+                                                 IsEnabled="{Binding Bypass.IsAutoHostlistEnabled}"
+                                                 AcceptsReturn="True"
+                                                 TextWrapping="Wrap"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 Height="140"
+                                                 materialDesign:HintAssist.Hint="Кандидаты hostnames (из сигналов блокировок)"/>
+                                    </StackPanel>
+                                </TabItem>
                             </TabControl>
                         </StackPanel>
                     </Border>

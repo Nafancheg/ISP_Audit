@@ -425,7 +425,8 @@ namespace IspAudit.ViewModels
                     _tcpRetransmissionTracker != null
                         ? new InMemoryBlockageStateStore(_tcpRetransmissionTracker, _httpRedirectDetector, _rstInspectionService, _udpInspectionService)
                         : null,
-                    activeStrategies);
+                    activeStrategies,
+                    bypassController.AutoHostlist);
 
                 // Повторно флешим pending SNI — на случай, если endpoint->pid уже есть, а событий соединения больше не будет.
                 FlushPendingSniForTrackedPids();
@@ -580,7 +581,8 @@ namespace IspAudit.ViewModels
                     null, // DNS parser не нужен для ретеста (уже есть IP)
                     new UnifiedTrafficFilter(),
                     null, // State store новый
-                    activeStrategies);
+                    activeStrategies,
+                    bypassController.AutoHostlist);
 
                 // Запускаем цели в pipeline
                 foreach (var target in targets)

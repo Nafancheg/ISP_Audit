@@ -47,6 +47,9 @@ namespace IspAudit.Utils
         private readonly IHostTester _tester;
         private readonly IBlockageClassifier _classifier;
         private readonly IBlockageStateStore _stateStore;
+
+        // Автоматический сбор hostlist (опционально)
+        private readonly AutoHostlistService? _autoHostlist;
         
         public LiveTestingPipeline(
             PipelineConfig config, 
@@ -55,7 +58,8 @@ namespace IspAudit.Utils
             DnsParserService? dnsParser = null,
             ITrafficFilter? filter = null,
             IBlockageStateStore? stateStore = null,
-            System.Collections.Generic.IEnumerable<string>? activeStrategies = null)
+            System.Collections.Generic.IEnumerable<string>? activeStrategies = null,
+            AutoHostlistService? autoHostlist = null)
         {
             _config = config;
             _progress = progress;
@@ -72,6 +76,8 @@ namespace IspAudit.Utils
 
             // Инициализация модулей
             _stateStore = stateStore ?? new InMemoryBlockageStateStore();
+
+            _autoHostlist = autoHostlist;
 
             _tester = new StandardHostTester(progress, dnsParser?.DnsCache);
             
@@ -211,6 +217,9 @@ namespace IspAudit.Utils
                     // Регистрируем результат в сторе, чтобы поддерживать fail counter + time window
                     _stateStore.RegisterResult(tested);
 
+                    // Снимаем агрегированные сигналы для Auto-hostlist и диагностики.
+                    var signals = _stateStore.GetSignals(tested, TimeSpan.FromSeconds(60));
+
                     // Классифицируем блокировку
                     var blocked = _classifier.ClassifyBlockage(tested);
 
@@ -222,6 +231,12 @@ namespace IspAudit.Utils
                     if (string.IsNullOrEmpty(hostname) && _dnsParser != null)
                     {
                         _dnsParser.DnsCache.TryGetValue(tested.Host.RemoteIp.ToString(), out hostname);
+                    }
+
+                    // Auto-hostlist: добавляем кандидатов только по не-шумовым хостам.
+                    if (_autoHostlist != null)
+                    {
+                        _autoHostlist.Observe(tested, signals, hostname);
                     }
 
                     // В UI ключом всегда остается IP, чтобы не "переименовывать" карточки

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Collections.ObjectModel;
 using IspAudit.Bypass;
 using IspAudit.Core.Traffic;
 using IspAudit.Utils;
@@ -26,6 +27,10 @@ namespace IspAudit.ViewModels
         private readonly BypassProfile _baseProfile;
         private TlsBypassOptions _currentOptions;
         private TlsFragmentPreset? _selectedPreset;
+
+        private readonly AutoHostlistService _autoHostlist;
+        private bool _isAutoHostlistEnabled;
+        private string _autoHostlistText = "(пока пусто)";
 
         // Флаги, не связанные напрямую с TLS bypass сервисом
         private bool _isDoHEnabled;
@@ -62,6 +67,47 @@ namespace IspAudit.ViewModels
 
         public List<TlsFragmentPreset> FragmentPresets { get; }
 
+        /// <summary>
+        /// Auto-hostlist: список кандидатов (текстом), обновляется по сигналам в pipeline.
+        /// </summary>
+        public string AutoHostlistText
+        {
+            get => _autoHostlistText;
+            private set
+            {
+                if (_autoHostlistText != value)
+                {
+                    _autoHostlistText = value;
+                    OnPropertyChanged(nameof(AutoHostlistText));
+                    OnPropertyChanged(nameof(AutoHostlistCount));
+                }
+            }
+        }
+
+        public int AutoHostlistCount => _autoHostlist.VisibleCount;
+
+        public bool IsAutoHostlistEnabled
+        {
+            get => _isAutoHostlistEnabled;
+            set
+            {
+                if (_isAutoHostlistEnabled == value) return;
+                _isAutoHostlistEnabled = value;
+                _autoHostlist.Enabled = value;
+                if (!value)
+                {
+                    _autoHostlist.Clear();
+                }
+                RefreshAutoHostlistText();
+                OnPropertyChanged(nameof(IsAutoHostlistEnabled));
+            }
+        }
+
+        /// <summary>
+        /// Сервис Auto-hostlist (передаётся в pipeline).
+        /// </summary>
+        public AutoHostlistService AutoHostlist => _autoHostlist;
+
         public TlsFragmentPreset? SelectedFragmentPreset
         {
             get => _selectedPreset;
@@ -90,6 +136,15 @@ namespace IspAudit.ViewModels
             _baseProfile = BypassProfile.CreateDefault();
             _tlsService = new TlsBypassService(trafficEngine, _baseProfile, Log);
             _currentOptions = _tlsService.GetOptionsSnapshot();
+
+            _autoHostlist = new AutoHostlistService();
+            _autoHostlist.Changed += () =>
+            {
+                Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    RefreshAutoHostlistText();
+                });
+            };
 
             // По умолчанию при старте всё выключено (в т.ч. DROP RST)
             _currentOptions = _currentOptions with
@@ -125,6 +180,11 @@ namespace IspAudit.ViewModels
                     SelectedDnsPreset = preset;
                 }
             }, _ => true);
+        }
+
+        private void RefreshAutoHostlistText()
+        {
+            AutoHostlistText = _autoHostlist.GetDisplayText();
         }
 
         #region Properties

@@ -89,6 +89,7 @@ graph TD
     *   Связывает этапы: Sniffing → Testing → Classification → Reporting.
     *   Использует `UnifiedTrafficFilter` для валидации, дедупликации и фильтрации шума.
     *   Обеспечивает параллельную обработку множества хостов.
+    *   Опционально принимает `AutoHostlistService`: на этапе Classification считывает `BlockageSignals` из `InMemoryBlockageStateStore` и добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения).
 
 ### 3.3 Core Modules (`IspAudit.Core`)
 
