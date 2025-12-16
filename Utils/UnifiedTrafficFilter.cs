@@ -53,18 +53,22 @@ namespace IspAudit.Utils
 
         public FilterDecision ShouldDisplay(HostBlocked result)
         {
-            // 1. Проверка на шум (теперь hostname точно известен после теста)
-            var hostname = result.TestResult.Hostname;
-            
-            if (NoiseHostFilter.Instance.IsNoiseHost(hostname))
-            {
-                return new FilterDecision(FilterAction.Drop, "Noise host (post-check)");
-            }
+            // 1. Проверка на шум.
+            // Важно: не скрываем проблемы/блокировки только из-за шумового rDNS.
+            // Поэтому шум используем только для «успешных»/непроблемных результатов.
+            var bestName =
+                result.TestResult.SniHostname ??
+                result.TestResult.Hostname ??
+                result.TestResult.ReverseDnsHostname;
 
             // 2. Логика отображения в UI
             // Если стратегии нет и статус OK - это успешный тест, не засоряем UI карточками
             if (result.BypassStrategy == "NONE" && result.RecommendedAction == "OK")
             {
+                if (!string.IsNullOrEmpty(bestName) && NoiseHostFilter.Instance.IsNoiseHost(bestName))
+                {
+                    return new FilterDecision(FilterAction.Drop, "Noise host (post-check, OK)");
+                }
                 return new FilterDecision(FilterAction.LogOnly, "Status OK");
             }
 

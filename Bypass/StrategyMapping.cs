@@ -95,11 +95,13 @@ namespace IspAudit.Bypass
 
         private static void AddTlsStrategies(StrategyRecommendation rec)
         {
-            // Prioritize DISORDER and FAKE over simple FRAGMENT, as they are more robust against modern DPI
+            // Более безопасный порядок:
+            // 1) TLS_DISORDER / TLS_FRAGMENT — обычно меньше ломают сайты
+            // 2) TLS_FAKE / TLS_FAKE_FRAGMENT — более агрессивны и могут ухудшать совместимость
             rec.AddApplicable("TLS_DISORDER");
-            rec.AddApplicable("TLS_FAKE");
             rec.AddApplicable("TLS_FRAGMENT");
             rec.AddApplicable("TLS_FAKE_FRAGMENT");
+            rec.AddApplicable("TLS_FAKE");
         }
 
         private static void AnalyzeTcpFailure(StrategyRecommendation rec, long minElapsed, string? blockageType)

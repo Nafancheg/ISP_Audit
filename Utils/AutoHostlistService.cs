@@ -62,7 +62,9 @@ namespace IspAudit.Utils
                 signals.HasSignificantRetransmissions ||
                 signals.HasHttpRedirectDpi ||
                 signals.HasSuspiciousRst ||
-                signals.HasUdpBlockage;
+                // UDP/QUIC сигнал сам по себе (при TCP/TLS OK) часто не означает проблему для пользователя.
+                // Добавляем по UDP только если есть реальные фейлы/неуспехи.
+                (signals.HasUdpBlockage && (signals.HardFailCount > 0 || !tested.TlsOk || !tested.TcpOk));
 
             if (!isCandidate)
             {

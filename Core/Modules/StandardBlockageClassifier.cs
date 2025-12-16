@@ -67,8 +67,10 @@ namespace IspAudit.Core.Modules
                 {
                     if (signals != null && signals.Value.HasUdpBlockage)
                     {
-                        // TCP работает, но UDP блокируется (типично для QUIC/Games)
+                        // TCP/TLS работает — для браузера это обычно означает успешный откат с QUIC на TCP.
+                        // Не считаем это «ошибкой» и не предлагаем bypass-стратегии.
                         tested = tested with { BlockageType = "UDP_BLOCKAGE" };
+                        return new HostBlocked(tested, "NONE", "OK");
                     }
                     else
                     {
