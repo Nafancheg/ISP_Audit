@@ -31,7 +31,7 @@ namespace IspAudit.Utils
         /// <summary>
         /// Минимальное количество попаданий, после которого хост показывается в UI.
         /// </summary>
-        public int MinHitsToShow { get; set; } = 2;
+        public int MinHitsToShow { get; set; } = 1;
 
         /// <summary>
         /// Минимальный интервал между публикациями изменений (защита от спама в UI).
@@ -57,12 +57,6 @@ namespace IspAudit.Utils
                 return;
             }
 
-            // Шумовые/служебные домены не добавляем в hostlist.
-            if (!string.IsNullOrWhiteSpace(hostname) && NoiseHostFilter.Instance.IsNoiseHost(hostname))
-            {
-                return;
-            }
-
             // Берем только те хосты, по которым реально есть подозрительные сигналы.
             var isCandidate =
                 signals.HasSignificantRetransmissions ||
@@ -77,6 +71,14 @@ namespace IspAudit.Utils
 
             var key = BuildKey(tested, hostname);
             if (string.IsNullOrWhiteSpace(key))
+            {
+                return;
+            }
+
+            // Шумовые/служебные домены не добавляем в hostlist.
+            // Важно: фильтруем именно ключ кандидата (а не только «внешний» hostname),
+            // иначе в UI будут всплывать rDNS вида *.1e100.net, когда SNI отсутствует.
+            if (LooksLikeHostname(key) && NoiseHostFilter.Instance.IsNoiseHost(key))
             {
                 return;
             }
@@ -175,6 +177,12 @@ namespace IspAudit.Utils
             }
 
             return tested.Host.RemoteIp?.ToString() ?? string.Empty;
+        }
+
+        private static bool LooksLikeHostname(string value)
+        {
+            // Простой признак: в домене обычно есть точка. IP адреса и пустые строки не фильтруем через NoiseHostFilter.
+            return value.Contains('.') && !System.Net.IPAddress.TryParse(value, out _);
         }
 
         private sealed record CandidateState

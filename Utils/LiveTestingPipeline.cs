@@ -246,11 +246,12 @@ namespace IspAudit.Utils
                     var rdns = tested.ReverseDnsHostname;
                     var namesSuffix = $" SNI={(string.IsNullOrWhiteSpace(sni) ? "-" : sni)} RDNS={(string.IsNullOrWhiteSpace(rdns) ? "-" : rdns)}";
                     
-                    // Перепроверяем шум с обновлённым hostname
-                    if (!string.IsNullOrEmpty(hostname) && NoiseHostFilter.Instance.IsNoiseHost(hostname))
+                    // Перепроверяем шум с обновлённым hostname.
+                    // Важно: НЕ отбрасываем реальные проблемы/блокировки только из-за шумового rDNS.
+                    if (decision.Action != FilterAction.Process && !string.IsNullOrEmpty(hostname) && NoiseHostFilter.Instance.IsNoiseHost(hostname))
                     {
                         _progress?.Report($"[NOISE] Отфильтрован (late): {displayHost}");
-                        continue; // Пропускаем шумовой хост
+                        continue; // Пропускаем только «непроблемные» шумовые хосты
                     }
 
                     if (decision.Action == FilterAction.Process)

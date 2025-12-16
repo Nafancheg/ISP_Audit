@@ -578,7 +578,7 @@ namespace IspAudit.ViewModels
                     pipelineConfig, 
                     progress, 
                     _trafficEngine, 
-                    null, // DNS parser не нужен для ретеста (уже есть IP)
+                    _dnsParser, // Нужен для кеша SNI/DNS имён (стабильнее подписи в UI и авто-hostlist)
                     new UnifiedTrafficFilter(),
                     null, // State store новый
                     activeStrategies,
