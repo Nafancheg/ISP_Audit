@@ -626,38 +626,36 @@ public class BypassExecutorMvp
 **Реализация:**
 
 ```csharp
-// В DiagnosticOrchestrator после классификации хоста
-private async Task OnHostClassified(TestResult result) 
+// В DiagnosticOrchestrator после завершения активной проверки хоста (DNS/TCP/TLS)
+private void OnHostTested(HostTested tested)
 {
-    if (!result.HasIssues) return;
-    
-    try 
+    try
     {
-        // 1. Собрать сигналы
-        var signals = _signalsAdapter.CollectSignals(result, result.Ip);
-        
-        // 2. Диагностировать
+        // 0) Дописать факт в последовательность событий (SignalSequence)
+        var hostKey = tested.Host.RemoteIp.ToString();
+        _signalsAdapter.AppendHostTested(tested);
+
+        // 1) Построить агрегированный срез по окну (из последовательности, а не "снимком")
+        var signals = _signalsAdapter.BuildSnapshot(hostKey, TimeSpan.FromSeconds(30));
+
+        // 2) Диагностировать
         var diagnosis = _diagnosisEngine.Diagnose(signals);
-        
         _logger.LogInformation(
-            $"Диагноз: {diagnosis.Diagnosis} " +
-            $"(уверенность: {diagnosis.Confidence}%, " +
-            $"правило: {diagnosis.MatchedRuleName})"
+            $"V2 диагноз: {diagnosis.Diagnosis} " +
+            $"(уверенность: {diagnosis.Confidence}%, правило: {diagnosis.MatchedRuleName})"
         );
-        
-        // 3. Получить план
+
+        // 3) Получить план
         var plan = _strategySelector.SelectStrategies(diagnosis);
-        
-        // 4. В MVP только логируем
-        var outcome = _bypassExecutor.LogRecommendations(plan);
-        
-        // 5. Обновить UI
-        result.DiagnosisInfo = diagnosis.ExplanationNotes;
-        result.RecommendedStrategies = string.Join(", ", 
-            plan.Strategies.Select(s => s.Id.ToString())
-        );
-    } 
-    catch (Exception ex) 
+
+        // 4) В MVP только логируем рекомендации (без авто-применения)
+        _bypassExecutor.LogRecommendations(plan);
+
+        // 5) UI: показываем v2 приоритетно, legacy — как пометку
+        // Псевдокод отображения:
+        // UpdateUi(hostKey, v2Diagnosis: diagnosis, plan: plan, legacy: tested.LegacyClassification);
+    }
+    catch (Exception ex)
     {
         _logger.LogError($"Intelligence failed: {ex.Message}");
     }
