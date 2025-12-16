@@ -636,6 +636,7 @@ private void OnHostTested(HostTested tested)
         _signalsAdapter.AppendHostTested(tested);
 
         // 1) Построить агрегированный срез по окну (из последовательности, а не "снимком")
+        // Окно агрегации — см. Step 0 / Implementation Details (Default 30s, Extended 60s)
         var signals = _signalsAdapter.BuildSnapshot(hostKey, TimeSpan.FromSeconds(30));
 
         // 2) Диагностировать
