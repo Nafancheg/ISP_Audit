@@ -47,6 +47,26 @@
 - Диагностике знать про фрагментацию/TTL/порядок чанков.
 - Стратегиям смотреть на TTL/ретрансмиссии/тайминги/пакеты.
 - Feedback менять диагноз напрямую (только корректирует приоритеты стратегий).
+- `HostContext` (например auto-hostlist) **не участвует** в `Diagnosis Engine v2`.
+  - Разрешено: использовать `HostContext` только для UI/логов/приоритезации показа рекомендаций (но не для вычисления диагноза).
+
+### Определения (контракт)
+- `Diagnosis` обязан поддерживать значение `None/Unknown`.
+  - Правило безопасности: `Diagnosis=None/Unknown` → `StrategySelector` возвращает **пустой** `BypassPlan`.
+- `Confidence` — агрегированная величина в диапазоне **0–100**.
+  - В MVP: `Confidence = max(matchedRule.BaseConfidence)`.
+  - В MVP запрещено: обучение/динамика/«подкрутка» confidence на основе feedback.
+
+### Explainability contract (минимум для UI/логов)
+`Diagnosis Engine` обязан возвращать не только диагноз, но и объяснение:
+```
+DiagnosisResult {
+  DiagnosisId,              // включая None/Unknown
+  Confidence0To100,
+  MatchedRuleName,          // имя сработавшего правила (или "None")
+  Notes                     // короткая строка (1–2 причины), без интерпретации стратегии
+}
+```
 
 ### MVP-граница
 - Стартуем с 2 диагнозов и доводим до качества.
@@ -88,7 +108,7 @@
 Маппинг “Phase2 пункт → слой v2”:
 - 2.6 TLS Fragment/Disorder → **Executor strategy**.
 - 2.5 TTL/AutoTTL → **Executor strategy**.
-- 2.4 Auto-hostlist → **Signals enrichment / HostContext** (подсказка “какие хосты важны”, но без автоприменения).
+- 2.4 Auto-hostlist → **HostContext/UI enrichment** (подсказка “какие хосты важны”; не участвует в `Diagnosis Engine v2`).
 - 2.1 HTTP Host трюки → **Executor strategy** (per-host).
 - 2.2 Bad checksum/sequence → **Executor strategy** (после снятия блокера движка).
 - 2.3 QUIC/UDP obfuscation → **Executor strategy** (per-host).
