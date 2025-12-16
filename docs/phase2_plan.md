@@ -118,7 +118,7 @@ public sealed class SignalSequence
 
 ### BlockageSignalsV2 (производные признаки из последовательности)
 
-`BlockageSignalsV2` остаётся в контракте как **срез/агрегация** по окну времени (например 10–60 секунд) поверх `SignalSequence`.
+`BlockageSignalsV2` остаётся в контракте как **срез/агрегация** по окну времени (например 30–60 секунд, см. Step 0 / Implementation Details) поверх `SignalSequence`.
 Это убирает проблему “T=0 vs T+2s vs T+5s”: адаптер дописывает события, а агрегатор пересчитывает признаки.
 
 ```csharp
@@ -191,7 +191,7 @@ public enum StrategyId
     TlsFragment,
     TlsFakeTtl,
     DropRst,
-    UseDoh, // TODO: пример будущей стратегии (в текущем репо DoH как стратегия может отсутствовать)
+    UseDoh, // TODO: будущая стратегия; в MVP не использовать в маппинге (в репозитории может отсутствовать реализация)
     AggressiveFragment
 }
 
@@ -230,6 +230,33 @@ public class BypassPlan
 - ✅ Границы слоёв понятны и зафиксированы
 - ✅ Нет двусмысленностей в контракте
 
+### Implementation Details (уточнения контракта)
+
+**SignalSequence storage:**
+- Хранение: расширить существующий `InMemoryBlockageStateStore` (in-memory).
+- Ключ: `HostKey` должен быть стабилен и непустой (например IP или IP:port:proto — зависит от доступных данных).
+
+**Агрегация и окна:**
+- Окно агрегации по умолчанию: **30 секунд**.
+- Расширенное окно (для потенциально stateful/медленных сценариев): **60 секунд**.
+
+**Очистка событий (защита от роста памяти):**
+- TTL событий: **10 минут**.
+- Очистка выполняется при `Append(...)` (удаляем события старше TTL).
+
+**StandardBlockageClassifier:**
+- В MVP продолжает работать параллельно (для legacy-UI/совместимости).
+- В UI v2-диагноз приоритетнее, legacy явно маркируется как "legacy".
+- После стабилизации v2: планируется полное отключение legacy-классификатора.
+
+**Нереализованные стратегии:**
+- `UseDoh` в MVP **не добавлять** в маппинг (в текущем репозитории может отсутствовать реализация DoH как стратегии).
+- При попытке применить нереализованную стратегию: `log warning` + `skip` (без исключений).
+
+**RiskLevel protection:**
+- Стратегии с риском `High` запрещены при `confidence < 70`.
+- Фильтрация реализуется в `StrategySelector.SelectStrategies()`.
+
 ---
 
 ### Шаг 1: Signals Adapter
@@ -243,6 +270,10 @@ public class BypassPlan
 ```csharp
 public class SignalsAdapter 
 {
+    private static readonly TimeSpan DefaultAggregationWindow = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ExtendedAggregationWindow = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan EventTtl = TimeSpan.FromMinutes(10);
+
     // Внимание: ниже псевдокод.
     // Идея: адаптер НЕ делает "один снимок".
     // Он дописывает события в последовательность и позволяет в любой момент построить агрегированный срез.
@@ -273,7 +304,7 @@ public class SignalsAdapter
     {
         // Берём события за окно и строим производные признаки.
         // Реализация зависит от того, как вы храните/очищаете события.
-        var seq = _store.GetSequence(hostKey);
+        var seq = _stateStore.GetOrCreateSequence(hostKey);
         var events = seq.Events.Where(e => (DateTime.UtcNow - e.ObservedAtUtc) <= window).ToList();
 
         // В MVP допускается частичная агрегация: мы логируем события всегда,
@@ -289,16 +320,35 @@ public class SignalsAdapter
         return snapshot;
     }
 
-    private void Append(SignalEvent evt) { /* store + trim + log */ }
+    private void Append(SignalEvent evt)
+    {
+        if (string.IsNullOrWhiteSpace(evt.HostKey))
+        {
+            _logger.LogWarning("SignalEvent ignored: empty HostKey");
+            return;
+        }
+
+        var seq = _stateStore.GetOrCreateSequence(evt.HostKey);
+        seq.Events.Add(evt);
+        seq.LastUpdatedUtc = DateTime.UtcNow;
+
+        // Очистка старых событий (TTL)
+        var cutoff = DateTime.UtcNow - EventTtl;
+        seq.Events.RemoveAll(e => e.ObservedAtUtc < cutoff);
+
+        _logger.LogDebug($"SignalEvent[{evt.HostKey}] {evt.Type} from {evt.Source}");
+    }
 }
 ```
 
-**Критерий готовности (Gate 1→2 — реалистичный):**
+**Критерий готовности (Gate 1→2 — реалистичный и проверяемый):**
 
 ✅ **Успех:**
 - События `SignalEvent` пишутся в лог/вывод без исключений (нет падений при отсутствии данных).
-- В обязательных полях нет “дыр”: для `HostTested` события всегда есть `HostKey`, `ObservedAtUtc`, `Source`.
-- Человек может глазами понять цепочку: "HostTested → (потом) SuspiciousRst/Redirect/Retx".
+- Для 10 разных `HostKey`: минимум 2 события на хост.
+- `HostKey` непустой в 100% событий.
+- `Value != null` хотя бы в одном событии на хост.
+- Человек может восстановить цепочку из логов: "HostTested → (потом) SuspiciousRst/Redirect/Retx".
 
 ❌ **Провал:** есть исключения/пустые ключи/невозможность восстановить цепочку → Step 2 запрещён.
 
@@ -424,9 +474,9 @@ public class StrategySelector
             (StrategyId.TlsFakeTtl, 5)
         },
         
-        [DiagnosisId.DnsHijack] = new() {
-            (StrategyId.UseDoh, 10)
-        },
+        // DNS-блокировки в MVP: без авто-стратегий (только рекомендации/подсказки пользователю).
+        // TODO: добавить UseDoh, когда появится реальная реализация стратегии.
+        [DiagnosisId.DnsHijack] = new(),
         
         [DiagnosisId.None] = new(),
         [DiagnosisId.Unknown] = new()
@@ -457,6 +507,14 @@ public class StrategySelector
             })
             .OrderByDescending(s => s.BasePriority)
             .ToList();
+
+        // Защита от агрессивных стратегий при недостаточной уверенности
+        if (diagnosis.Confidence < 70)
+        {
+            strategies = strategies
+                .Where(s => s.Risk != RiskLevel.High)
+                .ToList();
+        }
         
         return new BypassPlan {
             Strategies = strategies,
@@ -493,6 +551,7 @@ public class StrategySelector
 - ✅ Для `Diagnosis=None/Unknown` → пустой план
 - ✅ Для слабых диагнозов (confidence <50) → пустой план
 - ✅ Агрессивные стратегии (DROP_RST) не появляются при низкой уверенности
+- ✅ Стратегии с `RiskLevel.High` фильтруются при confidence <70
 - ✅ План детерминирован (одинаковый для одного диагноза)
 
 ---
@@ -558,6 +617,11 @@ public class BypassExecutorMvp
 **Что:** Заменить старые рекомендации на v2  
 **Время:** 4-6 часов  
 **Компонент:** `ViewModels/DiagnosticOrchestrator.cs`
+
+**Переходный период (чтобы не было двух “конкурирующих истин”):**
+- Legacy-диагностика (`StandardBlockageClassifier`) остаётся, но в UI явно помечается как **legacy**.
+- V2-диагноз показывается приоритетно (и именно он управляет рекомендациями v2).
+- Технически это может быть реализовано через отдельные поля/строки для отображения (TODO в рамках Step 5).
 
 **Реализация:**
 
