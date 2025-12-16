@@ -68,7 +68,11 @@
 
 ❌ **Feedback** не может:
 - Менять диагноз напрямую
-- Удалять правила (только ранжирование)
+- Менять mapping (Diagnosis → Strategy) или удалять стратегии (только веса/ранжирование)
+
+❌ **Executor** не должен:
+- Подбирать/оптимизировать параметры стратегий (параметры задаёт Selector)
+- Принимать стратегические решения “какую технику применять” (это зона Selector)
 
 ✅ **Разрешено:**
 - `HostContext` (auto-hostlist) использовать для UI/логов
@@ -158,8 +162,8 @@ public class BlockageSignalsV2
 ```csharp
 public enum DiagnosisId 
 {
-    None,                   // не удалось диагностировать
-    Unknown,                // недостаточно данных
+    None,                   // техническое значение по умолчанию (например, до вызова Diagnose); Diagnose его не возвращает
+    Unknown,                // недостаточно данных / не сработало ни одно правило
     ActiveDpiEdge,          // быстрый RST с TTL аномалией
     StatefulDpi,            // медленный RST, stateful инспекция
     SilentDrop,             // timeout + высокие ретрансмиссии
@@ -427,11 +431,22 @@ public class DiagnosisEngine
         }
         
         var best = matched.First();
+
+        // IsUnreliable — не для галочки: понижаем уверенность так,
+        // чтобы Selector не рекомендовал обход при шумных/неполных данных.
+        var confidence = best.BaseConfidence;
+        if (signals.IsUnreliable)
+        {
+            confidence = Math.Min(confidence, 30);
+        }
+
         return new DiagnosisResult {
             Diagnosis = best.Produces,
-            Confidence = best.BaseConfidence,
+            Confidence = confidence,
             MatchedRuleName = best.Name,
-            ExplanationNotes = best.ExplainFunc(signals),
+            ExplanationNotes = signals.IsUnreliable
+                ? $"{best.ExplainFunc(signals)} (данные ненадёжны, confidence ограничен)"
+                : best.ExplainFunc(signals),
             InputSignals = signals,
             DiagnosedAt = DateTime.UtcNow
         };
@@ -484,21 +499,37 @@ public class StrategySelector
     
     public BypassPlan SelectStrategies(DiagnosisResult diagnosis) 
     {
+        // Нормализация: None — только технический дефолт до Diagnose.
+        // В рантайме трактуем как Unknown, чтобы не было логического дрейфа.
+        var diagnosisId = diagnosis.Diagnosis == DiagnosisId.None
+            ? DiagnosisId.Unknown
+            : diagnosis.Diagnosis;
+
+        // Сигналы ненадёжны — рекомендаций быть не должно (даже если правило сработало)
+        if (diagnosis.InputSignals?.IsUnreliable == true)
+        {
+            return new BypassPlan {
+                Strategies = new(),
+                ForDiagnosis = diagnosisId,
+                PlanConfidence = diagnosis.Confidence,
+                Reasoning = "Сигналы помечены как ненадёжные, обход не рекомендуется"
+            };
+        }
+
         // Защита от слабых диагнозов
-        if (diagnosis.Diagnosis == DiagnosisId.None || 
-            diagnosis.Diagnosis == DiagnosisId.Unknown ||
+        if (diagnosisId == DiagnosisId.Unknown ||
             diagnosis.Confidence < 50) 
         {
             return new BypassPlan { 
                 Strategies = new(),
-                ForDiagnosis = diagnosis.Diagnosis,
+                ForDiagnosis = diagnosisId,
                 PlanConfidence = diagnosis.Confidence,
                 Reasoning = "Диагноз неуверенный, обход не рекомендуется"
             };
         }
         
         // Получить стратегии из таблицы
-        var strategies = _mapping[diagnosis.Diagnosis]
+        var strategies = _mapping[diagnosisId]
             .Select(x => new BypassStrategy {
                 Id = x.Item1,
                 BasePriority = x.Item2,
@@ -518,7 +549,7 @@ public class StrategySelector
         
         return new BypassPlan {
             Strategies = strategies,
-            ForDiagnosis = diagnosis.Diagnosis,
+            ForDiagnosis = diagnosisId,
             PlanConfidence = diagnosis.Confidence,
             Reasoning = $"Диагноз '{diagnosis.Diagnosis}' (уверенность {diagnosis.Confidence}%) → {strategies.Count} стратегий"
         };
