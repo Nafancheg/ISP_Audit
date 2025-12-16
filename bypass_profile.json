@@ -1,6 +1,9 @@
 {
   "dropTcpRst": true,
   "fragmentTlsClientHello": true,
+  "ttlTrick": false,
+  "ttlTrickValue": 3,
+  "autoTtl": false,
   "tlsFirstFragmentSize": 64,
   "tlsFragmentThreshold": 128,
   "tlsFragmentSizes": [64],

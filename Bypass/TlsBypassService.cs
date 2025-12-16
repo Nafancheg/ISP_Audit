@@ -26,6 +26,7 @@ namespace IspAudit.Bypass
         private TlsBypassOptions _options;
         private DateTime _metricsSince = DateTime.MinValue;
         private readonly AggressiveAutoAdjustStrategy _autoAdjust = new();
+        private readonly AutoTtlAdjustStrategy _autoTtl;
         private readonly IReadOnlyList<TlsFragmentPreset> _presets;
 
         public event Action<TlsBypassMetrics>? MetricsUpdated;
@@ -41,6 +42,7 @@ namespace IspAudit.Bypass
             _log = log;
             _options = TlsBypassOptions.CreateDefault(_baseProfile);
             _presets = BuildPresets(_baseProfile);
+            _autoTtl = new AutoTtlAdjustStrategy(_log);
 
             _metricsTimer = new Timer
             {
@@ -175,8 +177,9 @@ namespace IspAudit.Bypass
                 TlsFirstFragmentSize = _baseProfile.TlsFirstFragmentSize,
                 TlsFragmentThreshold = _baseProfile.TlsFragmentThreshold,
                 TlsFragmentSizes = options.FragmentSizes,
-                TtlTrick = _baseProfile.TtlTrick,
-                TtlTrickValue = _baseProfile.TtlTrickValue,
+                TtlTrick = options.TtlTrickEnabled,
+                TtlTrickValue = options.TtlTrickValue,
+                AutoTtl = options.AutoTtlEnabled,
                 RedirectRules = _baseProfile.RedirectRules
             };
         }
@@ -240,6 +243,13 @@ namespace IspAudit.Bypass
                 if (adjustedSizes != null)
                 {
                     await ApplyAsync(options with { FragmentSizes = adjustedSizes }, CancellationToken.None).ConfigureAwait(false);
+                    return;
+                }
+
+                var adjustedOptions = _autoTtl.TryAdjust(options, metrics, verdict);
+                if (adjustedOptions != null)
+                {
+                    await ApplyAsync(adjustedOptions, CancellationToken.None).ConfigureAwait(false);
                     return;
                 }
 
@@ -330,6 +340,10 @@ namespace IspAudit.Bypass
         public string PresetName { get; init; } = string.Empty;
         public bool AutoAdjustAggressive { get; init; }
 
+        public bool TtlTrickEnabled { get; init; }
+        public int TtlTrickValue { get; init; } = 3;
+        public bool AutoTtlEnabled { get; init; }
+
         public static TlsBypassOptions CreateDefault(BypassProfile baseProfile)
         {
             var fragments = baseProfile.TlsFragmentSizes ?? new List<int> { baseProfile.TlsFirstFragmentSize };
@@ -342,7 +356,10 @@ namespace IspAudit.Bypass
                 DropRstEnabled = baseProfile.DropTcpRst,
                 FragmentSizes = fragments,
                 PresetName = string.IsNullOrWhiteSpace(baseProfile.FragmentPresetName) ? "Профиль" : baseProfile.FragmentPresetName,
-                AutoAdjustAggressive = baseProfile.AutoAdjustAggressive
+                AutoAdjustAggressive = baseProfile.AutoAdjustAggressive,
+                TtlTrickEnabled = baseProfile.TtlTrick,
+                TtlTrickValue = baseProfile.TtlTrickValue,
+                AutoTtlEnabled = baseProfile.AutoTtl
             };
         }
 
@@ -364,7 +381,11 @@ namespace IspAudit.Bypass
                 safe.Add(64);
             }
 
-            return this with { FragmentSizes = safe };
+            var ttl = TtlTrickValue;
+            if (ttl <= 0) ttl = 3;
+            if (ttl > 255) ttl = 255;
+
+            return this with { FragmentSizes = safe, TtlTrickValue = ttl };
         }
 
         public string ToReadableStrategy()
@@ -374,6 +395,7 @@ namespace IspAudit.Bypass
             if (DisorderEnabled) parts.Add("Disorder");
             if (FakeEnabled) parts.Add("Fake");
             if (DropRstEnabled) parts.Add("DROP RST");
+            if (TtlTrickEnabled) parts.Add(AutoTtlEnabled ? $"AutoTTL({TtlTrickValue})" : $"TTL({TtlTrickValue})");
             return parts.Count > 0 ? string.Join(" + ", parts) : "Выключен";
         }
     }
@@ -492,6 +514,124 @@ namespace IspAudit.Bypass
             _greenSince = null;
             _adjustedDown = false;
             _adjustedUp = false;
+        }
+    }
+
+    /// <summary>
+    /// Автоподбор TTL для TTL Trick по метрикам bypass.
+    /// Логика максимально простая: перебор небольшого набора TTL и выбор наилучшего по ratio RST/фрагменты.
+    /// </summary>
+    internal sealed class AutoTtlAdjustStrategy
+    {
+        private readonly Action<string>? _log;
+        private int[]? _candidates;
+        private int _index;
+        private DateTime _trialSince;
+        private double _bestRatio = double.PositiveInfinity;
+        private int _bestTtl;
+        private bool _completed;
+
+        public AutoTtlAdjustStrategy(Action<string>? log)
+        {
+            _log = log;
+        }
+
+        public TlsBypassOptions? TryAdjust(TlsBypassOptions options, TlsBypassMetrics metrics, TlsBypassVerdict verdict)
+        {
+            if (!options.TtlTrickEnabled || !options.AutoTtlEnabled)
+            {
+                Reset();
+                return null;
+            }
+
+            if (_completed)
+            {
+                return null;
+            }
+
+            // Ждём появления реального трафика TLS@443, иначе подбирать нечего.
+            if (metrics.ClientHellosObserved < 3)
+            {
+                return null;
+            }
+
+            if (_candidates == null)
+            {
+                _candidates = BuildCandidates(options.TtlTrickValue);
+                _index = 0;
+                _trialSince = DateTime.Now;
+                _bestTtl = options.TtlTrickValue;
+                _bestRatio = double.PositiveInfinity;
+
+                var first = _candidates[0];
+                if (options.TtlTrickValue != first)
+                {
+                    _log?.Invoke($"[Bypass][AutoTTL] Старт подбора: пробуем TTL={first} (текущий={options.TtlTrickValue})");
+                    return options with { TtlTrickValue = first };
+                }
+
+                _log?.Invoke($"[Bypass][AutoTTL] Старт подбора: пробуем TTL={first}");
+            }
+
+            var age = DateTime.Now - _trialSince;
+            var enoughData = metrics.ClientHellosFragmented >= 5 || metrics.TlsHandled >= 3;
+            if (!enoughData && age < TimeSpan.FromSeconds(12))
+            {
+                return null;
+            }
+
+            var fragments = Math.Max(1, metrics.ClientHellosFragmented);
+            var rstRelevant = Math.Max(0, metrics.RstDroppedRelevant);
+            var ratio = (rstRelevant + 1.0) / (fragments + 1.0);
+
+            if (metrics.ClientHellosFragmented > 0 && ratio < _bestRatio)
+            {
+                _bestRatio = ratio;
+                _bestTtl = options.TtlTrickValue;
+            }
+
+            _index++;
+            if (_candidates != null && _index < _candidates.Length)
+            {
+                var next = _candidates[_index];
+                _trialSince = DateTime.Now;
+                _log?.Invoke($"[Bypass][AutoTTL] Пробуем TTL={next} (best={_bestTtl}, ratio={_bestRatio:F2})");
+                return options with { TtlTrickValue = next };
+            }
+
+            // Завершение: применяем лучший TTL и сохраняем в профиль.
+            _completed = true;
+
+            _log?.Invoke($"[Bypass][AutoTTL] Подбор завершён: best TTL={_bestTtl} (ratio={_bestRatio:F2})");
+            _ = BypassProfile.TryUpdateTtlSettings(ttlTrickEnabled: true, ttlTrickValue: _bestTtl);
+
+            if (options.TtlTrickValue != _bestTtl)
+            {
+                return options with { TtlTrickValue = _bestTtl };
+            }
+
+            return null;
+        }
+
+        private static int[] BuildCandidates(int current)
+        {
+            // Малый набор TTL, чтобы не дестабилизировать соединения.
+            var baseSet = new[] { 2, 3, 4, 5, 6, 7, 8 };
+            if (baseSet.Contains(current))
+            {
+                return new[] { current }.Concat(baseSet.Where(v => v != current)).ToArray();
+            }
+            return new[] { Math.Clamp(current, 1, 255) }.Concat(baseSet).Distinct().ToArray();
+        }
+
+        private void Reset()
+        {
+            _candidates = null;
+            _index = 0;
+            _trialSince = default;
+            _bestRatio = double.PositiveInfinity;
+            _bestTtl = 0;
+            _completed = false;
         }
     }
 }

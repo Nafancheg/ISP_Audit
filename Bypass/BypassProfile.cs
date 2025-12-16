@@ -75,6 +75,12 @@ namespace IspAudit.Bypass
         /// </summary>
         public int TtlTrickValue { get; init; } = 3;
 
+        /// <summary>
+        /// Автоматически подбирать значение TTL для TTL Trick (по метрикам/вердикту bypass).
+        /// По умолчанию выключено, чтобы не вносить регрессии.
+        /// </summary>
+        public bool AutoTtl { get; init; }
+
         public IReadOnlyList<BypassRedirectRule> RedirectRules { get; init; } = Array.Empty<BypassRedirectRule>();
 
         public static BypassProfile CreateDefault() => _default.Value;
@@ -99,6 +105,7 @@ namespace IspAudit.Bypass
                     TlsFragmentSizes = profile.TlsFragmentSizes?.ToList() ?? new List<int>(),
                     TtlTrick = profile.TtlTrick,
                     TtlTrickValue = profile.TtlTrickValue,
+                    AutoTtl = profile.AutoTtl,
                     RedirectRules = profile.RedirectRules?
                         .Select(r => new BypassRedirectRuleDocument
                         {
@@ -122,6 +129,105 @@ namespace IspAudit.Bypass
             catch
             {
                 // Игнорируем ошибки записи, чтобы не падать в GUI сценариях
+            }
+        }
+
+        /// <summary>
+        /// Обновляет только TTL-настройки в файле профиля, не трогая остальные поля.
+        /// Нужен для AutoTTL, чтобы не перетирать пресеты/redirect rules.
+        /// </summary>
+        public static bool TryUpdateTtlSettings(bool ttlTrickEnabled, int ttlTrickValue, bool? autoTtl = null)
+        {
+            try
+            {
+                var path = GetProfilePath();
+
+                var optionsRead = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    ReadCommentHandling = JsonCommentHandling.Skip,
+                };
+                optionsRead.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+
+                BypassProfileDocument doc;
+                if (File.Exists(path))
+                {
+                    var json = File.ReadAllText(path);
+                    doc = JsonSerializer.Deserialize<BypassProfileDocument>(json, optionsRead) ?? new BypassProfileDocument();
+                }
+                else
+                {
+                    doc = new BypassProfileDocument();
+                }
+
+                doc.TtlTrick = ttlTrickEnabled;
+                doc.TtlTrickValue = ttlTrickValue;
+                if (autoTtl.HasValue)
+                {
+                    doc.AutoTtl = autoTtl.Value;
+                }
+
+                var optionsWrite = new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                };
+                optionsWrite.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+
+                var updatedJson = JsonSerializer.Serialize(doc, optionsWrite);
+                File.WriteAllText(path, updatedJson);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Обновляет только настройки пресета/размеров фрагментации в файле профиля.
+        /// Используется из UI, чтобы не перетирать остальные поля (TTL, redirect rules и т.д.).
+        /// </summary>
+        public static bool TryUpdateFragmentSettings(IReadOnlyList<int> fragmentSizes, string fragmentPresetName, bool autoAdjustAggressive)
+        {
+            try
+            {
+                var path = GetProfilePath();
+
+                var optionsRead = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    ReadCommentHandling = JsonCommentHandling.Skip,
+                };
+                optionsRead.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+
+                BypassProfileDocument doc;
+                if (File.Exists(path))
+                {
+                    var json = File.ReadAllText(path);
+                    doc = JsonSerializer.Deserialize<BypassProfileDocument>(json, optionsRead) ?? new BypassProfileDocument();
+                }
+                else
+                {
+                    doc = new BypassProfileDocument();
+                }
+
+                doc.TlsFragmentSizes = fragmentSizes.ToList();
+                doc.FragmentPresetName = fragmentPresetName;
+                doc.AutoAdjustAggressive = autoAdjustAggressive;
+
+                var optionsWrite = new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                };
+                optionsWrite.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+
+                var updatedJson = JsonSerializer.Serialize(doc, optionsWrite);
+                File.WriteAllText(path, updatedJson);
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -161,6 +267,7 @@ namespace IspAudit.Bypass
                     AutoAdjustAggressive = doc.AutoAdjustAggressive,
                     TtlTrick = doc.TtlTrick,
                     TtlTrickValue = doc.TtlTrickValue > 0 ? doc.TtlTrickValue : 3,
+                    AutoTtl = doc.AutoTtl,
                     RedirectRules = doc.RedirectRules?
                         .Select(r => r.ToRule())
                         .Where(r => r != null)!
@@ -267,6 +374,7 @@ namespace IspAudit.Bypass
             public List<int>? TlsFragmentSizes { get; set; }
             public bool TtlTrick { get; set; }
             public int TtlTrickValue { get; set; } = 3;
+            public bool AutoTtl { get; set; }
             public string? FragmentPresetName { get; set; }
             public bool AutoAdjustAggressive { get; set; }
             public List<BypassRedirectRuleDocument>? RedirectRules { get; set; }

@@ -873,22 +873,12 @@ namespace IspAudit.ViewModels
 
         private void PersistFragmentPreset()
         {
-            var merged = new BypassProfile
-            {
-                DropTcpRst = _baseProfile.DropTcpRst,
-                FragmentTlsClientHello = _baseProfile.FragmentTlsClientHello,
-                TlsStrategy = _baseProfile.TlsStrategy,
-                TlsFirstFragmentSize = _baseProfile.TlsFirstFragmentSize,
-                TlsFragmentThreshold = _baseProfile.TlsFragmentThreshold,
-                TlsFragmentSizes = _currentOptions.FragmentSizes,
-                TtlTrick = _baseProfile.TtlTrick,
-                TtlTrickValue = _baseProfile.TtlTrickValue,
-                RedirectRules = _baseProfile.RedirectRules,
-                FragmentPresetName = _currentOptions.PresetName,
-                AutoAdjustAggressive = _currentOptions.AutoAdjustAggressive
-            };
-
-            BypassProfile.Save(merged);
+            // Сохраняем только параметры фрагментации/пресета, чтобы не перетирать другие поля профиля
+            // (например, TTL trick/AutoTTL, redirect rules и будущие расширения).
+            BypassProfile.TryUpdateFragmentSettings(
+                _currentOptions.FragmentSizes,
+                _currentOptions.PresetName,
+                _currentOptions.AutoAdjustAggressive);
         }
 
         private void Log(string message)
