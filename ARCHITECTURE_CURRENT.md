@@ -91,6 +91,15 @@ graph TD
     *   Обеспечивает параллельную обработку множества хостов.
     *   Опционально принимает `AutoHostlistService`: на этапе Classification считывает `BlockageSignals` из `InMemoryBlockageStateStore` и добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения).
 
+### 3.2.1 План (Design Phase): DPI Intelligence v2
+
+Статус: проектирование (см. docs/phase2_plan.md). Это **не реализовано** в текущем runtime, но является утверждаемым направлением развития.
+
+Ключевые принципы:
+*   Между диагностикой и обходом добавляется слой “интеллекта” (Signals → Diagnosis → Selector → Plan).
+*   Signals в v2 строятся как **временные цепочки событий** (SignalEvent/SignalSequence), а агрегированные признаки считаются поверх окна.
+*   В MVP запрещён auto-apply: применение обхода остаётся **только ручным действием пользователя** (one-click apply допустим).
+
 ### 3.3 Core Modules (`IspAudit.Core`)
 
 *   **`TrafficCollector` (`Utils/TrafficCollector.cs`)**:
