@@ -247,7 +247,7 @@
                                                    Margin="0,6,0,6"/>
 
                                         <TextBox Style="{StaticResource ModernTextBoxStyle}"
-                                                 Text="{Binding Bypass.AutoHostlistText}"
+                                                 Text="{Binding Bypass.AutoHostlistText, Mode=OneWay}"
                                                  IsReadOnly="True"
                                                  IsEnabled="{Binding Bypass.IsAutoHostlistEnabled}"
                                                  AcceptsReturn="True"
