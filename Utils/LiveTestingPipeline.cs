@@ -174,6 +174,11 @@ namespace IspAudit.Utils
                     hostname = _dnsParser?.DnsCache.TryGetValue(host.RemoteIp.ToString(), out var name) == true 
                         ? name : null;
                 }
+                if (string.IsNullOrEmpty(hostname))
+                {
+                    hostname = _dnsParser?.SniCache.TryGetValue(host.RemoteIp.ToString(), out var sniName) == true
+                        ? sniName : null;
+                }
 
                 // Проверяем через единый фильтр (дедупликация + шум)
                 var decision = _filter.ShouldTest(host, hostname);
@@ -231,6 +236,10 @@ namespace IspAudit.Utils
                     if (string.IsNullOrEmpty(hostname) && _dnsParser != null)
                     {
                         _dnsParser.DnsCache.TryGetValue(tested.Host.RemoteIp.ToString(), out hostname);
+                    }
+                    if (string.IsNullOrEmpty(hostname) && _dnsParser != null)
+                    {
+                        _dnsParser.SniCache.TryGetValue(tested.Host.RemoteIp.ToString(), out hostname);
                     }
 
                     // Auto-hostlist: добавляем кандидатов только по не-шумовым хостам.

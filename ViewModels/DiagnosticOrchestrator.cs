@@ -441,8 +441,9 @@ namespace IspAudit.ViewModels
                 {
                     _udpInspectionService.OnBlockageDetected += (ip) => 
                     {
-                        Log($"[Orchestrator] UDP Blockage detected for {ip}. Forcing retest.");
-                        _testingPipeline.ForceRetest(ip);
+                        // UDP/QUIC блокировки часто не означают, что HTTPS по TCP не работает.
+                        // Авто-ретест по каждому событию приводит к лавине перетестов и ухудшает UX.
+                        Log($"[Orchestrator] UDP Blockage detected for {ip}. (no auto-retest)");
                     };
                 }
 
