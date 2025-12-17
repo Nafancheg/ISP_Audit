@@ -105,7 +105,7 @@ namespace IspAudit.Core.Modules
                     catch
                     {
                         dnsOk = false;
-                        dnsStatus = "DNS_ERROR";
+                        dnsStatus = BlockageCode.DnsError;
                     }
                 }
 
@@ -146,7 +146,7 @@ namespace IspAudit.Core.Modules
                     else
                     {
                         tcpOk = false;
-                        blockageType = "TCP_ERROR";
+                        blockageType = BlockageCode.TcpError;
                     }
                 }
 
@@ -192,7 +192,7 @@ namespace IspAudit.Core.Modules
                     catch
                     {
                         tlsOk = false;
-                        blockageType = blockageType ?? "TLS_ERROR";
+                        blockageType = blockageType ?? BlockageCode.TlsError;
                     }
                 }
                 else if (host.RemotePort == 443)

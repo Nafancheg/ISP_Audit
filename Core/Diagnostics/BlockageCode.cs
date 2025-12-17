@@ -28,9 +28,15 @@ public static class BlockageCode
     public const string PortClosed = "PORT_CLOSED";
     public const string FakeIp = "FAKE_IP";
 
+    // Технические/внутренние коды ошибок (не обязательно свидетельствуют о блокировке)
+    public const string TcpError = "TCP_ERROR";
+    public const string TlsError = "TLS_ERROR";
+
     // DNS статусы (DnsStatus)
     public const string DnsFiltered = "DNS_FILTERED";
     public const string DnsBogus = "DNS_BOGUS";
+    public const string DnsError = "DNS_ERROR";
+    public const string DnsBypass = "DNS_BYPASS";
 
     // Legacy алиасы → канон
     private static readonly Dictionary<string, string> LegacyToCanonical = new(StringComparer.Ordinal)
