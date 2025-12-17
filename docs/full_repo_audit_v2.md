@@ -85,6 +85,7 @@
 Актуализация (Runtime, 17.12.2025):
 - Добавлен `Core/Diagnostics/BlockageCode.cs` — единая точка нормализации кодов проблем (`BlockageType`) и поддержки legacy алиасов.
 - В местах, где раньше сравнивались строки (`TLS_DPI`, `TCP_TIMEOUT`, `TCP_RST`, `TLS_TIMEOUT` и др.), используется `BlockageCode.Normalize/ContainsCode`, чтобы алиасы не расползались по слоям (UI/legacy/v2).
+- Добавлен `Core/Diagnostics/PipelineContract.cs` — единая точка контрактных строк пайплайна (`BypassNone`/`BypassUnknown`) вместо «магических» `"NONE"`/`"UNKNOWN"` в слоях legacy/v2/UI.
 
 Маркер (как отличить v2-вывод от legacy): строки рекомендаций v2 начинаются с префикса `[V2]`.
 

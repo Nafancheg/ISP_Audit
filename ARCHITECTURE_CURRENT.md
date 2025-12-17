@@ -130,6 +130,10 @@ graph TD
     *   Единая точка нормализации кодов проблем (`BlockageType`): канонические «фактовые» коды + legacy алиасы.
     *   Используется в legacy (например, `StandardBlockageClassifier`, `StrategyMapping`, UI-парсинг) и в v2 (`SignalsAdapterV2`), чтобы алиасы не «размазывались» по слоям.
 
+*   **`PipelineContract` (`Core/Diagnostics/PipelineContract.cs`)**:
+    *   Единая точка контрактных строк пайплайна (например, `BypassNone`/`BypassUnknown`).
+    *   Используется в слоях legacy/v2/UI, чтобы не сравнивать «магические строки» (`"NONE"`, `"UNKNOWN"`) напрямую.
+
 *   **`TrafficCollector` (`Utils/TrafficCollector.cs`)**:
     *   Слушает события от `ConnectionMonitorService` (который управляется `DiagnosticOrchestrator`).
     *   Фильтрует трафик по PID целевого процесса (через `PidTrackerService`).
