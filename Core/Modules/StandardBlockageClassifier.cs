@@ -130,9 +130,10 @@ namespace IspAudit.Core.Modules
                     {
                         tested = tested with { BlockageType = "HTTP_REDIRECT_DPI" };
                     }
-                    else if (tested.BlockageType == "TCP_TIMEOUT" && s.FailCount >= 3)
+                    else if ((tested.BlockageType == "TCP_CONNECT_TIMEOUT" || tested.BlockageType == "TCP_TIMEOUT") && s.FailCount >= 3)
                     {
-                        tested = tested with { BlockageType = "TCP_TIMEOUT_CONFIRMED" };
+                        // Нормализуем на новый код подтверждённого connect-timeout.
+                        tested = tested with { BlockageType = "TCP_CONNECT_TIMEOUT_CONFIRMED" };
                     }
                 }
 
@@ -152,9 +153,10 @@ namespace IspAudit.Core.Modules
                 "HTTP_REDIRECT_DPI" => "Наблюдается HTTP редирект/заглушка",
                 "TCP_RETRY_HEAVY" => "Наблюдается высокая доля ретрансмиссий TCP",
                 "UDP_BLOCKAGE" => "Наблюдаются проблемы с UDP/QUIC",
-                "TCP_TIMEOUT" => "Наблюдается TCP timeout",
-                "TCP_TIMEOUT_CONFIRMED" => "Наблюдается повторяющийся TCP timeout",
-                "TLS_TIMEOUT" => "Наблюдается TLS timeout",
+                "TCP_CONNECT_TIMEOUT" or "TCP_TIMEOUT" => "Наблюдается таймаут TCP connect",
+                "TCP_CONNECT_TIMEOUT_CONFIRMED" or "TCP_TIMEOUT_CONFIRMED" => "Наблюдается повторяющийся таймаут TCP connect",
+                "TCP_CONNECTION_RESET" or "TCP_RST" => "Наблюдается сброс соединения (TCP reset)",
+                "TLS_HANDSHAKE_TIMEOUT" or "TLS_TIMEOUT" => "Наблюдается таймаут TLS рукопожатия",
                 "TLS_AUTH_FAILURE" or "TLS_DPI" => "Наблюдается TLS auth failure (ошибка рукопожатия)",
                 "DNS_FILTERED" => "DNS: ответ не OK (filtered)",
                 "DNS_BOGUS" => "DNS: ответ не OK (bogus)",

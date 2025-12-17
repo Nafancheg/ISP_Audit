@@ -34,7 +34,7 @@ Windows-приложение для анализа сетевого трафик
   - **RST Inspection** — анализ TTL для выявления DPI-инжектов
   - **TCP Retransmissions** — подсчет потерь пакетов
   - **Fail Counters** — анализ стабильности во времени
-- **Классификация проблем**: `DNS_FILTERED`, `TLS_AUTH_FAILURE` (legacy: `TLS_DPI`), `TCP_RST`, `TCP_TIMEOUT`, `HTTP_REDIRECT_DPI`
+- **Классификация проблем**: `DNS_FILTERED`, `TLS_AUTH_FAILURE` (legacy: `TLS_DPI`), `TCP_CONNECTION_RESET` (legacy: `TCP_RST`), `TCP_CONNECT_TIMEOUT` (legacy: `TCP_TIMEOUT`), `HTTP_REDIRECT_DPI`
 
 ### Оптимизация соединения
 - **TrafficEngine 2.0** — модульная архитектура на базе Chain of Responsibility
@@ -128,9 +128,9 @@ dotnet run
 | Статус | Описание | Решение |
 |--------|----------|--------|
 | `TLS_AUTH_FAILURE` (legacy: `TLS_DPI`) | Ошибка TLS рукопожатия (AuthenticationException) | Зависит от сценария (прокси/антивирус/фильтрация); часто помогает VPN |
-| `TLS_TIMEOUT` | TLS соединение зависает | DROP_RST |
-| `TCP_RST` | Некорректные RST пакеты | DROP_RST |
-| `TCP_TIMEOUT` | TCP соединение не устанавливается | VPN |
+| `TLS_HANDSHAKE_TIMEOUT` (legacy: `TLS_TIMEOUT`) | TLS рукопожатие не завершается за таймаут | VPN / прокси |
+| `TCP_CONNECTION_RESET` (legacy: `TCP_RST`) | Сброс соединения (TCP reset) | DROP_RST |
+| `TCP_CONNECT_TIMEOUT` (legacy: `TCP_TIMEOUT`) | TCP connect не завершается за таймаут | VPN / прокси |
 | `DNS_FILTERED` | DNS возвращает пустой ответ | DoH |
 | `DNS_BOGUS` | DNS возвращает некорректный IP | DoH |
 | `HTTP_REDIRECT_DPI` | Подмена HTTP-ответа провайдером | VPN / TTL Trick |

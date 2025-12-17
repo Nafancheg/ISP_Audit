@@ -44,7 +44,10 @@ namespace IspAudit.Bypass
             // 1. Analyze TLS/HTTP issues (TCP OK, but TLS Failed)
             if (result.TcpOk && !result.TlsOk)
             {
-                bool isTimeout = result.BlockageType == "TLS_TIMEOUT" || result.BlockageType == "HTTP_TIMEOUT";
+                bool isTimeout =
+                    result.BlockageType == "TLS_HANDSHAKE_TIMEOUT" ||
+                    result.BlockageType == "TLS_TIMEOUT" ||
+                    result.BlockageType == "HTTP_TIMEOUT";
 
                 if (!isTimeout)
                 {
@@ -108,13 +111,22 @@ namespace IspAudit.Bypass
         {
             if (blockageType == "PORT_CLOSED") return;
 
-            // TCP_TIMEOUT_CONFIRMED - это усиленный TCP_TIMEOUT (много фейлов подряд).
+            // TCP_CONNECT_TIMEOUT_CONFIRMED - это усиленный TCP_CONNECT_TIMEOUT (много фейлов подряд).
             // Стратегии те же, что и для обычного таймаута.
-            bool isTimeout = blockageType == "TCP_TIMEOUT" || blockageType == "TCP_TIMEOUT_CONFIRMED" || minElapsed > 2000;
+            bool isTimeout =
+                blockageType == "TCP_CONNECT_TIMEOUT" ||
+                blockageType == "TCP_CONNECT_TIMEOUT_CONFIRMED" ||
+                blockageType == "TCP_TIMEOUT" ||
+                blockageType == "TCP_TIMEOUT_CONFIRMED" ||
+                minElapsed > 2000;
             
             // TCP_RST_INJECTION - это усиленный TCP_RST (обнаружен аномальный TTL).
             // Стратегии те же, что и для обычного RST.
-            bool isRst = blockageType == "TCP_RST" || blockageType == "TCP_RST_INJECTION" || minElapsed < 200;
+            bool isRst =
+                blockageType == "TCP_CONNECTION_RESET" ||
+                blockageType == "TCP_RST" ||
+                blockageType == "TCP_RST_INJECTION" ||
+                minElapsed < 200;
 
             if (isRst)
             {

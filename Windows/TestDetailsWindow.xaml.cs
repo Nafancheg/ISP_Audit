@@ -117,16 +117,16 @@ namespace IspAudit.Windows
                 // TLS_AUTH_FAILURE — это наблюдаемый факт: TLS рукопожатие завершилось ошибкой аутентификации.
                 // Это НЕ доказательство DPI.
                 "TLS_AUTH_FAILURE" or "TLS_DPI" => "TLS рукопожатие завершилось ошибкой аутентификации (auth failure). Это может быть связано с прокси/антивирусом/фильтрацией, но не доказывает DPI.",
-                "TCP_RST" => "Соединение принудительно сброшено (RST). Провайдер активно блокирует доступ к серверу.",
+                "TCP_CONNECTION_RESET" or "TCP_RST" => "Соединение было сброшено удалённой стороной/сетью (TCP reset).",
                 "TCP_RST_INJECTION" => "Соединение сброшено (RST Injection). Обнаружено активное вмешательство DPI.",
                 "HTTP_REDIRECT_DPI" => "Подмена ответа (HTTP Redirect). Провайдер перенаправляет на страницу-заглушку.",
                 "TCP_RETRY_HEAVY" => "Критическая потеря пакетов. Вероятно, DPI отбрасывает пакеты (Blackhole).",
                 "UDP_BLOCKAGE" => "Блокировка UDP/QUIC протокола. Игровой трафик или современные веб-протоколы недоступны.",
                 "DNS_FILTERED" => "DNS-запрос был перехвачен или заблокирован провайдером.",
                 "DNS_BOGUS" => "DNS вернул некорректный IP-адрес (заглушку).",
-                "TCP_TIMEOUT" => "Сервер не отвечает (Таймаут). Возможно, IP-адрес заблокирован или сервер недоступен.",
-                "TCP_TIMEOUT_CONFIRMED" => "Сервер недоступен (подтвержденный таймаут).",
-                "TLS_TIMEOUT" => "Таймаут при установке защищенного соединения. Вероятна DPI блокировка.",
+                "TCP_CONNECT_TIMEOUT" or "TCP_TIMEOUT" => "TCP connect не завершился за таймаут (сервер/сеть не отвечает).",
+                "TCP_CONNECT_TIMEOUT_CONFIRMED" or "TCP_TIMEOUT_CONFIRMED" => "Повторяющийся таймаут TCP connect (сервер/сеть недоступны или фильтрация).",
+                "TLS_HANDSHAKE_TIMEOUT" or "TLS_TIMEOUT" => "TLS рукопожатие не завершилось за таймаут.",
                 "PORT_CLOSED" => "Порт закрыт на удаленном сервере. Это не блокировка провайдера.",
                 "FAKE_IP" => "Используется служебный IP-адрес (198.18.x.x). Трафик маршрутизируется через VPN или локальный шлюз.",
                 _ => $"Неизвестная ошибка ({code})"
@@ -138,12 +138,12 @@ namespace IspAudit.Windows
             return code switch
             {
                 "TLS_AUTH_FAILURE" or "TLS_DPI" => "Проверьте прокси/антивирус/системное время. Если проблема повторяется — попробуйте VPN или другой DNS.",
-                "TCP_RST" or "TCP_RST_INJECTION" => "Рекомендуется включить защиту от RST-пакетов (Drop RST).",
+                "TCP_CONNECTION_RESET" or "TCP_RST" or "TCP_RST_INJECTION" => "Рекомендуется включить защиту от RST-пакетов (Drop RST).",
                 "HTTP_REDIRECT_DPI" => "Попробуйте использовать стратегии обхода HTTP (Fake Request).",
                 "TCP_RETRY_HEAVY" => "Попробуйте использовать фрагментацию или смену IP.",
                 "UDP_BLOCKAGE" => "Для обхода блокировок UDP/QUIC обычно требуется VPN. Если это веб-сайт, попробуйте TLS-стратегии (браузер перейдет на TCP).",
                 "DNS_FILTERED" or "DNS_BOGUS" => "Рекомендуется использовать DoH (DNS over HTTPS).",
-                "TCP_TIMEOUT" or "TLS_TIMEOUT" or "TCP_TIMEOUT_CONFIRMED" => "Попробуйте использовать VPN или прокси.",
+                "TCP_CONNECT_TIMEOUT" or "TCP_CONNECT_TIMEOUT_CONFIRMED" or "TCP_TIMEOUT" or "TCP_TIMEOUT_CONFIRMED" or "TLS_HANDSHAKE_TIMEOUT" or "TLS_TIMEOUT" => "Попробуйте использовать VPN или прокси.",
                 "FAKE_IP" => "Это нормальное поведение при использовании VPN или средств обхода блокировок.",
                 _ => "Попробуйте использовать средства обхода блокировок."
             };

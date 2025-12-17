@@ -124,7 +124,8 @@ namespace IspAudit.Core.Modules
                     }
                     catch (OperationCanceledException)
                     {
-                        blockageType = "TCP_TIMEOUT";
+                        // Нейтральная фактура: TCP connect не завершился за таймаут.
+                        blockageType = "TCP_CONNECT_TIMEOUT";
                     }
                 }
                 catch (System.Net.Sockets.SocketException ex)
@@ -138,7 +139,8 @@ namespace IspAudit.Core.Modules
                     else if (ex.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionReset)
                     {
                         tcpOk = false;
-                        blockageType = "TCP_RST";
+                        // Нейтральная фактура: соединение сброшено (ConnectionReset).
+                        blockageType = "TCP_CONNECTION_RESET";
                     }
                     else
                     {
@@ -176,7 +178,8 @@ namespace IspAudit.Core.Modules
                     }
                     catch (OperationCanceledException)
                     {
-                        blockageType = "TLS_TIMEOUT";
+                        // Нейтральная фактура: TLS рукопожатие не завершилось за таймаут.
+                        blockageType = "TLS_HANDSHAKE_TIMEOUT";
                     }
                     catch (System.Security.Authentication.AuthenticationException)
                     {

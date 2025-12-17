@@ -70,9 +70,19 @@ public sealed class SignalsAdapterV2
         var windowEvents = _store.ReadWindow(hostKey, fromUtc, capturedAtUtc);
 
         var hasDnsFailure = !tested.DnsOk || (!string.IsNullOrWhiteSpace(tested.DnsStatus) && !string.Equals(tested.DnsStatus, "OK", StringComparison.OrdinalIgnoreCase));
-        var hasTcpTimeout = string.Equals(tested.BlockageType, "TCP_TIMEOUT", StringComparison.Ordinal);
-        var hasTcpReset = string.Equals(tested.BlockageType, "TCP_RST", StringComparison.Ordinal) || legacySignals.HasSuspiciousRst || windowEvents.HasType(SignalEventType.SuspiciousRstObserved);
-        var hasTlsTimeout = string.Equals(tested.BlockageType, "TLS_TIMEOUT", StringComparison.Ordinal);
+        var hasTcpTimeout =
+            string.Equals(tested.BlockageType, "TCP_CONNECT_TIMEOUT", StringComparison.Ordinal) ||
+            string.Equals(tested.BlockageType, "TCP_TIMEOUT", StringComparison.Ordinal);
+
+        var hasTcpReset =
+            string.Equals(tested.BlockageType, "TCP_CONNECTION_RESET", StringComparison.Ordinal) ||
+            string.Equals(tested.BlockageType, "TCP_RST", StringComparison.Ordinal) ||
+            legacySignals.HasSuspiciousRst ||
+            windowEvents.HasType(SignalEventType.SuspiciousRstObserved);
+
+        var hasTlsTimeout =
+            string.Equals(tested.BlockageType, "TLS_HANDSHAKE_TIMEOUT", StringComparison.Ordinal) ||
+            string.Equals(tested.BlockageType, "TLS_TIMEOUT", StringComparison.Ordinal);
         // ВАЖНО: TLS_AUTH_FAILURE — это фактически "TLS authentication failure" (AuthenticationException) из HostTester.
         // Это наблюдаемый факт о сбое рукопожатия, а не утверждение про DPI.
         // Поддерживаем legacy-алиас TLS_DPI для старых логов/профилей.

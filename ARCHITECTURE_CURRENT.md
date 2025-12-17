@@ -142,7 +142,7 @@ graph TD
     *   Анализирует результаты тестов (`HostTested`) и выносит вердикт.
     *   Логика:
         *   DNS ошибка → `DNS_BLOCKED`.
-        *   TCP Timeout → `TCP_TIMEOUT` (возможно Drop).
+        *   TCP Timeout → `TCP_CONNECT_TIMEOUT` (legacy: `TCP_TIMEOUT`) (возможно Drop).
         *   TCP Reset → `TCP_RESET` (активная блокировка).
         *   TLS Timeout/Reset → `DPI_FILTER`.
         *   `198.18.0.0/15` → `FAKE_IP` (часто редирект/маршрутизация через роутер/шлюз), рекомендация `ROUTER_REDIRECT` (не предлагается повторно, если уже активна).
