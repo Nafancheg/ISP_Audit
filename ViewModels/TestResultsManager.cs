@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using IspAudit.Core.Diagnostics;
 using IspAudit.Models;
 using IspAudit;
 using IspAudit.Utils;
@@ -137,7 +138,7 @@ namespace IspAudit.ViewModels
                 existing.Details = details;
                 
                 // Parse flags from details
-                existing.IsRstInjection = details.Contains("TCP_RST_INJECTION") || details.Contains("RST-инжект");
+                existing.IsRstInjection = BlockageCode.ContainsCode(details, BlockageCode.TcpRstInjection) || details.Contains("RST-инжект");
                 existing.IsHttpRedirect = details.Contains("HTTP_REDIRECT_DPI") || details.Contains("HTTP-редирект");
                 existing.IsRetransmissionHeavy = details.Contains("TCP_RETRY_HEAVY") || details.Contains("ретрансмиссий:");
                 existing.IsUdpBlockage = details.Contains("UDP_BLOCKAGE") || details.Contains("UDP потерь");
@@ -161,7 +162,7 @@ namespace IspAudit.ViewModels
                 existing = new TestResult { Target = target, Status = status, Details = details };
                 
                 // Parse flags from details
-                existing.IsRstInjection = details.Contains("TCP_RST_INJECTION") || details.Contains("RST-инжект");
+                existing.IsRstInjection = BlockageCode.ContainsCode(details, BlockageCode.TcpRstInjection) || details.Contains("RST-инжект");
                 existing.IsHttpRedirect = details.Contains("HTTP_REDIRECT_DPI") || details.Contains("HTTP-редирект");
                 existing.IsRetransmissionHeavy = details.Contains("TCP_RETRY_HEAVY") || details.Contains("ретрансмиссий:");
                 existing.IsUdpBlockage = details.Contains("UDP_BLOCKAGE") || details.Contains("UDP потерь");
@@ -399,7 +400,7 @@ namespace IspAudit.ViewModels
                             }
 
                             var status = TestStatus.Fail;
-                            var hasTlsAuthFailure = msg.Contains("TLS_AUTH_FAILURE") || msg.Contains("TLS_DPI");
+                            var hasTlsAuthFailure = BlockageCode.ContainsCode(msg, BlockageCode.TlsAuthFailure);
                             if (hasTlsAuthFailure)
                             {
                                 msg += "\nℹ️ TLS рукопожатие завершилось ошибкой аутентификации (auth failure). Это факт, но не доказательство DPI.";

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using IspAudit.Core.Diagnostics;
 using IspAudit.Core.Models;
 
 namespace IspAudit.Bypass
@@ -35,6 +36,8 @@ namespace IspAudit.Bypass
         {
             var rec = new StrategyRecommendation();
 
+            var normalized = BlockageCode.Normalize(result.BlockageType);
+
             // 0. Analyze DNS issues
             if (result.DnsStatus == "DNS_FILTERED" || result.DnsStatus == "DNS_BOGUS")
             {
@@ -44,10 +47,7 @@ namespace IspAudit.Bypass
             // 1. Analyze TLS/HTTP issues (TCP OK, but TLS Failed)
             if (result.TcpOk && !result.TlsOk)
             {
-                bool isTimeout =
-                    result.BlockageType == "TLS_HANDSHAKE_TIMEOUT" ||
-                    result.BlockageType == "TLS_TIMEOUT" ||
-                    result.BlockageType == "HTTP_TIMEOUT";
+                bool isTimeout = normalized == BlockageCode.TlsHandshakeTimeout || normalized == BlockageCode.HttpTimeout;
 
                 if (!isTimeout)
                 {
@@ -72,7 +72,7 @@ namespace IspAudit.Bypass
             }
 
             // 3. Analyze HTTP Redirect DPI
-            if (result.BlockageType == "HTTP_REDIRECT_DPI")
+            if (normalized == BlockageCode.HttpRedirectDpi)
             {
                 // Для HTTP редиректов (заглушек) часто помогает отправка фейкового запроса
                 // или фрагментация, чтобы DPI не распознал Host.
@@ -83,7 +83,7 @@ namespace IspAudit.Bypass
             }
 
             // 4. Analyze UDP issues
-            if (result.BlockageType == "UDP_BLOCKAGE")
+            if (normalized == BlockageCode.UdpBlockage)
             {
                 // Если порт 443, это чаще всего QUIC/HTTP3.
                 // В этом случае браузер обычно откатывается на TCP/HTTPS и сайт продолжает работать.
@@ -109,28 +109,26 @@ namespace IspAudit.Bypass
 
         private static void AnalyzeTcpFailure(StrategyRecommendation rec, long minElapsed, string? blockageType)
         {
-            if (blockageType == "PORT_CLOSED") return;
+            var normalized = BlockageCode.Normalize(blockageType);
+            if (normalized == BlockageCode.PortClosed) return;
 
             // TCP_CONNECT_TIMEOUT_CONFIRMED - это усиленный TCP_CONNECT_TIMEOUT (много фейлов подряд).
             // Стратегии те же, что и для обычного таймаута.
             bool isTimeout =
-                blockageType == "TCP_CONNECT_TIMEOUT" ||
-                blockageType == "TCP_CONNECT_TIMEOUT_CONFIRMED" ||
-                blockageType == "TCP_TIMEOUT" ||
-                blockageType == "TCP_TIMEOUT_CONFIRMED" ||
+                normalized == BlockageCode.TcpConnectTimeout ||
+                normalized == BlockageCode.TcpConnectTimeoutConfirmed ||
                 minElapsed > 2000;
             
             // TCP_RST_INJECTION - это усиленный TCP_RST (обнаружен аномальный TTL).
             // Стратегии те же, что и для обычного RST.
             bool isRst =
-                blockageType == "TCP_CONNECTION_RESET" ||
-                blockageType == "TCP_RST" ||
-                blockageType == "TCP_RST_INJECTION" ||
+                normalized == BlockageCode.TcpConnectionReset ||
+                normalized == BlockageCode.TcpRstInjection ||
                 minElapsed < 200;
 
             if (isRst)
             {
-                if (blockageType == "TCP_RST_INJECTION")
+                if (normalized == BlockageCode.TcpRstInjection)
                 {
                     rec.AddApplicable("SAFE_MODE");
                 }

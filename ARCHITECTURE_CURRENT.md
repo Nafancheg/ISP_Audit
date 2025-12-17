@@ -1,6 +1,6 @@
 # ISP_Audit — Архитектура (v3.0 Extended)
 
-**Дата обновления:** 16.12.2025
+**Дата обновления:** 17.12.2025
 **Версия:** 3.0 (Comprehensive)
 **Технологии:** .NET 9, WPF, WinDivert 2.2.0
 
@@ -125,6 +125,10 @@ graph TD
 Маркер v2-вывода (как отличить от legacy): все строки рекомендаций v2 начинаются с префикса `[V2]`.
 
 ### 3.3 Core Modules (`IspAudit.Core`)
+
+*   **`BlockageCode` (`Core/Diagnostics/BlockageCode.cs`)**:
+    *   Единая точка нормализации кодов проблем (`BlockageType`): канонические «фактовые» коды + legacy алиасы.
+    *   Используется в legacy (например, `StandardBlockageClassifier`, `StrategyMapping`, UI-парсинг) и в v2 (`SignalsAdapterV2`), чтобы алиасы не «размазывались» по слоям.
 
 *   **`TrafficCollector` (`Utils/TrafficCollector.cs`)**:
     *   Слушает события от `ConnectionMonitorService` (который управляется `DiagnosticOrchestrator`).

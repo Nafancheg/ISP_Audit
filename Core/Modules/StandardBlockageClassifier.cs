@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Net;
+using IspAudit.Core.Diagnostics;
 using IspAudit.Core.Interfaces;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
@@ -120,7 +121,7 @@ namespace IspAudit.Core.Modules
                     }
                     else if (s.HasSuspiciousRst && string.IsNullOrEmpty(tested.BlockageType))
                     {
-                        tested = tested with { BlockageType = "TCP_RST_INJECTION" };
+                        tested = tested with { BlockageType = BlockageCode.TcpRstInjection };
                     }
                     else if (s.HasUdpBlockage && string.IsNullOrEmpty(tested.BlockageType))
                     {
@@ -130,10 +131,10 @@ namespace IspAudit.Core.Modules
                     {
                         tested = tested with { BlockageType = "HTTP_REDIRECT_DPI" };
                     }
-                    else if ((tested.BlockageType == "TCP_CONNECT_TIMEOUT" || tested.BlockageType == "TCP_TIMEOUT") && s.FailCount >= 3)
+                    else if (BlockageCode.Normalize(tested.BlockageType) == BlockageCode.TcpConnectTimeout && s.FailCount >= 3)
                     {
                         // Нормализуем на новый код подтверждённого connect-timeout.
-                        tested = tested with { BlockageType = "TCP_CONNECT_TIMEOUT_CONFIRMED" };
+                        tested = tested with { BlockageType = BlockageCode.TcpConnectTimeoutConfirmed };
                     }
                 }
 
@@ -147,17 +148,18 @@ namespace IspAudit.Core.Modules
 
         private string GetFriendlyErrorMessage(string? blockageType, string ip)
         {
-            return blockageType switch
+            var normalized = BlockageCode.Normalize(blockageType);
+            return normalized switch
             {
-                "TCP_RST_INJECTION" => "Соединение сброшено (TCP RST)",
+                BlockageCode.TcpRstInjection => "Соединение сброшено (TCP RST)",
                 "HTTP_REDIRECT_DPI" => "Наблюдается HTTP редирект/заглушка",
                 "TCP_RETRY_HEAVY" => "Наблюдается высокая доля ретрансмиссий TCP",
                 "UDP_BLOCKAGE" => "Наблюдаются проблемы с UDP/QUIC",
-                "TCP_CONNECT_TIMEOUT" or "TCP_TIMEOUT" => "Наблюдается таймаут TCP connect",
-                "TCP_CONNECT_TIMEOUT_CONFIRMED" or "TCP_TIMEOUT_CONFIRMED" => "Наблюдается повторяющийся таймаут TCP connect",
-                "TCP_CONNECTION_RESET" or "TCP_RST" => "Наблюдается сброс соединения (TCP reset)",
-                "TLS_HANDSHAKE_TIMEOUT" or "TLS_TIMEOUT" => "Наблюдается таймаут TLS рукопожатия",
-                "TLS_AUTH_FAILURE" or "TLS_DPI" => "Наблюдается TLS auth failure (ошибка рукопожатия)",
+                BlockageCode.TcpConnectTimeout => "Наблюдается таймаут TCP connect",
+                BlockageCode.TcpConnectTimeoutConfirmed => "Наблюдается повторяющийся таймаут TCP connect",
+                BlockageCode.TcpConnectionReset => "Наблюдается сброс соединения (TCP reset)",
+                BlockageCode.TlsHandshakeTimeout => "Наблюдается таймаут TLS рукопожатия",
+                BlockageCode.TlsAuthFailure => "Наблюдается TLS auth failure (ошибка рукопожатия)",
                 "DNS_FILTERED" => "DNS: ответ не OK (filtered)",
                 "DNS_BOGUS" => "DNS: ответ не OK (bogus)",
                 _ => $"Неизвестная проблема с {ip}"
