@@ -119,6 +119,21 @@ namespace IspAudit.Models
             }
         }
 
+        /// <summary>
+        /// Источник рекомендации по стратегии обхода.
+        /// Нужен, чтобы legacy-логика не «перебивала» рекомендации v2.
+        /// </summary>
+        private bool _isBypassStrategyFromV2;
+        public bool IsBypassStrategyFromV2
+        {
+            get => _isBypassStrategyFromV2;
+            set
+            {
+                _isBypassStrategyFromV2 = value;
+                OnPropertyChanged(nameof(IsBypassStrategyFromV2));
+            }
+        }
+
         public string StatusText
         {
             get

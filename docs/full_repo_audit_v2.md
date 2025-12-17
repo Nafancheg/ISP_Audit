@@ -39,7 +39,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                     CORE LAYER                                  │
 │  ├── Core/Modules/StandardHostTester                            │
-│  ├── Core/Modules/StandardBlockageClassifier                    │
+│  ├── Core/IntelligenceV2/Diagnosis/StandardDiagnosisEngineV2     │
 │  ├── Core/Modules/InMemoryBlockageStateStore                    │
 │  ├── Core/Modules/TcpRetransmissionTracker                     │
 │  ├── Core/Modules/HttpRedirectDetector                         │
@@ -74,6 +74,20 @@
 - Введён дизайн-план “DPI Intelligence v2” в docs/phase2_plan.md: слой между диагностикой и обходом.
 - Ключевое отличие: сигналы рассматриваются как **цепочки событий во времени** (не разовый снимок), правила диагнозов внедряются поэтапно (сначала только по доступным данным).
 - В MVP запрещён auto-apply: допускается только ручное применение рекомендаций пользователем.
+
+Актуализация (Runtime, 16.12.2025):
+- Step 1 v2 Signals частично подключён: `SignalsAdapterV2` пишет события в `InMemorySignalSequenceStore` на этапе Classification в `LiveTestingPipeline`.
+- Step 2 v2 Diagnosis подключён: `StandardDiagnosisEngineV2` ставит диагноз по `BlockageSignalsV2` и возвращает пояснения, основанные на фактах (DNS fail, timeout, retx-rate, HTTP redirect) без привязки к стратегиям/обходу.
+- Step 3 v2 Selector подключён: `StandardStrategySelectorV2` строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI-лога (без auto-apply).
+- Step 4 v2 Executor (MVP) подключён: `BypassExecutorMvp` формирует компактный, читаемый пользователем вывод (диагноз + уверенность + 1 короткое объяснение + список стратегий) и **не** применяет обход.
+- Для контроля Gate 1→2 в UI-логе используются строки с префиксом `[V2][GATE1]` (не чаще 1 раза в минуту на HostKey).
+
+Маркер (как отличить v2-вывод от legacy): строки рекомендаций v2 начинаются с префикса `[V2]`.
+
+Жёсткие защиты селектора (MVP):
+- `confidence < 50` → пустой план.
+- `RiskLevel.High` запрещён при `confidence < 70`.
+- Нереализованные стратегии: warning + skip (без исключений), без падения пайплайна.
 
 Примечание (UI/идентификация хостов): карточки результатов привязаны к **IP** (стабильный ключ), а варианты имени (SNI / обратный резолв) отображаются как дополнительные поля.
 ```
@@ -460,6 +474,10 @@ Program.cs
 - Config.ActiveProfile (static)
 - Program.Targets (static)
 - NoiseHostFilter.Instance (singleton)
+
+Примечание (16.12.2025):
+- Добавлен контрактный слой DPI Intelligence v2: `Core/IntelligenceV2/Contracts` (модели Signals/Diagnosis/Strategy).
+- Это контракты (DTO/enum/константы), без зависимостей на UI/Bypass/WinDivert; подключение в runtime будет выполняться в следующих шагах (SignalsAdapter → Diagnosis → Selector → Executor).
 ```
 
 ---

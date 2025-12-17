@@ -1,6 +1,6 @@
 # ISP_Audit — Архитектура (v3.0 Extended)
 
-**Дата обновления:** 13.12.2025
+**Дата обновления:** 16.12.2025
 **Версия:** 3.0 (Comprehensive)
 **Технологии:** .NET 9, WPF, WinDivert 2.2.0
 
@@ -37,7 +37,7 @@ graph TD
         ConnectionMonitor --> Sniffer[TrafficCollector]
         Sniffer --> NoiseFilter[NoiseHostFilter]
         NoiseFilter --> Tester[StandardHostTester]
-        Tester --> Classifier[StandardBlockageClassifier]
+        Tester --> Classifier[SignalsAdapterV2 + StandardDiagnosisEngineV2 + StandardStrategySelectorV2]
         Classifier --> StateStore[InMemoryBlockageStateStore]
     end
     
@@ -91,14 +91,38 @@ graph TD
     *   Обеспечивает параллельную обработку множества хостов.
     *   Опционально принимает `AutoHostlistService`: на этапе Classification считывает `BlockageSignals` из `InMemoryBlockageStateStore` и добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения).
 
-### 3.2.1 План (Design Phase): DPI Intelligence v2
+### 3.2.1 DPI Intelligence v2
 
-Статус: проектирование (см. docs/phase2_plan.md). Это **не реализовано** в текущем runtime, но является утверждаемым направлением развития.
+Статус: частично реализовано.
+* Контрактный слой v2: `Core/IntelligenceV2/Contracts`.
+* Step 1 (Signals): в runtime подключён сбор фактов в TTL-store через `SignalsAdapterV2` (в `LiveTestingPipeline`, этап Classification).
+* Step 2 (Diagnosis): в runtime подключена постановка диагноза через `StandardDiagnosisEngineV2` по агрегированному срезу `BlockageSignalsV2`.
+* Step 3 (Selector/Plan): в runtime подключён `StandardStrategySelectorV2`, который строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI (без auto-apply).
+* Step 4 (ExecutorMvp): добавлен `Core/IntelligenceV2/Execution/BypassExecutorMvp.cs` — **только** форматирование/логирование (диагноз + уверенность + короткое объяснение + список стратегий), без вызова `TrafficEngine`/`BypassController` и без авто-применения.
+
+Ограничение (важно): Diagnosis Engine v2 **не знает** про стратегии/обход (нет ссылок на StrategyId/Bypass/TlsBypassService/параметры) и формирует пояснения только из наблюдаемых фактов (timeout, DNS fail, retx-rate, HTTP redirect).
 
 Ключевые принципы:
 *   Между диагностикой и обходом добавляется слой “интеллекта” (Signals → Diagnosis → Selector → Plan).
 *   Signals в v2 строятся как **временные цепочки событий** (SignalEvent/SignalSequence), а агрегированные признаки считаются поверх окна.
 *   В MVP запрещён auto-apply: применение обхода остаётся **только ручным действием пользователя** (one-click apply допустим).
+
+Жёсткие защиты селектора (зафиксировано в коде):
+*   `confidence < 50` → пустой план.
+*   `RiskLevel.High` запрещён при `confidence < 70`.
+*   Нереализованные стратегии не ломают пайплайн: выводится warning и стратегия пропускается.
+
+Контрактные константы v2 (зафиксировано в коде):
+*   Окно агрегации: 30 секунд (default) и 60 секунд (extended).
+*   TTL событий: 10 минут (очистка должна выполняться при Append в сторе).
+
+Точки интеграции (на текущий момент):
+* `LiveTestingPipeline.ClassifierWorker`: после снятия legacy `BlockageSignals` вызывается `SignalsAdapterV2.Observe(...)`.
+* Затем строится `BlockageSignalsV2` (агрегация по окну) и вызывается `StandardDiagnosisEngineV2.Diagnose(...)`. Результат используется для формирования компактного «хвоста фактов» в UI-логе.
+* Затем вызывается `StandardStrategySelectorV2.Select(diagnosis, ...)`, а Step 4 формирует компактный пользовательский вывод (1–2 строки на хост, без спама) и список стратегий для панели рекомендаций.
+* Для ручной проверки Gate 1→2 в UI-логе используются строки с префиксом `[V2][GATE1]`.
+
+Маркер v2-вывода (как отличить от legacy): все строки рекомендаций v2 начинаются с префикса `[V2]`.
 
 ### 3.3 Core Modules (`IspAudit.Core`)
 
@@ -196,6 +220,12 @@ ISP_Audit/
 │
 ├── Core/                       # ЯДРО СИСТЕМЫ
 │   ├── Interfaces/             # Интерфейсы (IHostTester, IBlockageClassifier)
+│   ├── IntelligenceV2/          # DPI Intelligence v2
+│   │   ├── Contracts/           # Контракты v2 (Signals/Diagnosis/Strategy), без зависимостей на UI/Bypass/WinDivert
+│   │   ├── Diagnosis/            # DiagnosisEngine v2 (StandardDiagnosisEngineV2)
+│   │   ├── Execution/            # ExecutorMvp (BypassExecutorMvp)
+│   │   ├── Signals/              # SignalsAdapterV2 + TTL store
+│   │   └── Strategies/           # Selector/Plan (StandardStrategySelectorV2)
 │   ├── Models/                 # Модели данных (HostDiscovered, TestResult)
 │   ├── Modules/                # Реализация логики
 │   │   ├── StandardHostTester.cs          # Активные тесты

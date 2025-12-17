@@ -463,6 +463,8 @@ namespace IspAudit.ViewModels
                 }
                 else if ((msg.Contains("→ Стратегия:") || msg.Contains("💡 Рекомендация:")) && !string.IsNullOrEmpty(_lastUpdatedHost))
                 {
+                    var isV2 = msg.TrimStart().StartsWith("[V2]", StringComparison.OrdinalIgnoreCase);
+
                     var parts = msg.Split(':');
                     if (parts.Length >= 2)
                     {
@@ -477,11 +479,41 @@ namespace IspAudit.ViewModels
                             strategy = strategy.Substring(0, parenIndex).Trim();
                         }
 
+                        // v2 может выдавать список стратегий в одной строке (через запятую/плюс),
+                        // чтобы не перегружать UI. Для поля стратегии берём первую.
+                        var first = strategy
+                            .Split(new[] { ',', '+', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                            .FirstOrDefault();
+                        if (!string.IsNullOrWhiteSpace(first))
+                        {
+                            strategy = first;
+                        }
+
                         var result = TestResults.FirstOrDefault(t => 
                             t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
                         if (result != null)
                         {
+                            // Legacy не должен перетирать v2.
+                            // Если уже есть стратегия от v2 — оставляем её, но можем добавить legacy как справочную строку в Details.
+                            if (!isV2 && result.IsBypassStrategyFromV2)
+                            {
+                                var legacyLine = $"(legacy) 💡 Рекомендация: {strategy}";
+                                if (string.IsNullOrWhiteSpace(result.Details))
+                                {
+                                    result.Details = legacyLine;
+                                }
+                                else if (!result.Details.Contains(legacyLine, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    result.Details += "\n" + legacyLine;
+                                }
+                                return;
+                            }
+
                             result.BypassStrategy = strategy;
+                            if (isV2)
+                            {
+                                result.IsBypassStrategyFromV2 = true;
+                            }
                             
                             if (strategy == "ROUTER_REDIRECT")
                             {

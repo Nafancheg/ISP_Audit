@@ -6,6 +6,11 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
 using IspAudit.Core.Interfaces;
+using IspAudit.Core.IntelligenceV2.Diagnosis;
+using IspAudit.Core.IntelligenceV2.Contracts;
+using IspAudit.Core.IntelligenceV2.Execution;
+using IspAudit.Core.IntelligenceV2.Signals;
+using IspAudit.Core.IntelligenceV2.Strategies;
 using IspAudit.Core.Models;
 using IspAudit.Core.Modules;
 using IspAudit.Core.Traffic;
@@ -45,8 +50,19 @@ namespace IspAudit.Utils
 
         // Modules
         private readonly IHostTester _tester;
-        private readonly IBlockageClassifier _classifier;
         private readonly IBlockageStateStore _stateStore;
+
+        // DPI Intelligence v2 (Step 1): сбор событий в TTL-store
+        private readonly SignalsAdapterV2 _signalsAdapterV2;
+
+        // DPI Intelligence v2 (Step 2): постановка диагноза по агрегированным сигналам
+        private readonly StandardDiagnosisEngineV2 _diagnosisEngineV2;
+
+        // DPI Intelligence v2 (Step 3): выбор плана стратегий строго по DiagnosisResult
+        private readonly StandardStrategySelectorV2 _strategySelectorV2;
+
+        // DPI Intelligence v2 (Step 4): исполнитель MVP (только логирование рекомендаций)
+        private readonly BypassExecutorMvp _executorV2;
 
         // Автоматический сбор hostlist (опционально)
         private readonly AutoHostlistService? _autoHostlist;
@@ -58,7 +74,6 @@ namespace IspAudit.Utils
             DnsParserService? dnsParser = null,
             ITrafficFilter? filter = null,
             IBlockageStateStore? stateStore = null,
-            System.Collections.Generic.IEnumerable<string>? activeStrategies = null,
             AutoHostlistService? autoHostlist = null)
         {
             _config = config;
@@ -80,16 +95,18 @@ namespace IspAudit.Utils
             _autoHostlist = autoHostlist;
 
             _tester = new StandardHostTester(progress, dnsParser?.DnsCache);
-            
-            var stdClassifier = new StandardBlockageClassifier(_stateStore);
-            if (activeStrategies != null)
-            {
-                foreach (var s in activeStrategies)
-                {
-                    stdClassifier.ActiveStrategies.Add(s);
-                }
-            }
-            _classifier = stdClassifier;
+
+            // v2 store/adapter (без диагнозов/стратегий на этом шаге)
+            _signalsAdapterV2 = new SignalsAdapterV2(new InMemorySignalSequenceStore());
+
+            // v2 diagnosis (стратегий/параметров обхода тут нет)
+            _diagnosisEngineV2 = new StandardDiagnosisEngineV2();
+
+            // v2 selector (план стратегий по диагнозу)
+            _strategySelectorV2 = new StandardStrategySelectorV2();
+
+            // v2 executor (только форматирование/логирование)
+            _executorV2 = new BypassExecutorMvp();
             
             // Создаем bounded каналы для передачи данных между воркерами (защита от OOM)
             var channelOptions = new BoundedChannelOptions(1000) { FullMode = BoundedChannelFullMode.DropOldest };
@@ -225,8 +242,20 @@ namespace IspAudit.Utils
                     // Снимаем агрегированные сигналы для Auto-hostlist и диагностики.
                     var signals = _stateStore.GetSignals(tested, TimeSpan.FromSeconds(60));
 
-                    // Классифицируем блокировку
-                    var blocked = _classifier.ClassifyBlockage(tested);
+                    // v2: записываем факты в последовательность событий + минимальный Gate-лог.
+                    // Окно Gate-логов использует дефолт контракта (30 сек), но сами legacy signals сняты за 60 сек.
+                    _signalsAdapterV2.Observe(tested, signals, _progress);
+
+                    // v2: строим агрегированный срез и ставим диагноз (без стратегий/обхода)
+                    var snapshot = _signalsAdapterV2.BuildSnapshot(tested, signals, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
+                    var diagnosis = _diagnosisEngineV2.Diagnose(snapshot);
+
+                    // v2: формируем план рекомендаций строго по диагнозу.
+                    // Важно: не применять автоматически (только показать в UI/логах).
+                    var plan = _strategySelectorV2.Select(diagnosis, msg => _progress?.Report(msg));
+
+                    // Формируем результат для UI/фильтра: стратегия всегда NONE, а в RecommendedAction кладём факты/уверенность.
+                    var blocked = BuildHostBlockedForUi(tested, signals, diagnosis, plan);
 
                     // Принимаем решение о показе через единый фильтр
                     var decision = _filter.ShouldDisplay(blocked);
@@ -292,6 +321,52 @@ namespace IspAudit.Utils
             }
         }
 
+        private static HostBlocked BuildHostBlockedForUi(HostTested tested, BlockageSignals legacySignals, DiagnosisResult diagnosis, BypassPlan plan)
+        {
+            // Для успешных результатов оставляем прежний контракт (фильтр ожидает NONE + OK)
+            if (tested.DnsOk && tested.TcpOk && tested.TlsOk)
+            {
+                // UDP blockage не считаем «ошибкой» для UI (браузер часто откатывается на TCP)
+                if (legacySignals.HasUdpBlockage)
+                {
+                    var udpTested = tested with { BlockageType = "UDP_BLOCKAGE" };
+                    return new HostBlocked(udpTested, "NONE", "OK");
+                }
+
+                if (diagnosis.DiagnosisId == DiagnosisId.NoBlockage)
+                {
+                    return new HostBlocked(tested, "NONE", "OK");
+                }
+
+                // Если v2 увидел флаги, но тесты формально OK — не делаем уверенных выводов.
+                return new HostBlocked(tested, "NONE", BuildEvidenceTail(diagnosis));
+            }
+
+            // Проблема/блокировка: показываем «хвост» из фактов для QA/лога.
+            // Если селектор дал план — отображаем краткую рекомендацию.
+            var bypassStrategy = plan.Strategies.Count == 0 ? "NONE" : BuildBypassStrategyText(plan);
+            return new HostBlocked(tested, bypassStrategy, BuildEvidenceTail(diagnosis));
+        }
+
+        private static string BuildBypassStrategyText(BypassPlan plan)
+        {
+            // Короткая строка для UI/логов. Не привязана к авто-применению.
+            var ids = string.Join(" + ", plan.Strategies.Select(s => s.Id));
+            return $"v2:{ids} (conf={plan.PlanConfidence})";
+        }
+
+        private static string BuildEvidenceTail(DiagnosisResult diagnosis)
+        {
+            // Формат специально в круглых скобках — UiWorker вытаскивает хвост и добавляет в строку.
+            var header = $"v2:{diagnosis.DiagnosisId} conf={diagnosis.Confidence}";
+            if (diagnosis.ExplanationNotes.Count == 0)
+            {
+                return $"({header})";
+            }
+
+            return $"({header}; {string.Join("; ", diagnosis.ExplanationNotes)})";
+        }
+
         /// <summary>
         /// Worker 3: Обновление UI (bypass применяется отдельно, не во время диагностики)
         /// </summary>
@@ -334,7 +409,14 @@ namespace IspAudit.Utils
                             var tail = blocked.RecommendedAction.Substring(idx).Trim();
                             if (!string.IsNullOrEmpty(tail))
                             {
-                                suffix = tail;
+                                if (_executorV2.TryFormatDiagnosisSuffix(tail, out var formattedTail))
+                                {
+                                    suffix = formattedTail;
+                                }
+                                else
+                                {
+                                    suffix = tail;
+                                }
                             }
                         }
                     }
@@ -349,7 +431,10 @@ namespace IspAudit.Utils
                     // Bypass должен применяться отдельной командой после завершения диагностики
                     if (blocked.BypassStrategy != "NONE" && blocked.BypassStrategy != "UNKNOWN")
                     {
-                        _progress?.Report($"   💡 Рекомендация: {blocked.BypassStrategy}");
+                        if (_executorV2.TryBuildRecommendationLine(host, blocked.BypassStrategy, out var recommendationLine))
+                        {
+                            _progress?.Report(recommendationLine);
+                        }
                     }
                 }
                 catch (Exception ex)

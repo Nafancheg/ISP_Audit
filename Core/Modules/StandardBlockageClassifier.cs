@@ -3,7 +3,6 @@ using System.Linq;
 using System.Net;
 using IspAudit.Core.Interfaces;
 using IspAudit.Core.Models;
-using IspAudit.Bypass;
 using IspAudit.Utils;
 
 namespace IspAudit.Core.Modules
@@ -11,12 +10,6 @@ namespace IspAudit.Core.Modules
     public class StandardBlockageClassifier : IBlockageClassifier
     {
         private readonly IBlockageStateStore? _stateStore;
-
-        /// <summary>
-        /// Set of strategies that are currently active/enabled in the bypass controller.
-        /// Used to filter recommendations (don't recommend what's already on).
-        /// </summary>
-        public HashSet<string> ActiveStrategies { get; set; } = new();
 
         public StandardBlockageClassifier()
         {
@@ -29,28 +22,25 @@ namespace IspAudit.Core.Modules
 
         public HostBlocked ClassifyBlockage(HostTested tested)
         {
-            string strategy;
             string action;
+            const string strategy = "NONE";
             
             // Проверка на Fake IP (198.18.0.0/15): часто используется роутерами/шлюзами для локального редиректа
             // (в т.ч. списки обхода/VPN на уровне роутера). Это важно подсвечивать пользователю.
             if (IsFakeIp(tested.Host.RemoteIp))
             {
-                strategy = ActiveStrategies.Contains("ROUTER_REDIRECT") ? "NONE" : "ROUTER_REDIRECT";
-                action = $"Обнаружен служебный адрес ({tested.Host.RemoteIp}). Это похоже на редирект через роутер/локальный шлюз (VPN/обход на уровне маршрутизатора).";
+                action = $"Обнаружен служебный адрес ({tested.Host.RemoteIp})";
                 tested = tested with { BlockageType = "FAKE_IP" };
             }
             // Явный локальный шлюз/роутер — оставляем рекомендацию
             else if (tested.Hostname != null && tested.Hostname.Equals("openwrt.lan", StringComparison.OrdinalIgnoreCase))
             {
-                strategy = "ROUTER_REDIRECT";
-                action = "Обнаружен локальный шлюз (openwrt.lan). Трафик маршрутизируется через роутер/локальную сеть.";
+                action = "Обнаружен локальный шлюз (openwrt.lan)";
                 tested = tested with { BlockageType = "FAKE_IP" };
             }
             else if (tested.BlockageType == "PORT_CLOSED")
             {
                 // Порт закрыт - не блокировка, просто сервис недоступен
-                strategy = "NONE";
                 action = $"Порт {tested.Host.RemotePort} закрыт на {tested.Host.RemoteIp} (не блокировка)";
             }
             else
@@ -75,7 +65,6 @@ namespace IspAudit.Core.Modules
                     else
                     {
                         // Все проверки прошли успешно
-                        strategy = "NONE";
                         action = "OK";
                         return new HostBlocked(tested, strategy, action);
                     }
@@ -147,39 +136,9 @@ namespace IspAudit.Core.Modules
                     }
                 }
 
-                // Use StrategyMapping to get recommendations based on the refined diagnosis
-                var rec = StrategyMapping.GetStrategiesFor(tested);
-
-                // Filter out strategies that are already active
-                var availableStrategies = rec.Applicable
-                    .Where(s => !ActiveStrategies.Contains(s))
-                    .ToList();
-
-                // Формируем человекочитаемое сообщение об ошибке
+                // Формируем человекочитаемое сообщение об ошибке (без предположений)
                 string errorDescription = GetFriendlyErrorMessage(tested.BlockageType, tested.Host.RemoteIp.ToString());
-
-                // Use the first applicable strategy if available (skipping active ones)
-                if (availableStrategies.Count > 0)
-                {
-                    strategy = availableStrategies[0];
-                    action = $"{errorDescription}{suffix}";
-                }
-                // If all applicable strategies are active, it means the current strategy is failing
-                else if (rec.Applicable.Count > 0)
-                {
-                    strategy = rec.Applicable[0];
-                    action = $"Стратегия {strategy} уже применена, но проблема сохраняется. {errorDescription}{suffix}";
-                }
-                else if (rec.Manual.Count > 0)
-                {
-                    strategy = rec.Manual[0];
-                    action = $"Требуется ручное вмешательство: {strategy}. {errorDescription}{suffix}";
-                }
-                else
-                {
-                    strategy = "UNKNOWN";
-                    action = $"{errorDescription}{suffix}";
-                }
+                action = $"{errorDescription}{suffix}";
             }
             
             return new HostBlocked(tested, strategy, action);
@@ -189,16 +148,16 @@ namespace IspAudit.Core.Modules
         {
             return blockageType switch
             {
-                "TCP_RST_INJECTION" => "Соединение сброшено (RST Injection). Обнаружено активное вмешательство DPI.",
-                "HTTP_REDIRECT_DPI" => "Подмена ответа (HTTP Redirect). Провайдер перенаправляет на страницу-заглушку.",
-                "TCP_RETRY_HEAVY" => "Критическая потеря пакетов. Вероятно, DPI отбрасывает пакеты (Blackhole).",
-                "UDP_BLOCKAGE" => "Блокировка UDP/QUIC протокола. Игровой трафик или современные веб-протоколы недоступны.",
-                "TCP_TIMEOUT" => "Таймаут соединения. Сервер не отвечает.",
-                "TCP_TIMEOUT_CONFIRMED" => "Сервер недоступен (подтвержденный таймаут).",
-                "TLS_TIMEOUT" => "Таймаут TLS рукопожатия. TCP соединение есть, но шифрование не устанавливается.",
-                "TLS_DPI" => "Ошибка TLS. Вероятно, DPI блокирует ClientHello.",
-                "DNS_FILTERED" => "DNS-фильтрация. Домен резолвится в неверный IP.",
-                "DNS_BOGUS" => "DNS-подмена. Ответ содержит локальный или служебный IP.",
+                "TCP_RST_INJECTION" => "Соединение сброшено (TCP RST)",
+                "HTTP_REDIRECT_DPI" => "Наблюдается HTTP редирект/заглушка",
+                "TCP_RETRY_HEAVY" => "Наблюдается высокая доля ретрансмиссий TCP",
+                "UDP_BLOCKAGE" => "Наблюдаются проблемы с UDP/QUIC",
+                "TCP_TIMEOUT" => "Наблюдается TCP timeout",
+                "TCP_TIMEOUT_CONFIRMED" => "Наблюдается повторяющийся TCP timeout",
+                "TLS_TIMEOUT" => "Наблюдается TLS timeout",
+                "TLS_DPI" => "Наблюдается ошибка TLS (без уточнения причины)",
+                "DNS_FILTERED" => "DNS: ответ не OK (filtered)",
+                "DNS_BOGUS" => "DNS: ответ не OK (bogus)",
                 _ => $"Неизвестная проблема с {ip}"
             };
         }

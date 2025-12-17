@@ -3,7 +3,9 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Runtime.Versioning;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
@@ -78,6 +80,13 @@ namespace IspAudit.ViewModels
         private readonly HashSet<string> _manualRecommendations = new(StringComparer.OrdinalIgnoreCase);
         private string _recommendedStrategiesText = "Нет рекомендаций";
         private string _manualRecommendationsText = "";
+
+        // Legacy (справочно): не влияет на основную рекомендацию v2
+        private readonly HashSet<string> _legacyRecommendedStrategies = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _legacyManualRecommendations = new(StringComparer.OrdinalIgnoreCase);
+
+        // Последний v2 диагноз (для панели рекомендаций)
+        private string _lastV2DiagnosisSummary = "";
 
         private static readonly HashSet<string> ServiceStrategies = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -291,6 +300,7 @@ namespace IspAudit.ViewModels
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
                         DiagnosticStatus = msg;
+                        TrackV2DiagnosisSummary(msg);
                         TrackRecommendation(msg, bypassController);
                         Log($"[Pipeline] {msg}");
                         OnPipelineMessage?.Invoke(msg);
@@ -370,25 +380,16 @@ namespace IspAudit.ViewModels
                 DiagnosticStatus = "Анализ трафика...";
 
                 // 5. Преимптивный bypass (через сервис, с телеметрией в UI)
-                ResetAutoBypassUi(enableAutoBypass);
+                // Важно: в текущем MVP auto-apply запрещён. Даже если флаг включён в UI,
+                // мы не применяем техники автоматически.
                 if (enableAutoBypass)
                 {
-                    AttachAutoBypassTelemetry(bypassController);
-                    try
-                    {
-                        await bypassController.TlsService.ApplyPreemptiveAsync(_cts.Token).ConfigureAwait(false);
-                        ((IProgress<string>?)progress)?.Report("✓ Bypass активирован (TLS_DISORDER + DROP_RST)");
-                    }
-                    catch (Exception ex)
-                    {
-                        Log($"[Orchestrator] Ошибка auto-bypass: {ex.Message}");
-                        Application.Current?.Dispatcher.Invoke(() =>
-                        {
-                            UpdateAutoBypassStatus($"Auto-bypass: ошибка ({ex.Message})", CreateBrush(254, 226, 226));
-                        });
-                        ((IProgress<string>?)progress)?.Report("❌ Auto-bypass не применён");
-                    }
+                    Log("[Orchestrator] ⚠ Auto-bypass запрошен, но отключён политикой (auto-apply запрещён)");
+                    ((IProgress<string>?)progress)?.Report("⚠ Auto-bypass отключён: авто-применение обхода запрещено");
                 }
+
+                enableAutoBypass = false;
+                ResetAutoBypassUi(enableAutoBypass);
 
                 // 6. Создание TrafficCollector (чистый сборщик)
                 _trafficCollector = new TrafficCollector(
@@ -407,15 +408,6 @@ namespace IspAudit.ViewModels
                     TestTimeout = TimeSpan.FromSeconds(3)
                 };
 
-                // Собираем активные стратегии (чтобы классификатор не рекомендовал уже включённое)
-                var activeStrategies = new System.Collections.Generic.List<string>();
-                if (bypassController.IsFragmentEnabled) activeStrategies.Add("TLS_FRAGMENT");
-                if (bypassController.IsDisorderEnabled) activeStrategies.Add("TLS_DISORDER");
-                if (bypassController.IsFakeEnabled) activeStrategies.Add("TLS_FAKE");
-                if (bypassController.IsFragmentEnabled && bypassController.IsFakeEnabled) activeStrategies.Add("TLS_FAKE_FRAGMENT");
-                if (bypassController.IsDropRstEnabled) activeStrategies.Add("DROP_RST");
-                if (bypassController.IsDoHEnabled) activeStrategies.Add("DOH");
-
                 _testingPipeline = new LiveTestingPipeline(
                     pipelineConfig, 
                     progress, 
@@ -425,7 +417,6 @@ namespace IspAudit.ViewModels
                     _tcpRetransmissionTracker != null
                         ? new InMemoryBlockageStateStore(_tcpRetransmissionTracker, _httpRedirectDetector, _rstInspectionService, _udpInspectionService)
                         : null,
-                    activeStrategies,
                     bypassController.AutoHostlist);
 
                 // Повторно флешим pending SNI — на случай, если endpoint->pid уже есть, а событий соединения больше не будет.
@@ -550,6 +541,7 @@ namespace IspAudit.ViewModels
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
                         DiagnosticStatus = msg;
+                        TrackV2DiagnosisSummary(msg);
                         TrackRecommendation(msg, bypassController);
                         Log($"[Retest] {msg}");
                         OnPipelineMessage?.Invoke(msg);
@@ -565,15 +557,6 @@ namespace IspAudit.ViewModels
                     TestTimeout = TimeSpan.FromSeconds(3)
                 };
 
-                // Собираем активные стратегии для исключения их из рекомендаций
-                var activeStrategies = new System.Collections.Generic.List<string>();
-                if (bypassController.IsFragmentEnabled) activeStrategies.Add("TLS_FRAGMENT");
-                if (bypassController.IsDisorderEnabled) activeStrategies.Add("TLS_DISORDER");
-                if (bypassController.IsFakeEnabled) activeStrategies.Add("TLS_FAKE");
-                if (bypassController.IsFragmentEnabled && bypassController.IsFakeEnabled) activeStrategies.Add("TLS_FAKE_FRAGMENT");
-                if (bypassController.IsDropRstEnabled) activeStrategies.Add("DROP_RST");
-                if (bypassController.IsDoHEnabled) activeStrategies.Add("DOH");
-
                 // Используем существующий bypass manager из контроллера
                 _testingPipeline = new LiveTestingPipeline(
                     pipelineConfig, 
@@ -582,7 +565,6 @@ namespace IspAudit.ViewModels
                     _dnsParser, // Нужен для кеша SNI/DNS имён (стабильнее подписи в UI и авто-hostlist)
                     new UnifiedTrafficFilter(),
                     null, // State store новый
-                    activeStrategies,
                     bypassController.AutoHostlist);
 
                 // Запускаем цели в pipeline
@@ -1178,6 +1160,9 @@ namespace IspAudit.ViewModels
         {
             if (string.IsNullOrWhiteSpace(msg)) return;
 
+            // v2 — главный источник рекомендаций. Legacy сохраняем только как справочное.
+            var isV2 = msg.TrimStart().StartsWith("[V2]", StringComparison.OrdinalIgnoreCase);
+
             // Нас интересуют строки вида "💡 Рекомендация: TLS_FRAGMENT" или "→ Стратегия: DROP_RST"
             if (!(msg.Contains("Рекомендация:", StringComparison.OrdinalIgnoreCase) ||
                   msg.Contains("Стратегия:", StringComparison.OrdinalIgnoreCase)))
@@ -1197,24 +1182,110 @@ namespace IspAudit.ViewModels
 
             if (string.IsNullOrWhiteSpace(raw)) return;
 
-            if (IsStrategyActive(raw, bypassController))
+            // Поддержка списка стратегий в одной строке (v2 формат, чтобы не убивать UI шумом).
+            // Пример: "[V2] 💡 Рекомендация: TLS_FRAGMENT, DROP_RST"
+            // Пример: "💡 Рекомендация: v2:TlsFragment + DropRst (conf=78)"
+            var normalized = raw;
+            if (normalized.StartsWith("v2:", StringComparison.OrdinalIgnoreCase))
             {
-                // Уже включено — удаляем из списка, чтобы не спамить UI
-                _recommendedStrategies.Remove(raw);
-                UpdateRecommendationTexts(bypassController);
-                return;
+                normalized = normalized.Substring(3);
             }
 
-            if (ServiceStrategies.Contains(raw))
+            var tokens = normalized
+                .Split(new[] { ',', '+', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(MapStrategyToken)
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (tokens.Count == 0) return;
+
+            foreach (var token in tokens)
             {
-                _recommendedStrategies.Add(raw);
-            }
-            else
-            {
-                _manualRecommendations.Add(raw);
+                if (IsStrategyActive(token, bypassController))
+                {
+                    // Уже включено — удаляем из списка, чтобы не спамить UI
+                    _recommendedStrategies.Remove(token);
+                    _legacyRecommendedStrategies.Remove(token);
+                    continue;
+                }
+
+                if (ServiceStrategies.Contains(token))
+                {
+                    if (isV2)
+                    {
+                        _recommendedStrategies.Add(token);
+                    }
+                    else
+                    {
+                        _legacyRecommendedStrategies.Add(token);
+                    }
+                }
+                else
+                {
+                    if (isV2)
+                    {
+                        _manualRecommendations.Add(token);
+                    }
+                    else
+                    {
+                        _legacyManualRecommendations.Add(token);
+                    }
+                }
             }
 
             UpdateRecommendationTexts(bypassController);
+        }
+
+        private void TrackV2DiagnosisSummary(string msg)
+        {
+            // Берём v2 диагноз из строки карточки: "❌ ... ( [V2] диагноз=SilentDrop уверенность=78%: ... )"
+            if (string.IsNullOrWhiteSpace(msg)) return;
+            if (!msg.StartsWith("❌ ", StringComparison.Ordinal)) return;
+            if (!msg.Contains("[V2]", StringComparison.OrdinalIgnoreCase) && !msg.Contains("v2:", StringComparison.OrdinalIgnoreCase)) return;
+
+            try
+            {
+                // Хост:port в начале строки
+                var host = "";
+                var afterPrefix = msg.Substring(2).TrimStart();
+                var firstToken = afterPrefix.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(firstToken))
+                {
+                    host = firstToken.Split(':').FirstOrDefault() ?? "";
+                }
+
+                // Вытаскиваем компактный текст v2 в скобках (он уже пользовательский)
+                var m = Regex.Match(msg, @"\(\s*\[V2\][^\)]*\)", RegexOptions.IgnoreCase);
+                if (m.Success)
+                {
+                    var tail = m.Value.Trim();
+                    _lastV2DiagnosisSummary = string.IsNullOrWhiteSpace(host)
+                        ? $"{tail}"
+                        : $"{tail} (цель: {host})";
+                }
+            }
+            catch
+            {
+                // Игнорируем ошибки парсинга
+            }
+        }
+
+        private static string MapStrategyToken(string token)
+        {
+            var t = token.Trim();
+            if (string.IsNullOrWhiteSpace(t)) return string.Empty;
+
+            // Поддерживаем как legacy-строки, так и enum-названия v2.
+            return t switch
+            {
+                "TlsFragment" => "TLS_FRAGMENT",
+                "TlsDisorder" => "TLS_DISORDER",
+                "TlsFakeTtl" => "TLS_FAKE",
+                "DropRst" => "DROP_RST",
+                "UseDoh" => "DOH",
+                _ => t.ToUpperInvariant()
+            };
         }
 
         public async Task ApplyRecommendationsAsync(BypassController bypassController)
@@ -1231,6 +1302,9 @@ namespace IspAudit.ViewModels
         {
             _recommendedStrategies.Clear();
             _manualRecommendations.Clear();
+            _legacyRecommendedStrategies.Clear();
+            _legacyManualRecommendations.Clear();
+            _lastV2DiagnosisSummary = "";
             RecommendedStrategiesText = "Нет рекомендаций";
             ManualRecommendationsText = "";
             OnPropertyChanged(nameof(HasRecommendations));
@@ -1238,9 +1312,12 @@ namespace IspAudit.ViewModels
 
         private void UpdateRecommendationTexts(BypassController bypassController)
         {
+            // Убираем рекомендации, если всё уже включено (актуально при ручном переключении)
+            _recommendedStrategies.RemoveWhere(s => IsStrategyActive(s, bypassController));
+
             RecommendedStrategiesText = _recommendedStrategies.Count == 0
                 ? "Нет рекомендаций"
-                : $"Включить: {string.Join(", ", _recommendedStrategies)}";
+                : BuildRecommendationPanelText();
 
             ManualRecommendationsText = _manualRecommendations.Count == 0
                 ? ""
@@ -1250,9 +1327,32 @@ namespace IspAudit.ViewModels
 
             // Подсказка остаётся статичной, но триггерим обновление, чтобы UI мог показать tooltip
             OnPropertyChanged(nameof(RecommendationHintText));
+        }
 
-            // Убираем рекомендации, если всё уже включено (актуально при ручном переключении)
-            _recommendedStrategies.RemoveWhere(s => IsStrategyActive(s, bypassController));
+        private string BuildRecommendationPanelText()
+        {
+            // Пишем текст так, чтобы пользователь видел «что попробовать», а не только метрики.
+            // Важно: v2 — приоритетно; legacy — только справочно.
+            var strategies = string.Join(", ", _recommendedStrategies);
+
+            var header = string.IsNullOrWhiteSpace(_lastV2DiagnosisSummary)
+                ? "[V2] Диагноз определён"
+                : _lastV2DiagnosisSummary;
+
+            var applyHint = $"Что попробовать: нажмите «Применить» (включит: {strategies})";
+
+            // Legacy показываем только если есть v2 рекомендации (и только как справочно)
+            var legacyTokens = _legacyRecommendedStrategies
+                .Where(t => !_recommendedStrategies.Contains(t))
+                .ToList();
+
+            var legacyText = legacyTokens.Count == 0
+                ? null
+                : $"Legacy (справочно): {string.Join(", ", legacyTokens)}";
+
+            return legacyText == null
+                ? $"{header}\n{applyHint}"
+                : $"{header}\n{applyHint}\n{legacyText}";
         }
 
         private static bool IsStrategyActive(string strategy, BypassController bypassController)
