@@ -121,16 +121,16 @@ namespace IspAudit.Windows
                 BlockageCode.TlsAuthFailure => "TLS рукопожатие завершилось ошибкой аутентификации (auth failure). Это может быть связано с прокси/антивирусом/фильтрацией, но не доказывает DPI.",
                 BlockageCode.TcpConnectionReset => "Соединение было сброшено удалённой стороной/сетью (TCP reset).",
                 BlockageCode.TcpRstInjection => "Соединение сброшено (RST Injection). Обнаружено активное вмешательство DPI.",
-                "HTTP_REDIRECT_DPI" => "Подмена ответа (HTTP Redirect). Провайдер перенаправляет на страницу-заглушку.",
-                "TCP_RETRY_HEAVY" => "Критическая потеря пакетов. Вероятно, DPI отбрасывает пакеты (Blackhole).",
-                "UDP_BLOCKAGE" => "Блокировка UDP/QUIC протокола. Игровой трафик или современные веб-протоколы недоступны.",
-                "DNS_FILTERED" => "DNS-запрос был перехвачен или заблокирован провайдером.",
-                "DNS_BOGUS" => "DNS вернул некорректный IP-адрес (заглушку).",
+                BlockageCode.HttpRedirectDpi => "Подмена ответа (HTTP Redirect). Провайдер перенаправляет на страницу-заглушку.",
+                BlockageCode.TcpRetryHeavy => "Критическая потеря пакетов. Вероятно, DPI отбрасывает пакеты (Blackhole).",
+                BlockageCode.UdpBlockage => "Блокировка UDP/QUIC протокола. Игровой трафик или современные веб-протоколы недоступны.",
+                BlockageCode.DnsFiltered => "DNS-запрос был перехвачен или заблокирован провайдером.",
+                BlockageCode.DnsBogus => "DNS вернул некорректный IP-адрес (заглушку).",
                 BlockageCode.TcpConnectTimeout => "TCP connect не завершился за таймаут (сервер/сеть не отвечает).",
                 BlockageCode.TcpConnectTimeoutConfirmed => "Повторяющийся таймаут TCP connect (сервер/сеть недоступны или фильтрация).",
                 BlockageCode.TlsHandshakeTimeout => "TLS рукопожатие не завершилось за таймаут.",
-                "PORT_CLOSED" => "Порт закрыт на удаленном сервере. Это не блокировка провайдера.",
-                "FAKE_IP" => "Используется служебный IP-адрес (198.18.x.x). Трафик маршрутизируется через VPN или локальный шлюз.",
+                BlockageCode.PortClosed => "Порт закрыт на удаленном сервере. Это не блокировка провайдера.",
+                BlockageCode.FakeIp => "Используется служебный IP-адрес (198.18.x.x). Трафик маршрутизируется через VPN или локальный шлюз.",
                 _ => $"Неизвестная ошибка ({code})"
             };
         }
@@ -142,12 +142,12 @@ namespace IspAudit.Windows
             {
                 BlockageCode.TlsAuthFailure => "Проверьте прокси/антивирус/системное время. Если проблема повторяется — попробуйте VPN или другой DNS.",
                 BlockageCode.TcpConnectionReset or BlockageCode.TcpRstInjection => "Рекомендуется включить защиту от RST-пакетов (Drop RST).",
-                "HTTP_REDIRECT_DPI" => "Попробуйте использовать стратегии обхода HTTP (Fake Request).",
-                "TCP_RETRY_HEAVY" => "Попробуйте использовать фрагментацию или смену IP.",
-                "UDP_BLOCKAGE" => "Для обхода блокировок UDP/QUIC обычно требуется VPN. Если это веб-сайт, попробуйте TLS-стратегии (браузер перейдет на TCP).",
-                "DNS_FILTERED" or "DNS_BOGUS" => "Рекомендуется использовать DoH (DNS over HTTPS).",
+                BlockageCode.HttpRedirectDpi => "Попробуйте использовать стратегии обхода HTTP (Fake Request).",
+                BlockageCode.TcpRetryHeavy => "Попробуйте использовать фрагментацию или смену IP.",
+                BlockageCode.UdpBlockage => "Для обхода блокировок UDP/QUIC обычно требуется VPN. Если это веб-сайт, попробуйте TLS-стратегии (браузер перейдет на TCP).",
+                BlockageCode.DnsFiltered or BlockageCode.DnsBogus => "Рекомендуется использовать DoH (DNS over HTTPS).",
                 BlockageCode.TcpConnectTimeout or BlockageCode.TcpConnectTimeoutConfirmed or BlockageCode.TlsHandshakeTimeout => "Попробуйте использовать VPN или прокси.",
-                "FAKE_IP" => "Это нормальное поведение при использовании VPN или средств обхода блокировок.",
+                BlockageCode.FakeIp => "Это нормальное поведение при использовании VPN или средств обхода блокировок.",
                 _ => "Попробуйте использовать средства обхода блокировок."
             };
         }

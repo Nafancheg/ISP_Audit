@@ -31,15 +31,15 @@ namespace IspAudit.Core.Modules
             if (IsFakeIp(tested.Host.RemoteIp))
             {
                 action = $"Обнаружен служебный адрес ({tested.Host.RemoteIp})";
-                tested = tested with { BlockageType = "FAKE_IP" };
+                tested = tested with { BlockageType = BlockageCode.FakeIp };
             }
             // Явный локальный шлюз/роутер — оставляем рекомендацию
             else if (tested.Hostname != null && tested.Hostname.Equals("openwrt.lan", StringComparison.OrdinalIgnoreCase))
             {
                 action = "Обнаружен локальный шлюз (openwrt.lan)";
-                tested = tested with { BlockageType = "FAKE_IP" };
+                tested = tested with { BlockageType = BlockageCode.FakeIp };
             }
-            else if (tested.BlockageType == "PORT_CLOSED")
+            else if (tested.BlockageType == BlockageCode.PortClosed)
             {
                 // Порт закрыт - не блокировка, просто сервис недоступен
                 action = $"Порт {tested.Host.RemotePort} закрыт на {tested.Host.RemoteIp} (не блокировка)";
@@ -60,7 +60,7 @@ namespace IspAudit.Core.Modules
                     {
                         // TCP/TLS работает — для браузера это обычно означает успешный откат с QUIC на TCP.
                         // Не считаем это «ошибкой» и не предлагаем bypass-стратегии.
-                        tested = tested with { BlockageType = "UDP_BLOCKAGE" };
+                        tested = tested with { BlockageType = BlockageCode.UdpBlockage };
                         return new HostBlocked(tested, "NONE", "OK");
                     }
                     else
@@ -112,12 +112,12 @@ namespace IspAudit.Core.Modules
                     // Уточнение типа блокировки на основе сигналов
                     if (s.HasSignificantRetransmissions && string.IsNullOrEmpty(tested.BlockageType))
                     {
-                        tested = tested with { BlockageType = "TCP_RETRY_HEAVY" };
+                        tested = tested with { BlockageType = BlockageCode.TcpRetryHeavy };
                     }
 
                     if (hasProviderLikeRedirect)
                     {
-                        tested = tested with { BlockageType = "HTTP_REDIRECT_DPI" };
+                        tested = tested with { BlockageType = BlockageCode.HttpRedirectDpi };
                     }
                     else if (s.HasSuspiciousRst && string.IsNullOrEmpty(tested.BlockageType))
                     {
@@ -125,11 +125,11 @@ namespace IspAudit.Core.Modules
                     }
                     else if (s.HasUdpBlockage && string.IsNullOrEmpty(tested.BlockageType))
                     {
-                        tested = tested with { BlockageType = "UDP_BLOCKAGE" };
+                        tested = tested with { BlockageType = BlockageCode.UdpBlockage };
                     }
                     else if (s.HasHttpRedirectDpi && string.IsNullOrEmpty(tested.BlockageType))
                     {
-                        tested = tested with { BlockageType = "HTTP_REDIRECT_DPI" };
+                        tested = tested with { BlockageType = BlockageCode.HttpRedirectDpi };
                     }
                     else if (BlockageCode.Normalize(tested.BlockageType) == BlockageCode.TcpConnectTimeout && s.FailCount >= 3)
                     {
@@ -152,16 +152,16 @@ namespace IspAudit.Core.Modules
             return normalized switch
             {
                 BlockageCode.TcpRstInjection => "Соединение сброшено (TCP RST)",
-                "HTTP_REDIRECT_DPI" => "Наблюдается HTTP редирект/заглушка",
-                "TCP_RETRY_HEAVY" => "Наблюдается высокая доля ретрансмиссий TCP",
-                "UDP_BLOCKAGE" => "Наблюдаются проблемы с UDP/QUIC",
+                BlockageCode.HttpRedirectDpi => "Наблюдается HTTP редирект/заглушка",
+                BlockageCode.TcpRetryHeavy => "Наблюдается высокая доля ретрансмиссий TCP",
+                BlockageCode.UdpBlockage => "Наблюдаются проблемы с UDP/QUIC",
                 BlockageCode.TcpConnectTimeout => "Наблюдается таймаут TCP connect",
                 BlockageCode.TcpConnectTimeoutConfirmed => "Наблюдается повторяющийся таймаут TCP connect",
                 BlockageCode.TcpConnectionReset => "Наблюдается сброс соединения (TCP reset)",
                 BlockageCode.TlsHandshakeTimeout => "Наблюдается таймаут TLS рукопожатия",
                 BlockageCode.TlsAuthFailure => "Наблюдается TLS auth failure (ошибка рукопожатия)",
-                "DNS_FILTERED" => "DNS: ответ не OK (filtered)",
-                "DNS_BOGUS" => "DNS: ответ не OK (bogus)",
+                BlockageCode.DnsFiltered => "DNS: ответ не OK (filtered)",
+                BlockageCode.DnsBogus => "DNS: ответ не OK (bogus)",
                 _ => $"Неизвестная проблема с {ip}"
             };
         }

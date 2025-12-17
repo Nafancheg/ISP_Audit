@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.Core.Diagnostics;
 using IspAudit.Core.Interfaces;
 using IspAudit.Core.IntelligenceV2.Diagnosis;
 using IspAudit.Core.IntelligenceV2.Contracts;
@@ -329,7 +330,7 @@ namespace IspAudit.Utils
                 // UDP blockage не считаем «ошибкой» для UI (браузер часто откатывается на TCP)
                 if (legacySignals.HasUdpBlockage)
                 {
-                    var udpTested = tested with { BlockageType = "UDP_BLOCKAGE" };
+                    var udpTested = tested with { BlockageType = BlockageCode.UdpBlockage };
                     return new HostBlocked(udpTested, "NONE", "OK");
                 }
 

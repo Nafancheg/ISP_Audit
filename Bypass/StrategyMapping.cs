@@ -39,7 +39,7 @@ namespace IspAudit.Bypass
             var normalized = BlockageCode.Normalize(result.BlockageType);
 
             // 0. Analyze DNS issues
-            if (result.DnsStatus == "DNS_FILTERED" || result.DnsStatus == "DNS_BOGUS")
+                if (result.DnsStatus == BlockageCode.DnsFiltered || result.DnsStatus == BlockageCode.DnsBogus)
             {
                 rec.AddManual("DOH");
             }

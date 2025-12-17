@@ -139,9 +139,9 @@ namespace IspAudit.ViewModels
                 
                 // Parse flags from details
                 existing.IsRstInjection = BlockageCode.ContainsCode(details, BlockageCode.TcpRstInjection) || details.Contains("RST-инжект");
-                existing.IsHttpRedirect = details.Contains("HTTP_REDIRECT_DPI") || details.Contains("HTTP-редирект");
-                existing.IsRetransmissionHeavy = details.Contains("TCP_RETRY_HEAVY") || details.Contains("ретрансмиссий:");
-                existing.IsUdpBlockage = details.Contains("UDP_BLOCKAGE") || details.Contains("UDP потерь");
+                existing.IsHttpRedirect = BlockageCode.ContainsCode(details, BlockageCode.HttpRedirectDpi) || details.Contains("HTTP-редирект");
+                existing.IsRetransmissionHeavy = BlockageCode.ContainsCode(details, BlockageCode.TcpRetryHeavy) || details.Contains("ретрансмиссий:");
+                existing.IsUdpBlockage = BlockageCode.ContainsCode(details, BlockageCode.UdpBlockage) || details.Contains("UDP потерь");
 
                 if (status == TestStatus.Fail)
                 {
@@ -163,9 +163,9 @@ namespace IspAudit.ViewModels
                 
                 // Parse flags from details
                 existing.IsRstInjection = BlockageCode.ContainsCode(details, BlockageCode.TcpRstInjection) || details.Contains("RST-инжект");
-                existing.IsHttpRedirect = details.Contains("HTTP_REDIRECT_DPI") || details.Contains("HTTP-редирект");
-                existing.IsRetransmissionHeavy = details.Contains("TCP_RETRY_HEAVY") || details.Contains("ретрансмиссий:");
-                existing.IsUdpBlockage = details.Contains("UDP_BLOCKAGE") || details.Contains("UDP потерь");
+                existing.IsHttpRedirect = BlockageCode.ContainsCode(details, BlockageCode.HttpRedirectDpi) || details.Contains("HTTP-редирект");
+                existing.IsRetransmissionHeavy = BlockageCode.ContainsCode(details, BlockageCode.TcpRetryHeavy) || details.Contains("ретрансмиссий:");
+                existing.IsUdpBlockage = BlockageCode.ContainsCode(details, BlockageCode.UdpBlockage) || details.Contains("UDP потерь");
 
                 if (status == TestStatus.Fail)
                 {

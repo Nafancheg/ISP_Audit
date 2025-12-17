@@ -2,6 +2,7 @@ using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using IspAudit.Core.Diagnostics;
 using IspAudit.Core.Interfaces;
 using IspAudit.Core.Models;
 
@@ -125,7 +126,7 @@ namespace IspAudit.Core.Modules
                     catch (OperationCanceledException)
                     {
                         // Нейтральная фактура: TCP connect не завершился за таймаут.
-                        blockageType = "TCP_CONNECT_TIMEOUT";
+                        blockageType = BlockageCode.TcpConnectTimeout;
                     }
                 }
                 catch (System.Net.Sockets.SocketException ex)
@@ -134,13 +135,13 @@ namespace IspAudit.Core.Modules
                     {
                         // Порт закрыт, но хост доступен
                         tcpOk = false;
-                        blockageType = "PORT_CLOSED";
+                        blockageType = BlockageCode.PortClosed;
                     }
                     else if (ex.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionReset)
                     {
                         tcpOk = false;
                         // Нейтральная фактура: соединение сброшено (ConnectionReset).
-                        blockageType = "TCP_CONNECTION_RESET";
+                        blockageType = BlockageCode.TcpConnectionReset;
                     }
                     else
                     {
@@ -179,14 +180,14 @@ namespace IspAudit.Core.Modules
                     catch (OperationCanceledException)
                     {
                         // Нейтральная фактура: TLS рукопожатие не завершилось за таймаут.
-                        blockageType = "TLS_HANDSHAKE_TIMEOUT";
+                        blockageType = BlockageCode.TlsHandshakeTimeout;
                     }
                     catch (System.Security.Authentication.AuthenticationException)
                     {
                         tlsOk = false;
                         // Нейтральная фактура: TLS рукопожатие завершилось AuthenticationException.
                         // Это НЕ доказательство DPI; причины могут быть разными (MITM/прокси/фильтрация/несовпадение параметров).
-                        blockageType = "TLS_AUTH_FAILURE";
+                        blockageType = BlockageCode.TlsAuthFailure;
                     }
                     catch
                     {
