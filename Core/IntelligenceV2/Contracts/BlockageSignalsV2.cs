@@ -80,6 +80,12 @@ public sealed class BlockageSignalsV2
     public bool HasTlsTimeout { get; init; }
 
     /// <summary>
+    /// Наблюдался TLS auth failure (например, TLS handshake завершился ошибкой аутентификации).
+    /// Важно: это наблюдаемый факт, а не доказательство DPI.
+    /// </summary>
+    public bool HasTlsAuthFailure { get; init; }
+
+    /// <summary>
     /// Наблюдался TLS reset.
     /// </summary>
     public bool HasTlsReset { get; init; }

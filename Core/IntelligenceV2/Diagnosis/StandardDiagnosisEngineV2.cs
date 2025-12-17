@@ -54,6 +54,11 @@ public sealed class StandardDiagnosisEngineV2
             notes.Add("TLS: timeout");
             evidence["tlsTimeout"] = "1";
         }
+        if (signals.HasTlsAuthFailure)
+        {
+            notes.Add("TLS: auth failure");
+            evidence["tlsAuthFailure"] = "1";
+        }
         if (signals.HasTlsReset)
         {
             notes.Add("TLS: reset наблюдался");
@@ -88,7 +93,7 @@ public sealed class StandardDiagnosisEngineV2
 
         // 2) Очевидно «всё чисто» по флагам
         if (!signals.HasDnsFailure && !signals.HasFakeIp && !signals.HasHttpRedirect &&
-            !signals.HasTcpTimeout && !signals.HasTcpReset && !signals.HasTlsTimeout && !signals.HasTlsReset)
+            !signals.HasTcpTimeout && !signals.HasTcpReset && !signals.HasTlsTimeout && !signals.HasTlsAuthFailure && !signals.HasTlsReset)
         {
             return new DiagnosisResult
             {
@@ -103,7 +108,7 @@ public sealed class StandardDiagnosisEngineV2
         }
 
         // 3) Мульти-слой: DNS + что-то ещё
-        var hasTransportOrAppIssue = signals.HasTcpTimeout || signals.HasTcpReset || signals.HasTlsTimeout || signals.HasTlsReset || signals.HasHttpRedirect;
+        var hasTransportOrAppIssue = signals.HasTcpTimeout || signals.HasTcpReset || signals.HasTlsTimeout || signals.HasTlsAuthFailure || signals.HasTlsReset || signals.HasHttpRedirect;
         if (signals.HasDnsFailure && hasTransportOrAppIssue)
         {
             return new DiagnosisResult
@@ -196,13 +201,13 @@ public sealed class StandardDiagnosisEngineV2
         }
 
         // 8) TLS timeout без дополнительных улик
-        if (signals.HasTlsTimeout || signals.HasTlsReset)
+        if (signals.HasTlsTimeout || signals.HasTlsAuthFailure || signals.HasTlsReset)
         {
             return new DiagnosisResult
             {
                 DiagnosisId = DiagnosisId.Unknown,
-                Confidence = 50,
-                MatchedRuleName = "tls-issue-only",
+                Confidence = signals.HasTlsAuthFailure ? 45 : 50,
+                MatchedRuleName = signals.HasTlsAuthFailure ? "tls-auth-failure-only" : "tls-issue-only",
                 ExplanationNotes = notes,
                 Evidence = evidence,
                 InputSignals = signals,

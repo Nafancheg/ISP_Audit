@@ -73,6 +73,9 @@ public sealed class SignalsAdapterV2
         var hasTcpTimeout = string.Equals(tested.BlockageType, "TCP_TIMEOUT", StringComparison.Ordinal);
         var hasTcpReset = string.Equals(tested.BlockageType, "TCP_RST", StringComparison.Ordinal) || legacySignals.HasSuspiciousRst || windowEvents.HasType(SignalEventType.SuspiciousRstObserved);
         var hasTlsTimeout = string.Equals(tested.BlockageType, "TLS_TIMEOUT", StringComparison.Ordinal);
+        // ВАЖНО: TLS_DPI — это фактически "TLS authentication failure" (AuthenticationException) из HostTester.
+        // Это наблюдаемый факт о сбое рукопожатия, а не утверждение про DPI.
+        var hasTlsAuthFailure = string.Equals(tested.BlockageType, "TLS_DPI", StringComparison.Ordinal);
 
         double? retxRate = null;
         if (legacySignals.TotalPackets > 0)
@@ -103,6 +106,7 @@ public sealed class SignalsAdapterV2
             HasHttpRedirect = hasHttpRedirect,
 
             HasTlsTimeout = hasTlsTimeout,
+            HasTlsAuthFailure = hasTlsAuthFailure,
             HasTlsReset = false,
 
             SampleSize = windowEvents.Count,
