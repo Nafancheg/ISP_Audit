@@ -36,7 +36,7 @@ namespace IspAudit.Core.Models
         string? SniHostname,           // SNI из трафика (если был)
         string? ReverseDnsHostname,     // PTR / reverse DNS (если делали)
         int? TcpLatencyMs,
-        string? BlockageType,          // null, TCP_RST, TLS_DPI, UDP_DROP
+        string? BlockageType,          // null, TCP_RST, TLS_AUTH_FAILURE (legacy alias: TLS_DPI), UDP_DROP
         DateTime TestedAt
     );
 

@@ -181,7 +181,9 @@ namespace IspAudit.Core.Modules
                     catch (System.Security.Authentication.AuthenticationException)
                     {
                         tlsOk = false;
-                        blockageType = "TLS_DPI";
+                        // Нейтральная фактура: TLS рукопожатие завершилось AuthenticationException.
+                        // Это НЕ доказательство DPI; причины могут быть разными (MITM/прокси/фильтрация/несовпадение параметров).
+                        blockageType = "TLS_AUTH_FAILURE";
                     }
                     catch
                     {

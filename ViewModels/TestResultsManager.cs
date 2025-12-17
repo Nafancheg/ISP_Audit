@@ -365,7 +365,7 @@ namespace IspAudit.ViewModels
                 }
                 else if (msg.StartsWith("❌ "))
                 {
-                    // Формат: "❌ 1.2.3.4:443 | DNS:✓ TCP:✓ TLS:✗ | TLS_DPI"
+                    // Формат: "❌ 1.2.3.4:443 | DNS:✓ TCP:✓ TLS:✗ | TLS_AUTH_FAILURE"
                     var parts = msg.Substring(2).Split('|');
                     if (parts.Length > 0)
                     {
@@ -399,9 +399,10 @@ namespace IspAudit.ViewModels
                             }
 
                             var status = TestStatus.Fail;
-                            if (msg.Contains("TLS_DPI"))
+                            var hasTlsAuthFailure = msg.Contains("TLS_AUTH_FAILURE") || msg.Contains("TLS_DPI");
+                            if (hasTlsAuthFailure)
                             {
-                                msg += "\nℹ️ Обнаружены признаки DPI (фильтрации трафика).";
+                                msg += "\nℹ️ TLS рукопожатие завершилось ошибкой аутентификации (auth failure). Это факт, но не доказательство DPI.";
                                 
                                 var heuristic = AnalyzeHeuristicSeverity(host);
                                 if (heuristic.status == TestStatus.Warn)

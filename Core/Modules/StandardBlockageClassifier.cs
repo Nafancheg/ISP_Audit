@@ -155,7 +155,7 @@ namespace IspAudit.Core.Modules
                 "TCP_TIMEOUT" => "Наблюдается TCP timeout",
                 "TCP_TIMEOUT_CONFIRMED" => "Наблюдается повторяющийся TCP timeout",
                 "TLS_TIMEOUT" => "Наблюдается TLS timeout",
-                "TLS_DPI" => "Наблюдается ошибка TLS (без уточнения причины)",
+                "TLS_AUTH_FAILURE" or "TLS_DPI" => "Наблюдается TLS auth failure (ошибка рукопожатия)",
                 "DNS_FILTERED" => "DNS: ответ не OK (filtered)",
                 "DNS_BOGUS" => "DNS: ответ не OK (bogus)",
                 _ => $"Неизвестная проблема с {ip}"

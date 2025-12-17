@@ -44,7 +44,7 @@ namespace IspAudit.Windows
             Details = rawDetails;
 
             // Пытаемся распарсить строку вида:
-            // ❌ li-in-f156.1e100.net:443 (166ms) | DNS:✓ TCP:✓ TLS:✗ | TLS_DPI
+            // ❌ li-in-f156.1e100.net:443 (166ms) | DNS:✓ TCP:✓ TLS:✗ | TLS_AUTH_FAILURE
             try
             {
                 var parts = rawDetails.Split('|');
@@ -76,7 +76,7 @@ namespace IspAudit.Windows
                     TlsStatus = ParseCheckStatus(checksPart, "TLS");
 
                     // Part 3: Diagnosis code
-                    // " TLS_DPI (fails: 1...)"
+                    // " TLS_AUTH_FAILURE (fails: 1...)"
                     var codePart = parts[2].Trim();
                     
                     // Отделяем код от суффикса с деталями
@@ -114,7 +114,9 @@ namespace IspAudit.Windows
         {
             return code switch
             {
-                "TLS_DPI" => "Обнаружена блокировка шифрования (DPI). Провайдер вмешивается в защищенное соединение.",
+                // TLS_AUTH_FAILURE — это наблюдаемый факт: TLS рукопожатие завершилось ошибкой аутентификации.
+                // Это НЕ доказательство DPI.
+                "TLS_AUTH_FAILURE" or "TLS_DPI" => "TLS рукопожатие завершилось ошибкой аутентификации (auth failure). Это может быть связано с прокси/антивирусом/фильтрацией, но не доказывает DPI.",
                 "TCP_RST" => "Соединение принудительно сброшено (RST). Провайдер активно блокирует доступ к серверу.",
                 "TCP_RST_INJECTION" => "Соединение сброшено (RST Injection). Обнаружено активное вмешательство DPI.",
                 "HTTP_REDIRECT_DPI" => "Подмена ответа (HTTP Redirect). Провайдер перенаправляет на страницу-заглушку.",
@@ -135,7 +137,7 @@ namespace IspAudit.Windows
         {
             return code switch
             {
-                "TLS_DPI" => "Рекомендуется включить обход DPI (фрагментация пакетов).",
+                "TLS_AUTH_FAILURE" or "TLS_DPI" => "Проверьте прокси/антивирус/системное время. Если проблема повторяется — попробуйте VPN или другой DNS.",
                 "TCP_RST" or "TCP_RST_INJECTION" => "Рекомендуется включить защиту от RST-пакетов (Drop RST).",
                 "HTTP_REDIRECT_DPI" => "Попробуйте использовать стратегии обхода HTTP (Fake Request).",
                 "TCP_RETRY_HEAVY" => "Попробуйте использовать фрагментацию или смену IP.",
