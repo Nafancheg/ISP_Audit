@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using IspAudit.Core.Diagnostics;
 using IspAudit.Core.Interfaces;
 using IspAudit.Core.Models;
 
@@ -63,7 +64,7 @@ namespace IspAudit.Utils
 
             // 2. Логика отображения в UI
             // Если стратегии нет и статус OK - это успешный тест, не засоряем UI карточками
-            if (result.BypassStrategy == "NONE" && result.RecommendedAction == "OK")
+            if (result.BypassStrategy == PipelineContract.BypassNone && result.RecommendedAction == BlockageCode.StatusOk)
             {
                 if (!string.IsNullOrEmpty(bestName) && NoiseHostFilter.Instance.IsNoiseHost(bestName))
                 {

@@ -24,7 +24,7 @@ namespace IspAudit.Core.Modules
         public HostBlocked ClassifyBlockage(HostTested tested)
         {
             string action;
-            const string strategy = "NONE";
+            const string strategy = PipelineContract.BypassNone;
             
             // Проверка на Fake IP (198.18.0.0/15): часто используется роутерами/шлюзами для локального редиректа
             // (в т.ч. списки обхода/VPN на уровне роутера). Это важно подсвечивать пользователю.
@@ -61,12 +61,12 @@ namespace IspAudit.Core.Modules
                         // TCP/TLS работает — для браузера это обычно означает успешный откат с QUIC на TCP.
                         // Не считаем это «ошибкой» и не предлагаем bypass-стратегии.
                         tested = tested with { BlockageType = BlockageCode.UdpBlockage };
-                        return new HostBlocked(tested, "NONE", "OK");
+                        return new HostBlocked(tested, PipelineContract.BypassNone, BlockageCode.StatusOk);
                     }
                     else
                     {
                         // Все проверки прошли успешно
-                        action = "OK";
+                        action = BlockageCode.StatusOk;
                         return new HostBlocked(tested, strategy, action);
                     }
                 }

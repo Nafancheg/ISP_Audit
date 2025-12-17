@@ -331,21 +331,21 @@ namespace IspAudit.Utils
                 if (legacySignals.HasUdpBlockage)
                 {
                     var udpTested = tested with { BlockageType = BlockageCode.UdpBlockage };
-                    return new HostBlocked(udpTested, "NONE", "OK");
+                    return new HostBlocked(udpTested, PipelineContract.BypassNone, BlockageCode.StatusOk);
                 }
 
                 if (diagnosis.DiagnosisId == DiagnosisId.NoBlockage)
                 {
-                    return new HostBlocked(tested, "NONE", "OK");
+                    return new HostBlocked(tested, PipelineContract.BypassNone, BlockageCode.StatusOk);
                 }
 
                 // Если v2 увидел флаги, но тесты формально OK — не делаем уверенных выводов.
-                return new HostBlocked(tested, "NONE", BuildEvidenceTail(diagnosis));
+                return new HostBlocked(tested, PipelineContract.BypassNone, BuildEvidenceTail(diagnosis));
             }
 
             // Проблема/блокировка: показываем «хвост» из фактов для QA/лога.
             // Если селектор дал план — отображаем краткую рекомендацию.
-            var bypassStrategy = plan.Strategies.Count == 0 ? "NONE" : BuildBypassStrategyText(plan);
+            var bypassStrategy = plan.Strategies.Count == 0 ? PipelineContract.BypassNone : BuildBypassStrategyText(plan);
             return new HostBlocked(tested, bypassStrategy, BuildEvidenceTail(diagnosis));
         }
 
@@ -395,7 +395,7 @@ namespace IspAudit.Utils
                     var checks = $"DNS:{(blocked.TestResult.DnsOk ? "✓" : "✗")} TCP:{(blocked.TestResult.TcpOk ? "✓" : "✗")} TLS:{(blocked.TestResult.TlsOk ? "✓" : "✗")}";
 
                     var blockage = string.IsNullOrEmpty(blocked.TestResult.BlockageType)
-                        ? "UNKNOWN"
+                        ? PipelineContract.BypassUnknown
                         : blocked.TestResult.BlockageType;
 
                     // Краткий хвост из текста рекомендации (там уже зашиты счётчики фейлов и ретрансмиссий)
@@ -430,7 +430,7 @@ namespace IspAudit.Utils
                     
                     // Показываем рекомендацию, но НЕ применяем bypass автоматически
                     // Bypass должен применяться отдельной командой после завершения диагностики
-                    if (blocked.BypassStrategy != "NONE" && blocked.BypassStrategy != "UNKNOWN")
+                    if (blocked.BypassStrategy != PipelineContract.BypassNone && blocked.BypassStrategy != PipelineContract.BypassUnknown)
                     {
                         if (_executorV2.TryBuildRecommendationLine(host, blocked.BypassStrategy, out var recommendationLine))
                         {

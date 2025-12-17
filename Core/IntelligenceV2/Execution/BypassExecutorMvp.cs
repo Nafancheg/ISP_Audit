@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using IspAudit.Core.Diagnostics;
 
 namespace IspAudit.Core.IntelligenceV2.Execution;
 
@@ -152,7 +153,7 @@ public sealed class BypassExecutorMvp
         if (string.IsNullOrWhiteSpace(bypassStrategyRaw)) return [];
 
         var raw = bypassStrategyRaw.Trim();
-        if (raw.Equals("NONE", StringComparison.OrdinalIgnoreCase) || raw.Equals("UNKNOWN", StringComparison.OrdinalIgnoreCase))
+        if (raw.Equals(PipelineContract.BypassNone, StringComparison.OrdinalIgnoreCase) || raw.Equals(PipelineContract.BypassUnknown, StringComparison.OrdinalIgnoreCase))
         {
             return [];
         }

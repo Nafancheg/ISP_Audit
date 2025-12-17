@@ -524,7 +524,7 @@ namespace IspAudit.ViewModels
                                     ?? "Fake IP обнаружен";
                                 Log($"[UI] ROUTER_REDIRECT → Status=Warn для {_lastUpdatedHost}");
                             }
-                            else if (strategy != "NONE" && strategy != "UNKNOWN")
+                            else if (strategy != PipelineContract.BypassNone && strategy != PipelineContract.BypassUnknown)
                             {
                                 Log($"[UI] Bypass strategy for {_lastUpdatedHost}: {strategy}");
                             }
