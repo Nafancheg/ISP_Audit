@@ -11,6 +11,11 @@ namespace IspAudit.Core.Diagnostics;
 /// </summary>
 public static class BlockageCode
 {
+    // Общие статусы (используются в UI и в DnsStatus)
+    public const string StatusOk = "OK";
+    public const string StatusFail = "FAIL";
+    public const string StatusUnknown = "UNKNOWN";
+
     // Канонические коды (фактура)
     public const string TcpConnectTimeout = "TCP_CONNECT_TIMEOUT";
     public const string TcpConnectTimeoutConfirmed = "TCP_CONNECT_TIMEOUT_CONFIRMED";
@@ -37,6 +42,7 @@ public static class BlockageCode
     public const string DnsBogus = "DNS_BOGUS";
     public const string DnsError = "DNS_ERROR";
     public const string DnsBypass = "DNS_BYPASS";
+    public const string DnsTimeout = "DNS_TIMEOUT";
 
     // Legacy алиасы → канон
     private static readonly Dictionary<string, string> LegacyToCanonical = new(StringComparer.Ordinal)

@@ -25,7 +25,7 @@ namespace IspAudit.Core.Modules
             bool dnsOk = true;
             bool tcpOk = false;
             bool tlsOk = false;
-            string dnsStatus = "OK";
+            string dnsStatus = BlockageCode.StatusOk;
             string? hostname = null;
             string? sniHostname = null;
             string? reverseDnsHostname = null;
@@ -94,7 +94,7 @@ namespace IspAudit.Core.Modules
                         if (completedTask != dnsCheckTask)
                         {
                             dnsOk = false;
-                            dnsStatus = "DNS_TIMEOUT";
+                            dnsStatus = BlockageCode.DnsTimeout;
                         }
                         else
                         {

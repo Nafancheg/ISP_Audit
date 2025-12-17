@@ -106,9 +106,9 @@ namespace IspAudit.Windows
         private string ParseCheckStatus(string input, string checkName)
         {
             // Ищем "DNS:✓" или "DNS:✗"
-            if (input.Contains($"{checkName}:✓")) return "OK";
-            if (input.Contains($"{checkName}:✗")) return "FAIL";
-            return "UNKNOWN";
+            if (input.Contains($"{checkName}:✓")) return BlockageCode.StatusOk;
+            if (input.Contains($"{checkName}:✗")) return BlockageCode.StatusFail;
+            return BlockageCode.StatusUnknown;
         }
 
         private string GetDiagnosisText(string code)
@@ -162,9 +162,9 @@ namespace IspAudit.Windows
         
         // New parsed properties
         public string Latency { get; private set; } = "-";
-        public string DnsStatus { get; private set; } = "UNKNOWN"; // OK, FAIL, UNKNOWN
-        public string TcpStatus { get; private set; } = "UNKNOWN";
-        public string TlsStatus { get; private set; } = "UNKNOWN";
+        public string DnsStatus { get; private set; } = BlockageCode.StatusUnknown; // OK, FAIL, UNKNOWN
+        public string TcpStatus { get; private set; } = BlockageCode.StatusUnknown;
+        public string TlsStatus { get; private set; } = BlockageCode.StatusUnknown;
         public string Diagnosis { get; private set; } = "";
         public string Recommendation { get; private set; } = "";
 
@@ -174,11 +174,11 @@ namespace IspAudit.Windows
         public bool HasDiagnosis => !string.IsNullOrEmpty(Diagnosis);
         
         // Helpers for UI binding
-        public bool IsDnsOk => DnsStatus == "OK";
-        public bool IsTcpOk => TcpStatus == "OK";
-        public bool IsTlsOk => TlsStatus == "OK";
-        public bool IsDnsFail => DnsStatus == "FAIL";
-        public bool IsTcpFail => TcpStatus == "FAIL";
-        public bool IsTlsFail => TlsStatus == "FAIL";
+        public bool IsDnsOk => DnsStatus == BlockageCode.StatusOk;
+        public bool IsTcpOk => TcpStatus == BlockageCode.StatusOk;
+        public bool IsTlsOk => TlsStatus == BlockageCode.StatusOk;
+        public bool IsDnsFail => DnsStatus == BlockageCode.StatusFail;
+        public bool IsTcpFail => TcpStatus == BlockageCode.StatusFail;
+        public bool IsTlsFail => TlsStatus == BlockageCode.StatusFail;
     }
 }
