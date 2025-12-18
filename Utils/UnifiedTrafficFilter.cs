@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using IspAudit.Core.Diagnostics;
 using IspAudit.Core.Interfaces;
 using IspAudit.Core.Models;
@@ -12,10 +11,8 @@ namespace IspAudit.Utils
     /// </summary>
     public class UnifiedTrafficFilter : ITrafficFilter
     {
-        private readonly ConcurrentDictionary<string, byte> _testedKeys = new();
-        
-        // Не кешируем Instance, так как он может быть пересоздан при Initialize
-        // private readonly NoiseHostFilter _noiseFilter = NoiseHostFilter.Instance;
+        // Уровень-2 дедупликации отключён намеренно.
+        // Дедупликация на уровне цели выполняется в TrafficCollector по ключу RemoteIp:RemotePort:Protocol.
 
         public FilterDecision ShouldTest(HostDiscovered host, string? knownHostname = null)
         {
@@ -31,24 +28,7 @@ namespace IspAudit.Utils
                 return new FilterDecision(FilterAction.Drop, "Noise host (pre-check)");
             }
 
-            // 2. Дедупликация
-            // Если знаем hostname - дедуплицируем по нему (чтобы не тестировать 10 IP одного домена)
-            // Если не знаем - дедуплицируем по IP:Port
-            string key;
-            if (!string.IsNullOrEmpty(knownHostname))
-            {
-                key = $"host:{knownHostname.ToLowerInvariant()}";
-            }
-            else
-            {
-                key = $"ip:{host.RemoteIp}:{host.RemotePort}";
-            }
-
-            if (!_testedKeys.TryAdd(key, 1))
-            {
-                return new FilterDecision(FilterAction.Drop, $"Duplicate ({key})");
-            }
-
+            // 2. Дедупликация на уровне цели отключена.
             return new FilterDecision(FilterAction.Process, "New target");
         }
 
@@ -84,27 +64,12 @@ namespace IspAudit.Utils
 
         public void Invalidate(string ip)
         {
-            // Удаляем ключи, связанные с этим IP
-            // Так как мы не знаем порт, удаляем все ключи, содержащие этот IP
-            // Это не очень эффективно, но редко вызывается
-            var keysToRemove = new System.Collections.Generic.List<string>();
-            foreach (var key in _testedKeys.Keys)
-            {
-                if (key.Contains(ip))
-                {
-                    keysToRemove.Add(key);
-                }
-            }
-
-            foreach (var key in keysToRemove)
-            {
-                _testedKeys.TryRemove(key, out _);
-            }
+            // Уровень-2 дедупликации отключён — инвалидировать нечего.
         }
 
         public void Reset()
         {
-            _testedKeys.Clear();
+            // Уровень-2 дедупликации отключён — сбрасывать нечего.
         }
     }
 }

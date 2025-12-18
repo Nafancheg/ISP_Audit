@@ -66,18 +66,7 @@
         "*.googleapis.com"
       ],
       "exclude": [
-        "*.storage.googleapis.com",
-
-        "youtube.com",
-        "www.youtube.com",
-        "*.youtube.com",
-        "youtu.be",
-        "*.youtu.be",
-        "*.googlevideo.com",
-        "*.ytimg.com",
-        "yt3.ggpht.com",
-        "*.gvt1.com",
-        "*.gvt2.com"
+        "*.storage.googleapis.com"
       ]
     },
     "monitoring": {
@@ -98,11 +87,6 @@
         "*.pinterest.com"
       ],
       "exclude": [
-        "facebook.com",
-        "www.facebook.com",
-        "*.facebook.com",
-
-        "*.fbcdn.net",
         "graph.facebook.com",
         "api.facebook.com",
         "api.twitter.com"
