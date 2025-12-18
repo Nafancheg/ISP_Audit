@@ -25,6 +25,13 @@ namespace IspAudit.ViewModels
         private string? _lastUpdatedHost;
 
         private readonly Queue<(DateTime Time, bool IsSuccess)> _healthHistory = new();
+
+        // Защита от «флаппинга»: если цель только что падала, единичный успех не должен
+        // мгновенно превращать карточку в "Доступно". Это особенно важно для браузера,
+        // где к одному IP могут идти как успешные, так и проблемные запросы.
+        private readonly ConcurrentDictionary<string, DateTime> _lastProblemUtcByHost = new();
+
+        private static readonly TimeSpan ProblemCooldownWindow = TimeSpan.FromSeconds(60);
         
         private double _healthScore = 100;
         public double HealthScore
@@ -134,6 +141,21 @@ namespace IspAudit.ViewModels
             
             if (existing != null)
             {
+                // Запоминаем, что по этой цели была проблема.
+                if (status == TestStatus.Fail || status == TestStatus.Warn)
+                {
+                    _lastProblemUtcByHost[normalizedHost] = DateTime.UtcNow;
+                }
+
+                // Если цель недавно падала, не "перекрашиваем" её в Pass на одном успешном событии.
+                // Оставляем предупреждение, чтобы лицевой эффект совпадал с ощущением "не работает".
+                if (status == TestStatus.Pass &&
+                    _lastProblemUtcByHost.TryGetValue(normalizedHost, out var lastProblemUtc) &&
+                    DateTime.UtcNow - lastProblemUtc <= ProblemCooldownWindow)
+                {
+                    status = TestStatus.Warn;
+                }
+
                 existing.Status = status;
                 existing.Details = details;
                 
@@ -160,6 +182,11 @@ namespace IspAudit.ViewModels
                 };
 
                 existing = new TestResult { Target = target, Status = status, Details = details };
+
+                if (status == TestStatus.Fail || status == TestStatus.Warn)
+                {
+                    _lastProblemUtcByHost[normalizedHost] = DateTime.UtcNow;
+                }
                 
                 // Parse flags from details
                 existing.IsRstInjection = BlockageCode.ContainsCode(details, BlockageCode.TcpRstInjection) || details.Contains("RST-инжект");
@@ -242,9 +269,14 @@ namespace IspAudit.ViewModels
                             (!string.IsNullOrEmpty(ip) && (t.Target.Host == ip || t.Target.FallbackIp == ip)));
                         if (toRemove != null)
                         {
-                            TestResults.Remove(toRemove);
-                            Log($"[UI] Удалена шумовая карточка: {host ?? ip}");
-                            NotifyCountersChanged();
+                            // Важно: шум должен скрывать только «OK/успех».
+                            // Карточки с ошибками/предупреждениями не удаляем, иначе теряем лицевой эффект.
+                            if (toRemove.Status == TestStatus.Pass || toRemove.Status == TestStatus.Idle || toRemove.Status == TestStatus.Running)
+                            {
+                                TestResults.Remove(toRemove);
+                                Log($"[UI] Удалена шумовая карточка: {host ?? ip}");
+                                NotifyCountersChanged();
+                            }
                         }
                     }
                     return;
@@ -334,9 +366,28 @@ namespace IspAudit.ViewModels
                             var toRemove = TestResults.FirstOrDefault(t => t.Target.Host == ipPart || t.Target.FallbackIp == ipPart);
                             if (toRemove != null)
                             {
-                                TestResults.Remove(toRemove);
-                                Log($"[UI] Удалена шумовая карточка после резолва: {ipPart} → {newHostname}");
-                                NotifyCountersChanged();
+                                // Важно: не удаляем карточки с проблемами только потому,
+                                // что reverse/DNS имя попало под noise-паттерн (например *.1e100.net).
+                                if (toRemove.Status == TestStatus.Pass || toRemove.Status == TestStatus.Idle || toRemove.Status == TestStatus.Running)
+                                {
+                                    TestResults.Remove(toRemove);
+                                    Log($"[UI] Удалена шумовая карточка после резолва: {ipPart} → {newHostname}");
+                                    NotifyCountersChanged();
+                                    return;
+                                }
+
+                                // Карточка с проблемой остаётся; при желании можно сохранить имя как rDNS.
+                                var old = toRemove.Target;
+                                toRemove.Target = new Target
+                                {
+                                    Name = old.Name,
+                                    Host = old.Host,
+                                    Service = old.Service,
+                                    Critical = old.Critical,
+                                    FallbackIp = old.FallbackIp,
+                                    SniHost = old.SniHost,
+                                    ReverseDnsHost = newHostname
+                                };
                             }
                             return;
                         }
