@@ -108,6 +108,14 @@
     - ключ карточки по `[SNI] Detected: <ip> -> <host>`;
     - правило `UnstableWindow`: если в окне есть и успех, и проблема → статус `Warn` (“Нестабильно”).
 
+Актуализация (Dev, 18.12.2025): добавлен CLI smoke-раннер (infra/pipe/bypass)
+- Команда:
+    - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke`
+    - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke infra`
+    - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke pipe`
+    - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke bypass`
+- Примечание: проверки, требующие WinDivert Socket Layer, автоматически становятся `SKIP`, если нет прав администратора.
+
 Рекомендуемые быстрые проверки (перед/после реального браузерного прогона):
 - “Проблема не исчезает”: событие `[NOISE]`/noise-hostname не должно удалять карточку со статусом `Fail/Warn`.
 - “SNI позже IP”: сначала `❌ <ip>...`, потом `[SNI] Detected...` → карточка должна переехать на hostname и остаться `Warn/Fail`.

@@ -79,6 +79,8 @@ graph TD
 
 Dev-проверка (smoke): для воспроизводимой проверки детерминизма UI без запуска GUI есть режим `--ui-reducer-smoke` в `TestNetworkApp` (прогон типовых строк пайплайна через `TestResultsManager.ParsePipelineMessage`).
 
+Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|infra|pipe|bypass]`, который запускает набор быстрых проверок из плана смоков (без GUI). Часть инфраструктурных проверок, завязанных на WinDivert, автоматически помечается как `SKIP`, если приложение запущено не от администратора.
+
 ### 3.2 Orchestration Layer
 
 *   **`DiagnosticOrchestrator`**: "Дирижер" всего процесса.

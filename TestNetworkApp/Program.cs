@@ -1,8 +1,11 @@
 using System;
 using System.Net.Http;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Models;
 using IspAudit.ViewModels;
+using TestNetworkApp.Smoke;
 
 namespace TestNetworkApp
 {
@@ -12,12 +15,23 @@ namespace TestNetworkApp
     /// </summary>
     class Program
     {
-        static async Task Main(string[] args)
+        static async Task<int> Main(string[] args)
         {
+            // Нужен для CP866/прочих OEM-кодировок на русской Windows.
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
             if (args.Length > 0 && string.Equals(args[0], "--ui-reducer-smoke", StringComparison.OrdinalIgnoreCase))
             {
                 RunUiReducerSmoke();
-                return;
+                return 0;
+            }
+
+            if (args.Length > 0 && string.Equals(args[0], "--smoke", StringComparison.OrdinalIgnoreCase))
+            {
+                var category = args.Length > 1 ? args[1] : "all";
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                var exitCode = await SmokeRunner.Build(category).RunAsync(cts.Token).ConfigureAwait(false);
+                return exitCode;
             }
 
             Console.WriteLine("=== ISP_Audit Test Network Application ===");
@@ -100,6 +114,8 @@ namespace TestNetworkApp
             
             // Автоматический выход для использования в пайплайне
             await Task.Delay(1000); 
+
+            return 0;
         }
 
         private static void RunUiReducerSmoke()
@@ -144,5 +160,8 @@ namespace TestNetworkApp
             Console.WriteLine("- facebook.com должен существовать (миграция с IP), а статус при Pass+Fail в окне → 'Нестабильно'.");
             Console.WriteLine("- youtube.com должен быть ключом карточки, а при Fail+Pass в окне → 'Нестабильно'.");
         }
+
+        // Вызов из smoke-раннера без дублирования логики.
+        internal static void RunUiReducerSmoke_ForSmokeRunner() => RunUiReducerSmoke();
     }
 }
