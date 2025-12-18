@@ -964,6 +964,10 @@ namespace IspAudit.ViewModels
                 nameKey = NormalizeHost(nameKey);
                 if (IPAddress.TryParse(nameKey, out _)) return;
 
+                // Переносим историю исходов на человеко‑понятный ключ.
+                // Иначе: Fail мог быть записан на IP, а Pass уже придёт на hostname → UI покажет "Доступно" вместо "Нестабильно".
+                MergeOutcomeHistoryKeys(ip, nameKey);
+
                 var ipCard = TestResults.FirstOrDefault(t => t.Target.Host == ip || t.Target.FallbackIp == ip);
                 if (ipCard == null) return;
 
@@ -1023,6 +1027,37 @@ namespace IspAudit.ViewModels
 
                 TestResults.Remove(ipCard);
                 NotifyCountersChanged();
+            }
+            catch
+            {
+            }
+        }
+
+        private void MergeOutcomeHistoryKeys(string fromKey, string toKey)
+        {
+            try
+            {
+                fromKey = NormalizeHost(fromKey);
+                toKey = NormalizeHost(toKey);
+
+                if (string.IsNullOrWhiteSpace(fromKey) || string.IsNullOrWhiteSpace(toKey)) return;
+                if (fromKey.Equals(toKey, StringComparison.OrdinalIgnoreCase)) return;
+
+                if (!_outcomeHistoryByKey.TryGetValue(fromKey, out var fromHistory))
+                {
+                    return;
+                }
+
+                var toHistory = _outcomeHistoryByKey.GetOrAdd(toKey, _ => new OutcomeHistory(DateTime.MinValue, DateTime.MinValue));
+
+                var merged = new OutcomeHistory(
+                    LastPassUtc: fromHistory.LastPassUtc > toHistory.LastPassUtc ? fromHistory.LastPassUtc : toHistory.LastPassUtc,
+                    LastProblemUtc: fromHistory.LastProblemUtc > toHistory.LastProblemUtc ? fromHistory.LastProblemUtc : toHistory.LastProblemUtc);
+
+                _outcomeHistoryByKey[toKey] = merged;
+
+                // Удаляем исходный ключ, чтобы не копить мусор.
+                _outcomeHistoryByKey.TryRemove(fromKey, out _);
             }
             catch
             {

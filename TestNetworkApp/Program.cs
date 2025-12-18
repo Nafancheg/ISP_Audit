@@ -1,6 +1,8 @@
 using System;
 using System.Net.Http;
 using System.Threading.Tasks;
+using IspAudit.Models;
+using IspAudit.ViewModels;
 
 namespace TestNetworkApp
 {
@@ -12,6 +14,12 @@ namespace TestNetworkApp
     {
         static async Task Main(string[] args)
         {
+            if (args.Length > 0 && string.Equals(args[0], "--ui-reducer-smoke", StringComparison.OrdinalIgnoreCase))
+            {
+                RunUiReducerSmoke();
+                return;
+            }
+
             Console.WriteLine("=== ISP_Audit Test Network Application ===");
             Console.WriteLine($"PID: {Environment.ProcessId}");
             Console.WriteLine("Запуск тестовых сетевых запросов...\n");
@@ -92,6 +100,49 @@ namespace TestNetworkApp
             
             // Автоматический выход для использования в пайплайне
             await Task.Delay(1000); 
+        }
+
+        private static void RunUiReducerSmoke()
+        {
+            Console.WriteLine("=== ISP_Audit UI Reducer Smoke ===\n");
+
+            var mgr = new TestResultsManager();
+            mgr.OnLog += s => Console.WriteLine(s);
+            mgr.Initialize();
+
+            // Сценарий 1: IP-ключ → DNS-resolve → миграция в hostname.
+            // (SNI отсутствует в сообщениях)
+            var lines = new[]
+            {
+                "[Collector] Новое соединение #1: 203.0.113.10:443 (proto=6, pid=1234)",
+                "❌ 203.0.113.10:443 | DNS:✓ TCP:✓ TLS:✗ | TLS_HANDSHAKE_TIMEOUT",
+                "[Collector] Hostname обновлен: 203.0.113.10 → facebook.com",
+                "✓ 203.0.113.10:443 (25ms) SNI=- RDNS=-",
+
+                // Сценарий 2: SNI сразу известен — карточка создаётся по человеко‑понятному ключу.
+                "[Collector] Новое соединение #2: 64.233.164.91:443 DNS=1e100.net (proto=6, pid=1234)",
+                "[SNI] Detected: 64.233.164.91 -> youtube.com",
+                "❌ 64.233.164.91:443 | DNS:✓ TCP:✓ TLS:✗ | TLS_AUTH_FAILURE",
+                "✓ 64.233.164.91:443 (18ms) SNI=youtube.com RDNS=1e100.net",
+            };
+
+            foreach (var line in lines)
+            {
+                Console.WriteLine($"> {line}");
+                mgr.ParsePipelineMessage(line);
+            }
+
+            Console.WriteLine("\n--- Итоговые карточки ---");
+            foreach (var r in mgr.TestResults)
+            {
+                var t = r.Target;
+                Console.WriteLine(
+                    $"KEY={t.Host} | Status={r.StatusText} | FallbackIp={t.FallbackIp} | SNI={t.SniHost} | RDNS={t.ReverseDnsHost}");
+            }
+
+            Console.WriteLine("\nОжидаемое поведение:");
+            Console.WriteLine("- facebook.com должен существовать (миграция с IP), а статус при Pass+Fail в окне → 'Нестабильно'.");
+            Console.WriteLine("- youtube.com должен быть ключом карточки, а при Fail+Pass в окне → 'Нестабильно'.");
         }
     }
 }
