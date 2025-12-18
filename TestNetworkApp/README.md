@@ -23,6 +23,19 @@
 
 ## Инструкция по тестированию
 
+### 0. Smoke-тест UI-редьюсера (без запуска GUI)
+
+Назначение: быстрый воспроизводимый прогон типовых строк пайплайна через `TestResultsManager.ParsePipelineMessage`.
+Проверяет ключ карточки по SNI/hostname, миграцию `IP → hostname` и правило “смешанные исходы → Нестабильно”.
+
+Запуск:
+
+```powershell
+dotnet run -c Debug --project TestNetworkApp\TestNetworkApp.csproj -- --ui-reducer-smoke
+```
+
+Ожидаемый результат: в выводе должны появиться итоговые карточки с ключами вида `youtube.com`/`facebook.com`, при `Fail+Pass` в окне — статус “Нестабильно”, а IP сохраняется как `FallbackIp`.
+
 ### 1. Сборка
 
 ```powershell

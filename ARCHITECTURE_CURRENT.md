@@ -77,6 +77,8 @@ graph TD
     *   Метрики/вердикт приходят из событий `TlsBypassService` (`MetricsUpdated/VerdictChanged/StateChanged`): UI показывает план фрагментации, таймстамп начала метрик, активный пресет/мин. чанк и не подсвечивает карточку при серых статусах «нет данных/не 443».
 *   **`TestResultsManager`**: Управляет коллекцией результатов (`ObservableCollection<TestResult>`). Отвечает за обновление UI в потоке диспетчера.
 
+Dev-проверка (smoke): для воспроизводимой проверки детерминизма UI без запуска GUI есть режим `--ui-reducer-smoke` в `TestNetworkApp` (прогон типовых строк пайплайна через `TestResultsManager.ParsePipelineMessage`).
+
 ### 3.2 Orchestration Layer
 
 *   **`DiagnosticOrchestrator`**: "Дирижер" всего процесса.
