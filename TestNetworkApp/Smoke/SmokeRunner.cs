@@ -539,7 +539,13 @@ namespace TestNetworkApp.Smoke
             {
                 // В GUI этот фильтр инициализируется в DiagnosticOrchestrator.
                 // Для smoke-теста делаем то же, иначе singleton NoiseHostFilter работает только на fallback-паттернах.
-                var noisePath = Path.Combine(Directory.GetCurrentDirectory(), "noise_hosts.json");
+                var noisePath = TryFindNoiseHostsJsonPath();
+                if (string.IsNullOrWhiteSpace(noisePath))
+                {
+                    return new SmokeTestResult("PIPE-006", "NoiseHostFilter применяется только на этапе отображения", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Не удалось найти noise_hosts.json (нужен для корректного распознавания шумовых доменов)");
+                }
+
                 NoiseHostFilter.Initialize(noisePath);
 
                 var filter = new UnifiedTrafficFilter();
@@ -589,6 +595,36 @@ namespace TestNetworkApp.Smoke
 
                 return new SmokeTestResult("PIPE-006", "NoiseHostFilter применяется только на этапе отображения", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: обычный OK=LogOnly, noise OK=Drop");
+
+                static string? TryFindNoiseHostsJsonPath()
+                {
+                    // noise_hosts.json лежит в корне репозитория.
+                    var candidates = new List<string>
+                    {
+                        Path.Combine(Environment.CurrentDirectory, "noise_hosts.json"),
+                        Path.Combine(AppContext.BaseDirectory, "noise_hosts.json"),
+                    };
+
+                    foreach (var start in new[] { Environment.CurrentDirectory, AppContext.BaseDirectory }.Distinct(StringComparer.OrdinalIgnoreCase))
+                    {
+                        var dir = new DirectoryInfo(start);
+                        for (int i = 0; i < 10 && dir is not null; i++)
+                        {
+                            candidates.Add(Path.Combine(dir.FullName, "noise_hosts.json"));
+                            dir = dir.Parent;
+                        }
+                    }
+
+                    foreach (var p in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+                    {
+                        if (File.Exists(p))
+                        {
+                            return p;
+                        }
+                    }
+
+                    return null;
+                }
             }, ct);
 
         public static async Task<SmokeTestResult> Pipe_TrafficCollector_DedupByRemoteIpPortProto_Polling(CancellationToken ct)
