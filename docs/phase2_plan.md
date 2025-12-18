@@ -100,7 +100,7 @@ public enum SignalType
 
 public sealed class SignalEvent
 {
-    public string HostKey { get; init; }           // стабильный ключ (например: IP или IP:port:proto)
+    public string HostKey { get; init; }           // стабильный технический ключ (например: IP:port:proto), не UI-лейбл
     public SignalType Type { get; init; }
     public object? Value { get; init; }
     public DateTime ObservedAtUtc { get; init; }

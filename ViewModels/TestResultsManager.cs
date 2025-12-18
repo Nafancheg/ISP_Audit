@@ -415,11 +415,18 @@ namespace IspAudit.ViewModels
                             return;
                         }
                         
-                        // Ключ карточки остаётся IP. Обновляем только отображаемое имя,
-                        // если SNI ещё не известен.
+                        // Если это не шумовой hostname, используем его как человеко‑понятный ключ.
+                        // IP остаётся как технический якорь (FallbackIp) для корреляции.
                         var existingByIp = TestResults.FirstOrDefault(t => t.Target.Host == ipPart || t.Target.FallbackIp == ipPart);
                         if (existingByIp != null)
                         {
+                            var normalizedHostname = NormalizeHost(newHostname);
+                            if (!string.IsNullOrWhiteSpace(normalizedHostname) && normalizedHostname != "-" && !IPAddress.TryParse(normalizedHostname, out _))
+                            {
+                                _ipToUiKey[ipPart] = normalizedHostname;
+                                TryMigrateIpCardToNameKey(ipPart, normalizedHostname);
+                            }
+
                             if (string.IsNullOrWhiteSpace(existingByIp.Target.SniHost))
                             {
                                 // Если SNI ещё не пойман — заполняем колонку SNI DNS-именем

@@ -48,7 +48,8 @@ public static class IntelligenceV2ContractDefaults
 public sealed class SignalEvent
 {
     /// <summary>
-    /// Стабильный ключ хоста (например IP или IP:Port:Proto).
+    /// Стабильный технический ключ хоста (например IP:Port:Proto).
+    /// Примечание: это не UI-лейбл; человеко‑понятное имя (SNI/hostname) передаётся отдельно.
     /// Контракт: значение должно быть непустым.
     /// </summary>
     public required string HostKey { get; init; }

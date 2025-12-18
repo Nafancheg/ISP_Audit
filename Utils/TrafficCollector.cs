@@ -200,7 +200,10 @@ namespace IspAudit.Utils
                         return;
                     }
                     
-                    // В UI ключом всегда остаётся IP, hostname передаём как доп.метаданные
+                    // В логах/сообщениях пайплайна используем IP как технический якорь,
+                    // а hostname (DNS/SNI) передаём как доп.метаданные. UI может
+                    // отображать карточку по человеко‑понятному ключу (SNI/hostname),
+                    // сохраняя IP как FallbackIp.
                     var displayIp = remoteIp.ToString();
                     var dnsSuffix = string.IsNullOrWhiteSpace(hostname) ? "" : $" DNS={hostname}";
                     _progress?.Report($"[Collector] Новое соединение #{_connections.Count}: {displayIp}:{remotePort}{dnsSuffix} (proto={protocol}, pid={pid})");

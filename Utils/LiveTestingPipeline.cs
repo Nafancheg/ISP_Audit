@@ -367,7 +367,9 @@ namespace IspAudit.Utils
                         _autoHostlist.Observe(tested, signals, hostname);
                     }
 
-                    // В UI ключом всегда остается IP, чтобы не "переименовывать" карточки
+                    // В сообщениях пайплайна используем IP как технический якорь.
+                    // UI-слой может отображать карточки по человеко‑понятному ключу (SNI/hostname),
+                    // сохраняя IP как FallbackIp для корреляции.
                     var displayHost = tested.Host.RemoteIp.ToString();
 
                     var sni = tested.SniHostname;
