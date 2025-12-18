@@ -20,6 +20,11 @@ using BypassTransportProtocol = IspAudit.Bypass.TransportProtocol;
 
 namespace TestNetworkApp.Smoke
 {
+    internal sealed record SmokeRunOptions(bool NoSkip)
+    {
+        public static SmokeRunOptions Default => new(NoSkip: false);
+    }
+
     internal enum SmokeOutcome
     {
         Pass,
@@ -37,6 +42,16 @@ namespace TestNetworkApp.Smoke
     internal sealed class SmokeRunner
     {
         private readonly List<Func<CancellationToken, Task<SmokeTestResult>>> _tests = new();
+        private readonly SmokeRunOptions _options;
+
+        private SmokeRunner(SmokeRunOptions options)
+        {
+            _options = options;
+        }
+
+        public SmokeRunner() : this(SmokeRunOptions.Default)
+        {
+        }
 
         public SmokeRunner Add(Func<CancellationToken, Task<SmokeTestResult>> test)
         {
@@ -52,6 +67,7 @@ namespace TestNetworkApp.Smoke
             Console.WriteLine($"Время: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
             Console.WriteLine($"PID: {Environment.ProcessId}");
             Console.WriteLine($"Admin: {(TrafficEngine.HasAdministratorRights ? "да" : "нет")}");
+            Console.WriteLine($"NoSkip: {(_options.NoSkip ? "да" : "нет")}");
             Console.WriteLine();
 
             foreach (var test in _tests)
@@ -73,6 +89,17 @@ namespace TestNetworkApp.Smoke
                 catch (Exception ex)
                 {
                     r = new SmokeTestResult("SMOKE-EX", "Непойманное исключение", SmokeOutcome.Fail, TimeSpan.Zero, ex.ToString());
+                }
+
+                if (_options.NoSkip && r.Outcome == SmokeOutcome.Skip)
+                {
+                    r = r with
+                    {
+                        Outcome = SmokeOutcome.Fail,
+                        Details = string.IsNullOrWhiteSpace(r.Details)
+                            ? "Режим NoSkip: SKIP запрещён"
+                            : $"NoSkip: SKIP запрещён. {r.Details}"
+                    };
                 }
 
                 results.Add(r);
@@ -105,9 +132,9 @@ namespace TestNetworkApp.Smoke
             return fail == 0 ? 0 : 1;
         }
 
-        public static SmokeRunner Build(string category)
+        public static SmokeRunner Build(string category, SmokeRunOptions? options = null)
         {
-            var runner = new SmokeRunner();
+            var runner = new SmokeRunner(options ?? SmokeRunOptions.Default);
 
             var cat = (category ?? "all").Trim().ToLowerInvariant();
             bool all = cat == "all";

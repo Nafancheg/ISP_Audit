@@ -28,9 +28,33 @@ namespace TestNetworkApp
 
             if (args.Length > 0 && string.Equals(args[0], "--smoke", StringComparison.OrdinalIgnoreCase))
             {
-                var category = args.Length > 1 ? args[1] : "all";
+                // Формат:
+                // --smoke [all|infra|pipe|bypass] [--no-skip|--strict]
+                var category = "all";
+                bool noSkip = false;
+
+                for (int i = 1; i < args.Length; i++)
+                {
+                    var a = args[i];
+                    if (string.Equals(a, "--no-skip", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(a, "--strict", StringComparison.OrdinalIgnoreCase))
+                    {
+                        noSkip = true;
+                        continue;
+                    }
+
+                    if (string.Equals(a, "all", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(a, "infra", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(a, "pipe", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(a, "bypass", StringComparison.OrdinalIgnoreCase))
+                    {
+                        category = a;
+                        continue;
+                    }
+                }
+
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                var exitCode = await SmokeRunner.Build(category).RunAsync(cts.Token).ConfigureAwait(false);
+                var exitCode = await SmokeRunner.Build(category, new SmokeRunOptions(noSkip)).RunAsync(cts.Token).ConfigureAwait(false);
                 return exitCode;
             }
 

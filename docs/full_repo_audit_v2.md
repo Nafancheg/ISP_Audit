@@ -114,7 +114,10 @@
     - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke infra`
     - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke pipe`
     - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke bypass`
-- Примечание: проверки, требующие WinDivert Socket Layer, автоматически становятся `SKIP`, если нет прав администратора.
+- Примечание: проверки, требующие WinDivert/среду, по умолчанию могут становиться `SKIP` (например, если нет прав администратора).
+- Строгий режим (без `SKIP`):
+    - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke --no-skip`
+    - алиас: `--strict` (любые `SKIP` считаются `FAIL`).
 
 Рекомендуемые быстрые проверки (перед/после реального браузерного прогона):
 - “Проблема не исчезает”: событие `[NOISE]`/noise-hostname не должно удалять карточку со статусом `Fail/Warn`.
