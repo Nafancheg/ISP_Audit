@@ -21,6 +21,39 @@ namespace IspAudit.Utils
         
         public IReadOnlyCollection<int> TrackedPids => _trackedPids;
         public int NewPidsDiscovered { get; private set; }
+
+        /// <summary>
+        /// Потокобезопасная проверка: PID входит в отслеживаемый набор.
+        /// </summary>
+        public bool IsPidTracked(int pid)
+        {
+            lock (_trackedPids)
+            {
+                return _trackedPids.Contains(pid);
+            }
+        }
+
+        /// <summary>
+        /// Потокобезопасный снапшот текущих PID'ов.
+        /// </summary>
+        public int[] GetTrackedPidsSnapshot()
+        {
+            lock (_trackedPids)
+            {
+                return _trackedPids.ToArray();
+            }
+        }
+
+        /// <summary>
+        /// Добавить PID вручную (полезно для smoke/диагностики).
+        /// </summary>
+        public bool TryAddPid(int pid)
+        {
+            lock (_trackedPids)
+            {
+                return _trackedPids.Add(pid);
+            }
+        }
         
         /// <summary>
         /// Событие срабатывает при обнаружении новых PIDs (для немедленной реакции подписчиков)

@@ -290,6 +290,14 @@ namespace IspAudit.Utils
                     Interlocked.Increment(ref _statTesterDropped);
                     continue;
                 }
+
+                // Дедупликация на уровне "сессии тестирования":
+                // если цель уже была поставлена на тест — повторные события не должны доходить до тестера.
+                if (!_stateStore.TryBeginHostTest(host, hostname))
+                {
+                    Interlocked.Increment(ref _statTesterDropped);
+                    continue;
+                }
                 
                 Interlocked.Increment(ref _pendingInTester);
                 try

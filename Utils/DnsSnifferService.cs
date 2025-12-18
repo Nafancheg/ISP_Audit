@@ -70,6 +70,67 @@ namespace IspAudit.Utils
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// Извлечь SNI из TLS ClientHello payload (без IP/TCP заголовков).
+        /// Используется в smoke-тестах (PIPE-003) для детерминированной проверки парсинга.
+        /// </summary>
+        public static bool TryExtractSniFromTlsClientHelloPayload(ReadOnlySpan<byte> payload, out string hostname)
+            => TryExtractSniFromTlsClientHello(payload, out hostname);
+
+        /// <summary>
+        /// Фид части TLS ClientHello для проверки реассемблинга SNI.
+        /// </summary>
+        /// <remarks>
+        /// Это вспомогательный API для smoke-тестов: позволяет проверить, что SNI извлекается из фрагментированного ClientHello,
+        /// не требуя WinDivert/реального захвата пакетов.
+        /// </remarks>
+        public bool TryFeedTlsClientHelloFragmentForSmoke(
+            string flowKey,
+            ReadOnlySpan<byte> payloadFragment,
+            IPAddress destAddress,
+            int destPort,
+            out string hostname)
+        {
+            hostname = string.Empty;
+
+            try
+            {
+                // Быстрый путь: попытка распарсить из текущего фрагмента.
+                if (TryExtractSniFromTlsClientHello(payloadFragment, out var oneShotHostname))
+                {
+                    hostname = oneShotHostname;
+                    ReportSni(destAddress.ToString(), destAddress, destPort, oneShotHostname);
+                    return true;
+                }
+
+                // Реассемблинг: накапливаем и пытаемся распарсить из накопленного.
+                var flow = _tlsFlows.GetOrAdd(flowKey, _ => new TlsFlowBuffer());
+                flow.Touch();
+
+                if (flow.Buffer.Count < TlsFlowMaxBytes)
+                {
+                    var toCopy = Math.Min(payloadFragment.Length, TlsFlowMaxBytes - flow.Buffer.Count);
+                    for (int i = 0; i < toCopy; i++)
+                    {
+                        flow.Buffer.Add(payloadFragment[i]);
+                    }
+                }
+
+                if (TryExtractSniFromTlsClientHello(CollectionsMarshal.AsSpan(flow.Buffer), out var reassembledHostname))
+                {
+                    flow.MarkDone();
+                    hostname = reassembledHostname;
+                    ReportSni(destAddress.ToString(), destAddress, destPort, reassembledHostname);
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
+        }
+
         private void OnPacketReceived(PacketData packet)
         {
             if (packet.IsOutbound)

@@ -20,6 +20,370 @@ namespace TestNetworkApp.Smoke
 {
     internal static partial class SmokeTests
     {
+        public static async Task<SmokeTestResult> Pipe_ConnectionMonitor_PublishesEvents_OnTcpConnect(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                var progress = new Progress<string>(_ => { /* без лишнего шума */ });
+                using var monitor = new ConnectionMonitorService(progress)
+                {
+                    UsePollingMode = true
+                };
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(6));
+
+                var observed = new TaskCompletionSource<(IPAddress Ip, ushort Port)>(TaskCreationOptions.RunContinuationsAsynchronously);
+                void Handler(int eventNum, int pid, byte proto, IPAddress remoteIp, ushort remotePort, ushort localPort)
+                {
+                    // Важно: в polling события могут быть не TCP, но для smoke нам подходит любой валидный remote endpoint.
+                    // Отсекаем пустые/служебные значения, чтобы тест не проходил на "0.0.0.0:0".
+                    if (remoteIp.Equals(IPAddress.Any) || remoteIp.Equals(IPAddress.IPv6Any) || remotePort == 0)
+                    {
+                        return;
+                    }
+
+                    observed.TrySetResult((remoteIp, remotePort));
+                }
+
+                monitor.OnConnectionEvent += Handler;
+                try
+                {
+                    await monitor.StartAsync(cts.Token).ConfigureAwait(false);
+
+                    // Генерируем соединение.
+                    await MakeTcpAttemptAsync(IPAddress.Parse("1.1.1.1"), 443, TimeSpan.FromMilliseconds(800), cts.Token).ConfigureAwait(false);
+
+                    var completed = await Task.WhenAny(observed.Task, Task.Delay(3500, cts.Token)).ConfigureAwait(false);
+                    if (completed != observed.Task)
+                    {
+                        return new SmokeTestResult("PIPE-001", "ConnectionMonitor публикует события при подключении (polling)", SmokeOutcome.Fail, sw.Elapsed,
+                            "Не получили callback от ConnectionMonitor после TCP попытки (возможны политики/окружение)");
+                    }
+
+                    var (ip, port) = await observed.Task.ConfigureAwait(false);
+                    return new SmokeTestResult("PIPE-001", "ConnectionMonitor публикует события при подключении (polling)", SmokeOutcome.Pass, sw.Elapsed,
+                        $"OK: получили remote endpoint {ip}:{port}");
+                }
+                finally
+                {
+                    monitor.OnConnectionEvent -= Handler;
+                    await monitor.StopAsync().ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return new SmokeTestResult("PIPE-001", "ConnectionMonitor публикует события при подключении (polling)", SmokeOutcome.Fail, sw.Elapsed,
+                    "Таймаут/отмена");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("PIPE-001", "ConnectionMonitor публикует события при подключении (polling)", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
+        public static Task<SmokeTestResult> Pipe_TrafficCollector_PidFiltering_IgnoresOtherPid(CancellationToken ct)
+            => RunAsync("PIPE-002", "PID-фильтрация в TrafficCollector", () =>
+            {
+                var progress = new Progress<string>(_ => { /* без лишнего шума */ });
+                using var dummyMonitor = new ConnectionMonitorService(progress);
+                var pidTracker = new PidTrackerService(initialPid: Environment.ProcessId, progress);
+
+                // Для детерминизма добавляем "чужой" PID и убеждаемся, что фильтр его отсекает.
+                var otherPid = Environment.ProcessId + 100000;
+
+                var trafficMonitor = new TrafficMonitorFilter();
+                using var dnsParser = new DnsParserService(trafficMonitor, progress);
+                using var collector = new TrafficCollector(dummyMonitor, pidTracker, dnsParser, progress, new UnifiedTrafficFilter());
+
+                // 1) Событие от другого PID не должно пройти
+                var okOther = collector.TryBuildHostFromConnectionEventForSmoke(
+                    pid: otherPid,
+                    protocol: 6,
+                    remoteIp: IPAddress.Parse("203.0.113.10"),
+                    remotePort: 443,
+                    out _);
+
+                if (okOther)
+                {
+                    return new SmokeTestResult("PIPE-002", "PID-фильтрация в TrafficCollector", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Событие от неотслеживаемого PID прошло фильтр (ожидали игнор)");
+                }
+
+                // 2) Событие от текущего процесса должно пройти
+                var okSelf = collector.TryBuildHostFromConnectionEventForSmoke(
+                    pid: Environment.ProcessId,
+                    protocol: 6,
+                    remoteIp: IPAddress.Parse("203.0.113.11"),
+                    remotePort: 443,
+                    out var host);
+
+                if (!okSelf)
+                {
+                    return new SmokeTestResult("PIPE-002", "PID-фильтрация в TrafficCollector", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Событие от отслеживаемого PID не прошло фильтр (ожидали попадание в пайплайн)");
+                }
+
+                return new SmokeTestResult("PIPE-002", "PID-фильтрация в TrafficCollector", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: другой PID отфильтрован, свой PID прошёл (key={host.Key})");
+            }, ct);
+
+        public static Task<SmokeTestResult> Pipe_DnsParser_SniParsing_OneShotAndFragmented(CancellationToken ct)
+            => RunAsync("PIPE-003", "SNI-парсинг из TLS ClientHello (цельный + фрагменты)", () =>
+            {
+                // Минимальный валидный TLS ClientHello с SNI=example.com.
+                // Полезная нагрузка: TLS record (handshake) без IP/TCP заголовков.
+                // Важно: тест детерминирован и не требует сети.
+                var clientHello = BuildTlsClientHelloWithSni("example.com");
+
+                if (!DnsParserService.TryExtractSniFromTlsClientHelloPayload(clientHello, out var sni1))
+                {
+                    return new SmokeTestResult("PIPE-003", "SNI-парсинг из TLS ClientHello (цельный + фрагменты)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Не удалось извлечь SNI из цельного ClientHello");
+                }
+
+                if (!string.Equals(sni1, "example.com", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SmokeTestResult("PIPE-003", "SNI-парсинг из TLS ClientHello (цельный + фрагменты)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали example.com, получили '{sni1}'");
+                }
+
+                var progress = new Progress<string>(_ => { /* без лишнего шума */ });
+                var trafficMonitor = new TrafficMonitorFilter();
+                using var dnsParser = new DnsParserService(trafficMonitor, progress);
+
+                // Фрагментируем на 2 части (как будто пришло двумя TCP сегментами)
+                var cut = Math.Max(1, clientHello.Length / 2);
+                var part1 = clientHello.AsSpan(0, cut);
+                var part2 = clientHello.AsSpan(cut);
+
+                var ip = IPAddress.Parse("203.0.113.20");
+                var port = 443;
+
+                var ok1 = dnsParser.TryFeedTlsClientHelloFragmentForSmoke("flow", part1, ip, port, out _);
+                var ok2 = dnsParser.TryFeedTlsClientHelloFragmentForSmoke("flow", part2, ip, port, out var sni2);
+
+                if (!(ok1 || ok2) || string.IsNullOrWhiteSpace(sni2))
+                {
+                    return new SmokeTestResult("PIPE-003", "SNI-парсинг из TLS ClientHello (цельный + фрагменты)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Не удалось извлечь SNI из фрагментированного ClientHello");
+                }
+
+                if (!string.Equals(sni2, "example.com", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SmokeTestResult("PIPE-003", "SNI-парсинг из TLS ClientHello (цельный + фрагменты)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали example.com (fragmented), получили '{sni2}'");
+                }
+
+                return new SmokeTestResult("PIPE-003", "SNI-парсинг из TLS ClientHello (цельный + фрагменты)", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: SNI=example.com извлекается и из цельного, и из фрагментированного ClientHello");
+
+                static byte[] BuildTlsClientHelloWithSni(string hostname)
+                {
+                    // Собираем простой ClientHello (TLS 1.2) с одним расширением server_name.
+                    // Этого достаточно для текущего парсера, который ищет SNI в ClientHello.
+                    var hostBytes = System.Text.Encoding.ASCII.GetBytes(hostname);
+
+                    // server_name extension:
+                    // ext_type(2)=0x0000, ext_len(2), list_len(2), name_type(1)=0, name_len(2), host
+                    var serverNameListLen = 1 + 2 + hostBytes.Length;
+                    var extDataLen = 2 + serverNameListLen;
+                    var extLen = extDataLen;
+
+                    var ext = new List<byte>();
+                    ext.AddRange(new byte[] { 0x00, 0x00 }); // server_name
+                    ext.AddRange(U16(extLen));
+                    ext.AddRange(U16(serverNameListLen));
+                    ext.Add(0x00); // host_name
+                    ext.AddRange(U16(hostBytes.Length));
+                    ext.AddRange(hostBytes);
+
+                    // ClientHello body:
+                    var body = new List<byte>();
+                    body.AddRange(new byte[] { 0x03, 0x03 }); // client_version TLS 1.2
+                    body.AddRange(new byte[32]); // random
+                    body.Add(0x00); // session_id_len
+                    body.AddRange(U16(2)); // cipher_suites_len
+                    body.AddRange(new byte[] { 0x00, 0x2F }); // TLS_RSA_WITH_AES_128_CBC_SHA (любой валидный)
+                    body.Add(0x01); // compression_methods_len
+                    body.Add(0x00); // null
+                    body.AddRange(U16(ext.Count)); // extensions_len
+                    body.AddRange(ext);
+
+                    // Handshake header: type(1)=1 ClientHello, len(3)
+                    var hs = new List<byte>();
+                    hs.Add(0x01);
+                    hs.AddRange(U24(body.Count));
+                    hs.AddRange(body);
+
+                    // TLS record header: type(1)=0x16 handshake, version(2)=0x0301 TLS1.0, len(2)
+                    var record = new List<byte>();
+                    record.Add(0x16);
+                    record.AddRange(new byte[] { 0x03, 0x01 });
+                    record.AddRange(U16(hs.Count));
+                    record.AddRange(hs);
+
+                    return record.ToArray();
+
+                    static IEnumerable<byte> U16(int value)
+                        => new byte[] { (byte)((value >> 8) & 0xFF), (byte)(value & 0xFF) };
+
+                    static IEnumerable<byte> U24(int value)
+                        => new byte[] { (byte)((value >> 16) & 0xFF), (byte)((value >> 8) & 0xFF), (byte)(value & 0xFF) };
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> Pipe_Orchestrator_SniGating_ByRemoteEndpointPid(CancellationToken ct)
+            => RunAsync("PIPE-004", "Корреляция SNI с PID через remote endpoint", () =>
+            {
+                // Тестируем логику гейтинга по endpoint в DiagnosticOrchestrator детерминированно,
+                // через reflection к приватным методам (в проде эти методы питаются событиями ConnectionMonitor + DnsParserService).
+
+                var engine = new IspAudit.Core.Traffic.TrafficEngine(progress: null);
+                var orch = new IspAudit.ViewModels.DiagnosticOrchestrator(engine);
+
+                var ip = IPAddress.Parse("203.0.113.30");
+                var port = 443;
+                var proto = (byte)6;
+
+                var pidTracked = Environment.ProcessId;
+                var pidUntracked = pidTracked + 100000;
+
+                // Подменяем pidTracker, чтобы отслеживался только pidTracked
+                var pidTracker = new PidTrackerService(pidTracked, progress: null);
+                var field = typeof(IspAudit.ViewModels.DiagnosticOrchestrator)
+                    .GetField("_pidTracker", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                field!.SetValue(orch, pidTracker);
+
+                var tryResolve = typeof(IspAudit.ViewModels.DiagnosticOrchestrator)
+                    .GetMethod("TryResolveTrackedPidForEndpoint", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var track = typeof(IspAudit.ViewModels.DiagnosticOrchestrator)
+                    .GetMethod("TrackRemoteEndpoint", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+                // 1) endpoint привязан к неотслеживаемому PID => гейт должен закрыть
+                track!.Invoke(orch, new object[] { pidUntracked, proto, ip, (ushort)port });
+                var args1 = new object?[] { proto, ip, (ushort)port, 0 };
+                var ok1 = (bool)tryResolve!.Invoke(orch, args1)!;
+                if (ok1)
+                {
+                    return new SmokeTestResult("PIPE-004", "Корреляция SNI с PID через remote endpoint", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Endpoint для неотслеживаемого PID был ошибочно принят как tracked");
+                }
+
+                // 2) endpoint привязан к отслеживаемому PID => гейт должен открыть
+                track.Invoke(orch, new object[] { pidTracked, proto, ip, (ushort)port });
+                var args2 = new object?[] { proto, ip, (ushort)port, 0 };
+                var ok2 = (bool)tryResolve.Invoke(orch, args2)!;
+                if (!ok2)
+                {
+                    return new SmokeTestResult("PIPE-004", "Корреляция SNI с PID через remote endpoint", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Endpoint для отслеживаемого PID не был принят (ожидали true)");
+                }
+
+                return new SmokeTestResult("PIPE-004", "Корреляция SNI с PID через remote endpoint", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: endpoint пропускается только для tracked PID");
+            }, ct);
+
+        public static Task<SmokeTestResult> Pipe_StateStore_Dedup_SingleSession(CancellationToken ct)
+            => RunAsync("PIPE-007", "Дедупликация хостов в InMemoryBlockageStateStore", () =>
+            {
+                var store = new InMemoryBlockageStateStore();
+
+                var host1 = new HostDiscovered(
+                    Key: "203.0.113.40:443:TCP",
+                    RemoteIp: IPAddress.Parse("203.0.113.40"),
+                    RemotePort: 443,
+                    Protocol: BypassTransportProtocol.Tcp,
+                    DiscoveredAt: DateTime.UtcNow)
+                {
+                    Hostname = "example.com",
+                    SniHostname = "example.com"
+                };
+
+                var first = store.TryBeginHostTest(host1, hostname: "example.com");
+                var second = store.TryBeginHostTest(host1, hostname: "example.com");
+
+                if (!first)
+                {
+                    return new SmokeTestResult("PIPE-007", "Дедупликация хостов в InMemoryBlockageStateStore", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Первое появление цели должно возвращать true");
+                }
+
+                if (second)
+                {
+                    return new SmokeTestResult("PIPE-007", "Дедупликация хостов в InMemoryBlockageStateStore", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Повторное появление цели должно быть проигнорировано (ожидали false)");
+                }
+
+                return new SmokeTestResult("PIPE-007", "Дедупликация хостов в InMemoryBlockageStateStore", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: повторная цель игнорируется");
+            }, ct);
+
+        public static async Task<SmokeTestResult> Pipe_PipelineHealth_EmitsLog_OnActivity(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                var observed = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var progress = new Progress<string>(msg =>
+                {
+                    if (msg.Contains("[PipelineHealth]", StringComparison.OrdinalIgnoreCase))
+                    {
+                        observed.TrySetResult(msg);
+                    }
+                });
+
+                var config = new PipelineConfig
+                {
+                    EnableLiveTesting = true,
+                    EnableAutoBypass = false,
+                    MaxConcurrentTests = 1,
+                    TestTimeout = TimeSpan.FromSeconds(1)
+                };
+
+                // Pipeline можно поднять без TrafficEngine/DnsParser: health-лог зависит только от активности очередей.
+                using var pipeline = new LiveTestingPipeline(config, progress, trafficEngine: null, dnsParser: null);
+
+                // Делаем "активность": добавляем 1 хост в очередь.
+                var host = new HostDiscovered(
+                    Key: "203.0.113.50:443:TCP",
+                    RemoteIp: IPAddress.Parse("203.0.113.50"),
+                    RemotePort: 443,
+                    Protocol: BypassTransportProtocol.Tcp,
+                    DiscoveredAt: DateTime.UtcNow)
+                {
+                    Hostname = "example.com",
+                    SniHostname = "example.com"
+                };
+
+                await pipeline.EnqueueHostAsync(host).ConfigureAwait(false);
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(12));
+
+                var completed = await Task.WhenAny(observed.Task, Task.Delay(11000, cts.Token)).ConfigureAwait(false);
+                if (completed != observed.Task)
+                {
+                    return new SmokeTestResult("PIPE-017", "Pipeline health-лог эмитится при активности", SmokeOutcome.Fail, sw.Elapsed,
+                        "Не дождались [PipelineHealth] лога при активности пайплайна");
+                }
+
+                var msg = await observed.Task.ConfigureAwait(false);
+                return new SmokeTestResult("PIPE-017", "Pipeline health-лог эмитится при активности", SmokeOutcome.Pass, sw.Elapsed,
+                    $"OK: {msg}");
+            }
+            catch (OperationCanceledException)
+            {
+                return new SmokeTestResult("PIPE-017", "Pipeline health-лог эмитится при активности", SmokeOutcome.Fail, sw.Elapsed,
+                    "Таймаут/отмена");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("PIPE-017", "Pipeline health-лог эмитится при активности", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
         public static Task<SmokeTestResult> Pipe_UnifiedFilter_LoopbackDropped(CancellationToken ct)
             => RunAsync("PIPE-005", "UnifiedTrafficFilter отбрасывает loopback", () =>
             {

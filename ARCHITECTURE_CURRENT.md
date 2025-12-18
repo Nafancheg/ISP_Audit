@@ -98,9 +98,14 @@ Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|
 *   **`LiveTestingPipeline`**: Асинхронный конвейер на базе `System.Threading.Channels`.
     *   Связывает этапы: Sniffing → Testing → Classification → Reporting.
     *   Использует `UnifiedTrafficFilter` для минимальной валидации (loopback) и правил отображения (не засорять UI «успешными» целями).
+    *   Выполняет дедупликацию целей на сессию через `IBlockageStateStore.TryBeginHostTest(...)`, чтобы повторные события соединения не запускали повторное тестирование.
     *   Публикует периодический `[PipelineHealth]` лог со счётчиками этапов (enqueue/test/classify/ui), чтобы диагностировать потери данных и «затыки» очередей без привязки к сценариям.
     *   Обеспечивает параллельную обработку множества хостов.
     *   Опционально принимает `AutoHostlistService`: на этапе Classification считывает `BlockageSignals` из `InMemoryBlockageStateStore` и добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения).
+
+Smoke-хелперы (для детерминированных проверок без WinDivert/реальной сети):
+* `DnsParserService.TryExtractSniFromTlsClientHelloPayload(...)` — извлечение SNI из TLS payload.
+* `DnsParserService.TryFeedTlsClientHelloFragmentForSmoke(...)` — проверка реассемблинга SNI на фрагментах ClientHello.
 
 ### 3.2.1 DPI Intelligence v2
 

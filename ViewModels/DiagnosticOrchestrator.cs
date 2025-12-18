@@ -964,7 +964,7 @@ namespace IspAudit.ViewModels
             if (_pidTracker == null) return false;
             try
             {
-                return _pidTracker.TrackedPids.Contains(pid);
+                return _pidTracker.IsPidTracked(pid);
             }
             catch
             {

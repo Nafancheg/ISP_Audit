@@ -128,6 +128,14 @@
     - `dotnet run -c Debug --project SmokeLauncher/SmokeLauncher.csproj`
     - (опционально) собрать EXE: `dotnet publish -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=false --project SmokeLauncher/SmokeLauncher.csproj`
 
+Актуализация (Dev, 18.12.2025): расширено покрытие PIPE в smoke
+- Реализованы `PIPE-001..004` (ConnectionMonitor, PID filtering, SNI parsing, endpoint↔PID gating) и `PIPE-017` (health-лог).
+- `PIPE-007` приведён к плану: проверяет дедупликацию целей на сессию в `InMemoryBlockageStateStore`.
+- Добавлен контракт `IBlockageStateStore.TryBeginHostTest(...)`, и `LiveTestingPipeline` использует его для отсеивания повторных целей до тестирования.
+- Для детерминированных smoke-тестов SNI добавлены API в `DnsParserService`:
+    - `TryExtractSniFromTlsClientHelloPayload(...)`
+    - `TryFeedTlsClientHelloFragmentForSmoke(...)`
+
 Рекомендуемые быстрые проверки (перед/после реального браузерного прогона):
 - “Проблема не исчезает”: событие `[NOISE]`/noise-hostname не должно удалять карточку со статусом `Fail/Warn`.
 - “SNI позже IP”: сначала `❌ <ip>...`, потом `[SNI] Detected...` → карточка должна переехать на hostname и остаться `Warn/Fail`.

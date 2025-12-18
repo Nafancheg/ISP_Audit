@@ -94,6 +94,77 @@ namespace IspAudit.Utils
         }
 
         /// <summary>
+        /// Вспомогательный метод для smoke-тестов: прогоняет ту же логику фильтрации PID/loopback/дедуп,
+        /// но без необходимости реально поднимать ConnectionMonitor/WinDivert.
+        /// </summary>
+        public bool TryBuildHostFromConnectionEventForSmoke(
+            int pid,
+            byte protocol,
+            IPAddress remoteIp,
+            ushort remotePort,
+            out HostDiscovered host)
+        {
+            host = default!;
+
+            // Фильтруем по отслеживаемым PID
+            if (!_pidTracker.IsPidTracked(pid))
+            {
+                return false;
+            }
+
+            // Loopback не должен попадать в pipeline
+            if (IPAddress.IsLoopback(remoteIp))
+            {
+                return false;
+            }
+
+            // Игнорируем 0.0.0.0 (часто бывает при биндинге или ошибках)
+            if (remoteIp.Equals(IPAddress.Any) || remoteIp.Equals(IPAddress.IPv6Any))
+            {
+                return false;
+            }
+
+            var key = $"{remoteIp}:{remotePort}:{protocol}";
+
+            // Дедуп по цели
+            if (!_connections.TryAdd(key, new ConnectionInfo
+                {
+                    RemoteIp = remoteIp,
+                    RemotePort = remotePort,
+                    Protocol = protocol == 6 ? TransportProtocol.TCP : TransportProtocol.UDP,
+                    FirstSeen = DateTime.UtcNow
+                }))
+            {
+                return false;
+            }
+
+            // Обогащаем hostname из DNS кеша (если есть)
+            string? hostname = null;
+            _dnsParser.DnsCache.TryGetValue(remoteIp.ToString(), out hostname);
+
+            var candidate = new HostDiscovered(
+                Key: key,
+                RemoteIp: remoteIp,
+                RemotePort: remotePort,
+                Protocol: protocol == 6 ? IspAudit.Bypass.TransportProtocol.Tcp : IspAudit.Bypass.TransportProtocol.Udp,
+                DiscoveredAt: DateTime.UtcNow)
+            {
+                Hostname = hostname
+            };
+
+            var decision = _filter.ShouldTest(candidate, hostname);
+            if (decision.Action == FilterAction.Drop)
+            {
+                // Откатываем дедуп-метку, иначе тестовое событие навсегда "заблокирует" ключ.
+                _connections.TryRemove(key, out _);
+                return false;
+            }
+
+            host = candidate;
+            return true;
+        }
+
+        /// <summary>
         /// Запуск сбора трафика.
         /// Возвращает IAsyncEnumerable обнаруженных хостов для pipeline обработки.
         /// </summary>
@@ -132,7 +203,7 @@ namespace IspAudit.Utils
                     int[] trackedSnapshot;
                     try
                     {
-                        trackedSnapshot = _pidTracker.TrackedPids.ToArray();
+                        trackedSnapshot = _pidTracker.GetTrackedPidsSnapshot();
                     }
                     catch
                     {
@@ -145,7 +216,7 @@ namespace IspAudit.Utils
                 }
 
                 // Фильтруем по отслеживаемым PID
-                if (!_pidTracker.TrackedPids.Contains(pid))
+                if (!_pidTracker.IsPidTracked(pid))
                 {
                     return;
                 }

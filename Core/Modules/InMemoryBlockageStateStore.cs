@@ -13,6 +13,7 @@ namespace IspAudit.Core.Modules
     public sealed class InMemoryBlockageStateStore : IBlockageStateStore
     {
         private readonly ConcurrentDictionary<string, HostBlockageState> _states = new();
+        private readonly ConcurrentDictionary<string, byte> _seenTargets = new();
         private readonly TcpRetransmissionTracker? _retransmissionTracker;
         private readonly HttpRedirectDetector? _httpRedirectDetector;
         private readonly RstInspectionService? _rstInspectionService;
@@ -32,6 +33,24 @@ namespace IspAudit.Core.Modules
             _httpRedirectDetector = httpRedirectDetector;
             _rstInspectionService = rstInspectionService;
             _udpInspectionService = udpInspectionService;
+        }
+
+        public bool TryBeginHostTest(HostDiscovered host, string? hostname = null)
+        {
+            // Дедупликация "на сессию": один и тот же ключ не должен тестироваться повторно.
+            // Ключ строим по лучшему имени (SNI/DNS) если оно известно, иначе по IP.
+            var bestName =
+                host.SniHostname ??
+                hostname ??
+                host.Hostname;
+
+            var keyName = string.IsNullOrWhiteSpace(bestName)
+                ? host.RemoteIp.ToString()
+                : bestName.Trim().ToLowerInvariant();
+
+            // Протокол и порт влияют на смысл цели (TCP/UDP и конкретный сервис).
+            var dedupeKey = $"{keyName}:{host.RemotePort}:{host.Protocol}";
+            return _seenTargets.TryAdd(dedupeKey, 0);
         }
 
         public void RegisterResult(HostTested tested)

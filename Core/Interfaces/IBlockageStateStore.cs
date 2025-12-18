@@ -10,6 +10,15 @@ namespace IspAudit.Core.Interfaces
     public interface IBlockageStateStore
     {
         /// <summary>
+        /// Дедупликация целей на сессию: помечает хост как "в обработке/уже обработан".
+        /// Возвращает true только для первого появления цели.
+        /// </summary>
+        /// <remarks>
+        /// Нужен для предотвращения повторного тестирования одного и того же хоста и для smoke-теста PIPE-007.
+        /// </remarks>
+        bool TryBeginHostTest(HostDiscovered host, string? hostname = null);
+
+        /// <summary>
         /// Зарегистрировать результат теста для последующей агрегации.
         /// </summary>
         void RegisterResult(HostTested tested);
