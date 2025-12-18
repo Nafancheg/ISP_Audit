@@ -374,7 +374,17 @@ namespace TestNetworkApp.Smoke
                 ["PIPE-005"] = Pipe_UnifiedFilter_LoopbackDropped,
                 ["PIPE-006"] = Pipe_UnifiedFilter_NoiseOnlyOnDisplay,
                 ["PIPE-007"] = Pipe_TrafficCollector_DedupByRemoteIpPortProto_Polling,
+                ["PIPE-008"] = Pipe_Tester_DnsResolve_Google,
+                ["PIPE-009"] = Pipe_Tester_TcpHandshake_Google443,
+                ["PIPE-010"] = Pipe_Tester_TlsHandshake_Google443_Sni,
+                ["PIPE-011"] = Pipe_Tester_ReverseDns_8888,
                 ["PIPE-016"] = Pipe_Classifier_FakeIpRange,
+
+                ["CFG-001"] = Cfg_BypassProfile_Load,
+                ["CFG-002"] = Cfg_BypassProfile_SaveChanges,
+                ["CFG-003"] = Cfg_BypassProfile_CorruptJson_Graceful,
+                ["CFG-004"] = Cfg_NoiseHostFilter_Singleton,
+                ["CFG-005"] = Cfg_NoiseHostFilter_LoadAndMatch,
 
                 ["BYPASS-001"] = Bypass_TlsBypassService_RegistersFilter,
                 ["BYPASS-002"] = Bypass_TlsBypassService_RemovesFilter,
@@ -627,6 +637,192 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static async Task<SmokeTestResult> Pipe_Tester_DnsResolve_Google(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(6));
+
+                var host = "google.com";
+                var addresses = await Dns.GetHostAddressesAsync(host).WaitAsync(cts.Token).ConfigureAwait(false);
+                var ip = addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) ?? addresses.FirstOrDefault();
+
+                if (ip == null)
+                {
+                    return new SmokeTestResult("PIPE-008", "DNS-резолв через StandardHostTester", SmokeOutcome.Fail, sw.Elapsed,
+                        "DNS.GetHostAddressesAsync вернул пустой список");
+                }
+
+                var tester = new StandardHostTester(progress: null);
+                var discovered = new HostDiscovered(
+                    Key: $"{ip}:80:TCP",
+                    RemoteIp: ip,
+                    RemotePort: 80,
+                    Protocol: BypassTransportProtocol.Tcp,
+                    DiscoveredAt: DateTime.UtcNow)
+                {
+                    Hostname = host
+                };
+
+                var tested = await tester.TestHostAsync(discovered, cts.Token).ConfigureAwait(false);
+                if (!tested.DnsOk)
+                {
+                    return new SmokeTestResult("PIPE-008", "DNS-резолв через StandardHostTester", SmokeOutcome.Fail, sw.Elapsed,
+                        $"DNS не OK (DnsStatus={tested.DnsStatus ?? "<null>"})");
+                }
+
+                return new SmokeTestResult("PIPE-008", "DNS-резолв через StandardHostTester", SmokeOutcome.Pass, sw.Elapsed,
+                    $"OK: {host} -> {ip}");
+            }
+            catch (OperationCanceledException)
+            {
+                return new SmokeTestResult("PIPE-008", "DNS-резолв через StandardHostTester", SmokeOutcome.Skip, sw.Elapsed,
+                    "Отменено/таймаут");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("PIPE-008", "DNS-резолв через StandardHostTester", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
+        public static async Task<SmokeTestResult> Pipe_Tester_TcpHandshake_Google443(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(8));
+
+                var host = "google.com";
+                var addresses = await Dns.GetHostAddressesAsync(host).WaitAsync(cts.Token).ConfigureAwait(false);
+                var ip = addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) ?? addresses.FirstOrDefault();
+
+                if (ip == null)
+                {
+                    return new SmokeTestResult("PIPE-009", "TCP Handshake (SYN → SYN-ACK)", SmokeOutcome.Fail, sw.Elapsed,
+                        "DNS.GetHostAddressesAsync вернул пустой список");
+                }
+
+                var tester = new StandardHostTester(progress: null);
+                var discovered = new HostDiscovered(
+                    Key: $"{ip}:443:TCP",
+                    RemoteIp: ip,
+                    RemotePort: 443,
+                    Protocol: BypassTransportProtocol.Tcp,
+                    DiscoveredAt: DateTime.UtcNow)
+                {
+                    Hostname = host
+                };
+
+                var tested = await tester.TestHostAsync(discovered, cts.Token).ConfigureAwait(false);
+                if (!tested.TcpOk)
+                {
+                    return new SmokeTestResult("PIPE-009", "TCP Handshake (SYN → SYN-ACK)", SmokeOutcome.Fail, sw.Elapsed,
+                        $"TCP не OK (BlockageType={tested.BlockageType ?? "<null>"})");
+                }
+
+                return new SmokeTestResult("PIPE-009", "TCP Handshake (SYN → SYN-ACK)", SmokeOutcome.Pass, sw.Elapsed,
+                    $"OK: TCP connect к {host} ({ip}:443)");
+            }
+            catch (OperationCanceledException)
+            {
+                return new SmokeTestResult("PIPE-009", "TCP Handshake (SYN → SYN-ACK)", SmokeOutcome.Skip, sw.Elapsed,
+                    "Отменено/таймаут");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("PIPE-009", "TCP Handshake (SYN → SYN-ACK)", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
+        public static async Task<SmokeTestResult> Pipe_Tester_TlsHandshake_Google443_Sni(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(10));
+
+                var host = "google.com";
+                var addresses = await Dns.GetHostAddressesAsync(host).WaitAsync(cts.Token).ConfigureAwait(false);
+                var ip = addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) ?? addresses.FirstOrDefault();
+
+                if (ip == null)
+                {
+                    return new SmokeTestResult("PIPE-010", "TLS ClientHello → ServerHello", SmokeOutcome.Fail, sw.Elapsed,
+                        "DNS.GetHostAddressesAsync вернул пустой список");
+                }
+
+                var tester = new StandardHostTester(progress: null);
+                var discovered = new HostDiscovered(
+                    Key: $"{ip}:443:TCP",
+                    RemoteIp: ip,
+                    RemotePort: 443,
+                    Protocol: BypassTransportProtocol.Tcp,
+                    DiscoveredAt: DateTime.UtcNow)
+                {
+                    SniHostname = host,
+                    Hostname = host
+                };
+
+                var tested = await tester.TestHostAsync(discovered, cts.Token).ConfigureAwait(false);
+                if (!tested.TlsOk)
+                {
+                    return new SmokeTestResult("PIPE-010", "TLS ClientHello → ServerHello", SmokeOutcome.Fail, sw.Elapsed,
+                        $"TLS не OK (BlockageType={tested.BlockageType ?? "<null>"})");
+                }
+
+                return new SmokeTestResult("PIPE-010", "TLS ClientHello → ServerHello", SmokeOutcome.Pass, sw.Elapsed,
+                    $"OK: TLS handshake к {host} ({ip}:443)");
+            }
+            catch (OperationCanceledException)
+            {
+                return new SmokeTestResult("PIPE-010", "TLS ClientHello → ServerHello", SmokeOutcome.Skip, sw.Elapsed,
+                    "Отменено/таймаут");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("PIPE-010", "TLS ClientHello → ServerHello", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
+        public static async Task<SmokeTestResult> Pipe_Tester_ReverseDns_8888(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(6));
+
+                var ip = IPAddress.Parse("8.8.8.8");
+                var tester = new StandardHostTester(progress: null);
+                var discovered = new HostDiscovered(
+                    Key: "8.8.8.8:53:TCP",
+                    RemoteIp: ip,
+                    RemotePort: 53,
+                    Protocol: BypassTransportProtocol.Tcp,
+                    DiscoveredAt: DateTime.UtcNow);
+
+                var tested = await tester.TestHostAsync(discovered, cts.Token).ConfigureAwait(false);
+
+                // Главное требование: PTR запрос не должен приводить к крэшу.
+                // ReverseDnsHostname может быть null — это допустимо.
+                return new SmokeTestResult("PIPE-011", "Reverse DNS (PTR) для IP", SmokeOutcome.Pass, sw.Elapsed,
+                    $"OK: rDNS={(tested.ReverseDnsHostname ?? "<null>")}");
+            }
+            catch (OperationCanceledException)
+            {
+                return new SmokeTestResult("PIPE-011", "Reverse DNS (PTR) для IP", SmokeOutcome.Skip, sw.Elapsed,
+                    "Отменено/таймаут");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("PIPE-011", "Reverse DNS (PTR) для IP", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
         public static async Task<SmokeTestResult> Pipe_TrafficCollector_DedupByRemoteIpPortProto_Polling(CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();
@@ -738,6 +934,222 @@ namespace TestNetworkApp.Smoke
 
                 return new SmokeTestResult("PIPE-016", "Классификация FAKE_IP (198.18.0.0/15)", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: адрес из 198.18/15 помечается как FakeIp");
+            }, ct);
+
+        public static Task<SmokeTestResult> Cfg_BypassProfile_Load(CancellationToken ct)
+            => RunAsync("CFG-001", "Загрузка bypass_profile.json", () =>
+            {
+                var profile = BypassProfile.CreateDefault();
+                if (profile == null)
+                {
+                    return new SmokeTestResult("CFG-001", "Загрузка bypass_profile.json", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "BypassProfile.CreateDefault вернул null");
+                }
+
+                if (profile.TlsFragmentSizes == null || profile.TlsFragmentSizes.Count == 0)
+                {
+                    return new SmokeTestResult("CFG-001", "Загрузка bypass_profile.json", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "TlsFragmentSizes пуст (ожидали хотя бы 1 размер) ");
+                }
+
+                return new SmokeTestResult("CFG-001", "Загрузка bypass_profile.json", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: Preset='{profile.FragmentPresetName}', Sizes=[{string.Join(",", profile.TlsFragmentSizes)}]");
+            }, ct);
+
+        public static Task<SmokeTestResult> Cfg_BypassProfile_SaveChanges(CancellationToken ct)
+            => RunAsync("CFG-002", "Сохранение изменений в bypass_profile.json", () =>
+            {
+                var path = GetBypassProfilePathByRules();
+                string? backup = null;
+                bool hadFile = File.Exists(path);
+
+                try
+                {
+                    if (hadFile)
+                    {
+                        backup = File.ReadAllText(path);
+                    }
+
+                    var presetName = $"SmokePreset_{DateTime.UtcNow:yyyyMMdd_HHmmss}";
+                    var sizes = new[] { 64, 64 };
+                    var ok = BypassProfile.TryUpdateFragmentSettings(sizes, presetName, autoAdjustAggressive: false);
+                    if (!ok)
+                    {
+                        return new SmokeTestResult("CFG-002", "Сохранение изменений в bypass_profile.json", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "TryUpdateFragmentSettings вернул false");
+                    }
+
+                    var json = File.ReadAllText(path);
+                    using var doc = JsonDocument.Parse(json);
+                    var root = doc.RootElement;
+
+                    if (!root.TryGetProperty("FragmentPresetName", out var presetProp) ||
+                        !string.Equals(presetProp.GetString(), presetName, StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult("CFG-002", "Сохранение изменений в bypass_profile.json", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "FragmentPresetName не обновлён в JSON");
+                    }
+
+                    if (!root.TryGetProperty("TlsFragmentSizes", out var sizesProp) || sizesProp.ValueKind != JsonValueKind.Array)
+                    {
+                        return new SmokeTestResult("CFG-002", "Сохранение изменений в bypass_profile.json", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "TlsFragmentSizes отсутствует или не массив");
+                    }
+
+                    var got = sizesProp.EnumerateArray().Select(v => v.GetInt32()).ToArray();
+                    if (got.Length != 2 || got[0] != 64 || got[1] != 64)
+                    {
+                        return new SmokeTestResult("CFG-002", "Сохранение изменений в bypass_profile.json", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"TlsFragmentSizes не совпадает. Ожидали [64,64], получили [{string.Join(",", got)}]");
+                    }
+
+                    return new SmokeTestResult("CFG-002", "Сохранение изменений в bypass_profile.json", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: значения записаны в JSON");
+                }
+                finally
+                {
+                    try
+                    {
+                        if (hadFile)
+                        {
+                            File.WriteAllText(path, backup ?? string.Empty);
+                        }
+                        else if (File.Exists(path))
+                        {
+                            File.Delete(path);
+                        }
+                    }
+                    catch
+                    {
+                        // Не мешаем smoke прогону: восстановление best-effort.
+                    }
+                }
+
+                static string GetBypassProfilePathByRules()
+                {
+                    var baseCandidate = Path.Combine(AppContext.BaseDirectory, "bypass_profile.json");
+                    if (File.Exists(baseCandidate)) return baseCandidate;
+                    return Path.Combine(Environment.CurrentDirectory, "bypass_profile.json");
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> Cfg_BypassProfile_CorruptJson_Graceful(CancellationToken ct)
+            => RunAsync("CFG-003", "Обработка некорректного JSON (graceful)", () =>
+            {
+                var path = GetBypassProfilePathByRules();
+                string? backup = null;
+                bool hadFile = File.Exists(path);
+
+                try
+                {
+                    if (hadFile)
+                    {
+                        backup = File.ReadAllText(path);
+                    }
+
+                    File.WriteAllText(path, "{ this is not valid json");
+
+                    var ok = BypassProfile.TryUpdateFragmentSettings(new[] { 64, 64 }, "SmokeBroken", autoAdjustAggressive: false);
+                    if (ok)
+                    {
+                        return new SmokeTestResult("CFG-003", "Обработка некорректного JSON (graceful)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали false при битом JSON, но получили true");
+                    }
+
+                    return new SmokeTestResult("CFG-003", "Обработка некорректного JSON (graceful)", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: битый JSON не приводит к крэшу (TryUpdateFragmentSettings вернул false)");
+                }
+                finally
+                {
+                    try
+                    {
+                        if (hadFile)
+                        {
+                            File.WriteAllText(path, backup ?? string.Empty);
+                        }
+                        else if (File.Exists(path))
+                        {
+                            File.Delete(path);
+                        }
+                    }
+                    catch
+                    {
+                        // best-effort
+                    }
+                }
+
+                static string GetBypassProfilePathByRules()
+                {
+                    var baseCandidate = Path.Combine(AppContext.BaseDirectory, "bypass_profile.json");
+                    if (File.Exists(baseCandidate)) return baseCandidate;
+                    return Path.Combine(Environment.CurrentDirectory, "bypass_profile.json");
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> Cfg_NoiseHostFilter_Singleton(CancellationToken ct)
+            => RunAsync("CFG-004", "NoiseHostFilter.Instance возвращает один экземпляр", () =>
+            {
+                var a = NoiseHostFilter.Instance;
+                var b = NoiseHostFilter.Instance;
+                if (!ReferenceEquals(a, b))
+                {
+                    return new SmokeTestResult("CFG-004", "NoiseHostFilter.Instance возвращает один экземпляр", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Instance вернул разные объекты");
+                }
+
+                return new SmokeTestResult("CFG-004", "NoiseHostFilter.Instance возвращает один экземпляр", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: singleton работает");
+            }, ct);
+
+        public static Task<SmokeTestResult> Cfg_NoiseHostFilter_LoadAndMatch(CancellationToken ct)
+            => RunAsync("CFG-005", "Загрузка noise_hosts.json + IsNoise(fonts.googleapis.com)", () =>
+            {
+                var noisePath = TryFindNoiseHostsJsonPath();
+                if (string.IsNullOrWhiteSpace(noisePath))
+                {
+                    return new SmokeTestResult("CFG-005", "Загрузка noise_hosts.json + IsNoise(fonts.googleapis.com)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Не удалось найти noise_hosts.json");
+                }
+
+                NoiseHostFilter.Initialize(noisePath);
+
+                if (!NoiseHostFilter.Instance.IsNoiseHost("fonts.googleapis.com"))
+                {
+                    return new SmokeTestResult("CFG-005", "Загрузка noise_hosts.json + IsNoise(fonts.googleapis.com)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали true для fonts.googleapis.com. Debug: {NoiseHostFilter.Instance.DebugMatch("fonts.googleapis.com")}");
+                }
+
+                return new SmokeTestResult("CFG-005", "Загрузка noise_hosts.json + IsNoise(fonts.googleapis.com)", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: домен распознан как шумовой");
+
+                static string? TryFindNoiseHostsJsonPath()
+                {
+                    var candidates = new List<string>
+                    {
+                        Path.Combine(Environment.CurrentDirectory, "noise_hosts.json"),
+                        Path.Combine(AppContext.BaseDirectory, "noise_hosts.json"),
+                    };
+
+                    foreach (var start in new[] { Environment.CurrentDirectory, AppContext.BaseDirectory }.Distinct(StringComparer.OrdinalIgnoreCase))
+                    {
+                        var dir = new DirectoryInfo(start);
+                        for (int i = 0; i < 10 && dir is not null; i++)
+                        {
+                            candidates.Add(Path.Combine(dir.FullName, "noise_hosts.json"));
+                            dir = dir.Parent;
+                        }
+                    }
+
+                    foreach (var p in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+                    {
+                        if (File.Exists(p))
+                        {
+                            return p;
+                        }
+                    }
+
+                    return null;
+                }
             }, ct);
 
         public static async Task<SmokeTestResult> Bypass_TlsBypassService_RegistersFilter(CancellationToken ct)
