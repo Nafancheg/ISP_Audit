@@ -81,7 +81,10 @@ Dev-проверка (smoke): для воспроизводимой провер
 
 Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|infra|pipe|insp|ui|bypass|dpi2]`, который запускает проверки из плана смоков (без GUI). Для полного покрытия плана smoke runner прогоняет **все** Test ID из `TestNetworkApp/smoke_tests_plan.md`; если тест из плана ещё не реализован, он возвращает `FAIL` с причиной (это сделано намеренно, чтобы было 97/97 выполнено без "SKIP"). По умолчанию часть проверок, завязанных на WinDivert/среду, может падать или ранее помечалась как `SKIP` (например, если запуск не от администратора). Для «жёсткого» прогона без `SKIP` используйте `--smoke ... --no-skip` (алиас `--strict`): в этом режиме любые `SKIP` считаются `FAIL`. Для выгрузки результатов добавлен `--json <path>`.
 
-Автозапуск от администратора: `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/run_smoke_strict.ps1` — запросит UAC elevation, выполнит `--smoke all --no-skip` и сохранит JSON в `artifacts/`.
+Автозапуск от администратора: отдельный запускатор `SmokeLauncher` сам запросит UAC elevation, выполнит `--smoke all --no-skip` и сохранит JSON в `artifacts/`.
+
+- Запуск из исходников: `dotnet run -c Debug --project SmokeLauncher/SmokeLauncher.csproj`
+- (опционально) Публикация в EXE: `dotnet publish -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=false --project SmokeLauncher/SmokeLauncher.csproj`
 
 ### 3.2 Orchestration Layer
 

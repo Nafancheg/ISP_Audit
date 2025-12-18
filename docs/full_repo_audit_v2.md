@@ -125,7 +125,8 @@
     - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke --no-skip --json artifacts/smoke.json`
 
 - Автозапуск от администратора (сам запросит UAC, сохранит JSON):
-    - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/run_smoke_strict.ps1`
+    - `dotnet run -c Debug --project SmokeLauncher/SmokeLauncher.csproj`
+    - (опционально) собрать EXE: `dotnet publish -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=false --project SmokeLauncher/SmokeLauncher.csproj`
 
 Рекомендуемые быстрые проверки (перед/после реального браузерного прогона):
 - “Проблема не исчезает”: событие `[NOISE]`/noise-hostname не должно удалять карточку со статусом `Fail/Warn`.
