@@ -136,6 +136,10 @@
     - `TryExtractSniFromTlsClientHelloPayload(...)`
     - `TryFeedTlsClientHelloFragmentForSmoke(...)`
 
+Актуализация (Dev, 18.12.2025): реализованы smoke-тесты DPI Intelligence v2 (категория `dpi2`)
+- Добавлен файл `TestNetworkApp/Smoke/SmokeTests.Dpi2.cs` и регистрации в реестре.
+- Покрыты тесты `DPI2-001..013`: адаптация legacy сигналов в TTL-store, TTL-очистка при `Append`, агрегация по окнам 30/60 секунд, DiagnosisEngine (фактологическое объяснение без упоминания стратегий), Gate-маркеры `[V2][GATE1]`, правила StrategySelector (confidence/risk/unimplemented warning+skip), Executor MVP (компактный 1-строчный вывод с префиксом `[V2]` и без auto-apply).
+
 Рекомендуемые быстрые проверки (перед/после реального браузерного прогона):
 - “Проблема не исчезает”: событие `[NOISE]`/noise-hostname не должно удалять карточку со статусом `Fail/Warn`.
 - “SNI позже IP”: сначала `❌ <ip>...`, потом `[SNI] Detected...` → карточка должна переехать на hostname и остаться `Warn/Fail`.
