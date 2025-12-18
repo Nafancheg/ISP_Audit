@@ -83,6 +83,8 @@ Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|
 
 Категория `dpi2` (DPI Intelligence v2) покрыта детерминированными smoke-тестами `DPI2-001..013` в `TestNetworkApp/Smoke/SmokeTests.Dpi2.cs`: проверяются адаптация legacy сигналов в TTL-store, очистка по TTL, агрегация по окнам 30s/60s, постановка диагноза, жёсткие защиты селектора (confidence/risk/unimplemented), Gate-маркеры `[V2][GATE1]`, форматирование компактного вывода с префиксом `[V2]`, а также отсутствие auto-apply (MVP).
 
+Категория `insp` (Inspection Services) покрыта детерминированными smoke-тестами `INSP-001..005` в `TestNetworkApp/Smoke/SmokeTests.Insp.cs`: RST-инжекция по TTL и по IPID, детект QUIC Initial и сигнал «нет ответов», подсчёт ретрансмиссий и сигнал «подозрение на Drop» при доле >10%, извлечение host из HTTP 3xx Location. Для детерминизма используются синтетические IPv4/TCP/UDP пакеты из `TestNetworkApp/Smoke/SmokeTests.Packets.cs`.
+
 Автозапуск от администратора: отдельный запускатор `SmokeLauncher` сам запросит UAC elevation, выполнит `--smoke all --no-skip` и сохранит JSON в `artifacts/`.
 
 - Запуск из исходников: `dotnet run -c Debug --project SmokeLauncher/SmokeLauncher.csproj`

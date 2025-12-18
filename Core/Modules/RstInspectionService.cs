@@ -16,12 +16,18 @@ namespace IspAudit.Core.Modules
         // Храним статистику TTL для каждого IP: (MinTTL, MaxTTL, LastTTL)
         // Используем простой подход: если RST TTL сильно отличается от обычного трафика с этого IP, это подозрительно.
         private readonly ConcurrentDictionary<IPAddress, TtlStats> _ttlStats = new();
+
+        // Храним статистику IPv4 Identification (IPID) для каждого IP.
+        // Это дополнительная эвристика: если IPID в RST сильно выбивается относительно «обычного» трафика,
+        // то RST может быть инжектирован (не от реального сервера).
+        private readonly ConcurrentDictionary<IPAddress, IpIdStats> _ipIdStats = new();
         
         // Храним подозрительные RST события
         private readonly ConcurrentDictionary<IPAddress, RstEvent> _suspiciousRstEvents = new();
 
         private readonly record struct TtlStats(byte Min, byte Max, byte Last, int SampleCount);
-        private readonly record struct RstEvent(byte RstTtl, byte ExpectedMin, byte ExpectedMax, DateTime Timestamp);
+        private readonly record struct IpIdStats(ushort Min, ushort Max, ushort Last, int SampleCount);
+        private readonly record struct RstEvent(string Details, DateTime Timestamp);
 
         public void Attach(TrafficMonitorFilter filter)
         {
@@ -51,6 +57,9 @@ namespace IspAudit.Core.Modules
             var ttl = buffer[8];
             var srcIp = new IPAddress(new ReadOnlySpan<byte>(buffer, 12, 4));
 
+            // IPv4 Identification (bytes 4-5)
+            ushort ipId = (ushort)((buffer[4] << 8) | buffer[5]);
+
             // TCP Header parsing
             var tcpOffset = ipHeaderLen;
             if (packet.Length < tcpOffset + 20) return;
@@ -63,11 +72,12 @@ namespace IspAudit.Core.Modules
 
             if (isRst)
             {
-                AnalyzeRst(srcIp, ttl);
+                AnalyzeRst(srcIp, ttl, ipId);
             }
             else if (isSynAck || isAck) // Обычный трафик (SYN-ACK или данные)
             {
                 UpdateTtlStats(srcIp, ttl);
+                UpdateIpIdStats(srcIp, ipId);
             }
         }
 
@@ -90,36 +100,77 @@ namespace IspAudit.Core.Modules
                 });
         }
 
-        private void AnalyzeRst(IPAddress ip, byte rstTtl)
+        private void UpdateIpIdStats(IPAddress ip, ushort ipId)
         {
-            if (_ttlStats.TryGetValue(ip, out var stats))
+            _ipIdStats.AddOrUpdate(ip,
+                _ => new IpIdStats(ipId, ipId, ipId, 1),
+                (_, stats) =>
+                {
+                    return new IpIdStats(
+                        Math.Min(stats.Min, ipId),
+                        Math.Max(stats.Max, ipId),
+                        ipId,
+                        stats.SampleCount + 1);
+                });
+        }
+
+        private void AnalyzeRst(IPAddress ip, byte rstTtl, ushort rstIpId)
+        {
+            var now = DateTime.UtcNow;
+
+            bool ttlSuspicious = false;
+            string? ttlDetails = null;
+            if (_ttlStats.TryGetValue(ip, out var ttlStats) && ttlStats.SampleCount >= 3)
             {
                 // Эвристика:
                 // Если у нас есть статистика (хотя бы 3 пакета)
                 // И RST TTL отличается от диапазона [Min, Max] более чем на порог (например, 5 хопов)
                 // То это подозрительно.
-                
-                // Часто DPI инжектит пакеты с дефолтным TTL своей ОС (Linux=64, Cisco=255 и т.д.),
-                // тогда как реальный пакет от сервера прошел много хопов и имеет другой TTL.
-                
-                if (stats.SampleCount >= 3)
+                int diffMin = Math.Abs(rstTtl - ttlStats.Min);
+                int diffMax = Math.Abs(rstTtl - ttlStats.Max);
+                int minDiff = Math.Min(diffMin, diffMax);
+                if (minDiff > 5)
                 {
-                    int diffMin = Math.Abs(rstTtl - stats.Min);
-                    int diffMax = Math.Abs(rstTtl - stats.Max);
-                    int minDiff = Math.Min(diffMin, diffMax);
-
-                    // Порог 5 хопов - достаточно консервативно, чтобы не ловить джиттер маршрутов,
-                    // но достаточно чувствительно для инжекций.
-                    if (minDiff > 5)
-                    {
-                        _suspiciousRstEvents[ip] = new RstEvent(rstTtl, stats.Min, stats.Max, DateTime.UtcNow);
-                    }
+                    ttlSuspicious = true;
+                    ttlDetails = $"TTL={rstTtl} (обычный={ttlStats.Min}-{ttlStats.Max})";
                 }
             }
-            else
+
+            bool ipIdSuspicious = false;
+            string? ipIdDetails = null;
+            if (_ipIdStats.TryGetValue(ip, out var idStats) && idStats.SampleCount >= 3)
             {
-                // Если статистики нет, мы не можем судить (первый пакет - RST).
-                // Можно было бы сравнивать с "типичными" TTL (64, 128, 255), но это ненадежно.
+                // Эвристика по IPID:
+                // - сравниваем с диапазоном «обычных» IPID и с последним наблюдаемым.
+                // - порог намеренно консервативный, чтобы избежать случайных коллизий.
+                var diffToMin = Math.Abs((int)rstIpId - idStats.Min);
+                var diffToMax = Math.Abs((int)rstIpId - idStats.Max);
+                var diffToLast = Math.Abs((int)rstIpId - idStats.Last);
+
+                // «Сильно отличается» — в пределах одного потока/маршрута IPID обычно близок (инкремент/паттерн).
+                // 1000 — достаточно большой отрыв для smoke-сценария без wrap-around.
+                if (Math.Min(diffToMin, diffToMax) > 1000 && diffToLast > 1000)
+                {
+                    ipIdSuspicious = true;
+                    ipIdDetails = $"IPID={rstIpId} (обычный={idStats.Min}-{idStats.Max}, last={idStats.Last})";
+                }
+            }
+
+            if (ttlSuspicious || ipIdSuspicious)
+            {
+                var details = ttlDetails ?? string.Empty;
+                if (ipIdDetails != null)
+                {
+                    details = string.IsNullOrWhiteSpace(details) ? ipIdDetails : $"{details}; {ipIdDetails}";
+                }
+
+                // Фолбэк: если по какой-то причине деталей нет — всё равно фиксируем факт.
+                if (string.IsNullOrWhiteSpace(details))
+                {
+                    details = $"RST подозрительный: TTL={rstTtl}, IPID={rstIpId}";
+                }
+
+                _suspiciousRstEvents[ip] = new RstEvent(details, now);
             }
         }
 
@@ -133,7 +184,7 @@ namespace IspAudit.Core.Modules
                 // Считаем событие актуальным, если оно было недавно (например, 60 сек)
                 if ((DateTime.UtcNow - evt.Timestamp).TotalSeconds < 60)
                 {
-                    details = $"RST TTL={evt.RstTtl} (обычный={evt.ExpectedMin}-{evt.ExpectedMax})";
+                    details = evt.Details;
                     return true;
                 }
             }

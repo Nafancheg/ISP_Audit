@@ -26,7 +26,7 @@ namespace IspAudit.Core.Modules
         private void OnPacketReceived(PacketData packet)
         {
             // Минимальный парсер IPv4+TCP. IPv6 пока игнорируем.
-            if (packet.Buffer is not { Length: > 40 })
+            if (packet.Buffer is not { Length: >= 40 })
                 return;
 
             var buffer = packet.Buffer;
@@ -104,6 +104,33 @@ namespace IspAudit.Core.Modules
         public int GetRetransmissionCountForIp(IPAddress ip)
         {
             return GetStatsForIp(ip).Retransmissions;
+        }
+
+        /// <summary>
+        /// Эвристика для smoke/диагностики: высокая доля ретрансмиссий может указывать на тихий дроп.
+        /// </summary>
+        public bool TryGetSuspiciousDrop(IPAddress ip, out string details)
+        {
+            var (retrans, total) = GetStatsForIp(ip);
+            if (total <= 0)
+            {
+                details = string.Empty;
+                return false;
+            }
+
+            // Консервативно: считаем сигнал валидным только при достаточной выборке.
+            const int minPackets = 20;
+            const double ratioThreshold = 0.10; // 10%
+
+            var ratio = (double)retrans / total;
+            if (total >= minPackets && ratio >= ratioThreshold)
+            {
+                details = $"TCP ретрансмиссии: {retrans}/{total} ({ratio:P0})";
+                return true;
+            }
+
+            details = string.Empty;
+            return false;
         }
     }
 }

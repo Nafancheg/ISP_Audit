@@ -36,6 +36,12 @@ namespace TestNetworkApp.Smoke
                 ["PIPE-015"] = Pipe_Classifier_DpiFilter_Tls,
                 ["PIPE-016"] = Pipe_Classifier_FakeIpRange,
 
+                ["INSP-001"] = Insp_RstInspection_TtlInjectionDetected,
+                ["INSP-002"] = Insp_RstInspection_IpIdAnomalyDetected,
+                ["INSP-003"] = Insp_UdpInspection_QuicBlockageDetected,
+                ["INSP-004"] = Insp_TcpRetransmissionTracker_DropSuspicion,
+                ["INSP-005"] = Insp_HttpRedirectDetector_BlockpageHost,
+
                 ["DPI2-001"] = Dpi2_SignalsAdapter_Observe_AdaptsLegacySignals_ToTtlStore,
                 ["DPI2-002"] = Dpi2_SignalStore_Ttl_DeletesEventsOlderThan10Minutes,
                 ["DPI2-003"] = Dpi2_Aggregation_BuildSnapshot_RespectsWindow_30s_60s,
