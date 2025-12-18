@@ -35,6 +35,18 @@ namespace IspAudit.Utils
         
         private readonly CancellationTokenSource _cts = new();
         private readonly Task[] _workers;
+
+        // Health/observability: счётчики для понимания, где теряются данные.
+        private long _statHostsEnqueued;
+        private long _statTesterDequeued;
+        private long _statTesterDropped;
+        private long _statTesterCompleted;
+        private long _statTesterErrors;
+        private long _statClassifierDequeued;
+        private long _statUiIssuesEnqueued;
+        private long _statUiLogOnly;
+        private long _statUiDropped;
+        private Task? _healthTask;
         
         // Единый фильтр трафика (дедупликация + шум + UI правила)
         private readonly ITrafficFilter _filter;
@@ -122,6 +134,9 @@ namespace IspAudit.Utils
                 Task.Run(() => ClassifierWorker(_cts.Token)),
                 Task.Run(() => UiWorker(_cts.Token))
             };
+
+            // Периодический health-лог (не спамит: пишет только если есть активность или очередь растёт).
+            _healthTask = Task.Run(() => HealthLoop(_cts.Token));
         }
 
         /// <summary>
@@ -129,8 +144,77 @@ namespace IspAudit.Utils
         /// </summary>
         public async ValueTask EnqueueHostAsync(HostDiscovered host)
         {
+            Interlocked.Increment(ref _statHostsEnqueued);
             Interlocked.Increment(ref _pendingInSniffer);
             await _snifferQueue.Writer.WriteAsync(host).ConfigureAwait(false);
+        }
+
+        private async Task HealthLoop(CancellationToken ct)
+        {
+            // Держим локальные снапшоты, чтобы писать только дельты.
+            long prevEnq = 0;
+            long prevTesterDeq = 0;
+            long prevTesterDrop = 0;
+            long prevTesterOk = 0;
+            long prevTesterErr = 0;
+            long prevClassifierDeq = 0;
+            long prevUiIssues = 0;
+            long prevUiLogOnly = 0;
+            long prevUiDropped = 0;
+
+            try
+            {
+                while (!ct.IsCancellationRequested)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
+
+                    var enq = Interlocked.Read(ref _statHostsEnqueued);
+                    var testerDeq = Interlocked.Read(ref _statTesterDequeued);
+                    var testerDrop = Interlocked.Read(ref _statTesterDropped);
+                    var testerOk = Interlocked.Read(ref _statTesterCompleted);
+                    var testerErr = Interlocked.Read(ref _statTesterErrors);
+                    var classifierDeq = Interlocked.Read(ref _statClassifierDequeued);
+                    var uiIssues = Interlocked.Read(ref _statUiIssuesEnqueued);
+                    var uiLogOnly = Interlocked.Read(ref _statUiLogOnly);
+                    var uiDropped = Interlocked.Read(ref _statUiDropped);
+
+                    var delta = (enq - prevEnq) + (testerDeq - prevTesterDeq) + (classifierDeq - prevClassifierDeq) + (uiIssues - prevUiIssues);
+                    var pending = PendingCount;
+
+                    // Не спамим: если конвейер стоит и очереди пусты — молчим.
+                    if (delta == 0 && pending == 0)
+                    {
+                        continue;
+                    }
+
+                    // Если очередь раздувается — это сигнал потерь/узких мест.
+                    if (pending >= 200 || delta > 0)
+                    {
+                        _progress?.Report(
+                            $"[PipelineHealth] pending={pending} | enq={enq}(+{enq - prevEnq}) " +
+                            $"tester=deq:{testerDeq}(+{testerDeq - prevTesterDeq}) drop:{testerDrop}(+{testerDrop - prevTesterDrop}) ok:{testerOk}(+{testerOk - prevTesterOk}) err:{testerErr}(+{testerErr - prevTesterErr}) " +
+                            $"classifier=deq:{classifierDeq}(+{classifierDeq - prevClassifierDeq}) " +
+                            $"ui=issues:{uiIssues}(+{uiIssues - prevUiIssues}) logOnly:{uiLogOnly}(+{uiLogOnly - prevUiLogOnly}) drop:{uiDropped}(+{uiDropped - prevUiDropped})");
+                    }
+
+                    prevEnq = enq;
+                    prevTesterDeq = testerDeq;
+                    prevTesterDrop = testerDrop;
+                    prevTesterOk = testerOk;
+                    prevTesterErr = testerErr;
+                    prevClassifierDeq = classifierDeq;
+                    prevUiIssues = uiIssues;
+                    prevUiLogOnly = uiLogOnly;
+                    prevUiDropped = uiDropped;
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+            }
+            catch
+            {
+                // Health-лог не должен валить pipeline
+            }
         }
         
         /// <summary>
@@ -184,6 +268,7 @@ namespace IspAudit.Utils
             await foreach (var host in _snifferQueue.Reader.ReadAllAsync(ct))
             {
                 Interlocked.Decrement(ref _pendingInSniffer);
+                Interlocked.Increment(ref _statTesterDequeued);
                 
                 // Получаем hostname из объекта или кеша (если есть) для более умной дедупликации
                 var hostname = host.SniHostname ?? host.Hostname;
@@ -202,6 +287,7 @@ namespace IspAudit.Utils
                 var decision = _filter.ShouldTest(host, hostname);
                 if (decision.Action == FilterAction.Drop)
                 {
+                    Interlocked.Increment(ref _statTesterDropped);
                     continue;
                 }
                 
@@ -211,6 +297,7 @@ namespace IspAudit.Utils
                     // Тестируем хост (DNS, TCP, TLS)
                     var result = await _tester.TestHostAsync(host, ct).ConfigureAwait(false);
                     await _testerQueue.Writer.WriteAsync(result, ct).ConfigureAwait(false);
+                    Interlocked.Increment(ref _statTesterCompleted);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
@@ -218,6 +305,7 @@ namespace IspAudit.Utils
                 }
                 catch (Exception ex)
                 {
+                    Interlocked.Increment(ref _statTesterErrors);
                     _progress?.Report($"[TESTER] Ошибка тестирования {host.RemoteIp}: {ex.Message}");
                 }
                 finally
@@ -235,6 +323,7 @@ namespace IspAudit.Utils
             await foreach (var tested in _testerQueue.Reader.ReadAllAsync(ct))
             {
                 Interlocked.Increment(ref _pendingInClassifier);
+                Interlocked.Increment(ref _statClassifierDequeued);
                 try
                 {
                     // Регистрируем результат в сторе, чтобы поддерживать fail counter + time window
@@ -297,6 +386,7 @@ namespace IspAudit.Utils
                     {
                         // Это блокировка или проблема - отправляем в UI
                         await _bypassQueue.Writer.WriteAsync(blocked, ct).ConfigureAwait(false);
+                        Interlocked.Increment(ref _statUiIssuesEnqueued);
                     }
                     else if (decision.Action == FilterAction.LogOnly)
                     {
@@ -304,11 +394,13 @@ namespace IspAudit.Utils
                         var port = tested.Host.RemotePort;
                         var latency = tested.TcpLatencyMs > 0 ? $" ({tested.TcpLatencyMs}ms)" : "";
                         _progress?.Report($"✓ {displayHost}:{port}{latency}{namesSuffix}");
+                        Interlocked.Increment(ref _statUiLogOnly);
                     }
                     else if (decision.Action == FilterAction.Drop)
                     {
                         // Шумовой хост - отправляем специальное сообщение для UI (удаления карточки)
                         _progress?.Report($"[NOISE] Отфильтрован: {displayHost}");
+                        Interlocked.Increment(ref _statUiDropped);
                     }
                 }
                 catch (Exception ex)
@@ -461,7 +553,14 @@ namespace IspAudit.Utils
             // Ждём завершения воркеров максимум 3 секунды
             try
             {
-                Task.WhenAll(_workers).Wait(3000);
+                if (_healthTask != null)
+                {
+                    Task.WhenAll(_workers.Append(_healthTask)).Wait(3000);
+                }
+                else
+                {
+                    Task.WhenAll(_workers).Wait(3000);
+                }
             }
             catch { }
             

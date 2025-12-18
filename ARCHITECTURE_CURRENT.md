@@ -85,9 +85,11 @@ graph TD
     *   Следит за целевыми процессами (если задан фильтр по PID).
     *   Важное правило: события SNI из `DnsParserService` **гейтятся по PID**. Так как WinDivert Network Layer не предоставляет PID, оркестратор сопоставляет SNI с событиями соединений `ConnectionMonitorService` (remote endpoint → PID) и пропускает в пайплайн только то, что относится к `PidTrackerService.TrackedPids`.
         *   Для Steam/attach поддерживается короткий буфер (несколько секунд), чтобы не терять ранний SNI до появления PID.
+    *   Важно: SNI не фильтруется по `NoiseHostFilter` на входе (это исходные данные). Фильтрация «шума» применяется только на этапе отображения успешных результатов.
 *   **`LiveTestingPipeline`**: Асинхронный конвейер на базе `System.Threading.Channels`.
     *   Связывает этапы: Sniffing → Testing → Classification → Reporting.
     *   Использует `UnifiedTrafficFilter` для минимальной валидации (loopback) и правил отображения (не засорять UI «успешными» целями).
+    *   Публикует периодический `[PipelineHealth]` лог со счётчиками этапов (enqueue/test/classify/ui), чтобы диагностировать потери данных и «затыки» очередей без привязки к сценариям.
     *   Обеспечивает параллельную обработку множества хостов.
     *   Опционально принимает `AutoHostlistService`: на этапе Classification считывает `BlockageSignals` из `InMemoryBlockageStateStore` и добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения).
 
