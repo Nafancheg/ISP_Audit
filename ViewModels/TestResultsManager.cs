@@ -26,12 +26,16 @@ namespace IspAudit.ViewModels
 
         private readonly Queue<(DateTime Time, bool IsSuccess)> _healthHistory = new();
 
-        // Защита от «флаппинга»: если цель только что падала, единичный успех не должен
-        // мгновенно превращать карточку в "Доступно". Это особенно важно для браузера,
-        // где к одному IP могут идти как успешные, так и проблемные запросы.
-        private readonly ConcurrentDictionary<string, DateTime> _lastProblemUtcByHost = new();
+        // UI должен быть детерминированным: одинаковые условия → одинаковая карточка.
+        // Для пользователя ключом важнее сервис/hostname (SNI), а не IP.
+        // Также важен режим «Нестабильно», когда в окне есть и успехи, и ошибки.
 
-        private static readonly TimeSpan ProblemCooldownWindow = TimeSpan.FromSeconds(60);
+        private readonly ConcurrentDictionary<string, string> _ipToUiKey = new();
+
+        private readonly record struct OutcomeHistory(DateTime LastPassUtc, DateTime LastProblemUtc);
+        private readonly ConcurrentDictionary<string, OutcomeHistory> _outcomeHistoryByKey = new();
+
+        private static readonly TimeSpan UnstableWindow = TimeSpan.FromSeconds(60);
         
         private double _healthScore = 100;
         public double HealthScore
@@ -114,10 +118,15 @@ namespace IspAudit.ViewModels
         /// <summary>
         /// Обновление результата теста
         /// </summary>
-        public void UpdateTestResult(string host, TestStatus status, string details)
+        public void UpdateTestResult(string host, TestStatus status, string details, string? fallbackIp = null)
         {
-            // КРИТИЧНО: Фильтруем шумные хосты ПЕРЕД созданием карточки
-            if (NoiseHostFilter.Instance.IsNoiseHost(host))
+            // КРИТИЧНО: Фильтруем шумные хосты ПЕРЕД созданием карточки.
+            // Но делаем это только для «успехов»/непроблемных результатов.
+            // Ошибки/нестабильность не скрываем, иначе теряем лицевой эффект.
+            if (!string.IsNullOrWhiteSpace(host) &&
+                !IPAddress.TryParse(host, out _) &&
+                NoiseHostFilter.Instance.IsNoiseHost(host) &&
+                (status == TestStatus.Pass || status == TestStatus.Running || status == TestStatus.Idle))
             {
                 // Если карточка уже существует - удаляем её
                 var toRemove = TestResults.FirstOrDefault(t => 
@@ -134,6 +143,12 @@ namespace IspAudit.ViewModels
 
             var normalizedHost = NormalizeHost(host);
 
+            var incomingStatus = status;
+
+            // 1) Детерминированное правило «Нестабильно»: если в окне есть и успех, и проблема
+            // (Fail/Warn), то показываем Warn.
+            status = ApplyUnstableRule(normalizedHost, status);
+
             var existing = TestResults.FirstOrDefault(t => 
                 NormalizeHost(t.Target.Host).Equals(normalizedHost, StringComparison.OrdinalIgnoreCase) || 
                 NormalizeHost(t.Target.Name).Equals(normalizedHost, StringComparison.OrdinalIgnoreCase) ||
@@ -141,21 +156,6 @@ namespace IspAudit.ViewModels
             
             if (existing != null)
             {
-                // Запоминаем, что по этой цели была проблема.
-                if (status == TestStatus.Fail || status == TestStatus.Warn)
-                {
-                    _lastProblemUtcByHost[normalizedHost] = DateTime.UtcNow;
-                }
-
-                // Если цель недавно падала, не "перекрашиваем" её в Pass на одном успешном событии.
-                // Оставляем предупреждение, чтобы лицевой эффект совпадал с ощущением "не работает".
-                if (status == TestStatus.Pass &&
-                    _lastProblemUtcByHost.TryGetValue(normalizedHost, out var lastProblemUtc) &&
-                    DateTime.UtcNow - lastProblemUtc <= ProblemCooldownWindow)
-                {
-                    status = TestStatus.Warn;
-                }
-
                 existing.Status = status;
                 existing.Details = details;
                 
@@ -165,7 +165,9 @@ namespace IspAudit.ViewModels
                 existing.IsRetransmissionHeavy = BlockageCode.ContainsCode(details, BlockageCode.TcpRetryHeavy) || details.Contains("ретрансмиссий:");
                 existing.IsUdpBlockage = BlockageCode.ContainsCode(details, BlockageCode.UdpBlockage) || details.Contains("UDP потерь");
 
-                if (status == TestStatus.Fail)
+                // Если статус вычислен как Warn из-за нестабильности, но текущий пакет был Fail,
+                // сохраняем подробность как Error, чтобы пользователь видел причину.
+                if (status == TestStatus.Fail || incomingStatus == TestStatus.Fail)
                 {
                     existing.Error = details;
                 }
@@ -178,15 +180,10 @@ namespace IspAudit.ViewModels
                     Host = host,
                     Service = "Unknown",
                     Critical = false,
-                    FallbackIp = ""
+                    FallbackIp = fallbackIp ?? ""
                 };
 
                 existing = new TestResult { Target = target, Status = status, Details = details };
-
-                if (status == TestStatus.Fail || status == TestStatus.Warn)
-                {
-                    _lastProblemUtcByHost[normalizedHost] = DateTime.UtcNow;
-                }
                 
                 // Parse flags from details
                 existing.IsRstInjection = BlockageCode.ContainsCode(details, BlockageCode.TcpRstInjection) || details.Contains("RST-инжект");
@@ -194,7 +191,9 @@ namespace IspAudit.ViewModels
                 existing.IsRetransmissionHeavy = BlockageCode.ContainsCode(details, BlockageCode.TcpRetryHeavy) || details.Contains("ретрансмиссий:");
                 existing.IsUdpBlockage = BlockageCode.ContainsCode(details, BlockageCode.UdpBlockage) || details.Contains("UDP потерь");
 
-                if (status == TestStatus.Fail)
+                // Если статус вычислен как Warn из-за нестабильности, но текущий пакет был Fail,
+                // сохраняем подробность как Error, чтобы пользователь видел причину.
+                if (status == TestStatus.Fail || status == TestStatus.Warn)
                 {
                     existing.Error = details;
                 }
@@ -238,6 +237,24 @@ namespace IspAudit.ViewModels
         {
             try 
             {
+                // SNI-событие (даёт пользователю понятный ключ сервиса)
+                // Формат: "[SNI] Detected: 64.233.164.91 -> youtube.com"
+                if (msg.Contains("[SNI] Detected:", StringComparison.OrdinalIgnoreCase))
+                {
+                    var m = Regex.Match(msg, @"Detected:\s+(?<ip>\d{1,3}(?:\.\d{1,3}){3})\s+->\s+(?<host>[^\s\|]+)", RegexOptions.IgnoreCase);
+                    if (m.Success)
+                    {
+                        var ip = m.Groups["ip"].Value.Trim();
+                        var host = NormalizeHost(m.Groups["host"].Value.Trim());
+                        if (!string.IsNullOrWhiteSpace(ip) && !string.IsNullOrWhiteSpace(host) && host != "-")
+                        {
+                            _ipToUiKey[ip] = host;
+                            TryMigrateIpCardToNameKey(ip, host);
+                        }
+                    }
+                    return;
+                }
+
                 // Обработка сообщения о фильтрации шума - удаляем карточку
                 if (msg.StartsWith("[NOISE]") || msg.Contains("Шум обнаружен:"))
                 {
@@ -290,6 +307,8 @@ namespace IspAudit.ViewModels
                     if (hostPort.Length == 2)
                     {
                         var host = hostPort[0];
+                        var uiKey = SelectUiKey(host, msg);
+                        var fallbackIp = IPAddress.TryParse(host, out _) ? host : null;
                         
                         // КРИТИЧНО: Проверяем на шум - не создаём карточку для успешных шумовых хостов
                         if (NoiseHostFilter.Instance.IsNoiseHost(host))
@@ -309,10 +328,10 @@ namespace IspAudit.ViewModels
                         }
                         
                         // Обновляем существующую карточку или создаём новую
-                        UpdateTestResult(host, TestStatus.Pass, StripNameTokens(msg));
-                        _lastUpdatedHost = host;
+                        UpdateTestResult(uiKey, TestStatus.Pass, StripNameTokens(msg), fallbackIp);
+                        _lastUpdatedHost = uiKey;
 
-                        ApplyNameTokensFromMessage(host, msg);
+                        ApplyNameTokensFromMessage(uiKey, msg);
                     }
                 }
                 else if (msg.Contains("[Collector] Новое соединение"))
@@ -327,6 +346,10 @@ namespace IspAudit.ViewModels
                         if (hostPort.Length == 2)
                         {
                             var host = hostPort[0];
+
+                            // Если по IP уже известен SNI/hostname, используем его как ключ карточки.
+                            var uiKey = SelectUiKey(host, msg);
+                            var fallbackIp = IPAddress.TryParse(host, out _) ? host : null;
                             
                             // Фильтр уже применён в TrafficCollector, но проверим ещё раз
                             if (NoiseHostFilter.Instance.IsNoiseHost(host))
@@ -337,16 +360,16 @@ namespace IspAudit.ViewModels
                             // ВАЖНО: событие "Новое соединение" может прийти позже итогового результата теста.
                             // Не перетираем Pass/Fail/Warn обратно в Running, иначе UI выглядит "зависшим".
                             var existing = TestResults.FirstOrDefault(t =>
-                                t.Target.Host.Equals(host, StringComparison.OrdinalIgnoreCase) ||
-                                t.Target.Name.Equals(host, StringComparison.OrdinalIgnoreCase) ||
-                                t.Target.FallbackIp == host);
+                                t.Target.Host.Equals(uiKey, StringComparison.OrdinalIgnoreCase) ||
+                                t.Target.Name.Equals(uiKey, StringComparison.OrdinalIgnoreCase) ||
+                                (!string.IsNullOrEmpty(fallbackIp) && t.Target.FallbackIp == fallbackIp));
                             if (existing == null || existing.Status == TestStatus.Idle || existing.Status == TestStatus.Running)
                             {
-                                UpdateTestResult(host, TestStatus.Running, "Обнаружено соединение...");
-                                _lastUpdatedHost = host;
+                                UpdateTestResult(uiKey, TestStatus.Running, "Обнаружено соединение...", fallbackIp);
+                                _lastUpdatedHost = uiKey;
                             }
 
-                            ApplyNameTokensFromMessage(host, msg);
+                            ApplyNameTokensFromMessage(uiKey, msg);
                         }
                     }
                 }
@@ -426,6 +449,8 @@ namespace IspAudit.ViewModels
                         if (hostPort.Length == 2)
                         {
                             var host = hostPort[0];
+                            var uiKey = SelectUiKey(host, msg);
+                            var fallbackIp = IPAddress.TryParse(host, out _) ? host : null;
                             
                             // КРИТИЧНО: Проверяем на шум перед созданием карточки ошибки
                             if (NoiseHostFilter.Instance.IsNoiseHost(host))
@@ -476,10 +501,10 @@ namespace IspAudit.ViewModels
                                 }
                             }
                             
-                            UpdateTestResult(host, status, StripNameTokens(msg));
-                            _lastUpdatedHost = host;
+                            UpdateTestResult(uiKey, status, StripNameTokens(msg), fallbackIp);
+                            _lastUpdatedHost = uiKey;
 
-                            ApplyNameTokensFromMessage(host, msg);
+                            ApplyNameTokensFromMessage(uiKey, msg);
                         }
                     }
                 }
@@ -609,6 +634,14 @@ namespace IspAudit.ViewModels
 
                 var result = TestResults.FirstOrDefault(t => t.Target.Host == hostKey || t.Target.FallbackIp == hostKey);
                 if (result == null) return;
+
+                // Если hostKey это IP, а SNI уже есть — мигрируем карточку на человеко-понятный ключ.
+                if (IPAddress.TryParse(hostKey, out _) && !string.IsNullOrWhiteSpace(sni) && sni != "-")
+                {
+                    var normalizedSni = NormalizeHost(sni);
+                    _ipToUiKey[hostKey] = normalizedSni;
+                    TryMigrateIpCardToNameKey(hostKey, normalizedSni);
+                }
 
                 // 1) Настоящий SNI имеет приоритет
                 if (!string.IsNullOrWhiteSpace(sni) && sni != "-")
@@ -861,6 +894,146 @@ namespace IspAudit.ViewModels
             if (host.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
                 return host.Substring(4);
             return host;
+        }
+
+        private string SelectUiKey(string hostFromLine, string msg)
+        {
+            // 1) Если в сообщении есть SNI/DNS — это приоритетный пользовательский ключ.
+            var sni = ExtractToken(msg, "SNI");
+            if (!string.IsNullOrWhiteSpace(sni) && sni != "-")
+            {
+                return NormalizeHost(sni);
+            }
+
+            // 2) Если host из строки — IP, но мы уже знаем сопоставление IP→SNI, используем его.
+            if (IPAddress.TryParse(hostFromLine, out _) && _ipToUiKey.TryGetValue(hostFromLine, out var mapped))
+            {
+                return NormalizeHost(mapped);
+            }
+
+            // 3) Иначе используем то, что пришло.
+            return NormalizeHost(hostFromLine);
+        }
+
+        private TestStatus ApplyUnstableRule(string normalizedKey, TestStatus incoming)
+        {
+            var now = DateTime.UtcNow;
+            var history = _outcomeHistoryByKey.GetOrAdd(normalizedKey, _ => new OutcomeHistory(DateTime.MinValue, DateTime.MinValue));
+
+            var lastPass = history.LastPassUtc;
+            var lastProblem = history.LastProblemUtc;
+
+            if (incoming == TestStatus.Pass)
+            {
+                lastPass = now;
+            }
+
+            if (incoming == TestStatus.Fail || incoming == TestStatus.Warn)
+            {
+                lastProblem = now;
+            }
+
+            _outcomeHistoryByKey[normalizedKey] = new OutcomeHistory(lastPass, lastProblem);
+
+            var hasRecentPass = lastPass != DateTime.MinValue && now - lastPass <= UnstableWindow;
+            var hasRecentProblem = lastProblem != DateTime.MinValue && now - lastProblem <= UnstableWindow;
+
+            // Если в окне есть и успех и проблема — показываем «Нестабильно».
+            if (hasRecentPass && hasRecentProblem)
+            {
+                return TestStatus.Warn;
+            }
+
+            return incoming;
+        }
+
+        private void TryMigrateIpCardToNameKey(string ip, string nameKey)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(ip) || string.IsNullOrWhiteSpace(nameKey)) return;
+                if (!IPAddress.TryParse(ip, out _)) return;
+
+                nameKey = NormalizeHost(nameKey);
+                if (IPAddress.TryParse(nameKey, out _)) return;
+
+                var ipCard = TestResults.FirstOrDefault(t => t.Target.Host == ip || t.Target.FallbackIp == ip);
+                if (ipCard == null) return;
+
+                var normalizedName = NormalizeHost(nameKey);
+                var nameCard = TestResults.FirstOrDefault(t =>
+                    NormalizeHost(t.Target.Host).Equals(normalizedName, StringComparison.OrdinalIgnoreCase) ||
+                    NormalizeHost(t.Target.Name).Equals(normalizedName, StringComparison.OrdinalIgnoreCase));
+
+                if (nameCard == null)
+                {
+                    // Переименовываем существующую карточку (IP → hostname) и сохраняем IP в FallbackIp.
+                    var old = ipCard.Target;
+                    ipCard.Target = new Target
+                    {
+                        Name = nameKey,
+                        Host = nameKey,
+                        Service = old.Service,
+                        Critical = old.Critical,
+                        FallbackIp = string.IsNullOrWhiteSpace(old.FallbackIp) ? ip : old.FallbackIp,
+                        SniHost = string.IsNullOrWhiteSpace(old.SniHost) ? nameKey : old.SniHost,
+                        ReverseDnsHost = old.ReverseDnsHost
+                    };
+                    return;
+                }
+
+                // Если карточка по имени уже существует — сливаем и удаляем IP-карточку.
+                if (string.IsNullOrWhiteSpace(nameCard.Target.FallbackIp))
+                {
+                    var old = nameCard.Target;
+                    nameCard.Target = new Target
+                    {
+                        Name = old.Name,
+                        Host = old.Host,
+                        Service = old.Service,
+                        Critical = old.Critical,
+                        FallbackIp = ip,
+                        SniHost = old.SniHost,
+                        ReverseDnsHost = old.ReverseDnsHost
+                    };
+                }
+
+                // Берём более «плохой» статус как базовый.
+                var mergedStatus = MergeStatus(nameCard.Status, ipCard.Status);
+                nameCard.Status = mergedStatus;
+
+                if (!string.IsNullOrWhiteSpace(ipCard.Details) && (string.IsNullOrWhiteSpace(nameCard.Details) || !nameCard.Details.Contains(ipCard.Details, StringComparison.OrdinalIgnoreCase)))
+                {
+                    nameCard.Details = string.IsNullOrWhiteSpace(nameCard.Details)
+                        ? ipCard.Details
+                        : nameCard.Details + "\n" + ipCard.Details;
+                }
+
+                if (!string.IsNullOrWhiteSpace(ipCard.Error) && string.IsNullOrWhiteSpace(nameCard.Error))
+                {
+                    nameCard.Error = ipCard.Error;
+                }
+
+                TestResults.Remove(ipCard);
+                NotifyCountersChanged();
+            }
+            catch
+            {
+            }
+        }
+
+        private static TestStatus MergeStatus(TestStatus a, TestStatus b)
+        {
+            static int Rank(TestStatus s) => s switch
+            {
+                TestStatus.Fail => 4,
+                TestStatus.Warn => 3,
+                TestStatus.Running => 2,
+                TestStatus.Pass => 1,
+                _ => 0
+            };
+
+            return Rank(a) >= Rank(b) ? a : b;
         }
 
         private void NotifyCountersChanged()

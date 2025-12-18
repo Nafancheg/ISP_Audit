@@ -144,7 +144,7 @@ namespace IspAudit.Models
                     TestStatus.Running => "Проверяем…",
                     TestStatus.Pass => "Доступно",
                     TestStatus.Fail => "Блокировка",
-                    TestStatus.Warn => "Предупреждение",
+                    TestStatus.Warn => "Нестабильно",
                     _ => ""
                 };
             }
