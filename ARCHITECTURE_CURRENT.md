@@ -79,7 +79,9 @@ graph TD
 
 Dev-проверка (smoke): для воспроизводимой проверки детерминизма UI без запуска GUI есть режим `--ui-reducer-smoke` в `TestNetworkApp` (прогон типовых строк пайплайна через `TestResultsManager.ParsePipelineMessage`).
 
-Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|infra|pipe|bypass]`, который запускает набор быстрых проверок из плана смоков (без GUI). По умолчанию часть проверок, завязанных на WinDivert/среду, может помечаться как `SKIP` (например, если запуск не от администратора). Для «жёсткого» прогона без `SKIP` используйте `--smoke ... --no-skip` (алиас `--strict`): в этом режиме любые `SKIP` считаются `FAIL`.
+Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|infra|pipe|insp|ui|bypass|dpi2]`, который запускает проверки из плана смоков (без GUI). Для полного покрытия плана smoke runner прогоняет **все** Test ID из `TestNetworkApp/smoke_tests_plan.md`; если тест из плана ещё не реализован, он возвращает `FAIL` с причиной (это сделано намеренно, чтобы было 97/97 выполнено без "SKIP"). По умолчанию часть проверок, завязанных на WinDivert/среду, может падать или ранее помечалась как `SKIP` (например, если запуск не от администратора). Для «жёсткого» прогона без `SKIP` используйте `--smoke ... --no-skip` (алиас `--strict`): в этом режиме любые `SKIP` считаются `FAIL`. Для выгрузки результатов добавлен `--json <path>`.
+
+Автозапуск от администратора: `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/run_smoke_strict.ps1` — запросит UAC elevation, выполнит `--smoke all --no-skip` и сохранит JSON в `artifacts/`.
 
 ### 3.2 Orchestration Layer
 

@@ -108,16 +108,24 @@
     - ключ карточки по `[SNI] Detected: <ip> -> <host>`;
     - правило `UnstableWindow`: если в окне есть и успех, и проблема → статус `Warn` (“Нестабильно”).
 
-Актуализация (Dev, 18.12.2025): добавлен CLI smoke-раннер (infra/pipe/bypass)
+Актуализация (Dev, 18.12.2025): добавлен CLI smoke-раннер (выполняет весь план)
 - Команда:
     - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke`
     - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke infra`
     - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke pipe`
+    - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke insp`
+    - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke ui`
     - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke bypass`
-- Примечание: проверки, требующие WinDivert/среду, по умолчанию могут становиться `SKIP` (например, если нет прав администратора).
+- Примечание: smoke runner читает `TestNetworkApp/smoke_tests_plan.md` и прогоняет все Test ID из плана; если тест из плана ещё не реализован, он возвращает `FAIL` с причиной (это сделано намеренно, чтобы было 97/97 выполнено без "пропусков").
 - Строгий режим (без `SKIP`):
     - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke --no-skip`
     - алиас: `--strict` (любые `SKIP` считаются `FAIL`).
+
+- JSON-отчёт:
+    - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke --no-skip --json artifacts/smoke.json`
+
+- Автозапуск от администратора (сам запросит UAC, сохранит JSON):
+    - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/run_smoke_strict.ps1`
 
 Рекомендуемые быстрые проверки (перед/после реального браузерного прогона):
 - “Проблема не исчезает”: событие `[NOISE]`/noise-hostname не должно удалять карточку со статусом `Fail/Warn`.

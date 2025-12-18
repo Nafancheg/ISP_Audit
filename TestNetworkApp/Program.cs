@@ -29,9 +29,10 @@ namespace TestNetworkApp
             if (args.Length > 0 && string.Equals(args[0], "--smoke", StringComparison.OrdinalIgnoreCase))
             {
                 // Формат:
-                // --smoke [all|infra|pipe|bypass] [--no-skip|--strict]
+                // --smoke [all|infra|pipe|insp|ui|bypass|dpi2] [--no-skip|--strict] [--json <path>]
                 var category = "all";
                 bool noSkip = false;
+                string? jsonOut = null;
 
                 for (int i = 1; i < args.Length; i++)
                 {
@@ -43,10 +44,23 @@ namespace TestNetworkApp
                         continue;
                     }
 
+                    if (string.Equals(a, "--json", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (i + 1 < args.Length)
+                        {
+                            jsonOut = args[i + 1];
+                            i++;
+                        }
+                        continue;
+                    }
+
                     if (string.Equals(a, "all", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(a, "infra", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(a, "pipe", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(a, "bypass", StringComparison.OrdinalIgnoreCase))
+                        string.Equals(a, "insp", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(a, "ui", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(a, "bypass", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(a, "dpi2", StringComparison.OrdinalIgnoreCase))
                     {
                         category = a;
                         continue;
@@ -54,7 +68,7 @@ namespace TestNetworkApp
                 }
 
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                var exitCode = await SmokeRunner.Build(category, new SmokeRunOptions(noSkip)).RunAsync(cts.Token).ConfigureAwait(false);
+                var exitCode = await SmokeRunner.Build(category, new SmokeRunOptions(noSkip, jsonOut)).RunAsync(cts.Token).ConfigureAwait(false);
                 return exitCode;
             }
 

@@ -4,6 +4,9 @@ bin/
 obj/
 publish/
 
+# Smoke artifacts (JSON отчёты)
+artifacts/
+
 # IDE
 .vs/
 *.user
