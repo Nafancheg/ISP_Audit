@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
 using IspAudit.Core.Diagnostics;
+using IspAudit.Core.Modules;
 using IspAudit.Core.Models;
 using IspAudit.Core.Traffic;
 using IspAudit.Core.Traffic.Filters;
@@ -114,25 +115,29 @@ namespace TestNetworkApp.Smoke
             if (all || cat == "infra")
             {
                 runner
-                    .Add(SmokeTests.Infra_EncodingCp866)
+                    .Add(SmokeTests.Infra_WinDivertDriver)
+                    .Add(SmokeTests.Infra_FilterRegistration)
                     .Add(SmokeTests.Infra_FilterOrder)
-                    .Add(SmokeTests.Infra_WinDivertSocketLayerReady);
+                    .Add(SmokeTests.Infra_AdminRights)
+                    .Add(SmokeTests.Infra_EncodingCp866);
             }
 
             if (all || cat == "pipe")
             {
                 runner
-                    .Add(SmokeTests.Pipe_UiReducerSmoke)
+                    .Add(SmokeTests.Ui_UiReducerSmoke)
                     .Add(SmokeTests.Pipe_UnifiedFilter_LoopbackDropped)
-                    .Add(SmokeTests.Pipe_UnifiedFilter_OkSuppressed)
-                    .Add(SmokeTests.Pipe_Collector_DedupByRemoteIpPortProto_Polling);
+                    .Add(SmokeTests.Pipe_UnifiedFilter_NoiseOnlyOnDisplay)
+                    .Add(SmokeTests.Pipe_TrafficCollector_DedupByRemoteIpPortProto_Polling)
+                    .Add(SmokeTests.Pipe_Classifier_FakeIpRange);
             }
 
             if (all || cat == "bypass")
             {
                 runner
-                    .Add(SmokeTests.Bypass_BypassFilter_MetricsDefault)
-                    .Add(SmokeTests.Bypass_TlsBypassService_PresetsBuilt);
+                    .Add(SmokeTests.Bypass_TlsBypassService_RegistersFilter)
+                    .Add(SmokeTests.Bypass_TlsBypassService_RemovesFilter)
+                    .Add(SmokeTests.Bypass_TlsBypassService_ProfilePresetPresent);
             }
 
             return runner;
@@ -141,21 +146,57 @@ namespace TestNetworkApp.Smoke
 
     internal static class SmokeTests
     {
-        public static Task<SmokeTestResult> Infra_EncodingCp866(CancellationToken ct)
-            => RunAsync("INFRA-004", "CP866 доступен (CodePagesEncodingProvider)", () =>
-            {
-                // На .NET нужно зарегистрировать провайдер, иначе Encoding.GetEncoding(866) может бросить.
-                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        public static async Task<SmokeTestResult> Infra_WinDivertDriver(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
 
-                var enc = Encoding.GetEncoding(866);
-                if (enc.CodePage != 866)
+            if (!TrafficEngine.HasAdministratorRights)
+            {
+                return new SmokeTestResult("INFRA-001", "WinDivert Driver: TrafficEngine стартует/останавливается", SmokeOutcome.Skip, sw.Elapsed,
+                    "Пропуск: нет прав администратора (WinDivert требует Elevated)");
+            }
+
+            try
+            {
+                using var engine = new TrafficEngine();
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(2));
+
+                // Важно: StartAsync/StopAsync — минимальная проверка загрузки драйвера/handle.
+                await engine.StartAsync(cts.Token).ConfigureAwait(false);
+                await engine.StopAsync().ConfigureAwait(false);
+
+                return new SmokeTestResult("INFRA-001", "WinDivert Driver: TrafficEngine стартует/останавливается", SmokeOutcome.Pass, sw.Elapsed,
+                    "OK: WinDivert handle открывается и закрывается");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("INFRA-001", "WinDivert Driver: TrafficEngine стартует/останавливается", SmokeOutcome.Fail, sw.Elapsed,
+                    ex.Message);
+            }
+        }
+
+        public static Task<SmokeTestResult> Infra_FilterRegistration(CancellationToken ct)
+            => RunAsync("INFRA-002", "TrafficEngine: регистрация фильтра работает", () =>
+            {
+                using var engine = new TrafficEngine();
+
+                var dummy = new DummyPacketFilter("SmokeDummy", priority: 123);
+                engine.RegisterFilter(dummy);
+
+                var filters = GetEngineFiltersSnapshot(engine);
+                var found = filters.Any(f => f.Name == dummy.Name);
+                if (!found)
                 {
-                    return new SmokeTestResult("INFRA-004", "CP866 доступен (CodePagesEncodingProvider)", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"Ожидали 866, получили {enc.CodePage}");
+                    return new SmokeTestResult("INFRA-002", "TrafficEngine: регистрация фильтра работает", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Фильтр не найден в списке после RegisterFilter (snapshot/reflection)"
+                    );
                 }
 
-                return new SmokeTestResult("INFRA-004", "CP866 доступен (CodePagesEncodingProvider)", SmokeOutcome.Pass, TimeSpan.Zero,
-                    "Encoding.GetEncoding(866) работает");
+                return new SmokeTestResult("INFRA-002", "TrafficEngine: регистрация фильтра работает", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: фильтр присутствует в активном списке"
+                );
             }, ct);
 
         public static Task<SmokeTestResult> Infra_FilterOrder(CancellationToken ct)
@@ -190,50 +231,46 @@ namespace TestNetworkApp.Smoke
                     $"OK: {order}");
             }, ct);
 
-        public static async Task<SmokeTestResult> Infra_WinDivertSocketLayerReady(CancellationToken ct)
-        {
-            var sw = Stopwatch.StartNew();
-
-            if (!TrafficEngine.HasAdministratorRights)
+        public static Task<SmokeTestResult> Infra_AdminRights(CancellationToken ct)
+            => RunAsync("INFRA-004", "Права администратора (WinDivert требует Elevated)", () =>
             {
-                return new SmokeTestResult("INFRA-002", "WinDivert Socket Layer доступен", SmokeOutcome.Skip, sw.Elapsed,
-                    "Пропуск: нет прав администратора (для WinDivert требуется Elevated)");
-            }
-
-            try
-            {
-                var progress = new Progress<string>(s => Console.WriteLine(s));
-                using var monitor = new ConnectionMonitorService(progress)
+                if (!TrafficEngine.HasAdministratorRights)
                 {
-                    UsePollingMode = false
-                };
+                    return new SmokeTestResult("INFRA-004", "Права администратора (WinDivert требует Elevated)", SmokeOutcome.Skip, TimeSpan.Zero,
+                        "Пропуск: процесс запущен без прав администратора");
+                }
 
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                cts.CancelAfter(TimeSpan.FromSeconds(2));
+                return new SmokeTestResult("INFRA-004", "Права администратора (WinDivert требует Elevated)", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: есть права администратора");
+            }, ct);
 
-                await monitor.StartAsync(cts.Token).ConfigureAwait(false);
-                await monitor.StopAsync().ConfigureAwait(false);
-
-                return new SmokeTestResult("INFRA-002", "WinDivert Socket Layer доступен", SmokeOutcome.Pass, sw.Elapsed,
-                    "WinDivert Open/RecvOnly стартует и останавливается");
-            }
-            catch (Exception ex)
+        public static Task<SmokeTestResult> Infra_EncodingCp866(CancellationToken ct)
+            => RunAsync("INFRA-005", "CP866 доступен (CodePagesEncodingProvider)", () =>
             {
-                return new SmokeTestResult("INFRA-002", "WinDivert Socket Layer доступен", SmokeOutcome.Fail, sw.Elapsed,
-                    ex.Message);
-            }
-        }
+                // На .NET нужно зарегистрировать провайдер, иначе Encoding.GetEncoding(866) может бросить.
+                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-        public static Task<SmokeTestResult> Pipe_UiReducerSmoke(CancellationToken ct)
-            => RunAsync("PIPE-001", "UI reducer smoke (--ui-reducer-smoke)", () =>
+                var enc = Encoding.GetEncoding(866);
+                if (enc.CodePage != 866)
+                {
+                    return new SmokeTestResult("INFRA-005", "CP866 доступен (CodePagesEncodingProvider)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали 866, получили {enc.CodePage}");
+                }
+
+                return new SmokeTestResult("INFRA-005", "CP866 доступен (CodePagesEncodingProvider)", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "Encoding.GetEncoding(866) работает");
+            }, ct);
+
+        public static Task<SmokeTestResult> Ui_UiReducerSmoke(CancellationToken ct)
+            => RunAsync("UI-011", "UI-Reducer smoke (--ui-reducer-smoke)", () =>
             {
                 Program.RunUiReducerSmoke_ForSmokeRunner();
-                return new SmokeTestResult("PIPE-001", "UI reducer smoke (--ui-reducer-smoke)", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("UI-011", "UI-Reducer smoke (--ui-reducer-smoke)", SmokeOutcome.Pass, TimeSpan.Zero,
                     "Выполнено без исключений");
             }, ct);
 
         public static Task<SmokeTestResult> Pipe_UnifiedFilter_LoopbackDropped(CancellationToken ct)
-            => RunAsync("PIPE-004", "UnifiedTrafficFilter: loopback дропается", () =>
+            => RunAsync("PIPE-005", "UnifiedTrafficFilter отбрасывает loopback", () =>
             {
                 var filter = new UnifiedTrafficFilter();
                 var host = new HostDiscovered(
@@ -246,16 +283,16 @@ namespace TestNetworkApp.Smoke
                 var decision = filter.ShouldTest(host);
                 if (decision.Action != FilterAction.Drop)
                 {
-                    return new SmokeTestResult("PIPE-004", "UnifiedTrafficFilter: loopback дропается", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("PIPE-005", "UnifiedTrafficFilter отбрасывает loopback", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали Drop, получили {decision.Action} ({decision.Reason})");
                 }
 
-                return new SmokeTestResult("PIPE-004", "UnifiedTrafficFilter: loopback дропается", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("PIPE-005", "UnifiedTrafficFilter отбрасывает loopback", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: {decision.Reason}");
             }, ct);
 
-        public static Task<SmokeTestResult> Pipe_UnifiedFilter_OkSuppressed(CancellationToken ct)
-            => RunAsync("PIPE-005", "UnifiedTrafficFilter: OK не засоряет UI (LogOnly/Drop для noise)", () =>
+        public static Task<SmokeTestResult> Pipe_UnifiedFilter_NoiseOnlyOnDisplay(CancellationToken ct)
+            => RunAsync("PIPE-006", "NoiseHostFilter применяется только на этапе отображения", () =>
             {
                 // В GUI этот фильтр инициализируется в DiagnosticOrchestrator.
                 // Для smoke-теста делаем то же, иначе singleton NoiseHostFilter работает только на fallback-паттернах.
@@ -292,7 +329,7 @@ namespace TestNetworkApp.Smoke
                 var decision = filter.ShouldDisplay(ok);
                 if (decision.Action != FilterAction.LogOnly)
                 {
-                    return new SmokeTestResult("PIPE-005", "UnifiedTrafficFilter: OK не засоряет UI (LogOnly/Drop для noise)", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("PIPE-006", "NoiseHostFilter применяется только на этапе отображения", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали LogOnly для OK, получили {decision.Action} ({decision.Reason})");
                 }
 
@@ -303,15 +340,15 @@ namespace TestNetworkApp.Smoke
 
                 if (decisionNoise.Action != FilterAction.Drop)
                 {
-                    return new SmokeTestResult("PIPE-005", "UnifiedTrafficFilter: OK не засоряет UI (LogOnly/Drop для noise)", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("PIPE-006", "NoiseHostFilter применяется только на этапе отображения", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали Drop для noise OK, получили {decisionNoise.Action} ({decisionNoise.Reason})");
                 }
 
-                return new SmokeTestResult("PIPE-005", "UnifiedTrafficFilter: OK не засоряет UI (LogOnly/Drop для noise)", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("PIPE-006", "NoiseHostFilter применяется только на этапе отображения", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: обычный OK=LogOnly, noise OK=Drop");
             }, ct);
 
-        public static async Task<SmokeTestResult> Pipe_Collector_DedupByRemoteIpPortProto_Polling(CancellationToken ct)
+        public static async Task<SmokeTestResult> Pipe_TrafficCollector_DedupByRemoteIpPortProto_Polling(CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();
 
@@ -389,24 +426,140 @@ namespace TestNetworkApp.Smoke
             }
         }
 
-        public static Task<SmokeTestResult> Bypass_BypassFilter_MetricsDefault(CancellationToken ct)
-            => RunAsync("BYPASS-001", "BypassFilter: метрики по умолчанию = 0", () =>
+        public static Task<SmokeTestResult> Pipe_Classifier_FakeIpRange(CancellationToken ct)
+            => RunAsync("PIPE-016", "Классификация FAKE_IP (198.18.0.0/15)", () =>
             {
-                var filter = new BypassFilter(BypassProfile.CreateDefault());
-                var m = filter.GetMetrics();
+                var classifier = new StandardBlockageClassifier();
+                var host = new HostDiscovered(
+                    Key: "198.18.0.1:443:TCP",
+                    RemoteIp: IPAddress.Parse("198.18.0.1"),
+                    RemotePort: 443,
+                    Protocol: BypassTransportProtocol.Tcp,
+                    DiscoveredAt: DateTime.UtcNow);
 
-                if (m.PacketsProcessed != 0 || m.RstDropped != 0 || m.ClientHellosFragmented != 0)
+                var tested = new HostTested(
+                    Host: host,
+                    DnsOk: true,
+                    TcpOk: true,
+                    TlsOk: true,
+                    DnsStatus: BlockageCode.StatusOk,
+                    Hostname: null,
+                    SniHostname: null,
+                    ReverseDnsHostname: null,
+                    TcpLatencyMs: 10,
+                    BlockageType: null,
+                    TestedAt: DateTime.UtcNow);
+
+                var blocked = classifier.ClassifyBlockage(tested);
+                if (BlockageCode.Normalize(blocked.TestResult.BlockageType) != BlockageCode.FakeIp)
                 {
-                    return new SmokeTestResult("BYPASS-001", "BypassFilter: метрики по умолчанию = 0", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"Ожидали нули, получили Packets={m.PacketsProcessed}, RstDropped={m.RstDropped}, Fragmented={m.ClientHellosFragmented}");
+                    return new SmokeTestResult("PIPE-016", "Классификация FAKE_IP (198.18.0.0/15)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали {BlockageCode.FakeIp}, получили '{blocked.TestResult.BlockageType ?? "<null>"}'");
                 }
 
-                return new SmokeTestResult("BYPASS-001", "BypassFilter: метрики по умолчанию = 0", SmokeOutcome.Pass, TimeSpan.Zero,
-                    "OK: базовые счётчики нулевые");
+                return new SmokeTestResult("PIPE-016", "Классификация FAKE_IP (198.18.0.0/15)", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: адрес из 198.18/15 помечается как FakeIp");
             }, ct);
 
-        public static Task<SmokeTestResult> Bypass_TlsBypassService_PresetsBuilt(CancellationToken ct)
-            => RunAsync("BYPASS-004", "TlsBypassService: пресеты фрагментации доступны", () =>
+        public static async Task<SmokeTestResult> Bypass_TlsBypassService_RegistersFilter(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                if (!TrafficEngine.HasAdministratorRights)
+                {
+                    return new SmokeTestResult("BYPASS-001", "TlsBypassService: регистрация BypassFilter", SmokeOutcome.Skip, sw.Elapsed,
+                        "Пропуск: нет прав администратора (WinDivert требует Elevated)"
+                    );
+                }
+
+                using var engine = new TrafficEngine();
+                using var svc = new TlsBypassService(engine, BypassProfile.CreateDefault());
+
+                var options = svc.GetOptionsSnapshot() with
+                {
+                    FragmentEnabled = true,
+                    DisorderEnabled = false,
+                    FakeEnabled = false,
+                    DropRstEnabled = false
+                };
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(3));
+
+                await svc.ApplyAsync(options, cts.Token).ConfigureAwait(false);
+
+                var filters = GetEngineFiltersSnapshot(engine);
+                if (!filters.Any(f => f.Name == "BypassFilter"))
+                {
+                    return new SmokeTestResult("BYPASS-001", "TlsBypassService: регистрация BypassFilter", SmokeOutcome.Fail, sw.Elapsed,
+                        "BypassFilter не найден в списке фильтров TrafficEngine после ApplyAsync"
+                    );
+                }
+
+                await engine.StopAsync().ConfigureAwait(false);
+
+                return new SmokeTestResult("BYPASS-001", "TlsBypassService: регистрация BypassFilter", SmokeOutcome.Pass, sw.Elapsed,
+                    "OK: BypassFilter зарегистрирован"
+                );
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("BYPASS-001", "TlsBypassService: регистрация BypassFilter", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
+        public static async Task<SmokeTestResult> Bypass_TlsBypassService_RemovesFilter(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                if (!TrafficEngine.HasAdministratorRights)
+                {
+                    return new SmokeTestResult("BYPASS-002", "TlsBypassService: удаление BypassFilter при отключении", SmokeOutcome.Skip, sw.Elapsed,
+                        "Пропуск: нет прав администратора (WinDivert требует Elevated)"
+                    );
+                }
+
+                using var engine = new TrafficEngine();
+                using var svc = new TlsBypassService(engine, BypassProfile.CreateDefault());
+
+                var enable = svc.GetOptionsSnapshot() with
+                {
+                    FragmentEnabled = true,
+                    DisorderEnabled = false,
+                    FakeEnabled = false,
+                    DropRstEnabled = false
+                };
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(4));
+
+                await svc.ApplyAsync(enable, cts.Token).ConfigureAwait(false);
+                await svc.DisableAsync(cts.Token).ConfigureAwait(false);
+
+                var filters = GetEngineFiltersSnapshot(engine);
+                if (filters.Any(f => f.Name == "BypassFilter"))
+                {
+                    return new SmokeTestResult("BYPASS-002", "TlsBypassService: удаление BypassFilter при отключении", SmokeOutcome.Fail, sw.Elapsed,
+                        "BypassFilter всё ещё присутствует после DisableAsync"
+                    );
+                }
+
+                await engine.StopAsync().ConfigureAwait(false);
+
+                return new SmokeTestResult("BYPASS-002", "TlsBypassService: удаление BypassFilter при отключении", SmokeOutcome.Pass, sw.Elapsed,
+                    "OK: BypassFilter удалён"
+                );
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("BYPASS-002", "TlsBypassService: удаление BypassFilter при отключении", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
+        public static Task<SmokeTestResult> Bypass_TlsBypassService_ProfilePresetPresent(CancellationToken ct)
+            => RunAsync("BYPASS-005", "TlsBypassService: пресет 'Профиль' присутствует (bypass_profile.json)", () =>
             {
                 using var engine = new TrafficEngine();
                 using var svc = new TlsBypassService(engine, BypassProfile.CreateDefault());
@@ -415,19 +568,36 @@ namespace TestNetworkApp.Smoke
 
                 if (names.Count == 0)
                 {
-                    return new SmokeTestResult("BYPASS-004", "TlsBypassService: пресеты фрагментации доступны", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("BYPASS-005", "TlsBypassService: пресет 'Профиль' присутствует (bypass_profile.json)", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Список пресетов пуст");
                 }
 
                 if (!names.Contains("Профиль"))
                 {
-                    return new SmokeTestResult("BYPASS-004", "TlsBypassService: пресеты фрагментации доступны", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("BYPASS-005", "TlsBypassService: пресет 'Профиль' присутствует (bypass_profile.json)", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Нет пресета 'Профиль' (размеры из bypass_profile.json)");
                 }
 
-                return new SmokeTestResult("BYPASS-004", "TlsBypassService: пресеты фрагментации доступны", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("BYPASS-005", "TlsBypassService: пресет 'Профиль' присутствует (bypass_profile.json)", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: {string.Join(", ", names)}");
             }, ct);
+
+        private sealed class DummyPacketFilter : IPacketFilter
+        {
+            public string Name { get; }
+            public int Priority { get; }
+
+            public DummyPacketFilter(string name, int priority)
+            {
+                Name = name;
+                Priority = priority;
+            }
+
+            public bool Process(InterceptedPacket packet, PacketContext ctx, IPacketSender sender)
+            {
+                return true;
+            }
+        }
 
         private static async Task MakeTcpAttemptAsync(IPAddress ip, int port, TimeSpan timeout, CancellationToken ct)
         {
@@ -469,7 +639,7 @@ namespace TestNetworkApp.Smoke
             }
         }
 
-        private static async Task<SmokeTestResult> RunAsync(string id, string name, Func<SmokeTestResult> body, CancellationToken ct)
+        private static Task<SmokeTestResult> RunAsync(string id, string name, Func<SmokeTestResult> body, CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();
             try
@@ -477,17 +647,17 @@ namespace TestNetworkApp.Smoke
                 ct.ThrowIfCancellationRequested();
                 var result = body();
                 sw.Stop();
-                return result with { Duration = sw.Elapsed };
+                return Task.FromResult(result with { Duration = sw.Elapsed });
             }
             catch (OperationCanceledException)
             {
                 sw.Stop();
-                return new SmokeTestResult(id, name, SmokeOutcome.Skip, sw.Elapsed, "Отменено");
+                return Task.FromResult(new SmokeTestResult(id, name, SmokeOutcome.Skip, sw.Elapsed, "Отменено"));
             }
             catch (Exception ex)
             {
                 sw.Stop();
-                return new SmokeTestResult(id, name, SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                return Task.FromResult(new SmokeTestResult(id, name, SmokeOutcome.Fail, sw.Elapsed, ex.Message));
             }
         }
     }
