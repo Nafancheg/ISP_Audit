@@ -46,6 +46,14 @@ namespace IspAudit.Core.Modules
             }
             else
             {
+                // Если DNS проверка не OK, а конкретный BlockageType ещё не выставлен,
+                // фиксируем фактуру через DnsStatus (это поле уже нормализовано в BlockageCode).
+                // Это делает классификацию детерминированной и полезной для UI.
+                if (!tested.DnsOk && string.IsNullOrWhiteSpace(tested.BlockageType) && tested.DnsStatus != BlockageCode.StatusOk)
+                {
+                    tested = tested with { BlockageType = tested.DnsStatus };
+                }
+
                 // Получаем сигналы из стора (если есть)
                 BlockageSignals? signals = null;
                 if (_stateStore != null)
@@ -162,6 +170,8 @@ namespace IspAudit.Core.Modules
                 BlockageCode.TlsAuthFailure => "Наблюдается TLS auth failure (ошибка рукопожатия)",
                 BlockageCode.DnsFiltered => "DNS: ответ не OK (filtered)",
                 BlockageCode.DnsBogus => "DNS: ответ не OK (bogus)",
+                BlockageCode.DnsTimeout => "DNS: таймаут резолва",
+                BlockageCode.DnsError => "DNS: ошибка резолва",
                 _ => $"Неизвестная проблема с {ip}"
             };
         }

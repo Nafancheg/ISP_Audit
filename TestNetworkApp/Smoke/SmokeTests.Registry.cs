@@ -25,6 +25,10 @@ namespace TestNetworkApp.Smoke
                 ["PIPE-009"] = Pipe_Tester_TcpHandshake_Google443,
                 ["PIPE-010"] = Pipe_Tester_TlsHandshake_Google443_Sni,
                 ["PIPE-011"] = Pipe_Tester_ReverseDns_8888,
+                ["PIPE-012"] = Pipe_Classifier_DnsBlocked,
+                ["PIPE-013"] = Pipe_Classifier_TcpTimeout,
+                ["PIPE-014"] = Pipe_Classifier_TcpReset,
+                ["PIPE-015"] = Pipe_Classifier_DpiFilter_Tls,
                 ["PIPE-016"] = Pipe_Classifier_FakeIpRange,
 
                 ["CFG-001"] = Cfg_BypassProfile_Load,
