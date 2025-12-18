@@ -22,12 +22,6 @@ namespace IspAudit.Utils
                 return new FilterDecision(FilterAction.Drop, "Loopback");
             }
 
-            // 1. Проверка на шум (если hostname известен)
-            if (!string.IsNullOrEmpty(knownHostname) && NoiseHostFilter.Instance.IsNoiseHost(knownHostname))
-            {
-                return new FilterDecision(FilterAction.Drop, "Noise host (pre-check)");
-            }
-
             // 2. Дедупликация на уровне цели отключена.
             return new FilterDecision(FilterAction.Process, "New target");
         }

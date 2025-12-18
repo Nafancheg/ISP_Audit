@@ -87,7 +87,7 @@ graph TD
         *   Для Steam/attach поддерживается короткий буфер (несколько секунд), чтобы не терять ранний SNI до появления PID.
 *   **`LiveTestingPipeline`**: Асинхронный конвейер на базе `System.Threading.Channels`.
     *   Связывает этапы: Sniffing → Testing → Classification → Reporting.
-    *   Использует `UnifiedTrafficFilter` для валидации, дедупликации и фильтрации шума.
+    *   Использует `UnifiedTrafficFilter` для минимальной валидации (loopback) и правил отображения (не засорять UI «успешными» целями).
     *   Обеспечивает параллельную обработку множества хостов.
     *   Опционально принимает `AutoHostlistService`: на этапе Classification считывает `BlockageSignals` из `InMemoryBlockageStateStore` и добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения).
 
@@ -137,7 +137,7 @@ graph TD
 *   **`TrafficCollector` (`Utils/TrafficCollector.cs`)**:
     *   Слушает события от `ConnectionMonitorService` (который управляется `DiagnosticOrchestrator`).
     *   Фильтрует трафик по PID целевого процесса (через `PidTrackerService`).
-    *   До логирования/попадания в UI применяет `UnifiedTrafficFilter` (loopback, шум, дедупликация), чтобы не создавать «вечные» карточки для отброшенных целей.
+    *   До логирования/попадания в UI применяет `UnifiedTrafficFilter` (минимально: loopback), чтобы не создавать «вечные» карточки для заведомо нерелевантных целей.
     *   Передает уникальные `(IP, Hostname)` в пайплайн.
     *   В UI и сообщениях пайплайна ключом для карточек считается **IP** (стабильная идентичность); дополнительные варианты имени (SNI / reverse DNS) передаются отдельно.
 *   **`StandardHostTester` (`Core/Modules/StandardHostTester.cs`)**:
@@ -205,14 +205,15 @@ graph TD
 3.  **Парсинг (Parse)**: `DnsParserService` пытается извлечь доменное имя (из DNS-кэша или SNI).
     *   Примечание: извлечение SNI делается по исходящему TLS ClientHello и поддерживает сценарий, когда ClientHello разбит на несколько TCP-сегментов (минимальный реассемблинг первых байт потока).
     *   Важно: SNI сам по себе не означает, что трафик относится к целевому процессу. В оркестраторе SNI-триггеры дополнительно фильтруются по PID через корреляцию remote endpoint → PID.
-4.  **Фильтрация (Filter)**: `NoiseHostFilter` проверяет, не является ли хост "шумом" (Microsoft, Google Update).
+4.  **Фильтрация (Filter)**: `UnifiedTrafficFilter` отбрасывает только заведомо нерелевантное (loopback).
 5.  **Очередь (Queue)**: Хост попадает в входную очередь `LiveTestingPipeline`.
-6.  **Валидация (Validate)**: `UnifiedTrafficFilter` проверяет хост перед тестом (дедупликация, фильтрация шума).
+6.  **Валидация (Validate)**: Хост проверяется тестером (DNS/TCP/TLS) без pre-check фильтрации «шума», чтобы не терять сигнал на браузерных/CDN-сценариях.
 7.  **Тестирование (Test)**: `StandardHostTester` забирает хост из очереди и проводит серию тестов (DNS, TCP, TLS).
 8.  **Инспекция (Inspect)**: Параллельно `RstInspectionService` и другие сервисы следят за пакетами этого соединения.
 9.  **Агрегация (Aggregate)**: Результаты тестов и инспекций собираются в `HostTested` модель.
 10. **Классификация (Classify)**: `StandardBlockageClassifier` выносит вердикт (например, `DPI_REDIRECT`).
 11. **Отчет (Report)**: Результат отправляется в UI через `TestResultsManager`.
+    *   Примечание: `NoiseHostFilter` используется на этапе отображения, чтобы не засорять UI «успешными» результатами (Status OK), но не скрывать реальные проблемы.
 12. **Реакция (React)**: Если включен авто-обход, `DiagnosticOrchestrator` включает преемптивный TLS bypass через `BypassController.TlsService.ApplyPreemptiveAsync` (обычно `TLS_DISORDER + DROP_RST`); сам `TlsBypassService` регистрирует/удаляет `BypassFilter` в `TrafficEngine` и через события отдаёт план/метрики/вердикт в UI и оркестратору.
 
 ---
