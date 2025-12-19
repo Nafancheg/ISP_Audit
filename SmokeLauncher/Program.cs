@@ -16,16 +16,38 @@ internal static class Program
             // Требование проекта: строгий прогон smoke без ручного "запусти от админа".
             // Единственное действие пользователя — подтверждение UAC (иначе WinDivert не запустить).
 
-            if (!IsAdministrator())
-            {
-                return RelaunchElevated(args);
-            }
+            // Внутренние аргументы (передаются при relaunch elevated), чтобы не зависеть от
+            // WorkingDirectory/контекста и гарантировать запись JSON в artifacts.
+            const string RepoRootArg = "--_repoRoot";
+            const string JsonPathArg = "--_jsonPath";
 
-            var repoRoot = FindRepoRoot();
+            // 1) Определяем корень репозитория заранее (даже в non-admin),
+            // чтобы можно было предсказуемо сформировать путь отчёта.
+            var repoRoot = TryGetArgValue(args, RepoRootArg) ?? FindRepoRoot();
             if (repoRoot is null)
             {
                 Console.Error.WriteLine("[SmokeLauncher] Не удалось найти корень репозитория (ISP_Audit.sln). Запусти из папки проекта.");
                 return 2;
+            }
+
+            var artifactsDir = Path.Combine(repoRoot, "artifacts");
+            Directory.CreateDirectory(artifactsDir);
+
+            var jsonPath = TryGetArgValue(args, JsonPathArg);
+            if (string.IsNullOrWhiteSpace(jsonPath))
+            {
+                var ts = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                jsonPath = Path.Combine(artifactsDir, $"smoke_strict_{ts}.json");
+            }
+
+            if (!IsAdministrator())
+            {
+                Console.WriteLine("=== SmokeLauncher (Non-Admin) ===");
+                Console.WriteLine($"Repo: {repoRoot}");
+                Console.WriteLine($"JSON (planned): {jsonPath}");
+                Console.WriteLine();
+
+                return RelaunchElevated(args, repoRoot, jsonPath);
             }
 
             var testAppCsproj = Path.Combine(repoRoot, "TestNetworkApp", "TestNetworkApp.csproj");
@@ -34,12 +56,6 @@ internal static class Program
                 Console.Error.WriteLine($"[SmokeLauncher] Не найден проект TestNetworkApp: {testAppCsproj}");
                 return 2;
             }
-
-            var artifactsDir = Path.Combine(repoRoot, "artifacts");
-            Directory.CreateDirectory(artifactsDir);
-
-            var ts = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            var jsonPath = Path.Combine(artifactsDir, $"smoke_strict_{ts}.json");
 
             Console.WriteLine("=== SmokeLauncher (Admin) ===");
             Console.WriteLine($"Repo: {repoRoot}");
@@ -123,7 +139,7 @@ internal static class Program
         return principal.IsInRole(WindowsBuiltInRole.Administrator);
     }
 
-    private static int RelaunchElevated(string[] args)
+    private static int RelaunchElevated(string[] args, string repoRoot, string jsonPath)
     {
         // При elevate нельзя редиректить STDOUT/STDERR. Мы просто ждём завершения.
         var exePath = Environment.ProcessPath;
@@ -137,11 +153,25 @@ internal static class Program
         {
             FileName = exePath,
             UseShellExecute = true,
-            Verb = "runas"
+            Verb = "runas",
+            WorkingDirectory = repoRoot
         };
+
+        // Важное: передаём repoRoot/jsonPath в elevated процесс, чтобы отчёт всегда попадал в artifacts.
+        psi.ArgumentList.Add("--_repoRoot");
+        psi.ArgumentList.Add(repoRoot);
+        psi.ArgumentList.Add("--_jsonPath");
+        psi.ArgumentList.Add(jsonPath);
 
         foreach (var a in args)
         {
+            // Внутренние аргументы не прокидываем повторно.
+            if (string.Equals(a, "--_repoRoot", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(a, "--_jsonPath", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             psi.ArgumentList.Add(a);
         }
 
@@ -188,6 +218,24 @@ internal static class Program
                 }
 
                 dir = dir.Parent;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? TryGetArgValue(string[] args, string key)
+    {
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (string.Equals(args[i], key, StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 < args.Length)
+                {
+                    return args[i + 1];
+                }
+
+                return null;
             }
         }
 

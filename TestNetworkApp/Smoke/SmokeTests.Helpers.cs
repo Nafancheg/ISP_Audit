@@ -101,6 +101,21 @@ namespace TestNetworkApp.Smoke
             }
 
             var value = field.GetValue(instance);
+
+            // Если поле null, то для ссылочных/Nullable<T> типов это допустимо.
+            // Иначе (для не-nullable value-type) это ошибка.
+            if (value is null)
+            {
+                var t = typeof(T);
+                var allowsNull = !t.IsValueType || Nullable.GetUnderlyingType(t) != null;
+                if (allowsNull)
+                {
+                    return default!;
+                }
+
+                throw new InvalidCastException($"Поле '{fieldName}' имеет тип 'null', ожидали '{typeof(T).FullName}'");
+            }
+
             if (value is not T typed)
             {
                 throw new InvalidCastException($"Поле '{fieldName}' имеет тип '{value?.GetType().FullName ?? "null"}', ожидали '{typeof(T).FullName}'");

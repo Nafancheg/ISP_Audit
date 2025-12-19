@@ -145,7 +145,12 @@ namespace IspAudit.Bypass
                 FragmentEnabled = false,
                 DisorderEnabled = false,
                 FakeEnabled = false,
-                DropRstEnabled = false
+                DropRstEnabled = false,
+                // Важно: DisableAsync должен полностью выключать bypass.
+                // Иначе TtlTrickEnabled из профиля может оставить IsAnyEnabled()==true
+                // и фильтр будет пересоздан/останется в TrafficEngine.
+                TtlTrickEnabled = false,
+                AutoTtlEnabled = false
             }, cancellationToken);
         }
 
