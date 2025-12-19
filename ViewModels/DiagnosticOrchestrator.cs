@@ -207,6 +207,8 @@ namespace IspAudit.ViewModels
 
         public bool HasRecommendations => _recommendedStrategies.Count > 0;
 
+        public bool HasAnyRecommendations => _recommendedStrategies.Count > 0 || _manualRecommendations.Count > 0;
+
         public string RecommendedStrategiesText
         {
             get => _recommendedStrategiesText;
@@ -1163,19 +1165,17 @@ namespace IspAudit.ViewModels
             if (string.IsNullOrWhiteSpace(msg)) return;
 
             // v2 — главный источник рекомендаций. Legacy сохраняем только как справочное.
-            var isV2 = msg.TrimStart().StartsWith("[V2]", StringComparison.OrdinalIgnoreCase);
+            var isV2 = msg.TrimStart().StartsWith("[V2]", StringComparison.OrdinalIgnoreCase)
+                || msg.Contains("v2:", StringComparison.OrdinalIgnoreCase);
 
-            // Нас интересуют строки вида "💡 Рекомендация: TLS_FRAGMENT" или "→ Стратегия: DROP_RST"
-            if (!(msg.Contains("Рекомендация:", StringComparison.OrdinalIgnoreCase) ||
-                  msg.Contains("Стратегия:", StringComparison.OrdinalIgnoreCase)))
-            {
-                return;
-            }
+            // Нас интересуют строки вида "💡 Рекомендация: TLS_FRAGMENT" или "→ Стратегия: DROP_RST".
+            // Не используем Split(':'), потому что в сообщении может быть host:port или другие двоеточия.
+            var raw = TryExtractAfterMarker(msg, "Рекомендация:")
+                ?? TryExtractAfterMarker(msg, "Стратегия:");
 
-            var parts = msg.Split(':');
-            if (parts.Length < 2) return;
+            if (string.IsNullOrWhiteSpace(raw)) return;
 
-            var raw = parts[1].Trim();
+            raw = raw.Trim();
             var paren = raw.IndexOf('(');
             if (paren > 0)
             {
@@ -1237,6 +1237,17 @@ namespace IspAudit.ViewModels
             }
 
             UpdateRecommendationTexts(bypassController);
+        }
+
+        private static string? TryExtractAfterMarker(string msg, string marker)
+        {
+            var idx = msg.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return null;
+
+            idx += marker.Length;
+            if (idx >= msg.Length) return null;
+
+            return msg.Substring(idx);
         }
 
         private void TrackV2DiagnosisSummary(string msg)
@@ -1310,6 +1321,7 @@ namespace IspAudit.ViewModels
             RecommendedStrategiesText = "Нет рекомендаций";
             ManualRecommendationsText = "";
             OnPropertyChanged(nameof(HasRecommendations));
+            OnPropertyChanged(nameof(HasAnyRecommendations));
         }
 
         private void UpdateRecommendationTexts(BypassController bypassController)
@@ -1317,15 +1329,44 @@ namespace IspAudit.ViewModels
             // Убираем рекомендации, если всё уже включено (актуально при ручном переключении)
             _recommendedStrategies.RemoveWhere(s => IsStrategyActive(s, bypassController));
 
-            RecommendedStrategiesText = _recommendedStrategies.Count == 0
-                ? "Нет рекомендаций"
-                : BuildRecommendationPanelText();
+            var hasAny = _recommendedStrategies.Count > 0 || _manualRecommendations.Count > 0;
 
-            ManualRecommendationsText = _manualRecommendations.Count == 0
-                ? ""
+            if (!hasAny)
+            {
+                RecommendedStrategiesText = "Нет рекомендаций";
+            }
+            else if (_recommendedStrategies.Count == 0)
+            {
+                var header = string.IsNullOrWhiteSpace(_lastV2DiagnosisSummary)
+                    ? "[V2] Диагноз определён"
+                    : _lastV2DiagnosisSummary;
+
+                RecommendedStrategiesText = $"{header}\nАвтоматических рекомендаций нет";
+            }
+            else
+            {
+                RecommendedStrategiesText = BuildRecommendationPanelText();
+            }
+
+            // Ручные рекомендации показываем отдельной строкой в UI.
+            var legacyManualTokens = _legacyManualRecommendations
+                .Where(t => !_manualRecommendations.Contains(t))
+                .ToList();
+
+            var manualText = _manualRecommendations.Count == 0
+                ? null
                 : $"Ручные действия: {string.Join(", ", _manualRecommendations)}";
 
+            var legacyManualText = legacyManualTokens.Count == 0
+                ? null
+                : $"Legacy (справочно): {string.Join(", ", legacyManualTokens)}";
+
+            ManualRecommendationsText = manualText == null
+                ? (legacyManualText ?? "")
+                : (legacyManualText == null ? manualText : $"{manualText}\n{legacyManualText}");
+
             OnPropertyChanged(nameof(HasRecommendations));
+            OnPropertyChanged(nameof(HasAnyRecommendations));
 
             // Подсказка остаётся статичной, но триггерим обновление, чтобы UI мог показать tooltip
             OnPropertyChanged(nameof(RecommendationHintText));

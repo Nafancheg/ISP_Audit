@@ -228,6 +228,7 @@ namespace IspAudit.ViewModels
         public string AutoBypassMetrics => Orchestrator.AutoBypassMetrics;
         public System.Windows.Media.Brush AutoBypassStatusBrush => Orchestrator.AutoBypassStatusBrush;
         public bool HasRecommendations => Orchestrator.HasRecommendations;
+        public bool HasAnyRecommendations => Orchestrator.HasAnyRecommendations;
         public string RecommendedStrategiesText => Orchestrator.RecommendedStrategiesText;
         public string ManualRecommendationsText => Orchestrator.ManualRecommendationsText;
         public string RecommendationHintText => Orchestrator.RecommendationHintText;

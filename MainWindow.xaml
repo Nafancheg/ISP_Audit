@@ -124,13 +124,16 @@
                             <!-- Recommendations -->
                             <Border Background="#EBF5FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="4"
                                     Padding="10" Margin="0,0,0,8"
-                                    Visibility="{Binding HasRecommendations, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    ToolTip="{Binding RecommendationHintText}"
+                                    Visibility="{Binding HasAnyRecommendations, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                         <materialDesign:PackIcon Kind="LightbulbOutline" Width="16" Height="16" Margin="0,0,6,0" Foreground="#1E40AF"/>
                                         <TextBlock Text="Рекомендации" FontWeight="SemiBold" FontSize="14" Foreground="#1E40AF"/>
                                     </StackPanel>
                                     <TextBlock Text="{Binding RecommendedStrategiesText}" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                                    <TextBlock Text="{Binding ManualRecommendationsText}" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,6"
+                                               Visibility="{Binding ManualRecommendationsText, Converter={StaticResource StringToVisibilityConverter}}"/>
                                     <Button Content="Применить" Command="{Binding ApplyRecommendationsCommand}"
                                             Style="{StaticResource PrimaryButtonStyle}" Padding="12,6" FontSize="13" HorizontalAlignment="Left" Height="32"/>
                                 </StackPanel>
