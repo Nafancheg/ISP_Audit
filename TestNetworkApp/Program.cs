@@ -20,6 +20,10 @@ namespace TestNetworkApp
             // Нужен для CP866/прочих OEM-кодировок на русской Windows.
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
+            // Фикс: чтобы кириллица в консоли не превращалась в кракозябры.
+            Console.InputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+            Console.OutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
             if (args.Length > 0 && string.Equals(args[0], "--ui-reducer-smoke", StringComparison.OrdinalIgnoreCase))
             {
                 RunUiReducerSmoke();

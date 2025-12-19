@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -261,7 +262,9 @@ namespace TestNetworkApp.Smoke
 
                     var json = JsonSerializer.Serialize(report, new JsonSerializerOptions
                     {
-                        WriteIndented = true
+                        WriteIndented = true,
+                        // Чтобы русские строки в отчёте были читабельны, а не в виде \u0441\u0442...
+                        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
                     });
 
                     var outPath = _options.JsonOutputPath!;

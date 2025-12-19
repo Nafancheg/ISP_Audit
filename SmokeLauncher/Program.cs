@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Principal;
+using System.Text;
 
 namespace SmokeLauncher;
 
@@ -13,6 +14,11 @@ internal static class Program
     {
         try
         {
+            // Важно: фиксируем кодировку консоли, иначе кириллица в PowerShell/ConsoleHost часто превращается в кракозябры.
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            Console.InputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+            Console.OutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
             // Требование проекта: строгий прогон smoke без ручного "запусти от админа".
             // Единственное действие пользователя — подтверждение UAC (иначе WinDivert не запустить).
 
