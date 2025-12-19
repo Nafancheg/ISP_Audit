@@ -158,6 +158,27 @@ namespace IspAudit.ViewModels
             {
                 existing.Status = status;
                 existing.Details = details;
+
+                // ЯКОРЬ: если карточка уже создана по человеко‑понятному ключу (hostname/SNI),
+                // но позже мы узнали реальный IP (fallbackIp), обязательно сохраняем его.
+                // Иначе в UI колонка IP начинает показывать hostname.
+                if (!string.IsNullOrWhiteSpace(fallbackIp) && IPAddress.TryParse(fallbackIp, out _))
+                {
+                    var old = existing.Target;
+                    if (old != null && string.IsNullOrWhiteSpace(old.FallbackIp))
+                    {
+                        existing.Target = new Target
+                        {
+                            Name = old.Name,
+                            Host = old.Host,
+                            Service = old.Service,
+                            Critical = old.Critical,
+                            FallbackIp = fallbackIp,
+                            SniHost = old.SniHost,
+                            ReverseDnsHost = old.ReverseDnsHost
+                        };
+                    }
+                }
                 
                 // Parse flags from details
                 existing.IsRstInjection = BlockageCode.ContainsCode(details, BlockageCode.TcpRstInjection) || details.Contains("RST-инжект");

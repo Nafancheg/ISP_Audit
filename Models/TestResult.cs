@@ -26,6 +26,19 @@ namespace IspAudit.Models
             {
                 _target = value;
                 OnPropertyChanged(nameof(Target));
+                OnPropertyChanged(nameof(DisplayIp));
+            }
+        }
+
+        public string DisplayIp
+        {
+            get
+            {
+                var ip = Target?.FallbackIp;
+                if (!string.IsNullOrWhiteSpace(ip)) return ip;
+
+                // На старом контракте Host мог быть IP. На новом Host часто становится человеко‑понятным ключом.
+                return Target?.Host ?? string.Empty;
             }
         }
 

@@ -47,6 +47,27 @@ namespace IspAudit.Utils
                 return new FilterDecision(FilterAction.LogOnly, "Status OK");
             }
 
+            // 2.1 v2: не считаем проблемой ситуацию, когда тесты формально OK (DNS/TCP/TLS ✓),
+            // а в хвосте только «неуверенный» диагноз/недостаточно данных.
+            // Иначе UI превращается в «всё красное», хотя фактических отказов нет.
+            if (result.BypassStrategy == PipelineContract.BypassNone
+                && result.TestResult.DnsOk
+                && result.TestResult.TcpOk
+                && result.TestResult.TlsOk)
+            {
+                var tail = result.RecommendedAction ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(tail)
+                    && (tail.Contains("v2:", StringComparison.OrdinalIgnoreCase) || tail.Contains("[V2]", StringComparison.OrdinalIgnoreCase)))
+                {
+                    // Для шумовых имён — дропаем, для остальных — логируем без карточки.
+                    if (!string.IsNullOrEmpty(bestName) && NoiseHostFilter.Instance.IsNoiseHost(bestName))
+                    {
+                        return new FilterDecision(FilterAction.Drop, "Noise host (post-check, v2 tail, OK)");
+                    }
+                    return new FilterDecision(FilterAction.LogOnly, "V2 tail, but checks OK");
+                }
+            }
+
             // 3. Всё остальное (блокировки, ошибки, закрытые порты) показываем
             return new FilterDecision(FilterAction.Process, "Issue detected");
         }

@@ -387,7 +387,7 @@
 
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="SNI" Binding="{Binding Target.SniHost}" Width="1.4*" FontWeight="SemiBold"/>
-                        <DataGridTextColumn Header="IP" Binding="{Binding Target.Host}" Width="0.9*"/>
+                        <DataGridTextColumn Header="IP" Binding="{Binding DisplayIp}" Width="0.9*"/>
                         <DataGridTextColumn Header="rDNS" Binding="{Binding Target.ReverseDnsHost}" Width="1.4*"/>
                         
                         <DataGridTemplateColumn Header="Статус" Width="0.8*">
