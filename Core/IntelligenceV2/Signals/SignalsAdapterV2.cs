@@ -53,13 +53,17 @@ public sealed class SignalsAdapterV2
     public void Observe(HostTested tested, BlockageSignals legacySignals, IProgress<string>? progress = null)
     {
         var hostKey = BuildStableHostKey(tested);
-        var nowUtc = DateTimeOffset.UtcNow;
+        var tsUtc = DateTimeOffset.UtcNow;
 
-        AppendHostTested(hostKey, tested, nowUtc);
-        AppendFromLegacySignals(hostKey, legacySignals, nowUtc);
+        // Важно для Gate 1→2 и логов: события в цепочке должны иметь восстанавливаемый порядок.
+        // Поэтому внутри одного Observe(...) делаем временные метки строго возрастающими.
+        AppendHostTested(hostKey, tested, tsUtc);
+        tsUtc = tsUtc.AddMilliseconds(1);
+
+        AppendFromLegacySignals(hostKey, legacySignals, ref tsUtc);
 
         // Gate 1→2: показываем компактную строку, если у хоста уже накопилась "цепочка".
-        TryReportGate1To2(hostKey, nowUtc, progress);
+        TryReportGate1To2(hostKey, tsUtc, progress);
     }
 
     public BlockageSignalsV2 BuildSnapshot(HostTested tested, BlockageSignals legacySignals, TimeSpan window)
@@ -138,51 +142,63 @@ public sealed class SignalsAdapterV2
         _store.Append(ev);
     }
 
-    private void AppendFromLegacySignals(string hostKey, BlockageSignals signals, DateTimeOffset nowUtc)
+    private void AppendFromLegacySignals(string hostKey, BlockageSignals signals, ref DateTimeOffset tsUtc)
     {
         // TcpRetransStats (дедуплим очень часто)
         if (signals.TotalPackets > 0)
         {
-            AppendDebounced(hostKey,
+            if (AppendDebounced(hostKey,
                 SignalEventType.TcpRetransStats,
-                nowUtc,
+                tsUtc,
                 source: "TcpRetransmissionTracker",
                 value: new TcpRetransPayload(signals.RetransmissionCount, signals.TotalPackets),
-                reason: null);
+                reason: null))
+            {
+                tsUtc = tsUtc.AddMilliseconds(1);
+            }
         }
 
         if (signals.HasSuspiciousRst)
         {
-            AppendDebounced(hostKey,
+            if (AppendDebounced(hostKey,
                 SignalEventType.SuspiciousRstObserved,
-                nowUtc,
+                tsUtc,
                 source: "RstInspectionService",
                 value: signals.SuspiciousRstDetails,
-                reason: signals.SuspiciousRstDetails);
+                reason: signals.SuspiciousRstDetails))
+            {
+                tsUtc = tsUtc.AddMilliseconds(1);
+            }
         }
 
         if (signals.HasHttpRedirectDpi)
         {
-            AppendDebounced(hostKey,
+            if (AppendDebounced(hostKey,
                 SignalEventType.HttpRedirectObserved,
-                nowUtc,
+                tsUtc,
                 source: "HttpRedirectDetector",
                 value: signals.RedirectToHost,
-                reason: signals.RedirectToHost);
+                reason: signals.RedirectToHost))
+            {
+                tsUtc = tsUtc.AddMilliseconds(1);
+            }
         }
 
         if (signals.UdpUnansweredHandshakes > 0)
         {
-            AppendDebounced(hostKey,
+            if (AppendDebounced(hostKey,
                 SignalEventType.UdpHandshakeUnanswered,
-                nowUtc,
+                tsUtc,
                 source: "UdpInspectionService",
                 value: signals.UdpUnansweredHandshakes,
-                reason: signals.UdpUnansweredHandshakes.ToString());
+                reason: signals.UdpUnansweredHandshakes.ToString()))
+            {
+                tsUtc = tsUtc.AddMilliseconds(1);
+            }
         }
     }
 
-    private void AppendDebounced(
+    private bool AppendDebounced(
         string hostKey,
         SignalEventType type,
         DateTimeOffset nowUtc,
@@ -194,7 +210,7 @@ public sealed class SignalsAdapterV2
         if (last != null && (nowUtc - last.ObservedAtUtc) < SameTypeDebounce)
         {
             // Слишком часто — пропускаем, чтобы не раздувать sequence.
-            return;
+            return false;
         }
 
         _store.Append(new SignalEvent
@@ -207,6 +223,8 @@ public sealed class SignalsAdapterV2
             Reason = reason,
             Metadata = null
         });
+
+        return true;
     }
 
     private void TryReportGate1To2(string hostKey, DateTimeOffset nowUtc, IProgress<string>? progress)
@@ -222,10 +240,36 @@ public sealed class SignalsAdapterV2
         var fromUtc = nowUtc - IntelligenceV2ContractDefaults.DefaultAggregationWindow;
         var recent = _store.ReadWindow(hostKey, fromUtc, nowUtc);
 
-        // Для Gate 1→2 нам важно, чтобы у хоста было минимум 2 события
-        // и чтобы в цепочке был HostTested.
-        if (recent.Count < 2) return;
+        // Для Gate 1→2 нам важно качество цепочки, иначе диагностика будет работать по шуму.
+        // Требования:
+        // - минимум 3 события
+        // - минимум 3 разных типа
+        // - обязательно HostTested + минимум 2 события "других слоёв"
+        // - временная последовательность восстанавливается (ObservedAtUtc строго возрастает)
+        if (recent.Count < 3) return;
         if (!recent.HasType(SignalEventType.HostTested)) return;
+
+        var distinctTypes = new HashSet<SignalEventType>();
+        foreach (var e in recent)
+        {
+            distinctTypes.Add(e.Type);
+        }
+        if (distinctTypes.Count < 3) return;
+
+        var hasOtherLayer =
+            recent.HasType(SignalEventType.TcpRetransStats) ||
+            recent.HasType(SignalEventType.SuspiciousRstObserved) ||
+            recent.HasType(SignalEventType.HttpRedirectObserved) ||
+            recent.HasType(SignalEventType.UdpHandshakeUnanswered);
+        if (!hasOtherLayer) return;
+
+        for (var i = 1; i < recent.Count; i++)
+        {
+            if (recent[i - 1].ObservedAtUtc >= recent[i].ObservedAtUtc)
+            {
+                return;
+            }
+        }
 
         // Важно для Gate 1→2: по логу должна восстанавливаться *последовательность* событий.
         // Поэтому печатаем компактный tail в порядке прихода: Type(+deltaMs) → Type(+deltaMs) ...

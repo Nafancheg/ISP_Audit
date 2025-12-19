@@ -13,6 +13,10 @@ namespace IspAudit.Core.IntelligenceV2.Signals;
 /// </summary>
 public sealed class InMemorySignalSequenceStore
 {
+    // Защита от роста памяти: ограничиваем число событий на хост.
+    // Важно: это не часть "контракта" v2, а реализация in-memory store.
+    private const int MaxEventsPerHost = 100;
+
     private sealed class SequenceBucket
     {
         public object Gate { get; } = new();
@@ -67,6 +71,14 @@ public sealed class InMemorySignalSequenceStore
             }
 
             events.Add(signalEvent);
+
+            // Жёсткий кап: если событий слишком много — удаляем самые старые.
+            // Это защищает от сценариев с частыми событиями в пределах TTL.
+            while (events.Count > MaxEventsPerHost)
+            {
+                events.RemoveAt(0);
+            }
+
             bucket.Sequence.LastUpdatedUtc = nowUtc;
         }
 

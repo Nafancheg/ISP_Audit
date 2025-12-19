@@ -308,8 +308,8 @@ namespace TestNetworkApp.Smoke
                     Window: TimeSpan.FromSeconds(30),
                     RetransmissionCount: 2,
                     TotalPackets: 10,
-                    HasHttpRedirectDpi: false,
-                    RedirectToHost: null,
+                    HasHttpRedirectDpi: true,
+                    RedirectToHost: "example.org",
                     HasSuspiciousRst: false,
                     SuspiciousRstDetails: null,
                     UdpUnansweredHandshakes: 0);
@@ -322,7 +322,7 @@ namespace TestNetworkApp.Smoke
                 if (!lines.Any(s => s.Contains("[V2][GATE1]", StringComparison.Ordinal)))
                 {
                     return new SmokeTestResult("DPI2-006", "Gate 1→2: в логе появляется маркер [V2][GATE1]", SmokeOutcome.Fail, TimeSpan.Zero,
-                        "Не нашли строку [V2][GATE1] после Observe(...). Ожидали, что событий >=2 достаточно для Gate 1→2");
+                        "Не нашли строку [V2][GATE1] после Observe(...). Ожидали, что 3 разных типа событий (HostTested + ретранс/редирект) достаточно для Gate 1→2");
                 }
 
                 var line = lines.First(s => s.Contains("[V2][GATE1]", StringComparison.Ordinal));

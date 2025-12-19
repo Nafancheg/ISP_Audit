@@ -77,6 +77,8 @@
 
 Актуализация (Runtime, 16.12.2025):
 - Step 1 v2 Signals частично подключён: `SignalsAdapterV2` пишет события в `InMemorySignalSequenceStore` на этапе Classification в `LiveTestingPipeline`.
+    - Есть защиты от роста памяти: debounce одинаковых событий и cap числа событий на HostKey (in-memory store).
+    - Политика DoH в v2 рекомендациях консервативная: DoH не рекомендуется при "чистом DNS" диагнозе, а только в multi-layer сценариях.
 - Step 2 v2 Diagnosis подключён: `StandardDiagnosisEngineV2` ставит диагноз по `BlockageSignalsV2` и возвращает пояснения, основанные на фактах (DNS fail, TCP/TLS timeout, TLS auth failure, retx-rate, HTTP redirect) без привязки к стратегиям/обходу.
 - Step 3 v2 Selector подключён: `StandardStrategySelectorV2` строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI-лога (без auto-apply).
 - Step 4 v2 Executor (MVP) подключён: `BypassExecutorMvp` формирует компактный, читаемый пользователем вывод (диагноз + уверенность + 1 короткое объяснение + список стратегий) и **не** применяет обход.

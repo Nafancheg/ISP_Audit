@@ -120,10 +120,10 @@ public sealed class StandardStrategySelectorV2
         // ВАЖНО: не читаем diagnosis.InputSignals / метрики — только DiagnosisId.
         return diagnosisId switch
         {
+            // Вариант C: DoH не рекомендуем при "чисто DNS" диагнозе,
+            // чтобы не повышать риск ложных рекомендаций и не путать UX.
             DiagnosisId.DnsHijack =>
-            [
-                new StrategyTemplate(StrategyId.UseDoh, basePriority: 100, risk: RiskLevel.Low)
-            ],
+                new List<StrategyTemplate>(),
 
             DiagnosisId.SilentDrop =>
             [
