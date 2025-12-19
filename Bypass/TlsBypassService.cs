@@ -36,6 +36,11 @@ namespace IspAudit.Bypass
         public IReadOnlyList<TlsFragmentPreset> FragmentPresets => _presets;
 
         public TlsBypassService(TrafficEngine trafficEngine, BypassProfile baseProfile, Action<string>? log = null)
+            : this(trafficEngine, baseProfile, log, startMetricsTimer: true)
+        {
+        }
+
+        internal TlsBypassService(TrafficEngine trafficEngine, BypassProfile baseProfile, Action<string>? log, bool startMetricsTimer)
         {
             _trafficEngine = trafficEngine;
             _baseProfile = baseProfile;
@@ -50,8 +55,29 @@ namespace IspAudit.Bypass
                 Interval = 2000
             };
             _metricsTimer.Elapsed += (_, _) => _ = PullMetricsAsync();
-            _metricsTimer.Start();
+            if (startMetricsTimer)
+            {
+                _metricsTimer.Start();
+            }
         }
+
+        internal void SetFilterForSmoke(BypassFilter filter, DateTime? metricsSince = null, TlsBypassOptions? options = null)
+        {
+            if (filter == null) throw new ArgumentNullException(nameof(filter));
+
+            lock (_sync)
+            {
+                _filter = filter;
+                if (options != null)
+                {
+                    _options = options;
+                }
+
+                _metricsSince = metricsSince ?? DateTime.Now;
+            }
+        }
+
+        internal Task PullMetricsOnceAsyncForSmoke() => PullMetricsAsync();
 
         /// <summary>
         /// Текущий снимок опций (без повторного построения профиля).

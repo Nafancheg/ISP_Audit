@@ -148,6 +148,12 @@
 - `INSP-004`: `TcpRetransmissionTracker` принимает минимальный TCP пакет (40 байт) и предоставляет `TryGetSuspiciousDrop(...)` (сигнал при доле ретрансмиссий >=10% на выборке >=20 пакетов).
 - `INSP-005`: `HttpRedirectDetector` извлекает host из `Location:` для HTTP 3xx.
 
+Актуализация (Dev, 19.12.2025): реализованы smoke-тесты TLS bypass (частично, категория `bypass`)
+- Реализованы `BYPASS-003..004` в `TestNetworkApp/Smoke/SmokeTests.Bypass.cs`, добавлена регистрация в реестр.
+- `BYPASS-003`: детерминированная проверка публикации `MetricsUpdated` (2+ вызова) и заполненности ключевых полей метрик (`ClientHellosObserved`, `ClientHellosFragmented`, `RstDropped`) на синтетическом трафике.
+- `BYPASS-004`: детерминированная проверка порогов вердикта по ratio RST/фрагментации (`Red > 4`, `Yellow > 1.5`, иначе `Green`) через событие `VerdictChanged`.
+- Для детерминизма не используется WinDivert: `BypassFilter` кормится синтетическими TCP пакетами (TLS ClientHello + RST), а `TlsBypassService` получает internal-хуки для установки тестового фильтра и принудительного чтения метрик (без таймера и без запуска `TrafficEngine.StartAsync`).
+
 Рекомендуемые быстрые проверки (перед/после реального браузерного прогона):
 - “Проблема не исчезает”: событие `[NOISE]`/noise-hostname не должно удалять карточку со статусом `Fail/Warn`.
 - “SNI позже IP”: сначала `❌ <ip>...`, потом `[SNI] Detected...` → карточка должна переехать на hostname и остаться `Warn/Fail`.

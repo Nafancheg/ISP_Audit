@@ -64,6 +64,8 @@ namespace TestNetworkApp.Smoke
 
                 ["BYPASS-001"] = Bypass_TlsBypassService_RegistersFilter,
                 ["BYPASS-002"] = Bypass_TlsBypassService_RemovesFilter,
+                ["BYPASS-003"] = Bypass_TlsBypassService_MetricsUpdated_Periodic,
+                ["BYPASS-004"] = Bypass_TlsBypassService_VerdictChanged_RatioThresholds,
                 ["BYPASS-005"] = Bypass_TlsBypassService_ProfilePresetPresent,
             };
 
