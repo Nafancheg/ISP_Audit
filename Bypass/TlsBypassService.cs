@@ -19,13 +19,15 @@ namespace IspAudit.Bypass
         private readonly TrafficEngine _trafficEngine;
         private readonly BypassProfile _baseProfile;
         private readonly Action<string>? _log;
+        private readonly Func<DateTime> _now;
+        private readonly bool _useTrafficEngine;
         private readonly object _sync = new();
         private readonly Timer _metricsTimer;
 
         private BypassFilter? _filter;
         private TlsBypassOptions _options;
         private DateTime _metricsSince = DateTime.MinValue;
-        private readonly AggressiveAutoAdjustStrategy _autoAdjust = new();
+        private readonly AggressiveAutoAdjustStrategy _autoAdjust;
         private readonly AutoTtlAdjustStrategy _autoTtl;
         private readonly IReadOnlyList<TlsFragmentPreset> _presets;
 
@@ -36,18 +38,32 @@ namespace IspAudit.Bypass
         public IReadOnlyList<TlsFragmentPreset> FragmentPresets => _presets;
 
         public TlsBypassService(TrafficEngine trafficEngine, BypassProfile baseProfile, Action<string>? log = null)
-            : this(trafficEngine, baseProfile, log, startMetricsTimer: true)
+            : this(trafficEngine, baseProfile, log, startMetricsTimer: true, useTrafficEngine: true, nowProvider: null)
         {
         }
 
         internal TlsBypassService(TrafficEngine trafficEngine, BypassProfile baseProfile, Action<string>? log, bool startMetricsTimer)
+            : this(trafficEngine, baseProfile, log, startMetricsTimer, useTrafficEngine: true, nowProvider: null)
+        {
+        }
+
+        internal TlsBypassService(
+            TrafficEngine trafficEngine,
+            BypassProfile baseProfile,
+            Action<string>? log,
+            bool startMetricsTimer,
+            bool useTrafficEngine,
+            Func<DateTime>? nowProvider)
         {
             _trafficEngine = trafficEngine;
             _baseProfile = baseProfile;
             _log = log;
+            _useTrafficEngine = useTrafficEngine;
+            _now = nowProvider ?? (() => DateTime.Now);
             _options = TlsBypassOptions.CreateDefault(_baseProfile);
             _presets = BuildPresets(_baseProfile);
-            _autoTtl = new AutoTtlAdjustStrategy(_log);
+            _autoAdjust = new AggressiveAutoAdjustStrategy(_now);
+            _autoTtl = new AutoTtlAdjustStrategy(_log, _now);
 
             _metricsTimer = new Timer
             {
@@ -73,7 +89,7 @@ namespace IspAudit.Bypass
                     _options = options;
                 }
 
-                _metricsSince = metricsSince ?? DateTime.Now;
+                _metricsSince = metricsSince ?? _now();
             }
         }
 
@@ -137,7 +153,10 @@ namespace IspAudit.Bypass
         {
             try
             {
-                _trafficEngine.RemoveFilter("BypassFilter");
+                if (_useTrafficEngine)
+                {
+                    _trafficEngine.RemoveFilter("BypassFilter");
+                }
 
                 TlsBypassOptions optionsSnapshot;
                 lock (_sync)
@@ -158,17 +177,21 @@ namespace IspAudit.Bypass
 
                 var profile = BuildProfile(optionsSnapshot);
                 var filter = new BypassFilter(profile, _log, optionsSnapshot.PresetName);
-                _trafficEngine.RegisterFilter(filter);
 
-                if (!_trafficEngine.IsRunning)
+                if (_useTrafficEngine)
                 {
-                    await _trafficEngine.StartAsync(cancellationToken).ConfigureAwait(false);
+                    _trafficEngine.RegisterFilter(filter);
+
+                    if (!_trafficEngine.IsRunning)
+                    {
+                        await _trafficEngine.StartAsync(cancellationToken).ConfigureAwait(false);
+                    }
                 }
 
                 lock (_sync)
                 {
                     _filter = filter;
-                    _metricsSince = DateTime.Now;
+                    _metricsSince = _now();
                 }
 
                 StateChanged?.Invoke(new TlsBypassState(true, "-", _metricsSince.ToString("HH:mm:ss")));
@@ -178,6 +201,37 @@ namespace IspAudit.Bypass
             {
                 _log?.Invoke($"[Bypass] Ошибка применения опций: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Smoke-хук: запустить логику автонастроек (AutoAdjustAggressive/AutoTTL) на переданных метриках,
+        /// без привязки к реальному TrafficEngine. Возвращает true, если опции были изменены и переприменены.
+        /// </summary>
+        internal async Task<bool> TryAutoAdjustOnceForSmoke(TlsBypassMetrics metrics, TlsBypassVerdict? verdictOverride = null)
+        {
+            TlsBypassOptions options;
+            lock (_sync)
+            {
+                options = _options;
+            }
+
+            var verdict = verdictOverride ?? CalculateVerdict(metrics, options);
+
+            var adjustedSizes = _autoAdjust.TryAdjust(options, metrics, verdict);
+            if (adjustedSizes != null)
+            {
+                await ApplyAsync(options with { FragmentSizes = adjustedSizes }, CancellationToken.None).ConfigureAwait(false);
+                return true;
+            }
+
+            var adjustedOptions = _autoTtl.TryAdjust(options, metrics, verdict);
+            if (adjustedOptions != null)
+            {
+                await ApplyAsync(adjustedOptions, CancellationToken.None).ConfigureAwait(false);
+                return true;
+            }
+
+            return false;
         }
 
         private BypassProfile BuildProfile(TlsBypassOptions options)
@@ -392,7 +446,7 @@ namespace IspAudit.Bypass
 
         public bool IsAnyEnabled()
         {
-            return FragmentEnabled || DisorderEnabled || FakeEnabled || DropRstEnabled;
+            return FragmentEnabled || DisorderEnabled || FakeEnabled || DropRstEnabled || TtlTrickEnabled;
         }
 
         public string FragmentSizesAsText()
@@ -481,6 +535,12 @@ namespace IspAudit.Bypass
         private bool _adjustedDown;
         private bool _adjustedUp;
         private DateTime? _greenSince;
+        private readonly Func<DateTime> _now;
+
+        public AggressiveAutoAdjustStrategy(Func<DateTime> now)
+        {
+            _now = now ?? throw new ArgumentNullException(nameof(now));
+        }
 
         public IReadOnlyList<int>? TryAdjust(TlsBypassOptions options, TlsBypassMetrics metrics, TlsBypassVerdict verdict)
         {
@@ -513,14 +573,14 @@ namespace IspAudit.Bypass
             // Правило 2: устойчиво зелёный >30с — немного усилить (не ниже 4)
             if (verdict.Color == VerdictColor.Green)
             {
-                _greenSince ??= DateTime.Now;
+                _greenSince ??= _now();
             }
             else
             {
                 _greenSince = null;
             }
 
-            if (verdict.Color == VerdictColor.Green && !_adjustedUp && _greenSince.HasValue && DateTime.Now - _greenSince.Value > TimeSpan.FromSeconds(30))
+            if (verdict.Color == VerdictColor.Green && !_adjustedUp && _greenSince.HasValue && _now() - _greenSince.Value > TimeSpan.FromSeconds(30))
             {
                 var adjusted = options.FragmentSizes.Select(v => Math.Max(4, v)).ToList();
                 var min = adjusted.Min();
@@ -552,6 +612,7 @@ namespace IspAudit.Bypass
     internal sealed class AutoTtlAdjustStrategy
     {
         private readonly Action<string>? _log;
+        private readonly Func<DateTime> _now;
         private int[]? _candidates;
         private int _index;
         private DateTime _trialSince;
@@ -559,9 +620,10 @@ namespace IspAudit.Bypass
         private int _bestTtl;
         private bool _completed;
 
-        public AutoTtlAdjustStrategy(Action<string>? log)
+        public AutoTtlAdjustStrategy(Action<string>? log, Func<DateTime> now)
         {
             _log = log;
+            _now = now ?? throw new ArgumentNullException(nameof(now));
         }
 
         public TlsBypassOptions? TryAdjust(TlsBypassOptions options, TlsBypassMetrics metrics, TlsBypassVerdict verdict)
@@ -587,7 +649,7 @@ namespace IspAudit.Bypass
             {
                 _candidates = BuildCandidates(options.TtlTrickValue);
                 _index = 0;
-                _trialSince = DateTime.Now;
+                _trialSince = _now();
                 _bestTtl = options.TtlTrickValue;
                 _bestRatio = double.PositiveInfinity;
 
@@ -601,7 +663,7 @@ namespace IspAudit.Bypass
                 _log?.Invoke($"[Bypass][AutoTTL] Старт подбора: пробуем TTL={first}");
             }
 
-            var age = DateTime.Now - _trialSince;
+            var age = _now() - _trialSince;
             var enoughData = metrics.ClientHellosFragmented >= 5 || metrics.TlsHandled >= 3;
             if (!enoughData && age < TimeSpan.FromSeconds(12))
             {
@@ -622,7 +684,7 @@ namespace IspAudit.Bypass
             if (_candidates != null && _index < _candidates.Length)
             {
                 var next = _candidates[_index];
-                _trialSince = DateTime.Now;
+                _trialSince = _now();
                 _log?.Invoke($"[Bypass][AutoTTL] Пробуем TTL={next} (best={_bestTtl}, ratio={_bestRatio:F2})");
                 return options with { TtlTrickValue = next };
             }
@@ -644,7 +706,8 @@ namespace IspAudit.Bypass
         private static int[] BuildCandidates(int current)
         {
             // Малый набор TTL, чтобы не дестабилизировать соединения.
-            var baseSet = new[] { 2, 3, 4, 5, 6, 7, 8 };
+            // Набор подобран так, чтобы соответствовать smoke-плану и оставаться предсказуемым.
+            var baseSet = new[] { 5, 10, 15, 20 };
             if (baseSet.Contains(current))
             {
                 return new[] { current }.Concat(baseSet.Where(v => v != current)).ToArray();

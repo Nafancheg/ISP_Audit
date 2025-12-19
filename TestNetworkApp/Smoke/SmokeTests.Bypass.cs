@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
@@ -13,6 +15,40 @@ namespace TestNetworkApp.Smoke
 {
     internal static partial class SmokeTests
     {
+        private static string GetBypassProfilePathForSmoke()
+        {
+            var baseDir = AppContext.BaseDirectory;
+            var candidate = Path.Combine(baseDir, "bypass_profile.json");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            return Path.Combine(Directory.GetCurrentDirectory(), "bypass_profile.json");
+        }
+
+        private static int? TryReadTtlTrickValueFromProfile(string profilePath)
+        {
+            if (!File.Exists(profilePath))
+            {
+                return null;
+            }
+
+            var json = File.ReadAllText(profilePath);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            if (doc.RootElement.TryGetProperty("TtlTrickValue", out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var ttl))
+            {
+                return ttl;
+            }
+
+            return null;
+        }
+
         private static BypassProfile CreateBypassProfileForSmoke(TlsBypassOptions options, BypassProfile baseProfile)
         {
             var tlsStrategy = TlsBypassStrategy.None;
@@ -754,5 +790,366 @@ namespace TestNetworkApp.Smoke
                 return new SmokeTestResult("BYPASS-011", "BypassFilter: порог threshold не фрагментирует короткий ClientHello (ShortClientHello++)", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: short={m.ClientHellosShort}");
             }, ct);
+
+        public static Task<SmokeTestResult> Bypass_BypassFilter_TtlTrick_ManualEnabled_WithFragmentation(CancellationToken ct)
+            => RunAsync("BYPASS-012", "BypassFilter: TTL Trick (manual) применяется вместе с фрагментацией", () =>
+            {
+                var profile = new BypassProfile
+                {
+                    DropTcpRst = false,
+                    FragmentTlsClientHello = true,
+                    TlsStrategy = TlsBypassStrategy.Fragment,
+                    TlsFragmentThreshold = 100,
+                    TlsFragmentSizes = new[] { 80, 220 },
+                    TtlTrick = true,
+                    TtlTrickValue = 10,
+                    RedirectRules = Array.Empty<BypassRedirectRule>()
+                };
+
+                var filter = new BypassFilter(profile, logAction: null, presetName: "smoke");
+                var sender = new CapturePacketSender();
+                var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+
+                var clientIp = IPAddress.Parse("10.10.0.2");
+                var serverIp = IPAddress.Parse("93.184.216.34");
+                var srcPort = (ushort)50120;
+                var seqBase = 10000u;
+                var payload = BuildTlsClientHelloPayloadWithSni("example.com", desiredTotalLength: 300);
+
+                var pkt = BuildIpv4TcpPacket(clientIp, serverIp, srcPort, 443, ttl: 64, ipId: 130, seq: seqBase, tcpFlags: 0x18, payload: payload);
+                var forwarded = filter.Process(new InterceptedPacket(pkt, pkt.Length), ctx, sender);
+                if (forwarded)
+                {
+                    return new SmokeTestResult("BYPASS-012", "BypassFilter: TTL Trick (manual) применяется вместе с фрагментацией", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что пакет будет обработан фрагментацией (drop оригинала), Process должен вернуть false");
+                }
+
+                // Ожидаем: 1 fake (TTL trick) + 2 фрагмента для [80,220]
+                if (sender.Sent.Count != 3)
+                {
+                    return new SmokeTestResult("BYPASS-012", "BypassFilter: TTL Trick (manual) применяется вместе с фрагментацией", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали 3 отправки (1 fake + 2 fragments), получили: {sender.Sent.Count}");
+                }
+
+                var fakeTtl = ReadIpv4Ttl(sender.Sent[0].Bytes);
+                if (fakeTtl != 10)
+                {
+                    return new SmokeTestResult("BYPASS-012", "BypassFilter: TTL Trick (manual) применяется вместе с фрагментацией", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали fake TTL=10, получили: {fakeTtl}");
+                }
+
+                var frag1Len = ReadTcpPayloadLength(sender.Sent[1].Bytes);
+                var frag2Len = ReadTcpPayloadLength(sender.Sent[2].Bytes);
+                if (frag1Len != 80 || frag2Len != 220)
+                {
+                    return new SmokeTestResult("BYPASS-012", "BypassFilter: TTL Trick (manual) применяется вместе с фрагментацией", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали фрагменты len=[80,220], получили len=[{frag1Len},{frag2Len}]");
+                }
+
+                var reassembled = sender.Sent
+                    .Skip(1) // пропускаем fake
+                    .Select(p => new { Seq = ReadTcpSequence(p.Bytes), Payload = SliceTcpPayload(p.Bytes).ToArray() })
+                    .OrderBy(x => x.Seq)
+                    .SelectMany(x => x.Payload)
+                    .ToArray();
+
+                if (!reassembled.SequenceEqual(payload))
+                {
+                    return new SmokeTestResult("BYPASS-012", "BypassFilter: TTL Trick (manual) применяется вместе с фрагментацией", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Реассемблинг фрагментов (без fake) не совпал с исходным ClientHello");
+                }
+
+                return new SmokeTestResult("BYPASS-012", "BypassFilter: TTL Trick (manual) применяется вместе с фрагментацией", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: fake TTL=10 + fragments [80,220]");
+            }, ct);
+
+        public static async Task<SmokeTestResult> Bypass_TlsBypassService_AutoTtl_SelectsAndPersistsBest(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            var profilePath = GetBypassProfilePathForSmoke();
+            string? original = null;
+
+            try
+            {
+                // Сохраняем исходный профиль, чтобы не ломать окружение пользователя.
+                try
+                {
+                    if (File.Exists(profilePath))
+                    {
+                        original = File.ReadAllText(profilePath);
+                    }
+                }
+                catch
+                {
+                    original = null;
+                }
+
+                var now = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Local);
+                using var engine = new TrafficEngine();
+                var baseProfile = BypassProfile.CreateDefault();
+
+                using var svc = new TlsBypassService(
+                    engine,
+                    baseProfile,
+                    log: null,
+                    startMetricsTimer: false,
+                    useTrafficEngine: false,
+                    nowProvider: () => now);
+
+                var options = svc.GetOptionsSnapshot() with
+                {
+                    FragmentEnabled = false,
+                    DisorderEnabled = false,
+                    FakeEnabled = false,
+                    DropRstEnabled = false,
+                    TtlTrickEnabled = true,
+                    AutoTtlEnabled = true,
+                    TtlTrickValue = 10,
+                    PresetName = "Профиль",
+                    AutoAdjustAggressive = false
+                };
+
+                await svc.ApplyAsync(options, ct).ConfigureAwait(false);
+
+                // Детерминированная "карта" качества для кандидатов TTL.
+                // Чем меньше ratio, тем лучше.
+                var rstByTtl = new Dictionary<int, int>
+                {
+                    [10] = 30,
+                    [5] = 2,
+                    [15] = 40,
+                    [20] = 25
+                };
+
+                // Крутим несколько итераций, пока AutoTTL не завершится.
+                for (var i = 0; i < 10; i++)
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    var ttl = svc.GetOptionsSnapshot().TtlTrickValue;
+                    var rst = rstByTtl.TryGetValue(ttl, out var v) ? v : 20;
+
+                    var metrics = new TlsBypassMetrics
+                    {
+                        ClientHellosObserved = 10,
+                        ClientHellosNon443 = 0,
+                        ClientHellosShort = 0,
+                        ClientHellosNoSni = 0,
+                        ClientHellosFragmented = 10,
+                        TlsHandled = 10,
+                        RstDroppedRelevant = rst,
+                        RstDropped = rst,
+                        Plan = "-",
+                        Since = "-",
+                        PresetName = options.PresetName,
+                        FragmentThreshold = baseProfile.TlsFragmentThreshold,
+                        MinChunk = (svc.GetOptionsSnapshot().FragmentSizes ?? Array.Empty<int>()).DefaultIfEmpty(0).Min(),
+                    };
+
+                    var adjusted = await svc.TryAutoAdjustOnceForSmoke(metrics, verdictOverride: new TlsBypassVerdict(VerdictColor.Green, "OK", "smoke"))
+                        .ConfigureAwait(false);
+                    if (!adjusted)
+                    {
+                        break;
+                    }
+
+                    // Имитируем "прошло время" между пробами, чтобы логика trial выглядела реалистично.
+                    now = now.AddSeconds(1);
+                }
+
+                var finalTtl = svc.GetOptionsSnapshot().TtlTrickValue;
+                if (finalTtl != 5)
+                {
+                    return new SmokeTestResult("BYPASS-013", "TlsBypassService: AutoTTL подбирает лучший TTL и сохраняет его в bypass_profile.json", SmokeOutcome.Fail, sw.Elapsed,
+                        $"Ожидали, что AutoTTL выберет TTL=5 как лучший (по ratio), получили TTL={finalTtl}");
+                }
+
+                var savedTtl = TryReadTtlTrickValueFromProfile(profilePath);
+                if (savedTtl != 5)
+                {
+                    return new SmokeTestResult("BYPASS-013", "TlsBypassService: AutoTTL подбирает лучший TTL и сохраняет его в bypass_profile.json", SmokeOutcome.Fail, sw.Elapsed,
+                        $"Ожидали сохранение TTL=5 в профиле ({profilePath}), прочитали: {(savedTtl.HasValue ? savedTtl.Value.ToString() : "<null>")}");
+                }
+
+                return new SmokeTestResult("BYPASS-013", "TlsBypassService: AutoTTL подбирает лучший TTL и сохраняет его в bypass_profile.json", SmokeOutcome.Pass, sw.Elapsed,
+                    $"OK: best TTL={finalTtl}, профиль обновлён");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("BYPASS-013", "TlsBypassService: AutoTTL подбирает лучший TTL и сохраняет его в bypass_profile.json", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+            finally
+            {
+                if (original != null)
+                {
+                    try
+                    {
+                        File.WriteAllText(profilePath, original);
+                    }
+                    catch
+                    {
+                        // Если не удалось восстановить профиль — не роняем smoke (но это нежелательно).
+                    }
+                }
+            }
+        }
+
+        public static async Task<SmokeTestResult> Bypass_TlsBypassService_AutoAdjustAggressive_EarlyRst_ShrinksMinChunkTo4(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                var now = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Local);
+                using var engine = new TrafficEngine();
+                var baseProfile = BypassProfile.CreateDefault();
+
+                using var svc = new TlsBypassService(
+                    engine,
+                    baseProfile,
+                    log: null,
+                    startMetricsTimer: false,
+                    useTrafficEngine: false,
+                    nowProvider: () => now);
+
+                var options = svc.GetOptionsSnapshot() with
+                {
+                    FragmentEnabled = true,
+                    DisorderEnabled = false,
+                    FakeEnabled = false,
+                    DropRstEnabled = false,
+                    PresetName = "Агрессивный",
+                    AutoAdjustAggressive = true,
+                    FragmentSizes = new[] { 32, 32 },
+                    TtlTrickEnabled = false,
+                    AutoTtlEnabled = false
+                };
+
+                await svc.ApplyAsync(options, ct).ConfigureAwait(false);
+
+                var metrics = new TlsBypassMetrics
+                {
+                    ClientHellosObserved = 20,
+                    ClientHellosNon443 = 0,
+                    ClientHellosShort = 0,
+                    ClientHellosNoSni = 0,
+                    ClientHellosFragmented = 10,
+                    TlsHandled = 10,
+                    RstDroppedRelevant = 25,
+                    RstDropped = 25,
+                    Plan = "-",
+                    Since = "-",
+                    PresetName = options.PresetName,
+                    FragmentThreshold = baseProfile.TlsFragmentThreshold,
+                    MinChunk = options.FragmentSizes.Min(),
+                };
+
+                var adjusted = await svc.TryAutoAdjustOnceForSmoke(metrics, verdictOverride: new TlsBypassVerdict(VerdictColor.Red, "RST", "smoke"))
+                    .ConfigureAwait(false);
+
+                if (!adjusted)
+                {
+                    return new SmokeTestResult("BYPASS-014", "TlsBypassService: AutoAdjustAggressive ужимает min chunk до 4 при раннем всплеске RST", SmokeOutcome.Fail, sw.Elapsed,
+                        "Ожидали, что автонастройка сработает и переприменит опции (adjusted=true)");
+                }
+
+                var min = svc.GetOptionsSnapshot().FragmentSizes.Min();
+                if (min != 4)
+                {
+                    return new SmokeTestResult("BYPASS-014", "TlsBypassService: AutoAdjustAggressive ужимает min chunk до 4 при раннем всплеске RST", SmokeOutcome.Fail, sw.Elapsed,
+                        $"Ожидали min chunk=4, получили min={min} ({svc.GetOptionsSnapshot().FragmentSizesAsText()})");
+                }
+
+                return new SmokeTestResult("BYPASS-014", "TlsBypassService: AutoAdjustAggressive ужимает min chunk до 4 при раннем всплеске RST", SmokeOutcome.Pass, sw.Elapsed,
+                    $"OK: min chunk={min}");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("BYPASS-014", "TlsBypassService: AutoAdjustAggressive ужимает min chunk до 4 при раннем всплеске RST", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
+        public static async Task<SmokeTestResult> Bypass_TlsBypassService_AutoAdjustAggressive_GreenOver30s_RelaxesMinChunk(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                var now = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Local);
+                using var engine = new TrafficEngine();
+                var baseProfile = BypassProfile.CreateDefault();
+
+                using var svc = new TlsBypassService(
+                    engine,
+                    baseProfile,
+                    log: null,
+                    startMetricsTimer: false,
+                    useTrafficEngine: false,
+                    nowProvider: () => now);
+
+                var options = svc.GetOptionsSnapshot() with
+                {
+                    FragmentEnabled = true,
+                    DisorderEnabled = false,
+                    FakeEnabled = false,
+                    DropRstEnabled = false,
+                    PresetName = "Агрессивный",
+                    AutoAdjustAggressive = true,
+                    FragmentSizes = new[] { 16, 16 },
+                    TtlTrickEnabled = false,
+                    AutoTtlEnabled = false
+                };
+
+                await svc.ApplyAsync(options, ct).ConfigureAwait(false);
+
+                var metrics = new TlsBypassMetrics
+                {
+                    ClientHellosObserved = 50,
+                    ClientHellosNon443 = 0,
+                    ClientHellosShort = 0,
+                    ClientHellosNoSni = 0,
+                    ClientHellosFragmented = 50,
+                    TlsHandled = 50,
+                    RstDroppedRelevant = 0,
+                    RstDropped = 0,
+                    Plan = "-",
+                    Since = "-",
+                    PresetName = options.PresetName,
+                    FragmentThreshold = baseProfile.TlsFragmentThreshold,
+                    MinChunk = options.FragmentSizes.Min(),
+                };
+
+                // Первый вызов: только зафиксировать greenSince.
+                var first = await svc.TryAutoAdjustOnceForSmoke(metrics, verdictOverride: new TlsBypassVerdict(VerdictColor.Green, "GREEN", "smoke"))
+                    .ConfigureAwait(false);
+                if (first)
+                {
+                    return new SmokeTestResult("BYPASS-015", "TlsBypassService: AutoAdjustAggressive релаксирует min chunk при стабильном зелёном >30s", SmokeOutcome.Fail, sw.Elapsed,
+                        "На первом зелёном вызове не ожидали немедленного изменения опций");
+                }
+
+                now = now.AddSeconds(31);
+
+                var second = await svc.TryAutoAdjustOnceForSmoke(metrics, verdictOverride: new TlsBypassVerdict(VerdictColor.Green, "GREEN", "smoke"))
+                    .ConfigureAwait(false);
+                if (!second)
+                {
+                    return new SmokeTestResult("BYPASS-015", "TlsBypassService: AutoAdjustAggressive релаксирует min chunk при стабильном зелёном >30s", SmokeOutcome.Fail, sw.Elapsed,
+                        "Ожидали, что после 30s зелёного статуса опции будут переприменены (adjusted=true)");
+                }
+
+                var min = svc.GetOptionsSnapshot().FragmentSizes.Min();
+                if (min != 12)
+                {
+                    return new SmokeTestResult("BYPASS-015", "TlsBypassService: AutoAdjustAggressive релаксирует min chunk при стабильном зелёном >30s", SmokeOutcome.Fail, sw.Elapsed,
+                        $"Ожидали min chunk 16→12, получили min={min} ({svc.GetOptionsSnapshot().FragmentSizesAsText()})");
+                }
+
+                return new SmokeTestResult("BYPASS-015", "TlsBypassService: AutoAdjustAggressive релаксирует min chunk при стабильном зелёном >30s", SmokeOutcome.Pass, sw.Elapsed,
+                    $"OK: min chunk={min}");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("BYPASS-015", "TlsBypassService: AutoAdjustAggressive релаксирует min chunk при стабильном зелёном >30s", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
     }
 }

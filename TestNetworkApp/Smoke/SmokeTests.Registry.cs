@@ -73,6 +73,10 @@ namespace TestNetworkApp.Smoke
                 ["BYPASS-009"] = Bypass_BypassFilter_DropRst_DropsInboundRst,
                 ["BYPASS-010"] = Bypass_BypassFilter_Gating_443AndSni,
                 ["BYPASS-011"] = Bypass_BypassFilter_Threshold_ShortClientHelloNotFragmented,
+                ["BYPASS-012"] = Bypass_BypassFilter_TtlTrick_ManualEnabled_WithFragmentation,
+                ["BYPASS-013"] = Bypass_TlsBypassService_AutoTtl_SelectsAndPersistsBest,
+                ["BYPASS-014"] = Bypass_TlsBypassService_AutoAdjustAggressive_EarlyRst_ShrinksMinChunkTo4,
+                ["BYPASS-015"] = Bypass_TlsBypassService_AutoAdjustAggressive_GreenOver30s_RelaxesMinChunk,
             };
 
         public static Task<SmokeTestResult> NotImplemented(string id, string name, CancellationToken ct)
