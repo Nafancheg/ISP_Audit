@@ -258,6 +258,7 @@ namespace IspAudit.Bypass
                     ClientHellosObserved = snapshot.ClientHellosObserved,
                     ClientHellosShort = snapshot.ClientHellosShort,
                     ClientHellosNon443 = snapshot.ClientHellosNon443,
+                    ClientHellosNoSni = snapshot.ClientHellosNoSni,
                     PresetName = options.PresetName,
                     FragmentThreshold = _baseProfile.TlsFragmentThreshold,
                     MinChunk = (options.FragmentSizes ?? Array.Empty<int>()).DefaultIfEmpty(0).Min()
@@ -440,6 +441,7 @@ namespace IspAudit.Bypass
         public long ClientHellosObserved { get; init; }
         public long ClientHellosShort { get; init; }
         public long ClientHellosNon443 { get; init; }
+        public long ClientHellosNoSni { get; init; }
         public string PresetName { get; init; } = "-";
         public int FragmentThreshold { get; init; }
         public int MinChunk { get; init; }

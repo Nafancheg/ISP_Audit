@@ -27,6 +27,7 @@ namespace IspAudit.Core.Traffic.Filters
         private long _tlsClientHellosObserved;
         private long _tlsClientHellosShort;
         private long _tlsClientHellosNon443;
+        private long _tlsClientHellosNoSni;
 
         public string Name => "BypassFilter";
         public int Priority => 100; // High priority
@@ -45,6 +46,7 @@ namespace IspAudit.Core.Traffic.Filters
             var payloadLength = packet.Info.PayloadLength;
             var isTcp = packet.Info.IsTcp;
             var isClientHello = false;
+            var hasSni = false;
             ReadOnlySpan<byte> payloadSpan = default;
 
             if (isTcp && payloadLength >= 7)
@@ -65,6 +67,16 @@ namespace IspAudit.Core.Traffic.Filters
                         if (payloadLength < _profile.TlsFragmentThreshold)
                         {
                             Interlocked.Increment(ref _tlsClientHellosShort);
+                        }
+                        else
+                        {
+                            // Полный ClientHello (>= threshold): проверяем наличие SNI.
+                            // Если SNI отсутствует, не применяем обход и считаем отдельной метрикой.
+                            hasSni = HasSniExtension(payloadSpan);
+                            if (!hasSni)
+                            {
+                                Interlocked.Increment(ref _tlsClientHellosNoSni);
+                            }
                         }
                     }
                 }
@@ -95,7 +107,8 @@ namespace IspAudit.Core.Traffic.Filters
             if (isTcp && 
                 payloadLength >= _profile.TlsFragmentThreshold && 
                 packet.Info.DstPort == 443 &&
-                isClientHello)
+                isClientHello &&
+                hasSni)
             {
                 // 2.1 TTL Trick (send fake packet with low TTL)
                 if (_profile.TtlTrick)
@@ -301,6 +314,86 @@ namespace IspAudit.Core.Traffic.Filters
             return true;
         }
 
+        private static bool HasSniExtension(ReadOnlySpan<byte> payload)
+        {
+            try
+            {
+                // Минимальный парсер TLS ClientHello для детекта extension type 0x0000 (server_name).
+                // Достаточно для smoke-тестов и гейтирования обхода по "наличию SNI".
+
+                // TLS record header: 5 байт
+                if (payload.Length < 5 + 4) return false;
+                if (payload[0] != 0x16) return false;
+
+                var recordLen = (payload[3] << 8) | payload[4];
+                var recordEnd = 5 + recordLen;
+                if (recordEnd > payload.Length) recordEnd = payload.Length;
+
+                var handshakeOffset = 5;
+                if (handshakeOffset + 4 > recordEnd) return false;
+                if (payload[handshakeOffset] != 0x01) return false; // ClientHello
+
+                var helloLen = (payload[handshakeOffset + 1] << 16) | (payload[handshakeOffset + 2] << 8) | payload[handshakeOffset + 3];
+                var helloStart = handshakeOffset + 4;
+                var helloEnd = helloStart + helloLen;
+                if (helloEnd > recordEnd) helloEnd = recordEnd;
+
+                var p = helloStart;
+
+                // client_version(2) + random(32)
+                if (p + 2 + 32 > helloEnd) return false;
+                p += 2 + 32;
+
+                // session_id
+                if (p + 1 > helloEnd) return false;
+                var sessionIdLen = payload[p];
+                p += 1;
+                if (p + sessionIdLen > helloEnd) return false;
+                p += sessionIdLen;
+
+                // cipher_suites
+                if (p + 2 > helloEnd) return false;
+                var cipherLen = (payload[p] << 8) | payload[p + 1];
+                p += 2;
+                if (p + cipherLen > helloEnd) return false;
+                p += cipherLen;
+
+                // compression_methods
+                if (p + 1 > helloEnd) return false;
+                var compLen = payload[p];
+                p += 1;
+                if (p + compLen > helloEnd) return false;
+                p += compLen;
+
+                // extensions
+                if (p + 2 > helloEnd) return false;
+                var extLen = (payload[p] << 8) | payload[p + 1];
+                p += 2;
+                var extEnd = p + extLen;
+                if (extEnd > helloEnd) extEnd = helloEnd;
+
+                while (p + 4 <= extEnd)
+                {
+                    var extType = (payload[p] << 8) | payload[p + 1];
+                    var len = (payload[p + 2] << 8) | payload[p + 3];
+                    p += 4;
+                    if (p + len > extEnd) break;
+
+                    if (extType == 0x0000)
+                    {
+                        return true;
+                    }
+
+                    p += len;
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
+        }
+
         private static void AdjustPacketLengths(byte[] packet, int ipHeaderLength, int tcpHeaderLength, int payloadLength, bool isIpv4)
         {
             if (isIpv4)
@@ -337,7 +430,8 @@ namespace IspAudit.Core.Traffic.Filters
                 LastFragmentPlan = _lastFragmentPlan,
                 ClientHellosObserved = Interlocked.Read(ref _tlsClientHellosObserved),
                 ClientHellosShort = Interlocked.Read(ref _tlsClientHellosShort),
-                ClientHellosNon443 = Interlocked.Read(ref _tlsClientHellosNon443)
+                ClientHellosNon443 = Interlocked.Read(ref _tlsClientHellosNon443),
+                ClientHellosNoSni = Interlocked.Read(ref _tlsClientHellosNoSni)
             };
         }
 
@@ -352,6 +446,7 @@ namespace IspAudit.Core.Traffic.Filters
             public long ClientHellosObserved { get; init; }
             public long ClientHellosShort { get; init; }
             public long ClientHellosNon443 { get; init; }
+            public long ClientHellosNoSni { get; init; }
         }
 
         private readonly struct ConnectionState
