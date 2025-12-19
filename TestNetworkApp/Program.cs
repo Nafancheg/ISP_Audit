@@ -67,7 +67,9 @@ namespace TestNetworkApp
                     }
                 }
 
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                // Smoke-раннер обязан прогонять весь план (все Test ID).
+                // 30 секунд недостаточно: есть сетевые проверки, ORCH, PERF и tracert.
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
                 var exitCode = await SmokeRunner.Build(category, new SmokeRunOptions(noSkip, jsonOut)).RunAsync(cts.Token).ConfigureAwait(false);
                 return exitCode;
             }

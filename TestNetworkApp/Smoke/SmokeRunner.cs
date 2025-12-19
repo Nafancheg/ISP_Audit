@@ -70,6 +70,7 @@ namespace TestNetworkApp.Smoke
                     var items = ParsePlan(File.ReadAllLines(p));
                     if (items.Count > 0)
                     {
+                        Console.WriteLine($"[SMOKE] План загружен: {p} (items={items.Count})");
                         return items;
                     }
                 }
@@ -330,6 +331,8 @@ namespace TestNetworkApp.Smoke
                         runner.Add(ct => SmokeTests.NotImplemented(item.Id, item.Name, ct));
                     }
                 }
+
+                Console.WriteLine($"[SMOKE] Запланировано тестов: {runner._tests.Count} (plan={plan.Count}, implemented={implemented.Count}, category={cat})");
 
                 return runner;
             }

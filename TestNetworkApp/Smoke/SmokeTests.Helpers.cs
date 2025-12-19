@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Core.Traffic;
@@ -49,7 +50,7 @@ namespace TestNetworkApp.Smoke
         {
             // Smoke-тест: используем reflection, чтобы проверить реальный порядок после сортировки.
             var fields = typeof(TrafficEngine)
-                .GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                .GetFields(BindingFlags.Instance | BindingFlags.NonPublic);
 
             var listField = fields.FirstOrDefault(f => typeof(List<IPacketFilter>).IsAssignableFrom(f.FieldType));
             if (listField == null)
@@ -89,6 +90,45 @@ namespace TestNetworkApp.Smoke
                 sw.Stop();
                 return Task.FromResult(new SmokeTestResult(id, name, SmokeOutcome.Fail, sw.Elapsed, ex.Message));
             }
+        }
+
+        private static T GetPrivateField<T>(object instance, string fieldName)
+        {
+            var field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+            if (field == null)
+            {
+                throw new MissingFieldException(instance.GetType().FullName, fieldName);
+            }
+
+            var value = field.GetValue(instance);
+            if (value is not T typed)
+            {
+                throw new InvalidCastException($"Поле '{fieldName}' имеет тип '{value?.GetType().FullName ?? "null"}', ожидали '{typeof(T).FullName}'");
+            }
+
+            return typed;
+        }
+
+        private static void SetPrivateField(object instance, string fieldName, object? value)
+        {
+            var field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+            if (field == null)
+            {
+                throw new MissingFieldException(instance.GetType().FullName, fieldName);
+            }
+
+            field.SetValue(instance, value);
+        }
+
+        private static object? InvokePrivateMethod(object instance, string methodName, params object?[] args)
+        {
+            var method = instance.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new MissingMethodException(instance.GetType().FullName, methodName);
+            }
+
+            return method.Invoke(instance, args);
         }
     }
 }

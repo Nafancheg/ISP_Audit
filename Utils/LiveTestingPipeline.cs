@@ -87,7 +87,8 @@ namespace IspAudit.Utils
             DnsParserService? dnsParser = null,
             ITrafficFilter? filter = null,
             IBlockageStateStore? stateStore = null,
-            AutoHostlistService? autoHostlist = null)
+            AutoHostlistService? autoHostlist = null,
+            IHostTester? tester = null)
         {
             _config = config;
             _progress = progress;
@@ -107,7 +108,7 @@ namespace IspAudit.Utils
 
             _autoHostlist = autoHostlist;
 
-            _tester = new StandardHostTester(progress, dnsParser?.DnsCache);
+            _tester = tester ?? new StandardHostTester(progress, dnsParser?.DnsCache);
 
             // v2 store/adapter (без диагнозов/стратегий на этом шаге)
             _signalsAdapterV2 = new SignalsAdapterV2(new InMemorySignalSequenceStore());

@@ -54,6 +54,17 @@ namespace IspAudit.Utils
                 return _trackedPids.Add(pid);
             }
         }
+
+        /// <summary>
+        /// Удалить PID вручную (полезно для smoke/диагностики).
+        /// </summary>
+        public bool TryRemovePid(int pid)
+        {
+            lock (_trackedPids)
+            {
+                return _trackedPids.Remove(pid);
+            }
+        }
         
         /// <summary>
         /// Событие срабатывает при обнаружении новых PIDs (для немедленной реакции подписчиков)

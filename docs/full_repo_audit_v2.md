@@ -118,11 +118,11 @@
     - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke bypass`
 - Примечание: smoke runner читает `TestNetworkApp/smoke_tests_plan.md` и прогоняет все Test ID из плана; если тест из плана ещё не реализован, он возвращает `FAIL` с причиной (это сделано намеренно, чтобы было 97/97 выполнено без "пропусков"). Реализации тестов разнесены по файлам `TestNetworkApp/Smoke/SmokeTests.*.cs`, а каркас раннера/плана — в `TestNetworkApp/Smoke/SmokeRunner.cs`.
 - Строгий режим (без `SKIP`):
-    - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke --no-skip`
-    - алиас: `--strict` (любые `SKIP` считаются `FAIL`).
+    - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke --strict`
+    - алиас: `--no-skip` (любые `SKIP` считаются `FAIL`).
 
 - JSON-отчёт:
-    - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke --no-skip --json artifacts/smoke.json`
+    - `dotnet run -c Debug --project TestNetworkApp/TestNetworkApp.csproj -- --smoke --strict --json artifacts/smoke.json`
 
 - Автозапуск от администратора (сам запросит UAC, сохранит JSON):
     - `dotnet run -c Debug --project SmokeLauncher/SmokeLauncher.csproj`

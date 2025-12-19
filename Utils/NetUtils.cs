@@ -106,8 +106,17 @@ namespace IspAudit.Utils
             return res;
         }
 
+        // Smoke-хук: позволяет детерминированно тестировать ветки логики (например, VPN warning)
+        // без зависимости от реального состояния сетевых адаптеров в окружении.
+        internal static Func<bool>? LikelyVpnActiveOverrideForSmoke;
+
         public static bool LikelyVpnActive()
         {
+            if (LikelyVpnActiveOverrideForSmoke != null)
+            {
+                return LikelyVpnActiveOverrideForSmoke();
+            }
+
             try
             {
                 foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())

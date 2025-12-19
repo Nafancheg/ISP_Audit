@@ -87,7 +87,7 @@ Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|
 
 Категория `bypass` (TLS bypass) частично покрыта детерминированными smoke-тестами `BYPASS-003..015` в `TestNetworkApp/Smoke/SmokeTests.Bypass.cs`: сбор метрик через событие `MetricsUpdated`, вычисление вердикта через `VerdictChanged` по порогам ratio RST/фрагментации, проверки логики `BypassFilter` (фрагментация/дизордер сегментов, TTL Trick, Drop RST, гейтирование по 443+SNI и порог threshold для коротких ClientHello), а также авто-поведение сервиса (AutoTTL и AutoAdjustAggressive по метрикам). Для детерминизма используется `BypassFilter` + синтетические TCP пакеты (ClientHello/RST) и захват отправленных фрагментов через тестовый sender, а `TlsBypassService` получает internal-хуки/сценарии smoke для прогона автонастроек без запуска WinDivert.
 
-Автозапуск от администратора: отдельный запускатор `SmokeLauncher` сам запросит UAC elevation, выполнит `--smoke all --no-skip` и сохранит JSON в `artifacts/`.
+Автозапуск от администратора: отдельный запускатор `SmokeLauncher` сам запросит UAC elevation, выполнит `--smoke all --strict` (алиас `--no-skip`) и сохранит JSON в `artifacts/`.
 
 - Запуск из исходников: `dotnet run -c Debug --project SmokeLauncher/SmokeLauncher.csproj`
 - (опционально) Публикация в EXE: `dotnet publish -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=false --project SmokeLauncher/SmokeLauncher.csproj`
