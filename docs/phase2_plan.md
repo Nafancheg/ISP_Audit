@@ -63,6 +63,7 @@
 - `Core/IntelligenceV2/Diagnosis/StandardDiagnosisEngineV2.cs`
 - `Core/IntelligenceV2/Strategies/StandardStrategySelectorV2.cs`
 - `Core/IntelligenceV2/Execution/BypassExecutorMvp.cs`
+- `Core/IntelligenceV2/Feedback/*` (MVP: in-memory + опциональный JSON persist; ранжирование поверх basePriority)
 - Интеграция в рантайм: `Utils/LiveTestingPipeline.cs` (конвейер) + `ViewModels/DiagnosticOrchestrator.cs` (UI-агрегация/лог)
 
 ### Жёсткие границы (что запрещено)

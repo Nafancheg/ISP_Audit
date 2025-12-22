@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using IspAudit.Core.IntelligenceV2.Contracts;
+using IspAudit.Core.IntelligenceV2.Feedback;
 
 namespace IspAudit.Core.IntelligenceV2.Strategies;
 
@@ -13,6 +14,20 @@ namespace IspAudit.Core.IntelligenceV2.Strategies;
 /// </summary>
 public sealed class StandardStrategySelectorV2
 {
+    private readonly IFeedbackStoreV2? _feedbackStore;
+    private readonly FeedbackStoreOptions _feedbackOptions;
+
+    public StandardStrategySelectorV2()
+        : this(feedbackStore: null, feedbackOptions: null)
+    {
+    }
+
+    public StandardStrategySelectorV2(IFeedbackStoreV2? feedbackStore, FeedbackStoreOptions? feedbackOptions = null)
+    {
+        _feedbackStore = feedbackStore;
+        _feedbackOptions = feedbackOptions ?? new FeedbackStoreOptions();
+    }
+
     private static readonly HashSet<StrategyId> ImplementedStrategies =
     [
         StrategyId.TlsDisorder,
@@ -74,21 +89,66 @@ public sealed class StandardStrategySelectorV2
             return CreateEmptyPlan(diagnosis.DiagnosisId, confidence, "все стратегии отфильтрованы по риску/реализации");
         }
 
-        // Стабильная сортировка: приоритет ↓, затем риск ↑, затем id.
-        var ordered = filtered
-            .OrderByDescending(s => s.BasePriority)
+        var forDiagnosisId = diagnosis.DiagnosisId;
+
+        // Стабильная сортировка:
+        // 1) effective priority (base + feedback) ↓
+        // 2) base priority ↓
+        // 3) risk ↑
+        // 4) id ↑
+        var ranked = filtered
+            .Select(s =>
+            {
+                var boost = TryGetFeedbackBoost(forDiagnosisId, s.Id);
+                return new RankedStrategy(s, boost);
+            })
+            .ToList();
+
+        var ordered = ranked
+            .OrderByDescending(s => s.EffectivePriority)
+            .ThenByDescending(s => s.BasePriority)
             .ThenBy(s => s.Risk)
             .ThenBy(s => s.Id)
+            .Select(s => s.Strategy)
             .ToList();
+
+        var anyFeedbackApplied = ranked.Any(r => r.FeedbackBoost != 0);
 
         return new BypassPlan
         {
-            ForDiagnosis = diagnosis.DiagnosisId,
+            ForDiagnosis = forDiagnosisId,
             PlanConfidence = confidence,
             PlannedAtUtc = DateTimeOffset.UtcNow,
-            Reasoning = "план сформирован по диагноза v2 (MVP)",
+            Reasoning = anyFeedbackApplied
+                ? "план сформирован по диагнозу v2 (feedback)"
+                : "план сформирован по диагноза v2 (MVP)",
             Strategies = ordered
         };
+    }
+
+    private int TryGetFeedbackBoost(DiagnosisId diagnosisId, StrategyId strategyId)
+    {
+        if (_feedbackStore == null)
+        {
+            return 0;
+        }
+
+        if (!_feedbackStore.TryGetStats(new FeedbackKey(diagnosisId, strategyId), out var stats))
+        {
+            return 0;
+        }
+
+        if (stats.TotalCount < _feedbackOptions.MinSamplesToAffectRanking)
+        {
+            return 0;
+        }
+
+        // Нормируем success-rate в диапазон [-0.5; +0.5] относительно 50%.
+        // Затем переводим в бонус к basePriority.
+        // Важно: формула должна быть детерминированной.
+        var centered = stats.SuccessRate - 0.5;
+        var raw = (int)Math.Round(centered * (_feedbackOptions.MaxPriorityBoostAbs * 2.0), MidpointRounding.AwayFromZero);
+        return Math.Clamp(raw, -_feedbackOptions.MaxPriorityBoostAbs, _feedbackOptions.MaxPriorityBoostAbs);
     }
 
     private static BypassPlan CreateEmptyPlan(DiagnosisId diagnosisId, int confidence, string reason)
@@ -163,5 +223,13 @@ public sealed class StandardStrategySelectorV2
             : this(id, basePriority, risk, new Dictionary<string, object?>())
         {
         }
+    }
+
+    private readonly record struct RankedStrategy(BypassStrategy Strategy, int FeedbackBoost)
+    {
+        public StrategyId Id => Strategy.Id;
+        public int BasePriority => Strategy.BasePriority;
+        public RiskLevel Risk => Strategy.Risk;
+        public int EffectivePriority => BasePriority + FeedbackBoost;
     }
 }

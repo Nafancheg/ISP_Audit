@@ -11,6 +11,7 @@ using IspAudit.Core.Diagnostics;
 using IspAudit.Core.IntelligenceV2.Contracts;
 using IspAudit.Core.IntelligenceV2.Diagnosis;
 using IspAudit.Core.IntelligenceV2.Execution;
+using IspAudit.Core.IntelligenceV2.Feedback;
 using IspAudit.Core.IntelligenceV2.Signals;
 using IspAudit.Core.IntelligenceV2.Strategies;
 using IspAudit.Core.Models;
@@ -516,6 +517,130 @@ namespace TestNetworkApp.Smoke
 
                 return new SmokeTestResult("DPI2-010", "Warning при нереализованных стратегиях (warning + skip)", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: warnings={warnings.Count}, strategies={plan.Strategies.Count}");
+            }, ct);
+
+        public static Task<SmokeTestResult> Dpi2_StrategySelector_Feedback_AffectsOrdering_WhenEnoughSamples(CancellationToken ct)
+            => RunAsync("DPI2-014", "Feedback влияет на ранжирование (достаточно выборок, детерминизм)", () =>
+            {
+                var options = new FeedbackStoreOptions
+                {
+                    MinSamplesToAffectRanking = 5,
+                    MaxPriorityBoostAbs = 15,
+                    MaxEntries = 128,
+                    EntryTtl = TimeSpan.FromDays(30)
+                };
+
+                var store = new InMemoryFeedbackStoreV2(options);
+                var selector = new StandardStrategySelectorV2(store, options);
+
+                var now = DateTimeOffset.UtcNow;
+                for (var i = 0; i < 5; i++)
+                {
+                    store.Record(new FeedbackKey(DiagnosisId.ActiveDpiEdge, StrategyId.TlsFragment), StrategyOutcome.Success, now);
+                    store.Record(new FeedbackKey(DiagnosisId.ActiveDpiEdge, StrategyId.TlsDisorder), StrategyOutcome.Failure, now);
+                }
+
+                var diagnosis = new DiagnosisResult
+                {
+                    DiagnosisId = DiagnosisId.ActiveDpiEdge,
+                    Confidence = 80,
+                    MatchedRuleName = "smoke",
+                    ExplanationNotes = Array.Empty<string>(),
+                    Evidence = new Dictionary<string, string>(),
+                    InputSignals = new BlockageSignalsV2
+                    {
+                        HostKey = "example.com",
+                        CapturedAtUtc = DateTimeOffset.UtcNow,
+                        AggregationWindow = TimeSpan.FromSeconds(30),
+                        SampleSize = 3,
+                        IsUnreliable = false
+                    },
+                    DiagnosedAtUtc = DateTimeOffset.UtcNow
+                };
+
+                var p1 = selector.Select(diagnosis);
+                var p2 = selector.Select(diagnosis);
+
+                if (p1.Strategies.Count == 0)
+                {
+                    return new SmokeTestResult("DPI2-014", "Feedback влияет на ранжирование (достаточно выборок, детерминизм)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали непустой план для ActiveDpiEdge/conf=80");
+                }
+
+                var first = p1.Strategies[0].Id;
+                if (first != StrategyId.TlsFragment)
+                {
+                    return new SmokeTestResult("DPI2-014", "Feedback влияет на ранжирование (достаточно выборок, детерминизм)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали, что feedback поднимет TlsFragment на первое место, получили first={first}");
+                }
+
+                var seq1 = string.Join(",", p1.Strategies.Select(s => s.Id));
+                var seq2 = string.Join(",", p2.Strategies.Select(s => s.Id));
+
+                if (!string.Equals(seq1, seq2, StringComparison.Ordinal))
+                {
+                    return new SmokeTestResult("DPI2-014", "Feedback влияет на ранжирование (достаточно выборок, детерминизм)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Нарушен детерминизм: seq1={seq1} seq2={seq2}");
+                }
+
+                return new SmokeTestResult("DPI2-014", "Feedback влияет на ранжирование (достаточно выборок, детерминизм)", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: order={seq1}");
+            }, ct);
+
+        public static Task<SmokeTestResult> Dpi2_StrategySelector_Feedback_DoesNotAffect_WhenNotEnoughSamples(CancellationToken ct)
+            => RunAsync("DPI2-015", "Feedback не влияет на ранжирование при малой выборке", () =>
+            {
+                var options = new FeedbackStoreOptions
+                {
+                    MinSamplesToAffectRanking = 5,
+                    MaxPriorityBoostAbs = 15,
+                    MaxEntries = 128,
+                    EntryTtl = TimeSpan.FromDays(30)
+                };
+
+                var store = new InMemoryFeedbackStoreV2(options);
+                var selector = new StandardStrategySelectorV2(store, options);
+
+                var now = DateTimeOffset.UtcNow;
+                for (var i = 0; i < 4; i++)
+                {
+                    store.Record(new FeedbackKey(DiagnosisId.ActiveDpiEdge, StrategyId.TlsFragment), StrategyOutcome.Success, now);
+                }
+
+                var diagnosis = new DiagnosisResult
+                {
+                    DiagnosisId = DiagnosisId.ActiveDpiEdge,
+                    Confidence = 80,
+                    MatchedRuleName = "smoke",
+                    ExplanationNotes = Array.Empty<string>(),
+                    Evidence = new Dictionary<string, string>(),
+                    InputSignals = new BlockageSignalsV2
+                    {
+                        HostKey = "example.com",
+                        CapturedAtUtc = DateTimeOffset.UtcNow,
+                        AggregationWindow = TimeSpan.FromSeconds(30),
+                        SampleSize = 3,
+                        IsUnreliable = false
+                    },
+                    DiagnosedAtUtc = DateTimeOffset.UtcNow
+                };
+
+                var plan = selector.Select(diagnosis);
+                if (plan.Strategies.Count == 0)
+                {
+                    return new SmokeTestResult("DPI2-015", "Feedback не влияет на ранжирование при малой выборке", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали непустой план для ActiveDpiEdge/conf=80");
+                }
+
+                // При отсутствии влияния feedback первый остаётся TlsDisorder (basePriority=90).
+                if (plan.Strategies[0].Id != StrategyId.TlsDisorder)
+                {
+                    return new SmokeTestResult("DPI2-015", "Feedback не влияет на ранжирование при малой выборке", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали first=TlsDisorder без влияния feedback, получили first={plan.Strategies[0].Id}");
+                }
+
+                return new SmokeTestResult("DPI2-015", "Feedback не влияет на ранжирование при малой выборке", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: first={plan.Strategies[0].Id}");
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_ExecutorMvp_FormatsCompactOutput_OneLine(CancellationToken ct)

@@ -121,6 +121,7 @@ Smoke-хелперы (для детерминированных проверок
 * Step 2 (Diagnosis): в runtime подключена постановка диагноза через `StandardDiagnosisEngineV2` по агрегированному срезу `BlockageSignalsV2`.
 * Step 3 (Selector/Plan): в runtime подключён `StandardStrategySelectorV2`, который строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI (без auto-apply).
 * Step 4 (ExecutorMvp): добавлен `Core/IntelligenceV2/Execution/BypassExecutorMvp.cs` — **только** форматирование/логирование (диагноз + уверенность + короткое объяснение + список стратегий), без вызова `TrafficEngine`/`BypassController` и без авто-применения.
+* Step 5 (Feedback/Rerank): добавлен слой обратной связи `Core/IntelligenceV2/Feedback/*` (MVP: in-memory + опциональный JSON persist). `StandardStrategySelectorV2` умеет (опционально) ранжировать стратегии по успешности, **поверх** hardcoded `BasePriority`.
 
 Ограничение (важно): Diagnosis Engine v2 **не знает** про стратегии/обход (нет ссылок на StrategyId/Bypass/TlsBypassService/параметры) и формирует пояснения только из наблюдаемых фактов (timeout, DNS fail, retx-rate, HTTP redirect).
 
@@ -133,6 +134,7 @@ Smoke-хелперы (для детерминированных проверок
 *   `confidence < 50` → пустой план.
 *   `RiskLevel.High` запрещён при `confidence < 70`.
 *   Нереализованные стратегии не ломают пайплайн: выводится warning и стратегия пропускается.
+*   При отсутствии feedback-данных поведение идентично MVP (сортировка только по `BasePriority/Risk/Id`).
 
 Контрактные константы v2 (зафиксировано в коде):
 *   Окно агрегации: 30 секунд (default) и 60 секунд (extended).
