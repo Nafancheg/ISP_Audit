@@ -134,7 +134,7 @@
                                     <TextBlock Text="{Binding RecommendedStrategiesText}" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,6"/>
                                     <TextBlock Text="{Binding ManualRecommendationsText}" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,6"
                                                Visibility="{Binding ManualRecommendationsText, Converter={StaticResource StringToVisibilityConverter}}"/>
-                                    <Button Content="Применить" Command="{Binding ApplyRecommendationsCommand}"
+                                    <Button Content="Применить рекомендации v2" Command="{Binding ApplyRecommendationsCommand}"
                                             Style="{StaticResource PrimaryButtonStyle}" Padding="12,6" FontSize="13" HorizontalAlignment="Left" Height="32"/>
                                 </StackPanel>
                             </Border>

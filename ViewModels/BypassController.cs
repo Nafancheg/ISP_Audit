@@ -6,7 +6,9 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Collections.ObjectModel;
+using System.Threading;
 using IspAudit.Bypass;
+using IspAudit.Core.IntelligenceV2.Contracts;
 using IspAudit.Core.Traffic;
 using IspAudit.Utils;
 using IspAudit.Wpf;
@@ -581,16 +583,62 @@ namespace IspAudit.ViewModels
 
         #region Core Methods
 
+        private sealed record BypassStateSnapshot(TlsBypassOptions Options, bool DoHEnabled, string SelectedDnsPreset);
+
+        private BypassStateSnapshot CaptureStateSnapshot()
+        {
+            return new BypassStateSnapshot(_currentOptions, _isDoHEnabled, SelectedDnsPreset);
+        }
+
+        private async Task RestoreSnapshotAsync(BypassStateSnapshot snapshot)
+        {
+            _currentOptions = snapshot.Options;
+            _isDoHEnabled = snapshot.DoHEnabled;
+            _selectedDnsPreset = snapshot.SelectedDnsPreset;
+
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                OnPropertyChanged(nameof(IsFragmentEnabled));
+                OnPropertyChanged(nameof(IsDisorderEnabled));
+                OnPropertyChanged(nameof(IsFakeEnabled));
+                OnPropertyChanged(nameof(IsDropRstEnabled));
+                OnPropertyChanged(nameof(IsDoHEnabled));
+                OnPropertyChanged(nameof(IsDoHActive));
+                OnPropertyChanged(nameof(SelectedDnsPreset));
+                NotifyActiveStatesChanged();
+                CheckCompatibility();
+            });
+
+            await ApplyBypassOptionsAsync(CancellationToken.None).ConfigureAwait(false);
+
+            if (_isDoHEnabled)
+            {
+                await ApplyDoHAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                await DisableDoHAsync().ConfigureAwait(false);
+            }
+        }
+
         /// <summary>
         /// Применить текущие настройки bypass
         /// </summary>
-        public async Task ApplyBypassOptionsAsync()
+        public Task ApplyBypassOptionsAsync()
+        {
+            return ApplyBypassOptionsAsync(CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Применить текущие настройки bypass (с поддержкой отмены)
+        /// </summary>
+        public async Task ApplyBypassOptionsAsync(CancellationToken cancellationToken)
         {
             try
             {
                 var normalized = _currentOptions.Normalize();
                 _currentOptions = normalized;
-                await _tlsService.ApplyAsync(normalized).ConfigureAwait(false);
+                await _tlsService.ApplyAsync(normalized, cancellationToken).ConfigureAwait(false);
 
                 Application.Current?.Dispatcher.Invoke(() =>
                 {
@@ -668,7 +716,15 @@ namespace IspAudit.ViewModels
         /// <summary>
         /// Отключить все опции bypass
         /// </summary>
-        public async Task DisableAllAsync()
+        public Task DisableAllAsync()
+        {
+            return DisableAllAsync(CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Отключить все опции bypass (с поддержкой отмены)
+        /// </summary>
+        public async Task DisableAllAsync(CancellationToken cancellationToken)
         {
             _currentOptions = _currentOptions with
             {
@@ -685,7 +741,129 @@ namespace IspAudit.ViewModels
             NotifyActiveStatesChanged();
             CheckCompatibility();
 
-            await ApplyBypassOptionsAsync().ConfigureAwait(false);
+            await ApplyBypassOptionsAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Отключить DoH и восстановить исходные DNS настройки.
+        /// </summary>
+        public async Task DisableDoHAsync()
+        {
+            if (!_isDoHEnabled)
+            {
+                return;
+            }
+
+            _isDoHEnabled = false;
+
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                OnPropertyChanged(nameof(IsDoHEnabled));
+                OnPropertyChanged(nameof(IsDoHActive));
+            });
+
+            await RestoreDoHAsync().ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Применить v2 план рекомендаций (ТОЛЬКО вручную), с таймаутом/отменой и безопасным откатом.
+        /// </summary>
+        public async Task ApplyV2PlanAsync(BypassPlan plan, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            if (plan == null) throw new ArgumentNullException(nameof(plan));
+
+            var strategiesText = plan.Strategies.Count == 0
+                ? "(пусто)"
+                : string.Join(", ", plan.Strategies.Select(s => s.Id));
+
+            Log($"[V2][Executor] Apply requested: диагноз={plan.ForDiagnosis} conf={plan.PlanConfidence}% стратегии={strategiesText}");
+            if (!string.IsNullOrWhiteSpace(plan.Reasoning))
+            {
+                Log($"[V2][Executor] Reasoning: {plan.Reasoning}");
+            }
+
+            var snapshot = CaptureStateSnapshot();
+
+            using var timeoutCts = timeout > TimeSpan.Zero ? new CancellationTokenSource(timeout) : null;
+            using var linked = timeoutCts != null
+                ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token)
+                : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+            try
+            {
+                var updated = _currentOptions;
+                var enableDoH = false;
+
+                foreach (var strategy in plan.Strategies)
+                {
+                    switch (strategy.Id)
+                    {
+                        case StrategyId.TlsFragment:
+                            updated = updated with { FragmentEnabled = true, DisorderEnabled = false };
+                            break;
+                        case StrategyId.TlsDisorder:
+                            updated = updated with { DisorderEnabled = true, FragmentEnabled = false };
+                            break;
+                        case StrategyId.TlsFakeTtl:
+                            updated = updated with { FakeEnabled = true };
+                            break;
+                        case StrategyId.DropRst:
+                            updated = updated with { DropRstEnabled = true };
+                            break;
+                        case StrategyId.UseDoh:
+                            enableDoH = true;
+                            break;
+                        default:
+                            // Нереализованные/неподдерживаемые в bypass контроллере стратегии пропускаем.
+                            Log($"[V2][Executor] Стратегия {strategy.Id} не поддерживается контроллером — пропуск");
+                            break;
+                    }
+                }
+
+                _currentOptions = updated;
+
+                Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    OnPropertyChanged(nameof(IsFragmentEnabled));
+                    OnPropertyChanged(nameof(IsDisorderEnabled));
+                    OnPropertyChanged(nameof(IsFakeEnabled));
+                    OnPropertyChanged(nameof(IsDropRstEnabled));
+                    NotifyActiveStatesChanged();
+                    CheckCompatibility();
+                });
+
+                await ApplyBypassOptionsAsync(linked.Token).ConfigureAwait(false);
+
+                if (enableDoH && !_isDoHEnabled)
+                {
+                    _isDoHEnabled = true;
+                    Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        OnPropertyChanged(nameof(IsDoHEnabled));
+                        OnPropertyChanged(nameof(IsDoHActive));
+                    });
+                    await ApplyDoHAsync().ConfigureAwait(false);
+                }
+
+                if (!enableDoH && _isDoHEnabled)
+                {
+                    await DisableDoHAsync().ConfigureAwait(false);
+                }
+
+                Log("[V2][Executor] Apply complete");
+            }
+            catch (OperationCanceledException)
+            {
+                Log("[V2][Executor] Apply cancelled/timeout — rollback");
+                await RestoreSnapshotAsync(snapshot).ConfigureAwait(false);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Log($"[V2][Executor] Apply failed: {ex.Message} — rollback");
+                await RestoreSnapshotAsync(snapshot).ConfigureAwait(false);
+                throw;
+            }
         }
 
         /// <summary>

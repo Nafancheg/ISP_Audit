@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.Core.IntelligenceV2.Contracts;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
 using IspAudit.Core.Modules;
@@ -87,6 +88,11 @@ namespace IspAudit.ViewModels
 
         // Последний v2 диагноз (для панели рекомендаций)
         private string _lastV2DiagnosisSummary = "";
+
+        // Последний v2 план (объектно, без парсинга строк) для ручного применения.
+        private BypassPlan? _lastV2Plan;
+        private string _lastV2PlanHostKey = "";
+        private static readonly TimeSpan V2ApplyTimeout = TimeSpan.FromSeconds(8);
 
         private static readonly HashSet<string> ServiceStrategies = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -205,9 +211,9 @@ namespace IspAudit.ViewModels
             }
         }
 
-        public bool HasRecommendations => _recommendedStrategies.Count > 0;
+        public bool HasRecommendations => _lastV2Plan != null && _recommendedStrategies.Count > 0;
 
-        public bool HasAnyRecommendations => _recommendedStrategies.Count > 0 || _manualRecommendations.Count > 0;
+        public bool HasAnyRecommendations => HasRecommendations || _manualRecommendations.Count > 0;
 
         public string RecommendedStrategiesText
         {
@@ -421,6 +427,15 @@ namespace IspAudit.ViewModels
                         : null,
                     bypassController.AutoHostlist);
 
+                // v2: принимаем объектный план напрямую из pipeline (auto-apply запрещён).
+                _testingPipeline.OnV2PlanBuilt += (hostKey, plan) =>
+                {
+                    Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        StoreV2Plan(hostKey, plan, bypassController);
+                    });
+                };
+
                 // Повторно флешим pending SNI — на случай, если endpoint->pid уже есть, а событий соединения больше не будет.
                 FlushPendingSniForTrackedPids();
                 while (_pendingSniHosts.TryDequeue(out var sniHost))
@@ -568,6 +583,14 @@ namespace IspAudit.ViewModels
                     new UnifiedTrafficFilter(),
                     null, // State store новый
                     bypassController.AutoHostlist);
+
+                _testingPipeline.OnV2PlanBuilt += (hostKey, plan) =>
+                {
+                    Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        StoreV2Plan(hostKey, plan, bypassController);
+                    });
+                };
 
                 // Запускаем цели в pipeline
                 foreach (var target in targets)
@@ -1239,6 +1262,42 @@ namespace IspAudit.ViewModels
             UpdateRecommendationTexts(bypassController);
         }
 
+        private void StoreV2Plan(string hostKey, BypassPlan plan, BypassController bypassController)
+        {
+            _lastV2Plan = plan;
+            _lastV2PlanHostKey = hostKey;
+
+            // Токены нужны только для текста панели. Реальное применение идёт по объектному plan.
+            _recommendedStrategies.Clear();
+
+            foreach (var strategy in plan.Strategies)
+            {
+                var token = strategy.Id switch
+                {
+                    StrategyId.TlsFragment => "TLS_FRAGMENT",
+                    StrategyId.TlsDisorder => "TLS_DISORDER",
+                    StrategyId.TlsFakeTtl => "TLS_FAKE",
+                    StrategyId.DropRst => "DROP_RST",
+                    StrategyId.UseDoh => "DOH",
+                    _ => string.Empty
+                };
+
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    continue;
+                }
+
+                if (!IsStrategyActive(token, bypassController))
+                {
+                    _recommendedStrategies.Add(token);
+                }
+            }
+
+            _lastV2DiagnosisSummary = $"([V2] диагноз={plan.ForDiagnosis} уверенность={plan.PlanConfidence}%: {plan.Reasoning})";
+
+            UpdateRecommendationTexts(bypassController);
+        }
+
         private static string? TryExtractAfterMarker(string msg, string marker)
         {
             var idx = msg.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
@@ -1303,12 +1362,32 @@ namespace IspAudit.ViewModels
 
         public async Task ApplyRecommendationsAsync(BypassController bypassController)
         {
-            if (_recommendedStrategies.Count == 0) return;
+            if (_lastV2Plan == null || _lastV2Plan.Strategies.Count == 0)
+            {
+                return;
+            }
 
-            var toApply = _recommendedStrategies.ToList();
-            await bypassController.ApplyRecommendedAsync(toApply).ConfigureAwait(false);
+            if (_recommendedStrategies.Count == 0)
+            {
+                return;
+            }
 
-            ResetRecommendations();
+            var ct = _cts?.Token ?? CancellationToken.None;
+
+            try
+            {
+                Log($"[V2][Executor] Ручное применение плана (host={_lastV2PlanHostKey})...");
+                await bypassController.ApplyV2PlanAsync(_lastV2Plan, V2ApplyTimeout, ct).ConfigureAwait(false);
+                ResetRecommendations();
+            }
+            catch (OperationCanceledException)
+            {
+                Log("[V2][Executor] Применение отменено/превышен таймаут");
+            }
+            catch (Exception ex)
+            {
+                Log($"[V2][Executor] Ошибка применения: {ex.Message}");
+            }
         }
 
         private void ResetRecommendations()
@@ -1318,6 +1397,8 @@ namespace IspAudit.ViewModels
             _legacyRecommendedStrategies.Clear();
             _legacyManualRecommendations.Clear();
             _lastV2DiagnosisSummary = "";
+            _lastV2Plan = null;
+            _lastV2PlanHostKey = "";
             RecommendedStrategiesText = "Нет рекомендаций";
             ManualRecommendationsText = "";
             OnPropertyChanged(nameof(HasRecommendations));
@@ -1382,7 +1463,7 @@ namespace IspAudit.ViewModels
                 ? "[V2] Диагноз определён"
                 : _lastV2DiagnosisSummary;
 
-            var applyHint = $"Что попробовать: нажмите «Применить» (включит: {strategies})";
+            var applyHint = $"Что попробовать: нажмите «Применить рекомендации v2» (включит: {strategies})";
 
             // Legacy показываем только если есть v2 рекомендации (и только как справочно)
             var legacyTokens = _legacyRecommendedStrategies

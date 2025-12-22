@@ -77,6 +77,12 @@ namespace IspAudit.Utils
         // DPI Intelligence v2 (Step 4): исполнитель MVP (только логирование рекомендаций)
         private readonly BypassExecutorMvp _executorV2;
 
+        /// <summary>
+        /// Событие: v2 план рекомендаций построен для хоста.
+        /// ВАЖНО: это только доставка данных в UI/оркестратор; auto-apply запрещён.
+        /// </summary>
+        public event Action<string, BypassPlan>? OnV2PlanBuilt;
+
         // Автоматический сбор hostlist (опционально)
         private readonly AutoHostlistService? _autoHostlist;
         
@@ -352,6 +358,16 @@ namespace IspAudit.Utils
                     // v2: формируем план рекомендаций строго по диагнозу.
                     // Важно: не применять автоматически (только показать в UI/логах).
                     var plan = _strategySelectorV2.Select(diagnosis, msg => _progress?.Report(msg));
+
+                    // Доставляем план наружу (UI/оркестратор). Не применяется автоматически.
+                    try
+                    {
+                        OnV2PlanBuilt?.Invoke(tested.Host.Key, plan);
+                    }
+                    catch
+                    {
+                        // Игнорируем ошибки подписчиков: пайплайн должен быть устойчив.
+                    }
 
                     // Формируем результат для UI/фильтра: стратегия всегда NONE, а в RecommendedAction кладём факты/уверенность.
                     var blocked = BuildHostBlockedForUi(tested, signals, diagnosis, plan);

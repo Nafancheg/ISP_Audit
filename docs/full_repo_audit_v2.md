@@ -82,6 +82,7 @@
 - Step 2 v2 Diagnosis подключён: `StandardDiagnosisEngineV2` ставит диагноз по `BlockageSignalsV2` и возвращает пояснения, основанные на фактах (DNS fail, TCP/TLS timeout, TLS auth failure, retx-rate, HTTP redirect, RST TTL delta/latency) без привязки к стратегиям/обходу.
 - Step 3 v2 Selector подключён: `StandardStrategySelectorV2` строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI-лога (без auto-apply).
 - Step 4 v2 Executor (MVP) подключён: `BypassExecutorMvp` формирует компактный, читаемый пользователем вывод (диагноз + уверенность + 1 короткое объяснение + список стратегий) и **не** применяет обход.
+- Реальный executor v2 (ручной apply, без auto-apply): `LiveTestingPipeline` публикует объектный `BypassPlan` через `OnV2PlanBuilt`, `DiagnosticOrchestrator` хранит последний план и применяет его только по клику пользователя через `BypassController.ApplyV2PlanAsync(...)` (таймаут/отмена/безопасный откат).
 - Для контроля Gate 1→2 в UI-логе используются строки с префиксом `[V2][GATE1]` (не чаще 1 раза в минуту на HostKey).
 
 Актуализация (Runtime, 17.12.2025):

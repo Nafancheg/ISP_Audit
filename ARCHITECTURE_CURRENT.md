@@ -121,6 +121,7 @@ Smoke-хелперы (для детерминированных проверок
 * Step 2 (Diagnosis): в runtime подключена постановка диагноза через `StandardDiagnosisEngineV2` по агрегированному срезу `BlockageSignalsV2`.
 * Step 3 (Selector/Plan): в runtime подключён `StandardStrategySelectorV2`, который строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI (без auto-apply).
 * Step 4 (ExecutorMvp): добавлен `Core/IntelligenceV2/Execution/BypassExecutorMvp.cs` — **только** форматирование/логирование (диагноз + уверенность + короткое объяснение + список стратегий), без вызова `TrafficEngine`/`BypassController` и без авто-применения.
+* Ручное применение v2 плана (без auto-apply): `LiveTestingPipeline` публикует объектный `BypassPlan` через событие `OnV2PlanBuilt`, `DiagnosticOrchestrator` хранит последний план и применяет его только по клику пользователя через `BypassController.ApplyV2PlanAsync(...)` (таймаут/отмена/безопасный откат).
 * Step 5 (Feedback/Rerank): добавлен слой обратной связи `Core/IntelligenceV2/Feedback/*` (MVP: in-memory + опциональный JSON persist). `StandardStrategySelectorV2` умеет (опционально) ранжировать стратегии по успешности, **поверх** hardcoded `BasePriority`.
 
 Ограничение (важно): Diagnosis Engine v2 **не знает** про стратегии/обход (нет ссылок на StrategyId/Bypass/TlsBypassService/параметры) и формирует пояснения только из наблюдаемых фактов (timeout, DNS fail, retx-rate, HTTP redirect).
