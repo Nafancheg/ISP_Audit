@@ -192,6 +192,54 @@ namespace TestNetworkApp.Smoke
                     $"OK: sampleSize30={snap30.SampleSize}, sampleSize60={snap60.SampleSize}, hostKey={hostKey}");
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_Aggregation_BuildSnapshot_ExtractsRstTtlDelta_AndLatency(CancellationToken ct)
+            => RunAsync("DPI2-016", "Агрегация v2: BuildSnapshot извлекает RST TTL delta + latency", () =>
+            {
+                var store = new InMemorySignalSequenceStore();
+                var adapter = new SignalsAdapterV2(store);
+
+                var tested = CreateHostTested(remoteIp: IPAddress.Parse("203.0.113.31"), blockageType: BlockageCode.TcpConnectionReset) with
+                {
+                    TcpLatencyMs = 120
+                };
+
+                var legacy = new BlockageSignals(
+                    FailCount: 1,
+                    HardFailCount: 1,
+                    LastFailAt: DateTime.UtcNow,
+                    Window: TimeSpan.FromSeconds(30),
+                    RetransmissionCount: 0,
+                    TotalPackets: 0,
+                    HasHttpRedirectDpi: false,
+                    RedirectToHost: null,
+                    HasSuspiciousRst: true,
+                    SuspiciousRstDetails: "TTL=64 (обычный=50-55)",
+                    UdpUnansweredHandshakes: 0);
+
+                var snap = adapter.BuildSnapshot(tested, legacy, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
+
+                if (!snap.HasTcpReset)
+                {
+                    return new SmokeTestResult("DPI2-016", "Агрегация v2: BuildSnapshot извлекает RST TTL delta + latency", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали HasTcpReset=true (TCP_CONNECTION_RESET + HasSuspiciousRst)");
+                }
+
+                if (snap.RstTtlDelta != 9)
+                {
+                    return new SmokeTestResult("DPI2-016", "Агрегация v2: BuildSnapshot извлекает RST TTL delta + latency", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали RstTtlDelta=9 (TTL=64 vs 50-55), получили {snap.RstTtlDelta}");
+                }
+
+                if (snap.RstLatency is null || Math.Abs(snap.RstLatency.Value.TotalMilliseconds - 120) > 1)
+                {
+                    return new SmokeTestResult("DPI2-016", "Агрегация v2: BuildSnapshot извлекает RST TTL delta + latency", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали RstLatency≈120ms, получили {snap.RstLatency}");
+                }
+
+                return new SmokeTestResult("DPI2-016", "Агрегация v2: BuildSnapshot извлекает RST TTL delta + latency", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: rstTtlDelta={snap.RstTtlDelta}, rstLatencyMs={(int)snap.RstLatency.Value.TotalMilliseconds}");
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_DiagnosisEngine_ProducesDiagnosis_WithConfidenceAtLeast50(CancellationToken ct)
             => RunAsync("DPI2-004", "DiagnosisEngine v2 формирует диагноз с confidence >= 50", () =>
             {
@@ -236,6 +284,100 @@ namespace TestNetworkApp.Smoke
                 }
 
                 return new SmokeTestResult("DPI2-004", "DiagnosisEngine v2 формирует диагноз с confidence >= 50", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: {result.DiagnosisId} ({result.Confidence}%)");
+            }, ct);
+
+        public static Task<SmokeTestResult> Dpi2_DiagnosisEngine_RstTtlDelta_FastClassifiesAsActiveDpiEdge(CancellationToken ct)
+            => RunAsync("DPI2-017", "DiagnosisEngine v2: RST TTL delta + быстрый reset => ActiveDpiEdge", () =>
+            {
+                var engine = new StandardDiagnosisEngineV2();
+
+                var signals = new BlockageSignalsV2
+                {
+                    HostKey = "203.0.113.41",
+                    CapturedAtUtc = DateTimeOffset.UtcNow,
+                    AggregationWindow = TimeSpan.FromSeconds(30),
+                    SampleSize = 5,
+                    IsUnreliable = false,
+
+                    HasDnsFailure = false,
+                    HasFakeIp = false,
+                    HasHttpRedirect = false,
+
+                    HasTcpTimeout = false,
+                    HasTcpReset = true,
+                    RetransmissionRate = null,
+
+                    RstTtlDelta = 10,
+                    RstLatency = TimeSpan.FromMilliseconds(120),
+
+                    HasTlsTimeout = false,
+                    HasTlsAuthFailure = false,
+                    HasTlsReset = false
+                };
+
+                var result = engine.Diagnose(signals);
+
+                if (result.DiagnosisId != DiagnosisId.ActiveDpiEdge)
+                {
+                    return new SmokeTestResult("DPI2-017", "DiagnosisEngine v2: RST TTL delta + быстрый reset => ActiveDpiEdge", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали ActiveDpiEdge, получили {result.DiagnosisId} (conf={result.Confidence})");
+                }
+
+                if (result.Confidence < 60)
+                {
+                    return new SmokeTestResult("DPI2-017", "DiagnosisEngine v2: RST TTL delta + быстрый reset => ActiveDpiEdge", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали confidence >= 60, получили {result.Confidence}");
+                }
+
+                return new SmokeTestResult("DPI2-017", "DiagnosisEngine v2: RST TTL delta + быстрый reset => ActiveDpiEdge", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: {result.DiagnosisId} ({result.Confidence}%)");
+            }, ct);
+
+        public static Task<SmokeTestResult> Dpi2_DiagnosisEngine_RstTtlDelta_SlowClassifiesAsStatefulDpi(CancellationToken ct)
+            => RunAsync("DPI2-018", "DiagnosisEngine v2: RST TTL delta + медленный reset => StatefulDpi", () =>
+            {
+                var engine = new StandardDiagnosisEngineV2();
+
+                var signals = new BlockageSignalsV2
+                {
+                    HostKey = "203.0.113.42",
+                    CapturedAtUtc = DateTimeOffset.UtcNow,
+                    AggregationWindow = TimeSpan.FromSeconds(30),
+                    SampleSize = 5,
+                    IsUnreliable = false,
+
+                    HasDnsFailure = false,
+                    HasFakeIp = false,
+                    HasHttpRedirect = false,
+
+                    HasTcpTimeout = false,
+                    HasTcpReset = true,
+                    RetransmissionRate = null,
+
+                    RstTtlDelta = 10,
+                    RstLatency = TimeSpan.FromMilliseconds(900),
+
+                    HasTlsTimeout = false,
+                    HasTlsAuthFailure = false,
+                    HasTlsReset = false
+                };
+
+                var result = engine.Diagnose(signals);
+
+                if (result.DiagnosisId != DiagnosisId.StatefulDpi)
+                {
+                    return new SmokeTestResult("DPI2-018", "DiagnosisEngine v2: RST TTL delta + медленный reset => StatefulDpi", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали StatefulDpi, получили {result.DiagnosisId} (conf={result.Confidence})");
+                }
+
+                if (result.Confidence < 60)
+                {
+                    return new SmokeTestResult("DPI2-018", "DiagnosisEngine v2: RST TTL delta + медленный reset => StatefulDpi", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали confidence >= 60, получили {result.Confidence}");
+                }
+
+                return new SmokeTestResult("DPI2-018", "DiagnosisEngine v2: RST TTL delta + медленный reset => StatefulDpi", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: {result.DiagnosisId} ({result.Confidence}%)");
             }, ct);
 

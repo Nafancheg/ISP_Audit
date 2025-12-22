@@ -355,13 +355,34 @@
 **Входные данные:** 10 событий за 25 секунд (timeout/rst/retx)  
 **Ожидаемый результат:** `BuildAggregatedSignals()` возвращает срез с правильными счётчиками
 
+**Test ID:** `DPI2-016`  
+**Что проверяет:** Извлечение `RstTtlDelta` и `RstLatency` в `BuildSnapshot`  
+**Для чего:** Устойчивые улики для `ActiveDpiEdge/StatefulDpi` (RST TTL delta/latency)  
+**Критерий успеха:** `RstTtlDelta` вычисляется из строки инспектора, `RstLatency` берётся из TCP latency  
+**Входные данные:** `TCP_CONNECTION_RESET` + `HasSuspiciousRst=true` + `SuspiciousRstDetails="TTL=64 (обычный=50-55)"` + `TcpLatencyMs=120`  
+**Ожидаемый результат:** `RstTtlDelta=9`, `RstLatency≈120ms`
+
 ### 5.2 Diagnosis Engine
 **Test ID:** `DPI2-004`  
 **Что проверяет:** Постановка диагноза по `BlockageSignalsV2`  
 **Для чего:** Определение типа блокировки и уверенности  
 **Критерий успеха:** Диагноз с `confidence >= 50` формируется  
 **Входные данные:** `BlockageSignalsV2` с высоким retx-rate и timeout  
-**Ожидаемый результат:** `StandardDiagnosisEngineV2.Diagnose()` возвращает `DiagnosisId.PacketDrop`, `confidence > 50`
+**Ожидаемый результат:** `StandardDiagnosisEngineV2.Diagnose()` возвращает `DiagnosisId.SilentDrop`, `confidence > 50`
+
+**Test ID:** `DPI2-017`  
+**Что проверяет:** `RST TTL delta + fast` классифицируется как `ActiveDpiEdge`  
+**Для чего:** Уменьшить долю `Unknown` при RST-инъекциях  
+**Критерий успеха:** Диагноз `ActiveDpiEdge` и `confidence >= 60`  
+**Входные данные:** `HasTcpReset=true`, `RstTtlDelta=10`, `RstLatency=120ms`  
+**Ожидаемый результат:** `DiagnosisId.ActiveDpiEdge`
+
+**Test ID:** `DPI2-018`  
+**Что проверяет:** `RST TTL delta + slow` классифицируется как `StatefulDpi`  
+**Для чего:** Разделять активную инъекцию и stateful инспекцию  
+**Критерий успеха:** Диагноз `StatefulDpi` и `confidence >= 60`  
+**Входные данные:** `HasTcpReset=true`, `RstTtlDelta=10`, `RstLatency=900ms`  
+**Ожидаемый результат:** `DiagnosisId.StatefulDpi`
 
 **Test ID:** `DPI2-005`  
 **Что проверяет:** Формирование пояснения (без упоминания стратегий)  

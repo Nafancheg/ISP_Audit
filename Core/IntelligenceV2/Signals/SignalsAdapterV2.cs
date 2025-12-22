@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
+using System.Text.RegularExpressions;
 using IspAudit.Core.Diagnostics;
 using IspAudit.Core.IntelligenceV2.Contracts;
 using IspAudit.Core.Models;
@@ -17,6 +18,14 @@ namespace IspAudit.Core.IntelligenceV2.Signals;
 public sealed class SignalsAdapterV2
 {
     private readonly InMemorySignalSequenceStore _store;
+
+    // Парсим строку из legacy RST-инспектора.
+    // Поддерживаем 2 формата:
+    // - "TTL=64 (обычный=50-55)"
+    // - "TTL=64 (expected 50-55)" (smoke)
+    private static readonly Regex RstTtlRangeRegex = new(
+        @"TTL=(?<ttl>\d+).*?\((?:обычный=|expected\s+)(?<min>\d+)-(?<max>\d+)\)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     // Ограничитель логов Gate 1→2: не чаще 1 раза в минуту на HostKey
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastGateLogUtc = new(StringComparer.Ordinal);
@@ -99,6 +108,15 @@ public sealed class SignalsAdapterV2
 
         var hasHttpRedirect = legacySignals.HasHttpRedirectDpi || windowEvents.HasType(SignalEventType.HttpRedirectObserved);
 
+        var rstTtlDelta = TryExtractRstTtlDelta(legacySignals, windowEvents);
+        TimeSpan? rstLatency = null;
+        if (hasTcpReset && tested.TcpLatencyMs is int latencyMs && latencyMs > 0)
+        {
+            // Это приблизительная метрика (время попытки TCP connect до reset/исключения).
+            // Для v2 достаточно как сигнал "быстро" vs "медленно".
+            rstLatency = TimeSpan.FromMilliseconds(latencyMs);
+        }
+
         return new BlockageSignalsV2
         {
             HostKey = hostKey,
@@ -109,8 +127,8 @@ public sealed class SignalsAdapterV2
             HasTcpTimeout = hasTcpTimeout,
             RetransmissionRate = retxRate,
 
-            RstTtlDelta = null,
-            RstLatency = null,
+            RstTtlDelta = rstTtlDelta,
+            RstLatency = rstLatency,
 
             HasDnsFailure = hasDnsFailure,
             HasFakeIp = hasFakeIp,
@@ -124,6 +142,42 @@ public sealed class SignalsAdapterV2
             SampleSize = windowEvents.Count,
             IsUnreliable = windowEvents.Count < 2
         };
+    }
+
+    private static int? TryExtractRstTtlDelta(BlockageSignals legacySignals, IReadOnlyList<SignalEvent> windowEvents)
+    {
+        string? details = null;
+        if (legacySignals.HasSuspiciousRst && !string.IsNullOrWhiteSpace(legacySignals.SuspiciousRstDetails))
+        {
+            details = legacySignals.SuspiciousRstDetails;
+        }
+        else
+        {
+            // Фолбэк: возьмём строку из последнего события RST в окне.
+            for (var i = windowEvents.Count - 1; i >= 0; i--)
+            {
+                var e = windowEvents[i];
+                if (e.Type != SignalEventType.SuspiciousRstObserved) continue;
+                if (e.Value is string s && !string.IsNullOrWhiteSpace(s))
+                {
+                    details = s;
+                    break;
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(details)) return null;
+
+        var m = RstTtlRangeRegex.Match(details);
+        if (!m.Success) return null;
+
+        if (!int.TryParse(m.Groups["ttl"].Value, out var ttl)) return null;
+        if (!int.TryParse(m.Groups["min"].Value, out var min)) return null;
+        if (!int.TryParse(m.Groups["max"].Value, out var max)) return null;
+
+        var diffMin = Math.Abs(ttl - min);
+        var diffMax = Math.Abs(ttl - max);
+        return Math.Min(diffMin, diffMax);
     }
 
     private void AppendHostTested(string hostKey, HostTested tested, DateTimeOffset nowUtc)

@@ -49,6 +49,17 @@ public sealed class StandardDiagnosisEngineV2
             notes.Add("TCP: RST наблюдался");
             evidence["tcpReset"] = "1";
         }
+        if (signals.RstTtlDelta is int ttlDelta)
+        {
+            notes.Add($"TCP: rst-ttl-delta={ttlDelta}");
+            evidence["rstTtlDelta"] = ttlDelta.ToString();
+        }
+        if (signals.RstLatency is TimeSpan rstLatency)
+        {
+            var ms = (int)Math.Max(0, Math.Round(rstLatency.TotalMilliseconds, MidpointRounding.AwayFromZero));
+            notes.Add($"TCP: rst-latency-ms={ms}");
+            evidence["rstLatencyMs"] = ms.ToString();
+        }
         if (signals.HasTlsTimeout)
         {
             notes.Add("TLS: timeout");
@@ -185,9 +196,57 @@ public sealed class StandardDiagnosisEngineV2
             };
         }
 
-        // 7) RST без метрик TTL/latency — данных недостаточно, чтобы уверенно интерпретировать
+        // 7) RST: при наличии TTL delta (и желательно latency) можем различить active edge vs stateful DPI.
         if (signals.HasTcpReset)
         {
+            if (signals.RstTtlDelta is int d && d >= 6)
+            {
+                // Порог latency: быстрый RST чаще характерен для "edge" (активная инъекция ближе к клиенту).
+                // Медленный RST — скорее stateful инспекция (ожидает контент/паттерн).
+                if (signals.RstLatency is TimeSpan l)
+                {
+                    var ms = l.TotalMilliseconds;
+                    if (ms <= 250)
+                    {
+                        return new DiagnosisResult
+                        {
+                            DiagnosisId = DiagnosisId.ActiveDpiEdge,
+                            Confidence = 75,
+                            MatchedRuleName = "tcp-rst+ttl-delta+fast",
+                            ExplanationNotes = notes,
+                            Evidence = evidence,
+                            InputSignals = signals,
+                            DiagnosedAtUtc = DateTimeOffset.UtcNow
+                        };
+                    }
+
+                    if (ms >= 500)
+                    {
+                        return new DiagnosisResult
+                        {
+                            DiagnosisId = DiagnosisId.StatefulDpi,
+                            Confidence = 70,
+                            MatchedRuleName = "tcp-rst+ttl-delta+slow",
+                            ExplanationNotes = notes,
+                            Evidence = evidence,
+                            InputSignals = signals,
+                            DiagnosedAtUtc = DateTimeOffset.UtcNow
+                        };
+                    }
+                }
+
+                return new DiagnosisResult
+                {
+                    DiagnosisId = DiagnosisId.ActiveDpiEdge,
+                    Confidence = 60,
+                    MatchedRuleName = "tcp-rst+ttl-delta",
+                    ExplanationNotes = notes,
+                    Evidence = evidence,
+                    InputSignals = signals,
+                    DiagnosedAtUtc = DateTimeOffset.UtcNow
+                };
+            }
+
             return new DiagnosisResult
             {
                 DiagnosisId = DiagnosisId.Unknown,

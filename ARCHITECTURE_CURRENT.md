@@ -125,6 +125,11 @@ Smoke-хелперы (для детерминированных проверок
 
 Ограничение (важно): Diagnosis Engine v2 **не знает** про стратегии/обход (нет ссылок на StrategyId/Bypass/TlsBypassService/параметры) и формирует пояснения только из наблюдаемых фактов (timeout, DNS fail, retx-rate, HTTP redirect).
 
+Примечание по RST-уликам (v2):
+* `SignalsAdapterV2.BuildSnapshot(...)` извлекает `RstTtlDelta` из `BlockageSignals.SuspiciousRstDetails` (форматы `TTL=.. (обычный=min-max)`/`expected min-max`).
+* `RstLatency` берётся как приближённая метрика из `HostTested.TcpLatencyMs` для случая `TCP_CONNECTION_RESET`.
+* `StandardDiagnosisEngineV2` использует эти поля, чтобы выдавать `ActiveDpiEdge` (быстрый RST) или `StatefulDpi` (медленный RST) вместо `Unknown`.
+
 Ключевые принципы:
 *   Между диагностикой и обходом добавляется слой “интеллекта” (Signals → Diagnosis → Selector → Plan).
 *   Signals в v2 строятся как **временные цепочки событий** (SignalEvent/SignalSequence), а агрегированные признаки считаются поверх окна.
