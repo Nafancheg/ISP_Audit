@@ -382,6 +382,10 @@ namespace IspAudit.Utils
                     var displayHost = tested.Host.RemoteIp.ToString();
 
                     var sni = tested.SniHostname;
+                    if (string.IsNullOrWhiteSpace(sni) && _dnsParser != null)
+                    {
+                        _dnsParser.SniCache.TryGetValue(displayHost, out sni);
+                    }
                     var rdns = tested.ReverseDnsHostname;
                     var namesSuffix = $" SNI={(string.IsNullOrWhiteSpace(sni) ? "-" : sni)} RDNS={(string.IsNullOrWhiteSpace(rdns) ? "-" : rdns)}";
                     
@@ -484,6 +488,10 @@ namespace IspAudit.Utils
                     var port = blocked.TestResult.Host.RemotePort;
 
                     var sni = blocked.TestResult.SniHostname;
+                    if (string.IsNullOrWhiteSpace(sni) && _dnsParser != null)
+                    {
+                        _dnsParser.SniCache.TryGetValue(host, out sni);
+                    }
                     var rdns = blocked.TestResult.ReverseDnsHostname;
                     var namesSuffix = $" SNI={(string.IsNullOrWhiteSpace(sni) ? "-" : sni)} RDNS={(string.IsNullOrWhiteSpace(rdns) ? "-" : rdns)}";
                     
