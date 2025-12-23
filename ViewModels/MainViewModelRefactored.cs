@@ -233,6 +233,24 @@ namespace IspAudit.ViewModels
         public string ManualRecommendationsText => Orchestrator.ManualRecommendationsText;
         public string RecommendationHintText => Orchestrator.RecommendationHintText;
 
+        private bool _isApplyingRecommendations;
+        public bool IsApplyingRecommendations
+        {
+            get => _isApplyingRecommendations;
+            private set
+            {
+                if (_isApplyingRecommendations == value) return;
+                _isApplyingRecommendations = value;
+                OnPropertyChanged(nameof(IsApplyingRecommendations));
+                OnPropertyChanged(nameof(ApplyRecommendationsButtonText));
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+
+        public string ApplyRecommendationsButtonText => IsApplyingRecommendations
+            ? "Применяю…"
+            : "Применить рекомендации v2";
+
         // Прокси-свойства для BypassController
         public bool ShowBypassPanel => Bypass.ShowBypassPanel;
         public bool IsBypassActive => Bypass.IsBypassActive;
@@ -402,7 +420,7 @@ namespace IspAudit.ViewModels
             }, 
                 _ => ShowBypassPanel && (IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled || IsDropRstEnabled));
 
-            ApplyRecommendationsCommand = new RelayCommand(async _ => await Orchestrator.ApplyRecommendationsAsync(Bypass), _ => HasRecommendations);
+            ApplyRecommendationsCommand = new RelayCommand(async _ => await ApplyRecommendationsAsync(), _ => HasRecommendations && !IsApplyingRecommendations);
 
             Log("✓ MainViewModelRefactored инициализирован");
         }
@@ -416,6 +434,32 @@ namespace IspAudit.ViewModels
         #endregion
 
         #region Command Handlers
+
+        private async Task ApplyRecommendationsAsync()
+        {
+            if (IsApplyingRecommendations)
+            {
+                return;
+            }
+
+            IsApplyingRecommendations = true;
+            try
+            {
+                await Orchestrator.ApplyRecommendationsAsync(Bypass);
+            }
+            catch (OperationCanceledException)
+            {
+                Log("[V2][APPLY] Отмена применения рекомендаций");
+            }
+            catch (Exception ex)
+            {
+                Log($"[V2][APPLY] Ошибка применения рекомендаций: {ex.Message}");
+            }
+            finally
+            {
+                IsApplyingRecommendations = false;
+            }
+        }
 
         private async Task StartOrCancelAsync()
         {
