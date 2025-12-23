@@ -146,13 +146,13 @@
                                         <!-- Кнопки в две колонки -->
                                         <UniformGrid Columns="2" Rows="3" HorizontalAlignment="Stretch">
                                             <ToggleButton IsChecked="{Binding IsFragmentEnabled, Mode=TwoWay}"
-                                                          Content="Фрагментация"
+                                                          Content="Frag"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="Фрагментация TLS ClientHello (сегменты отправляются по порядку)"
                                                           Margin="0,0,4,4"/>
 
                                             <ToggleButton IsChecked="{Binding IsDisorderEnabled, Mode=TwoWay}"
-                                                          Content="Фрагментация + беспорядок"
+                                                          Content="Frag+Rev"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="Фрагментация TLS ClientHello + отправка фрагментов в обратном порядке"
                                                           Margin="4,0,0,4"/>
