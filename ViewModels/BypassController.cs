@@ -184,6 +184,57 @@ namespace IspAudit.ViewModels
             }, _ => true);
         }
 
+        internal BypassController(TlsBypassService tlsService, BypassProfile baseProfile)
+        {
+            _baseProfile = baseProfile ?? throw new ArgumentNullException(nameof(baseProfile));
+            _tlsService = tlsService ?? throw new ArgumentNullException(nameof(tlsService));
+            _currentOptions = _tlsService.GetOptionsSnapshot();
+
+            _autoHostlist = new AutoHostlistService();
+            _autoHostlist.Changed += () =>
+            {
+                Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    RefreshAutoHostlistText();
+                });
+            };
+
+            // По умолчанию при старте всё выключено (в т.ч. DROP RST)
+            _currentOptions = _currentOptions with
+            {
+                FragmentEnabled = false,
+                DisorderEnabled = false,
+                FakeEnabled = false,
+                DropRstEnabled = false
+            };
+
+            FragmentPresets = _tlsService.FragmentPresets.ToList();
+            _selectedPreset = FragmentPresets
+                .FirstOrDefault(p => string.Equals(p.Name, _currentOptions.PresetName, StringComparison.OrdinalIgnoreCase))
+                ?? FragmentPresets.FirstOrDefault();
+
+            if (_selectedPreset != null)
+            {
+                _currentOptions = _currentOptions with
+                {
+                    FragmentSizes = _selectedPreset.Sizes,
+                    PresetName = _selectedPreset.Name
+                };
+            }
+
+            _tlsService.MetricsUpdated += OnMetricsUpdated;
+            _tlsService.VerdictChanged += OnVerdictChanged;
+            _tlsService.StateChanged += OnStateChanged;
+
+            SetDnsPresetCommand = new RelayCommand(param =>
+            {
+                if (param is string preset)
+                {
+                    SelectedDnsPreset = preset;
+                }
+            }, _ => true);
+        }
+
         private void RefreshAutoHostlistText()
         {
             AutoHostlistText = _autoHostlist.GetDisplayText();
@@ -645,6 +696,10 @@ namespace IspAudit.ViewModels
                     NotifyActiveStatesChanged();
                 });
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 Log($"[Bypass] Error applying options: {ex.Message}");
@@ -772,6 +827,8 @@ namespace IspAudit.ViewModels
         {
             if (plan == null) throw new ArgumentNullException(nameof(plan));
 
+            cancellationToken.ThrowIfCancellationRequested();
+
             var strategiesText = plan.Strategies.Count == 0
                 ? "(пусто)"
                 : string.Join(", ", plan.Strategies.Select(s => s.Id));
@@ -791,6 +848,8 @@ namespace IspAudit.ViewModels
 
             try
             {
+                linked.Token.ThrowIfCancellationRequested();
+
                 var updated = _currentOptions;
                 var enableDoH = false;
 
@@ -822,6 +881,8 @@ namespace IspAudit.ViewModels
 
                 _currentOptions = updated;
 
+                linked.Token.ThrowIfCancellationRequested();
+
                 Application.Current?.Dispatcher.Invoke(() =>
                 {
                     OnPropertyChanged(nameof(IsFragmentEnabled));
@@ -834,8 +895,11 @@ namespace IspAudit.ViewModels
 
                 await ApplyBypassOptionsAsync(linked.Token).ConfigureAwait(false);
 
+                linked.Token.ThrowIfCancellationRequested();
+
                 if (enableDoH && !_isDoHEnabled)
                 {
+                    linked.Token.ThrowIfCancellationRequested();
                     _isDoHEnabled = true;
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
@@ -847,6 +911,7 @@ namespace IspAudit.ViewModels
 
                 if (!enableDoH && _isDoHEnabled)
                 {
+                    linked.Token.ThrowIfCancellationRequested();
                     await DisableDoHAsync().ConfigureAwait(false);
                 }
 

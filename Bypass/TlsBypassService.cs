@@ -158,6 +158,16 @@ namespace IspAudit.Bypass
         {
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Smoke-режим (без TrafficEngine) выполняется почти синхронно.
+                // Добавляем небольшую отменяемую задержку, чтобы детерминированно тестировать
+                // таймаут/Cancel и безопасный откат на верхнем уровне.
+                if (!_useTrafficEngine)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken).ConfigureAwait(false);
+                }
+
                 if (_useTrafficEngine)
                 {
                     _trafficEngine.RemoveFilter("BypassFilter");
@@ -201,6 +211,11 @@ namespace IspAudit.Bypass
 
                 StateChanged?.Invoke(new TlsBypassState(true, "-", _metricsSince.ToString("HH:mm:ss")));
                 _log?.Invoke($"[Bypass] Применены опции: {optionsSnapshot.ToReadableStrategy()} | TLS chunks: {optionsSnapshot.FragmentSizesAsText()}, threshold: {profile.TlsFragmentThreshold}");
+            }
+            catch (OperationCanceledException)
+            {
+                _log?.Invoke("[Bypass] Применение отменено");
+                throw;
             }
             catch (Exception ex)
             {

@@ -101,6 +101,9 @@ namespace TestNetworkApp.Smoke
                 ["DPI2-011"] = Dpi2_ExecutorMvp_FormatsCompactOutput_OneLine,
                 ["DPI2-012"] = Dpi2_AllV2Outputs_StartWithPrefix,
                 ["DPI2-013"] = Dpi2_ExecutorMvp_DoesNotCallTrafficEngineOrBypassController,
+                ["DPI2-019"] = Dpi2_ExecutorV2_ManualApply_MapsPlanToBypassOptions,
+                ["DPI2-020"] = Dpi2_ExecutorV2_Cancel_RollbacksToPreviousState,
+                ["DPI2-021"] = Dpi2_Pipeline_DoesNotAutoApply_BypassControllerOrTlsBypassService,
 
                 ["CFG-001"] = Cfg_BypassProfile_Load,
                 ["CFG-002"] = Cfg_BypassProfile_SaveChanges,

@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Threading;
 using System.Threading.Tasks;
+using IspAudit.Bypass;
 using IspAudit.Core.Diagnostics;
 using IspAudit.Core.IntelligenceV2.Contracts;
 using IspAudit.Core.IntelligenceV2.Diagnosis;
@@ -15,7 +16,9 @@ using IspAudit.Core.IntelligenceV2.Feedback;
 using IspAudit.Core.IntelligenceV2.Signals;
 using IspAudit.Core.IntelligenceV2.Strategies;
 using IspAudit.Core.Models;
+using IspAudit.Core.Traffic;
 using IspAudit.Utils;
+using IspAudit.ViewModels;
 
 using BypassTransportProtocol = IspAudit.Bypass.TransportProtocol;
 
@@ -876,6 +879,129 @@ namespace TestNetworkApp.Smoke
 
                 return new SmokeTestResult("DPI2-013", "Executor MVP не выполняет auto-apply (нет вызовов TrafficEngine/BypassController)", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: вызовов к TrafficEngine/BypassController не обнаружено");
+            }, ct);
+
+        public static Task<SmokeTestResult> Dpi2_ExecutorV2_ManualApply_MapsPlanToBypassOptions(CancellationToken ct)
+            => RunAsync("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", () =>
+            {
+                // Поднимаем сервис в smoke-режиме (без TrafficEngine), чтобы не требовать админ прав и WinDivert.
+                var engine = new TrafficEngine(progress: null);
+                var baseProfile = BypassProfile.CreateDefault();
+                var tlsService = new TlsBypassService(engine, baseProfile, log: null, startMetricsTimer: false, useTrafficEngine: false, nowProvider: () => DateTime.Now);
+                var controller = new BypassController(tlsService, baseProfile);
+
+                var plan = new BypassPlan
+                {
+                    ForDiagnosis = DiagnosisId.SilentDrop,
+                    PlanConfidence = 80,
+                    PlannedAtUtc = DateTimeOffset.UtcNow,
+                    Reasoning = "smoke",
+                    Strategies = new List<BypassStrategy>
+                    {
+                        new BypassStrategy { Id = StrategyId.TlsFragment, BasePriority = 90, Risk = RiskLevel.Medium },
+                        new BypassStrategy { Id = StrategyId.DropRst, BasePriority = 50, Risk = RiskLevel.Medium },
+                    }
+                };
+
+                controller.ApplyV2PlanAsync(plan, timeout: TimeSpan.FromSeconds(2), cancellationToken: CancellationToken.None)
+                    .GetAwaiter().GetResult();
+
+                if (!controller.IsFragmentEnabled)
+                {
+                    return new SmokeTestResult("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что после ApplyV2PlanAsync будет включён TLS_FRAGMENT");
+                }
+
+                if (controller.IsDisorderEnabled)
+                {
+                    return new SmokeTestResult("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что TLS_DISORDER будет выключен (Fragment и Disorder взаимоисключающие)");
+                }
+
+                if (!controller.IsDropRstEnabled)
+                {
+                    return new SmokeTestResult("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что после ApplyV2PlanAsync будет включён DROP_RST");
+                }
+
+                return new SmokeTestResult("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: опции применены" );
+            }, ct);
+
+        public static async Task<SmokeTestResult> Dpi2_ExecutorV2_Cancel_RollbacksToPreviousState(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                var engine = new TrafficEngine(progress: null);
+                var baseProfile = BypassProfile.CreateDefault();
+                var tlsService = new TlsBypassService(engine, baseProfile, log: null, startMetricsTimer: false, useTrafficEngine: false, nowProvider: () => DateTime.Now);
+                var controller = new BypassController(tlsService, baseProfile);
+
+                // Исходное состояние: включаем Fake, чтобы проверить откат.
+                controller.IsFakeEnabled = true;
+
+                var plan = new BypassPlan
+                {
+                    ForDiagnosis = DiagnosisId.MultiLayerBlock,
+                    PlanConfidence = 90,
+                    PlannedAtUtc = DateTimeOffset.UtcNow,
+                    Reasoning = "smoke-cancel",
+                    Strategies = new List<BypassStrategy>
+                    {
+                        new BypassStrategy { Id = StrategyId.TlsFragment, BasePriority = 90, Risk = RiskLevel.Medium },
+                        new BypassStrategy { Id = StrategyId.DropRst, BasePriority = 50, Risk = RiskLevel.Medium },
+                    }
+                };
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromMilliseconds(1));
+
+                try
+                {
+                    await controller.ApplyV2PlanAsync(plan, timeout: TimeSpan.FromSeconds(2), cancellationToken: cts.Token).ConfigureAwait(false);
+                    return new SmokeTestResult("DPI2-020", "Executor v2: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Fail, sw.Elapsed,
+                        "Ожидали OperationCanceledException, но применение завершилось без отмены");
+                }
+                catch (OperationCanceledException)
+                {
+                    // Ожидаемо.
+                }
+
+                if (!controller.IsFakeEnabled)
+                {
+                    return new SmokeTestResult("DPI2-020", "Executor v2: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Fail, sw.Elapsed,
+                        "Ожидали откат: Fake должен остаться включенным");
+                }
+
+                if (controller.IsFragmentEnabled || controller.IsDropRstEnabled || controller.IsDisorderEnabled)
+                {
+                    return new SmokeTestResult("DPI2-020", "Executor v2: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Fail, sw.Elapsed,
+                        "Ожидали откат: Fragment/DropRst/Disorder не должны остаться включенными после отмены");
+                }
+
+                return new SmokeTestResult("DPI2-020", "Executor v2: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Pass, sw.Elapsed,
+                    "OK: откат выполнен");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("DPI2-020", "Executor v2: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
+        public static Task<SmokeTestResult> Dpi2_Pipeline_DoesNotAutoApply_BypassControllerOrTlsBypassService(CancellationToken ct)
+            => RunAsync("DPI2-021", "Pipeline v2 не выполняет auto-apply (нет вызовов BypassController/TlsBypassService)", () =>
+            {
+                var forbiddenTypeNames = new[] { "BypassController", "TlsBypassService" };
+
+                if (IlContainsCallsToForbiddenTypes(typeof(LiveTestingPipeline), forbiddenTypeNames))
+                {
+                    return new SmokeTestResult("DPI2-021", "Pipeline v2 не выполняет auto-apply (нет вызовов BypassController/TlsBypassService)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "В IL найден вызов к запрещённым типам. Pipeline обязан только вычислять/публиковать план, без применения." );
+                }
+
+                return new SmokeTestResult("DPI2-021", "Pipeline v2 не выполняет auto-apply (нет вызовов BypassController/TlsBypassService)", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: вызовов к BypassController/TlsBypassService не обнаружено");
             }, ct);
 
         private static HostTested CreateHostTested(IPAddress remoteIp, string? blockageType)
