@@ -36,6 +36,10 @@ namespace IspAudit.ViewModels
     {
         private CancellationTokenSource? _cts;
         private CancellationTokenSource? _applyCts;
+
+        // Последняя цель (hostKey), извлечённая из v2-диагноза в UI сообщениях.
+        // Нужна, чтобы не применять v2-план «не к той цели», когда рекомендации обновились.
+        private string _lastV2DiagnosisHostKey = "";
         
         // Мониторинговые сервисы
         private ConnectionMonitorService? _connectionMonitor;
@@ -1342,6 +1346,11 @@ namespace IspAudit.ViewModels
                     host = firstToken.Split(':').FirstOrDefault() ?? "";
                 }
 
+                if (!string.IsNullOrWhiteSpace(host))
+                {
+                    _lastV2DiagnosisHostKey = host;
+                }
+
                 // Вытаскиваем компактный текст v2 в скобках (он уже пользовательский)
                 var m = Regex.Match(msg, @"\(\s*\[V2\][^\)]*\)", RegexOptions.IgnoreCase);
                 if (m.Success)
@@ -1384,6 +1393,16 @@ namespace IspAudit.ViewModels
 
             if (_recommendedStrategies.Count == 0)
             {
+                return;
+            }
+
+            // Защита от «устаревшего» плана: применяем только если план относится
+            // к последней цели, для которой был показан v2-диагноз.
+            if (!string.IsNullOrWhiteSpace(_lastV2DiagnosisHostKey)
+                && !string.IsNullOrWhiteSpace(_lastV2PlanHostKey)
+                && !string.Equals(_lastV2PlanHostKey, _lastV2DiagnosisHostKey, StringComparison.OrdinalIgnoreCase))
+            {
+                Log($"[V2][APPLY] SKIP: planHost={_lastV2PlanHostKey}; lastDiagHost={_lastV2DiagnosisHostKey} (план устарел)");
                 return;
             }
 
@@ -1439,6 +1458,7 @@ namespace IspAudit.ViewModels
             _legacyRecommendedStrategies.Clear();
             _legacyManualRecommendations.Clear();
             _lastV2DiagnosisSummary = "";
+            _lastV2DiagnosisHostKey = "";
             _lastV2Plan = null;
             _lastV2PlanHostKey = "";
             RecommendedStrategiesText = "Нет рекомендаций";

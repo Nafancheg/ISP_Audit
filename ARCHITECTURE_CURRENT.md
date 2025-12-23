@@ -1,6 +1,6 @@
 # ISP_Audit — Архитектура (v3.0 Extended)
 
-**Дата обновления:** 17.12.2025
+**Дата обновления:** 23.12.2025
 **Версия:** 3.0 (Comprehensive)
 **Технологии:** .NET 9, WPF, WinDivert 2.2.0
 
@@ -122,6 +122,8 @@ Smoke-хелперы (для детерминированных проверок
 * Step 3 (Selector/Plan): в runtime подключён `StandardStrategySelectorV2`, который строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI (без auto-apply).
 * Step 4 (ExecutorMvp): добавлен `Core/IntelligenceV2/Execution/BypassExecutorMvp.cs` — **только** форматирование/логирование (диагноз + уверенность + короткое объяснение + список стратегий), без вызова `TrafficEngine`/`BypassController` и без авто-применения.
 * Ручное применение v2 плана (без auto-apply): `LiveTestingPipeline` публикует объектный `BypassPlan` через событие `OnV2PlanBuilt`, `DiagnosticOrchestrator` хранит последний план и применяет его только по клику пользователя через `BypassController.ApplyV2PlanAsync(...)` (таймаут/отмена/безопасный откат).
+    * Защита от устаревшего плана: `DiagnosticOrchestrator.ApplyRecommendationsAsync(...)` применяет план только если `planHostKey` совпадает с последней v2-целью, извлечённой из UI‑диагноза (иначе — SKIP в лог).
+    * Отмена: команда `Cancel` отменяет не только диагностику, но и текущий ручной apply (через отдельный CTS).
 * Step 5 (Feedback/Rerank): добавлен слой обратной связи `Core/IntelligenceV2/Feedback/*` (MVP: in-memory + опциональный JSON persist). `StandardStrategySelectorV2` умеет (опционально) ранжировать стратегии по успешности, **поверх** hardcoded `BasePriority`.
 
 ---
@@ -143,6 +145,7 @@ Smoke-хелперы (для детерминированных проверок
 
 3) **Исполнитель v2 (реальный apply с безопасным откатом)**
 - `BypassController.ApplyV2PlanAsync` поддерживает таймаут/отмену и безопасный rollback на snapshot состояния.
+ - Оркестратор не применяет «не тот» план: если рекомендации обновились и `hostKey` изменился, apply будет заблокирован.
 
 4) **Важное ограничение реализации TLS-обхода (почему “Disorder vs Fragment” не складываются как сумма)**
 - В текущей реализации профиль выбирает один режим TLS (`TlsStrategy`) и строится по цепочке `if/else if`.
