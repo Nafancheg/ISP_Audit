@@ -1374,20 +1374,35 @@ namespace IspAudit.ViewModels
 
             var ct = _cts?.Token ?? CancellationToken.None;
 
+            var hostKey = _lastV2PlanHostKey;
+            var planStrategies = string.Join(", ", _lastV2Plan.Strategies.Select(s => MapStrategyToken(s.Id.ToString())));
+            var beforeState = BuildBypassStateSummary(bypassController);
+
             try
             {
-                Log($"[V2][Executor] Ручное применение плана (host={_lastV2PlanHostKey})...");
+                Log($"[V2][APPLY] host={hostKey}; plan={planStrategies}; before={beforeState}");
                 await bypassController.ApplyV2PlanAsync(_lastV2Plan, V2ApplyTimeout, ct).ConfigureAwait(false);
+
+                var afterState = BuildBypassStateSummary(bypassController);
+                Log($"[V2][APPLY] OK; after={afterState}");
                 ResetRecommendations();
             }
             catch (OperationCanceledException)
             {
-                Log("[V2][Executor] Применение отменено/превышен таймаут");
+                var afterState = BuildBypassStateSummary(bypassController);
+                Log($"[V2][APPLY] ROLLBACK (cancel/timeout); after={afterState}");
             }
             catch (Exception ex)
             {
-                Log($"[V2][Executor] Ошибка применения: {ex.Message}");
+                var afterState = BuildBypassStateSummary(bypassController);
+                Log($"[V2][APPLY] ROLLBACK (error); after={afterState}; error={ex.Message}");
             }
+        }
+
+        private static string BuildBypassStateSummary(BypassController bypassController)
+        {
+            // Коротко и стабильно: только ключевые флаги.
+            return $"Frag={(bypassController.IsFragmentEnabled ? 1 : 0)},Dis={(bypassController.IsDisorderEnabled ? 1 : 0)},Fake={(bypassController.IsFakeEnabled ? 1 : 0)},DropRst={(bypassController.IsDropRstEnabled ? 1 : 0)},DoH={(bypassController.IsDoHEnabled ? 1 : 0)}";
         }
 
         private void ResetRecommendations()
