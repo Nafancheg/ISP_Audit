@@ -400,7 +400,7 @@ namespace IspAudit.ViewModels
             // Команды
             StartLiveTestingCommand = new RelayCommand(async _ => await StartOrCancelAsync(), _ => true);
             StartCommand = StartLiveTestingCommand;
-            CancelCommand = new RelayCommand(_ => Orchestrator.Cancel(), _ => IsRunning);
+            CancelCommand = new RelayCommand(_ => Orchestrator.Cancel(), _ => IsRunning || IsApplyingRecommendations);
             SetStateCommand = new RelayCommand(state => ScreenState = state?.ToString() ?? "start");
             ReportCommand = new RelayCommand(_ => GenerateReport(), _ => IsDone);
             DetailsCommand = new RelayCommand(param => ShowDetailsDialog(param as TestResult), _ => true);

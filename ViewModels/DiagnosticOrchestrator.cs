@@ -35,6 +35,7 @@ namespace IspAudit.ViewModels
     public class DiagnosticOrchestrator : INotifyPropertyChanged
     {
         private CancellationTokenSource? _cts;
+        private CancellationTokenSource? _applyCts;
         
         // Мониторинговые сервисы
         private ConnectionMonitorService? _connectionMonitor;
@@ -794,22 +795,36 @@ namespace IspAudit.ViewModels
         /// </summary>
         public void Cancel()
         {
-            if (_cts == null || _cts.IsCancellationRequested)
+            var cancelledAnything = false;
+
+            // Отмена ручного apply (может выполняться даже когда диагностика уже закончилась)
+            if (_applyCts != null && !_applyCts.IsCancellationRequested)
+            {
+                Log("[Orchestrator] Отмена применения рекомендаций...");
+                _applyCts.Cancel();
+                cancelledAnything = true;
+            }
+
+            // Отмена диагностики
+            if (_cts != null && !_cts.IsCancellationRequested)
+            {
+                Log("[Orchestrator] Отмена...");
+                DiagnosticStatus = "Остановка...";
+                _stopReason = "UserCancel";
+
+                // Сначала отменяем токен — это прервёт await foreach в CollectAsync
+                _cts.Cancel();
+
+                // Потом останавливаем компоненты
+                _testingPipeline?.Dispose();
+                _trafficCollector?.Dispose();
+                cancelledAnything = true;
+            }
+
+            if (!cancelledAnything)
             {
                 Log("[Orchestrator] Уже отменено или не запущено");
-                return;
             }
-            
-            Log("[Orchestrator] Отмена...");
-            DiagnosticStatus = "Остановка...";
-            _stopReason = "UserCancel";
-            
-            // Сначала отменяем токен — это прервёт await foreach в CollectAsync
-            _cts.Cancel();
-            
-            // Потом останавливаем компоненты
-            _testingPipeline?.Dispose();
-            _trafficCollector?.Dispose();
         }
 
         #endregion
@@ -1372,7 +1387,14 @@ namespace IspAudit.ViewModels
                 return;
             }
 
-            var ct = _cts?.Token ?? CancellationToken.None;
+            _applyCts?.Dispose();
+            _applyCts = new CancellationTokenSource();
+
+            using var linked = _cts != null
+                ? CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, _applyCts.Token)
+                : CancellationTokenSource.CreateLinkedTokenSource(_applyCts.Token);
+
+            var ct = linked.Token;
 
             var hostKey = _lastV2PlanHostKey;
             var planStrategies = string.Join(", ", _lastV2Plan.Strategies.Select(s => MapStrategyToken(s.Id.ToString())));
@@ -1396,6 +1418,11 @@ namespace IspAudit.ViewModels
             {
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[V2][APPLY] ROLLBACK (error); after={afterState}; error={ex.Message}");
+            }
+            finally
+            {
+                _applyCts?.Dispose();
+                _applyCts = null;
             }
         }
 
