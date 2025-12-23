@@ -104,6 +104,7 @@ namespace TestNetworkApp.Smoke
                 ["DPI2-019"] = Dpi2_ExecutorV2_ManualApply_MapsPlanToBypassOptions,
                 ["DPI2-020"] = Dpi2_ExecutorV2_Cancel_RollbacksToPreviousState,
                 ["DPI2-021"] = Dpi2_Pipeline_DoesNotAutoApply_BypassControllerOrTlsBypassService,
+                ["DPI2-022"] = Dpi2_ExecutorV2_TlsFragment_Params_AffectPresetAndAutoAdjust,
 
                 ["CFG-001"] = Cfg_BypassProfile_Load,
                 ["CFG-002"] = Cfg_BypassProfile_SaveChanges,

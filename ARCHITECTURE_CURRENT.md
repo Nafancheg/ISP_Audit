@@ -147,6 +147,8 @@ Smoke-хелперы (для детерминированных проверок
 - `BypassController.ApplyV2PlanAsync` поддерживает таймаут/отмену и безопасный rollback на snapshot состояния.
  - Оркестратор не применяет «не тот» план: если рекомендации обновились и `hostKey` изменился, apply будет заблокирован.
  - `StrategyId.AggressiveFragment` при ручном apply выбирает пресет фрагментации «Агрессивный» и включает `AutoAdjustAggressive`.
+ - `StrategyId.TlsFragment` может нести параметры (например, `TlsFragmentSizes`, `PresetName`, `AutoAdjustAggressive`). Парсинг параметров вынесен в `Core/IntelligenceV2/Execution/TlsFragmentPlanParamsParser.cs`, применение выполняет `BypassController.ApplyV2PlanAsync`.
+ - Smoke: добавлен тест `DPI2-022` на применение параметров фрагментации из `BypassPlan`.
 
 4) **Важное ограничение реализации TLS-обхода (почему “Disorder vs Fragment” не складываются как сумма)**
 - В текущей реализации профиль выбирает один режим TLS (`TlsStrategy`) и строится по цепочке `if/else if`.

@@ -9,6 +9,7 @@ using System.Collections.ObjectModel;
 using System.Threading;
 using IspAudit.Bypass;
 using IspAudit.Core.IntelligenceV2.Contracts;
+using IspAudit.Core.IntelligenceV2.Execution;
 using IspAudit.Core.Traffic;
 using IspAudit.Utils;
 using IspAudit.Wpf;
@@ -862,6 +863,40 @@ namespace IspAudit.ViewModels
                     {
                         case StrategyId.TlsFragment:
                             updated = updated with { FragmentEnabled = true, DisorderEnabled = false };
+
+                            // Опциональные параметры стратегии: пресет/размеры/auto-adjust.
+                            // Если параметров нет — сохраняем текущий выбранный пресет пользователя.
+                            if (strategy.Parameters != null && strategy.Parameters.Count > 0)
+                            {
+                                if (TlsFragmentPlanParamsParser.TryParse(strategy.Parameters, out var parsed))
+                                {
+                                    if (parsed.Sizes != null && parsed.Sizes.Count > 0)
+                                    {
+                                        var sizes = parsed.Sizes.ToList();
+                                        requestedPreset = ResolveOrCreatePresetBySizes(sizes);
+                                        Log($"[V2][Executor] TlsFragment param: sizes=[{string.Join(",", sizes)}] → preset='{requestedPreset.Name}'");
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(parsed.PresetName))
+                                    {
+                                        var resolved = ResolvePresetByNameOrAlias(parsed.PresetName);
+                                        if (resolved != null)
+                                        {
+                                            requestedPreset = resolved;
+                                            Log($"[V2][Executor] TlsFragment param: preset='{parsed.PresetName}' → '{resolved.Name}'");
+                                        }
+                                        else
+                                        {
+                                            Log($"[V2][Executor] TlsFragment param: preset='{parsed.PresetName}' не распознан — пропуск");
+                                        }
+                                    }
+
+                                    if (parsed.AutoAdjustAggressive.HasValue)
+                                    {
+                                        requestedAutoAdjustAggressive = parsed.AutoAdjustAggressive.Value;
+                                        Log($"[V2][Executor] TlsFragment param: autoAdjustAggressive={(requestedAutoAdjustAggressive.Value ? "true" : "false")}");
+                                    }
+                                }
+                            }
                             break;
                         case StrategyId.AggressiveFragment:
                             // Агрессивная фрагментация: используем пресет «Агрессивный» + авто-подстройку.
@@ -891,6 +926,13 @@ namespace IspAudit.ViewModels
 
                 if (requestedPreset != null)
                 {
+                    // Если пресет создан из параметров v2 и отсутствует в списке — добавим, чтобы UI мог корректно отобразить выбранный вариант.
+                    if (!FragmentPresets.Any(p => string.Equals(p.Name, requestedPreset.Name, StringComparison.OrdinalIgnoreCase)
+                        && p.Sizes.SequenceEqual(requestedPreset.Sizes)))
+                    {
+                        FragmentPresets.Add(requestedPreset);
+                    }
+
                     _selectedPreset = requestedPreset;
                     updated = updated with
                     {
@@ -902,6 +944,11 @@ namespace IspAudit.ViewModels
                 if (requestedAutoAdjustAggressive.HasValue)
                 {
                     updated = updated with { AutoAdjustAggressive = requestedAutoAdjustAggressive.Value };
+                }
+                else if (requestedPreset != null && string.Equals(requestedPreset.Name, "Агрессивный", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Если явно выбрали агрессивный пресет (даже через TlsFragment), логично включить авто-подстройку.
+                    updated = updated with { AutoAdjustAggressive = true };
                 }
 
                 _currentOptions = updated;
@@ -973,6 +1020,71 @@ namespace IspAudit.ViewModels
                 Log($"[V2][Executor] Rollback complete: after={_currentOptions.ToReadableStrategy()}; DoH={(_isDoHEnabled ? "on" : "off")}; DNS={SelectedDnsPreset}");
                 throw;
             }
+        }
+
+        private TlsFragmentPreset? ResolvePresetByNameOrAlias(string presetName)
+        {
+            if (string.IsNullOrWhiteSpace(presetName))
+            {
+                return null;
+            }
+
+            var normalized = presetName.Trim();
+
+            // Поддерживаем русские названия пресетов.
+            var direct = FragmentPresets.FirstOrDefault(p => string.Equals(p.Name, normalized, StringComparison.OrdinalIgnoreCase));
+            if (direct != null)
+            {
+                return direct;
+            }
+
+            // Алиасы (на будущее / на случай JSON-конфига).
+            var alias = normalized.ToLowerInvariant();
+            var mapped = alias switch
+            {
+                "standard" or "std" => "Стандарт",
+                "moderate" or "medium" => "Умеренный",
+                "aggressive" or "agg" => "Агрессивный",
+                "profile" => "Профиль",
+                _ => null
+            };
+
+            if (mapped == null)
+            {
+                return null;
+            }
+
+            return FragmentPresets.FirstOrDefault(p => string.Equals(p.Name, mapped, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private TlsFragmentPreset ResolveOrCreatePresetBySizes(List<int> sizes)
+        {
+            var normalized = NormalizeFragmentSizes(sizes);
+            if (normalized.Count == 0)
+            {
+                // Фоллбек: не должно случиться (проверяется выше), но держим безопасно.
+                normalized = new List<int> { 64 };
+            }
+
+            var existing = FragmentPresets.FirstOrDefault(p => p.Sizes.SequenceEqual(normalized));
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            // Синтетический пресет только при явных размерах из плана.
+            return new TlsFragmentPreset("План v2", normalized, "Сгенерировано из параметров стратегии v2");
+        }
+
+        private static List<int> NormalizeFragmentSizes(IEnumerable<int> input)
+        {
+            var safe = input
+                .Where(v => v > 0)
+                .Select(v => Math.Max(4, v))
+                .Take(4)
+                .ToList();
+
+            return safe;
         }
 
         /// <summary>

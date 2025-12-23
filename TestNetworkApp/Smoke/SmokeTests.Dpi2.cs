@@ -941,6 +941,69 @@ namespace TestNetworkApp.Smoke
                     "OK: опции применены" );
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_ExecutorV2_TlsFragment_Params_AffectPresetAndAutoAdjust(CancellationToken ct)
+            => RunAsync("DPI2-022", "Executor v2: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", () =>
+            {
+                // Smoke-режим (без TrafficEngine), чтобы не требовать админ прав и WinDivert.
+                var engine = new TrafficEngine(progress: null);
+                var baseProfile = BypassProfile.CreateDefault();
+                var tlsService = new TlsBypassService(engine, baseProfile, log: null, startMetricsTimer: false, useTrafficEngine: false, nowProvider: () => DateTime.Now);
+                var controller = new BypassController(tlsService, baseProfile);
+
+                var plan = new BypassPlan
+                {
+                    ForDiagnosis = DiagnosisId.SilentDrop,
+                    PlanConfidence = 80,
+                    PlannedAtUtc = DateTimeOffset.UtcNow,
+                    Reasoning = "smoke-params",
+                    Strategies = new List<BypassStrategy>
+                    {
+                        new BypassStrategy
+                        {
+                            Id = StrategyId.TlsFragment,
+                            BasePriority = 90,
+                            Risk = RiskLevel.Medium,
+                            Parameters = new Dictionary<string, object?>
+                            {
+                                ["TlsFragmentSizes"] = new[] { 32, 32 },
+                                ["AutoAdjustAggressive"] = true
+                            }
+                        },
+                    }
+                };
+
+                controller.ApplyV2PlanAsync(plan, timeout: TimeSpan.FromSeconds(2), cancellationToken: CancellationToken.None)
+                    .GetAwaiter().GetResult();
+
+                if (!controller.IsFragmentEnabled)
+                {
+                    return new SmokeTestResult("DPI2-022", "Executor v2: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что после ApplyV2PlanAsync будет включён TLS_FRAGMENT");
+                }
+
+                if (!controller.IsAutoAdjustAggressive)
+                {
+                    return new SmokeTestResult("DPI2-022", "Executor v2: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что AutoAdjustAggressive=true будет применён из параметров стратегии");
+                }
+
+                if (controller.SelectedFragmentPreset == null)
+                {
+                    return new SmokeTestResult("DPI2-022", "Executor v2: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что SelectedFragmentPreset будет выбран");
+                }
+
+                var got = controller.SelectedFragmentPreset.Sizes.ToArray();
+                if (got.Length != 2 || got[0] != 32 || got[1] != 32)
+                {
+                    return new SmokeTestResult("DPI2-022", "Executor v2: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали sizes=[32,32], получили [{string.Join(",", got)}]");
+                }
+
+                return new SmokeTestResult("DPI2-022", "Executor v2: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: параметры применены" );
+            }, ct);
+
         public static async Task<SmokeTestResult> Dpi2_ExecutorV2_Cancel_RollbacksToPreviousState(CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();
