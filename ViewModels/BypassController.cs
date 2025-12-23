@@ -840,6 +840,7 @@ namespace IspAudit.ViewModels
             }
 
             var snapshot = CaptureStateSnapshot();
+            Log($"[V2][Executor] Timeout={(timeout > TimeSpan.Zero ? timeout.TotalSeconds.ToString("0.##") + "s" : "none")}; before={snapshot.Options.ToReadableStrategy()}; DoH={(snapshot.DoHEnabled ? "on" : "off")}; DNS={snapshot.SelectedDnsPreset}");
 
             using var timeoutCts = timeout > TimeSpan.Zero ? new CancellationTokenSource(timeout) : null;
             using var linked = timeoutCts != null
@@ -881,6 +882,8 @@ namespace IspAudit.ViewModels
 
                 _currentOptions = updated;
 
+                Log($"[V2][Executor] Target={_currentOptions.ToReadableStrategy()}; DoH={(enableDoH ? "on" : "off")}; DNS={SelectedDnsPreset}");
+
                 linked.Token.ThrowIfCancellationRequested();
 
                 Application.Current?.Dispatcher.Invoke(() =>
@@ -893,13 +896,16 @@ namespace IspAudit.ViewModels
                     CheckCompatibility();
                 });
 
+                Log("[V2][Executor] Applying bypass options...");
                 await ApplyBypassOptionsAsync(linked.Token).ConfigureAwait(false);
+                Log("[V2][Executor] Bypass options applied");
 
                 linked.Token.ThrowIfCancellationRequested();
 
                 if (enableDoH && !_isDoHEnabled)
                 {
                     linked.Token.ThrowIfCancellationRequested();
+                    Log("[V2][Executor] Applying DoH (enable)");
                     _isDoHEnabled = true;
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
@@ -912,21 +918,29 @@ namespace IspAudit.ViewModels
                 if (!enableDoH && _isDoHEnabled)
                 {
                     linked.Token.ThrowIfCancellationRequested();
+                    Log("[V2][Executor] Applying DoH (disable)");
                     await DisableDoHAsync().ConfigureAwait(false);
                 }
 
-                Log("[V2][Executor] Apply complete");
+                Log($"[V2][Executor] Apply complete: after={_currentOptions.ToReadableStrategy()}; DoH={(_isDoHEnabled ? "on" : "off")}; DNS={SelectedDnsPreset}");
             }
             catch (OperationCanceledException)
             {
-                Log("[V2][Executor] Apply cancelled/timeout — rollback");
+                var cancelReason = timeoutCts?.IsCancellationRequested == true
+                    ? "timeout"
+                    : (cancellationToken.IsCancellationRequested ? "cancel" : "cancel");
+                Log($"[V2][Executor] Apply {cancelReason} — rollback");
+                Log($"[V2][Executor] Rollback to: {snapshot.Options.ToReadableStrategy()}; DoH={(snapshot.DoHEnabled ? "on" : "off")}; DNS={snapshot.SelectedDnsPreset}");
                 await RestoreSnapshotAsync(snapshot).ConfigureAwait(false);
+                Log($"[V2][Executor] Rollback complete: after={_currentOptions.ToReadableStrategy()}; DoH={(_isDoHEnabled ? "on" : "off")}; DNS={SelectedDnsPreset}");
                 throw;
             }
             catch (Exception ex)
             {
                 Log($"[V2][Executor] Apply failed: {ex.Message} — rollback");
+                Log($"[V2][Executor] Rollback to: {snapshot.Options.ToReadableStrategy()}; DoH={(snapshot.DoHEnabled ? "on" : "off")}; DNS={snapshot.SelectedDnsPreset}");
                 await RestoreSnapshotAsync(snapshot).ConfigureAwait(false);
+                Log($"[V2][Executor] Rollback complete: after={_currentOptions.ToReadableStrategy()}; DoH={(_isDoHEnabled ? "on" : "off")}; DNS={SelectedDnsPreset}");
                 throw;
             }
         }
