@@ -112,6 +112,11 @@ public sealed class StandardStrategySelectorV2
             .Select(s => s.Strategy)
             .ToList();
 
+        // Важное правило UX/исполнения: одновременно должен применяться только один режим TLS-обхода.
+        // Иначе селектор может выдать противоречивые рекомендации (например, Disorder + Fragment),
+        // а исполнитель всё равно вынужден выбрать одну (см. профиль TLS strategy).
+        ordered = KeepOnlyOneTlsModeStrategy(ordered);
+
         var anyFeedbackApplied = ranked.Any(r => r.FeedbackBoost != 0);
 
         return new BypassPlan
@@ -124,6 +129,39 @@ public sealed class StandardStrategySelectorV2
                 : "план сформирован по диагноза v2 (MVP)",
             Strategies = ordered
         };
+    }
+
+    private static List<BypassStrategy> KeepOnlyOneTlsModeStrategy(List<BypassStrategy> strategies)
+    {
+        // Группа взаимоисключающих стратегий. Оставляем первую по ранжированию.
+        var tlsModeGroup = new HashSet<StrategyId>
+        {
+            StrategyId.TlsDisorder,
+            StrategyId.TlsFragment,
+            StrategyId.AggressiveFragment,
+        };
+
+        var result = new List<BypassStrategy>(strategies.Count);
+        var tlsModeAlreadyAdded = false;
+
+        foreach (var strategy in strategies)
+        {
+            if (!tlsModeGroup.Contains(strategy.Id))
+            {
+                result.Add(strategy);
+                continue;
+            }
+
+            if (tlsModeAlreadyAdded)
+            {
+                continue;
+            }
+
+            result.Add(strategy);
+            tlsModeAlreadyAdded = true;
+        }
+
+        return result;
     }
 
     private int TryGetFeedbackBoost(DiagnosisId diagnosisId, StrategyId strategyId)

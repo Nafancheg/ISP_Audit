@@ -541,11 +541,24 @@ namespace TestNetworkApp.Smoke
                         $"Executor не смог построить строку рекомендации из: {bypassText}");
                 }
 
-                var required = new[] { BypassExecutorMvp.V2LogPrefix, "TLS_FRAGMENT", "TLS_DISORDER" };
-                if (required.Any(r => !line.Contains(r, StringComparison.Ordinal)))
+                if (!line.Contains(BypassExecutorMvp.V2LogPrefix, StringComparison.Ordinal))
                 {
                     return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"В строке рекомендации не нашли обязательные токены: {line}");
+                        $"В строке рекомендации нет префикса {BypassExecutorMvp.V2LogPrefix}: {line}");
+                }
+
+                var hasFragment = line.Contains("TLS_FRAGMENT", StringComparison.Ordinal);
+                var hasDisorder = line.Contains("TLS_DISORDER", StringComparison.Ordinal);
+                if (!hasFragment && !hasDisorder)
+                {
+                    return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали одну TLS-стратегию (TLS_FRAGMENT или TLS_DISORDER), но не нашли ни одной: {line}");
+                }
+
+                if (hasFragment && hasDisorder)
+                {
+                    return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали, что селектор выберет ровно одну TLS-стратегию, но нашли обе: {line}");
                 }
 
                 return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Pass, TimeSpan.Zero,
