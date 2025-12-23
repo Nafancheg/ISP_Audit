@@ -146,15 +146,15 @@
                                         <!-- Кнопки в две колонки -->
                                         <UniformGrid Columns="2" Rows="3" HorizontalAlignment="Stretch">
                                             <ToggleButton IsChecked="{Binding IsFragmentEnabled, Mode=TwoWay}"
-                                                          Content="TLS Fragment"
+                                                          Content="Фрагментация"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
-                                                          ToolTip="TLS Фрагментация ClientHello"
+                                                          ToolTip="Фрагментация TLS ClientHello (сегменты отправляются по порядку)"
                                                           Margin="0,0,4,4"/>
 
                                             <ToggleButton IsChecked="{Binding IsDisorderEnabled, Mode=TwoWay}"
-                                                          Content="TLS Disorder"
+                                                          Content="Фрагментация + беспорядок"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
-                                                          ToolTip="Фрагменты в обратном порядке"
+                                                          ToolTip="Фрагментация TLS ClientHello + отправка фрагментов в обратном порядке"
                                                           Margin="4,0,0,4"/>
 
                                             <ToggleButton IsChecked="{Binding IsFakeEnabled, Mode=TwoWay}"
@@ -204,6 +204,12 @@
                                                 </Button.Style>
                                             </Button>
                                         </UniformGrid>
+
+                                        <TextBlock Text="Примечание: «Фрагментация» и «Фрагментация + беспорядок» — взаимно исключающие режимы (нельзя включать одновременно)."
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                   Margin="0,6,0,0"
+                                                   TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </TabItem>
 
