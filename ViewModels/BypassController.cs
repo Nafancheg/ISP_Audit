@@ -853,6 +853,8 @@ namespace IspAudit.ViewModels
 
                 var updated = _currentOptions;
                 var enableDoH = false;
+                TlsFragmentPreset? requestedPreset = null;
+                bool? requestedAutoAdjustAggressive = null;
 
                 foreach (var strategy in plan.Strategies)
                 {
@@ -860,6 +862,13 @@ namespace IspAudit.ViewModels
                     {
                         case StrategyId.TlsFragment:
                             updated = updated with { FragmentEnabled = true, DisorderEnabled = false };
+                            break;
+                        case StrategyId.AggressiveFragment:
+                            // Агрессивная фрагментация: используем пресет «Агрессивный» + авто-подстройку.
+                            updated = updated with { FragmentEnabled = true, DisorderEnabled = false };
+                            requestedPreset = FragmentPresets
+                                .FirstOrDefault(p => string.Equals(p.Name, "Агрессивный", StringComparison.OrdinalIgnoreCase));
+                            requestedAutoAdjustAggressive = true;
                             break;
                         case StrategyId.TlsDisorder:
                             updated = updated with { DisorderEnabled = true, FragmentEnabled = false };
@@ -880,6 +889,21 @@ namespace IspAudit.ViewModels
                     }
                 }
 
+                if (requestedPreset != null)
+                {
+                    _selectedPreset = requestedPreset;
+                    updated = updated with
+                    {
+                        FragmentSizes = requestedPreset.Sizes,
+                        PresetName = requestedPreset.Name
+                    };
+                }
+
+                if (requestedAutoAdjustAggressive.HasValue)
+                {
+                    updated = updated with { AutoAdjustAggressive = requestedAutoAdjustAggressive.Value };
+                }
+
                 _currentOptions = updated;
 
                 Log($"[V2][Executor] Target={_currentOptions.ToReadableStrategy()}; DoH={(enableDoH ? "on" : "off")}; DNS={SelectedDnsPreset}");
@@ -892,9 +916,15 @@ namespace IspAudit.ViewModels
                     OnPropertyChanged(nameof(IsDisorderEnabled));
                     OnPropertyChanged(nameof(IsFakeEnabled));
                     OnPropertyChanged(nameof(IsDropRstEnabled));
+                    OnPropertyChanged(nameof(IsAutoAdjustAggressive));
+                    OnPropertyChanged(nameof(SelectedFragmentPreset));
+                    OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
                     NotifyActiveStatesChanged();
                     CheckCompatibility();
                 });
+
+                // Сохраняем параметры фрагментации/пресета и флаг авто-подстройки.
+                PersistFragmentPreset();
 
                 Log("[V2][Executor] Applying bypass options...");
                 await ApplyBypassOptionsAsync(linked.Token).ConfigureAwait(false);
