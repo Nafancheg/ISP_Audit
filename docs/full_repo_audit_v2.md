@@ -174,7 +174,8 @@
 Актуализация (Dev, 18.12.2025): расширено покрытие PIPE в smoke
 - Реализованы `PIPE-001..004` (ConnectionMonitor, PID filtering, SNI parsing, endpoint↔PID gating) и `PIPE-017` (health-лог).
 - `PIPE-007` приведён к плану: проверяет гейтинг повторных тестов по цели (кулдаун + лимит попыток) в `InMemoryBlockageStateStore`.
-- Добавлен контракт `IBlockageStateStore.TryBeginHostTest(...)`, и `LiveTestingPipeline` использует его для отсеивания повторных целей до тестирования.
+- Добавлен контракт `IBlockageStateStore.TryBeginHostTest(...)`: `LiveTestingPipeline` использует его как гейтинг повторных тестов (кулдаун + лимит попыток) до вызова тестера.
+- Дополнительно: в runtime `TrafficCollector` дедупит соединения по ключу `RemoteIp:RemotePort:Protocol`, но допускает ограниченные «повторные обнаружения» той же цели с кулдауном/лимитом — иначе повторные попытки физически не попадут в pipeline.
 - Для детерминированных smoke-тестов SNI добавлены API в `DnsParserService`:
     - `TryExtractSniFromTlsClientHelloPayload(...)`
     - `TryFeedTlsClientHelloFragmentForSmoke(...)`

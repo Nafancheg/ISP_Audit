@@ -108,7 +108,8 @@ Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|
 *   **`LiveTestingPipeline`**: Асинхронный конвейер на базе `System.Threading.Channels`.
     *   Связывает этапы: Sniffing → Testing → Classification → Reporting.
     *   Использует `UnifiedTrafficFilter` для минимальной валидации (loopback) и правил отображения (не засорять UI «успешными» целями).
-    *   Выполняет дедупликацию целей на сессию через `IBlockageStateStore.TryBeginHostTest(...)`, чтобы повторные события соединения не запускали повторное тестирование.
+    *   Выполняет гейтинг повторных тестов через `IBlockageStateStore.TryBeginHostTest(...)` (кулдаун + лимит попыток), чтобы не спамить сеть, но при этом дать V2 накопить несколько наблюдений (SignalSequence) по проблемным/заблокированным хостам.
+    *   Важно: `TrafficCollector` дедупит соединения по `RemoteIp:RemotePort:Protocol`, но в runtime допускает ограниченные «повторные обнаружения» этой же цели с кулдауном/лимитом — иначе ретесты физически не дойдут до pipeline.
     *   Публикует периодический `[PipelineHealth]` лог со счётчиками этапов (enqueue/test/classify/ui), чтобы диагностировать потери данных и «затыки» очередей без привязки к сценариям.
     *   Обеспечивает параллельную обработку множества хостов.
     *   Опционально принимает `AutoHostlistService`: на этапе Classification добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения). Auto-hostlist питается `InspectionSignalsSnapshot` (без чтения legacy `BlockageSignals`).

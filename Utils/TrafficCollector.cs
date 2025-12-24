@@ -34,6 +34,11 @@ namespace IspAudit.Utils
         private DateTime _lastNewConnectionTime = DateTime.UtcNow;
         private bool _disposed;
         private bool _collecting = true; // Флаг активности сбора
+
+        // Важно для V2: чтобы накопить сигналы по заблокированным целям, иногда нужно
+        // повторно отправлять одну и ту же цель в pipeline. При этом нельзя спамить бесконечно.
+        private static readonly TimeSpan RediscoverCooldown = TimeSpan.FromSeconds(8);
+        private const int MaxRediscoveriesPerKeyPerRun = 3;
         
         // Канал для передачи хостов — хранится здесь для возможности завершить при Dispose
         private System.Threading.Channels.ChannelWriter<HostDiscovered>? _activeWriter;
@@ -234,55 +239,76 @@ namespace IspAudit.Utils
                 }
 
                 var key = $"{remoteIp}:{remotePort}:{protocol}";
-                
-                if (_connections.TryAdd(key, new ConnectionInfo
+
+                var nowUtc = DateTime.UtcNow;
+                var isNew = _connections.TryAdd(key, new ConnectionInfo
                 {
                     RemoteIp = remoteIp,
                     RemotePort = remotePort,
                     Protocol = protocol == 6 ? TransportProtocol.TCP : TransportProtocol.UDP,
-                    FirstSeen = DateTime.UtcNow
-                }))
+                    FirstSeen = nowUtc,
+                    LastEmittedUtc = nowUtc,
+                    EmittedCount = 1
+                });
+
+                // Если ключ уже был — иногда разрешаем «повторное обнаружение» с кулдауном и лимитом.
+                // Это даёт pipeline шанс выполнить ограниченные ретесты, не ломая дедуп внутри capture.
+                if (!isNew)
                 {
-                    _lastNewConnectionTime = DateTime.UtcNow;
-                    
-                    // Обогащаем hostname из DNS кеша (если есть)
-                    string? hostname = null;
-                    _dnsParser.DnsCache.TryGetValue(remoteIp.ToString(), out hostname);
-                    
-                    if (!string.IsNullOrEmpty(hostname))
-                    {
-                        _connections[key].Hostname = hostname;
-                    }
-
-                    // До создания карточки/логирования применяем единый фильтр (loopback/шум/дубликаты)
-                    var candidate = new HostDiscovered(
-                        Key: key,
-                        RemoteIp: remoteIp,
-                        RemotePort: remotePort,
-                        Protocol: protocol == 6 ? IspAudit.Bypass.TransportProtocol.Tcp : IspAudit.Bypass.TransportProtocol.Udp,
-                        DiscoveredAt: DateTime.UtcNow)
-                    {
-                        Hostname = hostname
-                    };
-
-                    var decision = _filter.ShouldTest(candidate, hostname);
-                    if (decision.Action == FilterAction.Drop)
+                    if (!_connections.TryGetValue(key, out var existing))
                     {
                         return;
                     }
-                    
-                    // В логах/сообщениях пайплайна используем IP как технический якорь,
-                    // а hostname (DNS/SNI) передаём как доп.метаданные. UI может
-                    // отображать карточку по человеко‑понятному ключу (SNI/hostname),
-                    // сохраняя IP как FallbackIp.
+
+                    if (!existing.TryBeginRediscovery(nowUtc, RediscoverCooldown, MaxRediscoveriesPerKeyPerRun))
+                    {
+                        return;
+                    }
+                }
+
+                // Считаем «тишину» только по новым уникальным целям, иначе диагностика может никогда не закончиться.
+                if (isNew)
+                {
+                    _lastNewConnectionTime = nowUtc;
+                }
+
+                // Обогащаем hostname из DNS кеша (если есть)
+                string? hostname = null;
+                _dnsParser.DnsCache.TryGetValue(remoteIp.ToString(), out hostname);
+
+                if (!string.IsNullOrEmpty(hostname) && _connections.TryGetValue(key, out var info))
+                {
+                    info.Hostname = hostname;
+                }
+
+                // До создания карточки/логирования применяем единый фильтр (loopback/шум)
+                var candidate = new HostDiscovered(
+                    Key: key,
+                    RemoteIp: remoteIp,
+                    RemotePort: remotePort,
+                    Protocol: protocol == 6 ? IspAudit.Bypass.TransportProtocol.Tcp : IspAudit.Bypass.TransportProtocol.Udp,
+                    DiscoveredAt: nowUtc)
+                {
+                    Hostname = hostname
+                };
+
+                var decision = _filter.ShouldTest(candidate, hostname);
+                if (decision.Action == FilterAction.Drop)
+                {
+                    return;
+                }
+
+                // Логируем только новые уникальные цели, иначе можно заспамить прогресс.
+                if (isNew)
+                {
                     var displayIp = remoteIp.ToString();
                     var dnsSuffix = string.IsNullOrWhiteSpace(hostname) ? "" : $" DNS={hostname}";
                     _progress?.Report($"[Collector] Новое соединение #{_connections.Count}: {displayIp}:{remotePort}{dnsSuffix} (proto={protocol}, pid={pid})");
-
-                    // Передаём дальше — Pipeline продолжит обработку
-                    writer.TryWrite(candidate);
-                    OnHostDiscovered?.Invoke(candidate);
                 }
+
+                // Передаём дальше — Pipeline продолжит обработку
+                writer.TryWrite(candidate);
+                OnHostDiscovered?.Invoke(candidate);
             }
             
             // Подписка на DNS обновления — только обновляем внутренний кеш
@@ -470,6 +496,31 @@ namespace IspAudit.Utils
             public TransportProtocol Protocol { get; set; }
             public DateTime FirstSeen { get; set; }
             public string? Hostname { get; set; }
+
+            // Гейтинг повторных отправок одной и той же цели в pipeline.
+            private readonly object _emitGate = new();
+            public DateTime LastEmittedUtc { get; set; }
+            public int EmittedCount { get; set; }
+
+            public bool TryBeginRediscovery(DateTime nowUtc, TimeSpan cooldown, int maxCount)
+            {
+                lock (_emitGate)
+                {
+                    if (EmittedCount >= maxCount)
+                    {
+                        return false;
+                    }
+
+                    if (nowUtc - LastEmittedUtc < cooldown)
+                    {
+                        return false;
+                    }
+
+                    LastEmittedUtc = nowUtc;
+                    EmittedCount++;
+                    return true;
+                }
+            }
         }
     }
 }
