@@ -14,11 +14,16 @@ namespace IspAudit.Core.Modules
     public sealed class InMemoryBlockageStateStore : IBlockageStateStore, IInspectionSignalsProvider
     {
         private readonly ConcurrentDictionary<string, HostBlockageState> _states = new();
-        private readonly ConcurrentDictionary<string, byte> _seenTargets = new();
+        private readonly ConcurrentDictionary<string, TargetTestGate> _seenTargets = new();
         private readonly TcpRetransmissionTracker? _retransmissionTracker;
         private readonly HttpRedirectDetector? _httpRedirectDetector;
         private readonly RstInspectionService? _rstInspectionService;
         private readonly UdpInspectionService? _udpInspectionService;
+
+        // Важно для V2: чтобы накопить факты (SignalSequence) по проблемной цели,
+        // одной попытки часто недостаточно. Но бесконечно гонять тесты тоже нельзя.
+        private static readonly TimeSpan RetestCooldown = TimeSpan.FromSeconds(8);
+        private const int MaxAttemptsPerTargetPerRun = 3;
 
         public InMemoryBlockageStateStore()
         {
@@ -38,8 +43,9 @@ namespace IspAudit.Core.Modules
 
         public bool TryBeginHostTest(HostDiscovered host, string? hostname = null)
         {
-            // Дедупликация "на сессию": один и тот же ключ не должен тестироваться повторно.
-            // Ключ строим по лучшему имени (SNI/DNS) если оно известно, иначе по IP.
+            // Дедупликация/гейтинг: не даём спамить тестами одну и ту же цель,
+            // но разрешаем ограниченное число повторов, чтобы диагностика успевала накопить факты.
+            // Ключ строим по лучшему имени (SNI/DNS), иначе по IP.
             var bestName =
                 host.SniHostname ??
                 hostname ??
@@ -51,8 +57,48 @@ namespace IspAudit.Core.Modules
 
             // Протокол и порт влияют на смысл цели (TCP/UDP и конкретный сервис).
             var dedupeKey = $"{keyName}:{host.RemotePort}:{host.Protocol}";
-            return _seenTargets.TryAdd(dedupeKey, 0);
+
+            var nowUtc = DateTimeOffset.UtcNow;
+
+            while (true)
+            {
+                if (!_seenTargets.TryGetValue(dedupeKey, out var gate))
+                {
+                    var created = new TargetTestGate(Attempts: 1, LastAttemptUtc: nowUtc);
+                    if (_seenTargets.TryAdd(dedupeKey, created))
+                    {
+                        return true;
+                    }
+
+                    continue;
+                }
+
+                // Слишком часто — отбрасываем.
+                if (nowUtc - gate.LastAttemptUtc < RetestCooldown)
+                {
+                    return false;
+                }
+
+                // Достигли лимита на текущий прогон.
+                if (gate.Attempts >= MaxAttemptsPerTargetPerRun)
+                {
+                    return false;
+                }
+
+                var updated = gate with
+                {
+                    Attempts = gate.Attempts + 1,
+                    LastAttemptUtc = nowUtc
+                };
+
+                if (_seenTargets.TryUpdate(dedupeKey, updated, gate))
+                {
+                    return true;
+                }
+            }
         }
+
+        private sealed record TargetTestGate(int Attempts, DateTimeOffset LastAttemptUtc);
 
         public void RegisterResult(HostTested tested)
         {

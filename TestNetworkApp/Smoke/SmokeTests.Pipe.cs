@@ -287,7 +287,7 @@ namespace TestNetworkApp.Smoke
             }, ct);
 
         public static Task<SmokeTestResult> Pipe_StateStore_Dedup_SingleSession(CancellationToken ct)
-            => RunAsync("PIPE-007", "Дедупликация хостов в InMemoryBlockageStateStore", () =>
+            => RunAsync("PIPE-007", "Гейтинг тестов хостов в InMemoryBlockageStateStore (кулдаун + лимит попыток)", () =>
             {
                 var store = new InMemoryBlockageStateStore();
 
@@ -313,12 +313,21 @@ namespace TestNetworkApp.Smoke
 
                 if (second)
                 {
-                    return new SmokeTestResult("PIPE-007", "Дедупликация хостов в InMemoryBlockageStateStore", SmokeOutcome.Fail, TimeSpan.Zero,
-                        "Повторное появление цели должно быть проигнорировано (ожидали false)");
+                    return new SmokeTestResult("PIPE-007", "Гейтинг тестов хостов в InMemoryBlockageStateStore (кулдаун + лимит попыток)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Повторное появление цели сразу должно быть проигнорировано (кулдаун, ожидали false)");
                 }
 
-                return new SmokeTestResult("PIPE-007", "Дедупликация хостов в InMemoryBlockageStateStore", SmokeOutcome.Pass, TimeSpan.Zero,
-                    "OK: повторная цель игнорируется");
+                // После небольшого ожидания ретест должен стать возможен (но ограниченно).
+                Thread.Sleep(9000);
+                var third = store.TryBeginHostTest(host1, hostname: "example.com");
+                if (!third)
+                {
+                    return new SmokeTestResult("PIPE-007", "Гейтинг тестов хостов в InMemoryBlockageStateStore (кулдаун + лимит попыток)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "После кулдауна ретест должен быть разрешён (ожидали true)");
+                }
+
+                return new SmokeTestResult("PIPE-007", "Гейтинг тестов хостов в InMemoryBlockageStateStore (кулдаун + лимит попыток)", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: повтор сразу блокируется, но ретест после кулдауна разрешён");
             }, ct);
 
         public static async Task<SmokeTestResult> Pipe_PipelineHealth_EmitsLog_OnActivity(CancellationToken ct)
