@@ -1005,7 +1005,7 @@ namespace TestNetworkApp.Smoke
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_StrategySelector_PopulatesTlsFragmentParameters(CancellationToken ct)
-            => RunAsync("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (TlsFragmentSizes) в плане", () =>
+            => RunAsync("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", () =>
             {
                 var selector = new StandardStrategySelectorV2(feedbackStore: null);
 
@@ -1044,30 +1044,42 @@ namespace TestNetworkApp.Smoke
                 var fragment = plan.Strategies.FirstOrDefault(s => s.Id == StrategyId.TlsFragment);
                 if (fragment == null)
                 {
-                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что план будет содержать TlsFragment");
                 }
 
                 if (fragment.Parameters == null || fragment.Parameters.Count == 0)
                 {
-                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что у TlsFragment будут параметры");
+                }
+
+                if (!fragment.Parameters.TryGetValue("PresetName", out var presetRaw) || presetRaw is not string presetName)
+                {
+                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что параметр PresetName будет string");
+                }
+
+                if (!string.Equals(presetName, "Стандарт", StringComparison.Ordinal))
+                {
+                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали PresetName=\"Стандарт\", получили '{presetName}'");
                 }
 
                 if (!fragment.Parameters.TryGetValue("TlsFragmentSizes", out var raw) || raw is not int[] sizes)
                 {
-                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что параметр TlsFragmentSizes будет int[]");
                 }
 
                 if (sizes.Length != 1 || sizes[0] != 64)
                 {
-                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали sizes=[64], получили [{string.Join(",", sizes)}]");
                 }
 
-                return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (TlsFragmentSizes) в плане", SmokeOutcome.Pass, TimeSpan.Zero,
-                    "OK: параметры присутствуют" );
+                return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: PresetName и sizes присутствуют" );
             }, ct);
 
         public static async Task<SmokeTestResult> Dpi2_ExecutorV2_Cancel_RollbacksToPreviousState(CancellationToken ct)

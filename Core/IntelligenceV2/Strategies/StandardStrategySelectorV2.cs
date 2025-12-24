@@ -233,6 +233,7 @@ public sealed class StandardStrategySelectorV2
                     {
                         // Явно задаём параметры, чтобы план был детерминированным.
                         // Иначе executor оставит текущий пресет пользователя, и результат будет зависеть от UI-состояния.
+                        ["PresetName"] = "Стандарт",
                         ["TlsFragmentSizes"] = new[] { 64 },
                         ["AutoAdjustAggressive"] = false
                     }),
@@ -256,6 +257,7 @@ public sealed class StandardStrategySelectorV2
                     Risk: RiskLevel.Medium,
                     Parameters: new Dictionary<string, object?>
                     {
+                        ["PresetName"] = "Стандарт",
                         ["TlsFragmentSizes"] = new[] { 64 },
                         ["AutoAdjustAggressive"] = false
                     }),
