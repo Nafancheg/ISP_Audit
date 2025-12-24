@@ -344,13 +344,10 @@ namespace IspAudit.Utils
                     // Регистрируем результат в сторе, чтобы поддерживать fail counter + time window
                     _stateStore.RegisterResult(tested);
 
-                    // Снимаем агрегированные сигналы для Auto-hostlist и диагностики.
-                    var signals = _stateStore.GetSignals(tested, TimeSpan.FromSeconds(60));
-
                     // v2: снимаем «сенсорные» факты без зависимости от legacy BlockageSignals.
                     // Пока legacy-сигналы остаются для UI/AutoHostlist, но v2 контур может быть переведён отдельно.
                     var inspection = (_stateStore as IInspectionSignalsProvider)?.GetInspectionSignalsSnapshot(tested)
-                        ?? InspectionSignalsSnapshot.FromLegacy(signals);
+                        ?? InspectionSignalsSnapshot.Empty;
 
                     // v2: записываем факты в последовательность событий + минимальный Gate-лог.
                     // Окно Gate-логов использует дефолт контракта (30 сек), но сами legacy signals сняты за 60 сек.
@@ -375,7 +372,7 @@ namespace IspAudit.Utils
                     }
 
                     // Формируем результат для UI/фильтра: стратегия всегда NONE, а в RecommendedAction кладём факты/уверенность.
-                    var blocked = BuildHostBlockedForUi(tested, signals, diagnosis, plan);
+                    var blocked = BuildHostBlockedForUi(tested, inspection, diagnosis, plan);
 
                     // Принимаем решение о показе через единый фильтр
                     var decision = _filter.ShouldDisplay(blocked);
@@ -394,7 +391,10 @@ namespace IspAudit.Utils
                     // Auto-hostlist: добавляем кандидатов только по не-шумовым хостам.
                     if (_autoHostlist != null)
                     {
-                        _autoHostlist.Observe(tested, signals, hostname);
+                        // Пока Auto-hostlist питается legacy BlockageSignals.
+                        // Это отдельный шаг миграции (вариант B), поэтому читаем legacy только при включённом Auto-hostlist.
+                        var legacySignals = _stateStore.GetSignals(tested, TimeSpan.FromSeconds(60));
+                        _autoHostlist.Observe(tested, legacySignals, hostname);
                     }
 
                     // В сообщениях пайплайна используем IP как технический якорь.
@@ -450,13 +450,13 @@ namespace IspAudit.Utils
             }
         }
 
-        private static HostBlocked BuildHostBlockedForUi(HostTested tested, BlockageSignals legacySignals, DiagnosisResult diagnosis, BypassPlan plan)
+        private static HostBlocked BuildHostBlockedForUi(HostTested tested, InspectionSignalsSnapshot inspectionSignals, DiagnosisResult diagnosis, BypassPlan plan)
         {
             // Для успешных результатов оставляем прежний контракт (фильтр ожидает NONE + OK)
             if (tested.DnsOk && tested.TcpOk && tested.TlsOk)
             {
                 // UDP blockage не считаем «ошибкой» для UI (браузер часто откатывается на TCP)
-                if (legacySignals.HasUdpBlockage)
+                if (inspectionSignals.UdpUnansweredHandshakes > 2)
                 {
                     var udpTested = tested with { BlockageType = BlockageCode.UdpBlockage };
                     return new HostBlocked(udpTested, PipelineContract.BypassNone, BlockageCode.StatusOk);
