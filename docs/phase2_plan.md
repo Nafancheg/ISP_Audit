@@ -80,7 +80,7 @@
 └──────────────────┬──────────────────────────┘
                    ↓
 ┌─────────────────────────────────────────────┐
-│ Feedback Store (планируется)                │
+│ Feedback Store (реализовано, MVP)           │
 │ Запоминает результаты, ранжирует стратегии  │
 └─────────────────────────────────────────────┘
 ```
@@ -558,6 +558,80 @@ public sealed class BypassPlan
 - v2 accuracy ≥ 85% на контрольных наборах.
 - Нет критичных багов в течение 2 недель.
 - Пользовательские жалобы < 5 в неделю.
+
+---
+
+## ✅ Вариант B: планомерный полный переезд (SignalSequence-only, legacy выключен)
+
+Цель варианта B: сделать v2 **самодостаточным по данным** — чтобы цепочка
+`Signals → Diagnosis → Selector → Plan` не зависела от legacy агрегата `BlockageSignals` и стора `IBlockageStateStore.GetSignals(...)`.
+
+Сейчас (как есть в коде):
+- v2 использует `SignalSequence`, но наполнение и часть вычислений идут через legacy `BlockageSignals` (мост в `SignalsAdapterV2`).
+- `AutoHostlistService` принимает legacy `BlockageSignals`.
+- UI допускает legacy “справочные” рекомендации.
+
+Ниже — поэтапная миграция без «быстрых выключателей», с проверяемыми gates.
+
+### B1) Ввести v2-источники фактов (сенсоры → SignalEvent)
+
+**Что:** перестать «пересказывать» сенсоры через legacy `BlockageSignals`; вместо этого писать в `SignalSequence` события фактов напрямую.
+
+**Затрагиваем:**
+- `Core/IntelligenceV2/Signals/*` (добавить/расширить API для Append фактов)
+- `Utils/LiveTestingPipeline.cs` (точки вызова)
+
+**Gate:**
+- В `SignalSequence` попадают события `TcpRetransStats`, `SuspiciousRstObserved`, `HttpRedirectObserved`, `UdpHandshakeUnanswered` без участия `BlockageSignals`.
+- Сохраняется порядок событий и анти-спам (debounce/rate-limit).
+
+### B2) Переписать SignalsAdapterV2 на вход без BlockageSignals
+
+**Что:**
+- `SignalsAdapterV2.Observe(...)`: принимает только `HostTested` (и/или отдельные методы `Observe*` для фактов), без `BlockageSignals`.
+- `BuildSnapshot(...)`: строит `BlockageSignalsV2` **только** из `SignalSequence` + полей `HostTested`.
+
+**Gate:**
+- Сигнатуры v2 не содержат `BlockageSignals`.
+- `BuildSnapshot(...)` не читает `legacySignals.*`.
+
+### B3) Вынести legacy state store из v2-цепочки в рантайме
+
+**Что:** в `LiveTestingPipeline`:
+- v2-ветка не вызывает `IBlockageStateStore.GetSignals(...)`.
+- legacy store остаётся (временно) только для legacy-функций (если они ещё нужны отдельно), но не как source-of-truth для v2.
+
+**Gate:**
+- По grep в коде: в местах построения v2 плана нет вызовов `GetSignals(...)`.
+- `OnV2PlanBuilt` продолжает работать без регрессий.
+
+### B4) Перевести AutoHostlistService на v2-снимок
+
+**Что:** заменить вход `AutoHostlistService.Observe(..., BlockageSignals, ...)` на `BlockageSignalsV2` (или на минимальный v2 DTO), чтобы auto-hostlist строился по тем же фактам, что и диагноз.
+
+**Gate:**
+- Auto-hostlist не зависит от `BlockageSignals`.
+- Семантика фильтрации шума и “не добавлять IP” сохраняется.
+
+### B5) Отключить legacy-рекомендации в UI (не как “ускорение”, а как финальный переключатель)
+
+**Что:**
+- В `TestResultsManager` и/или `DiagnosticOrchestrator` запретить обновление рекомендаций/стратегий из non-[V2] строк.
+- Убрать режим “Legacy (справочно)”, оставив только v2-диагноз и v2-план.
+
+**Gate:**
+- Любые legacy-строки не меняют поле `BypassStrategy` карточки.
+- В UI присутствуют только рекомендации из `BypassPlan`.
+
+### B6) Удаление/изоляция legacy компонентов
+
+**Что:** после прохождения B1–B5:
+- перевести legacy `StandardBlockageClassifier`/`BlockageSignals` в режим “только для дебага” или удалить из основного сценария.
+- удалить/зафиксировать границы интерфейсов, чтобы legacy не вернулся незаметно.
+
+**Gate:**
+- По grep: v2 слой не использует `BlockageSignals`.
+- Smoke `dpi2 --strict` проходит, и добавлен guard-тест на отсутствие legacy-зависимостей в v2 пути.
 
 ### Откат при проблемах:
 
