@@ -49,7 +49,8 @@ namespace TestNetworkApp.Smoke
                     SuspiciousRstDetails: "TTL=5 (expected 50-55)",
                     UdpUnansweredHandshakes: 0);
 
-                adapter.Observe(tested, legacy);
+                var inspection = InspectionSignalsSnapshot.FromLegacy(legacy);
+                adapter.Observe(tested, inspection);
 
                 var hostKey = SignalsAdapterV2.BuildStableHostKey(tested);
                 var events = store.ReadWindow(hostKey, DateTimeOffset.UtcNow - TimeSpan.FromMinutes(1), DateTimeOffset.UtcNow + TimeSpan.FromSeconds(1));
@@ -170,8 +171,9 @@ namespace TestNetworkApp.Smoke
                     SuspiciousRstDetails: null,
                     UdpUnansweredHandshakes: 0);
 
-                var snap30 = adapter.BuildSnapshot(tested, legacy, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
-                var snap60 = adapter.BuildSnapshot(tested, legacy, IntelligenceV2ContractDefaults.ExtendedAggregationWindow);
+                var inspection = InspectionSignalsSnapshot.FromLegacy(legacy);
+                var snap30 = adapter.BuildSnapshot(tested, inspection, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
+                var snap60 = adapter.BuildSnapshot(tested, inspection, IntelligenceV2ContractDefaults.ExtendedAggregationWindow);
 
                 if (snap30.SampleSize < 5 || snap30.SampleSize > 7)
                 {
@@ -219,7 +221,8 @@ namespace TestNetworkApp.Smoke
                     SuspiciousRstDetails: "TTL=64 (обычный=50-55)",
                     UdpUnansweredHandshakes: 0);
 
-                var snap = adapter.BuildSnapshot(tested, legacy, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
+                var inspection = InspectionSignalsSnapshot.FromLegacy(legacy);
+                var snap = adapter.BuildSnapshot(tested, inspection, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
 
                 if (!snap.HasTcpReset)
                 {
@@ -463,7 +466,8 @@ namespace TestNetworkApp.Smoke
                 var lines = new List<string>();
                 var progress = new ImmediateProgress(lines);
 
-                adapter.Observe(tested, legacy, progress);
+                var inspection = InspectionSignalsSnapshot.FromLegacy(legacy);
+                adapter.Observe(tested, inspection, progress);
 
                 if (!lines.Any(s => s.Contains("[V2][GATE1]", StringComparison.Ordinal)))
                 {
