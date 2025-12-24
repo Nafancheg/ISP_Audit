@@ -51,6 +51,7 @@ namespace IspAudit.Utils
         /// <summary>
         /// Наблюдать результат теста и агрегированные сигналы.
         /// </summary>
+        [Obsolete("Legacy overload отключён: используйте Observe(..., InspectionSignalsSnapshot, ...) (v2).", error: true)]
         public void Observe(HostTested tested, BlockageSignals signals, string? hostname)
         {
             if (!Enabled)

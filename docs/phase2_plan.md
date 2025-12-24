@@ -623,7 +623,7 @@ public sealed class BypassPlan
 - Любые legacy-строки не меняют поле `BypassStrategy` карточки.
 - В UI присутствуют только рекомендации из `BypassPlan`.
 
-### B6) Удаление/изоляция legacy компонентов
+### B6) Удаление/изоляция legacy компонентов ✅
 
 **Что:** после прохождения B1–B5:
 - перевести legacy `StandardBlockageClassifier`/`BlockageSignals` в режим “только для дебага” или удалить из основного сценария.
@@ -632,6 +632,8 @@ public sealed class BypassPlan
 **Gate:**
 - По grep: v2 слой не использует `BlockageSignals`.
 - Smoke `dpi2 --strict` проходит, и добавлен guard-тест на отсутствие legacy-зависимостей в v2 пути.
+
+Примечание по фактической реализации: `StandardBlockageClassifier` выведен из runtime-пайплайна и помечен как legacy (smoke/debug-only). Legacy overload `AutoHostlistService.Observe(..., BlockageSignals, ...)` запрещён компиляцией.
 
 ### Откат при проблемах:
 
@@ -660,3 +662,5 @@ public sealed class BypassPlan
 **19.12.2025** — Актуализация под фактическую реализацию v2 в репозитории (пути `Core/IntelligenceV2/*`, удаление псевдокода, синхронизация контрактов)
 
 **24.12.2025** — Выполнено B5: UI принимает рекомендации/стратегии только из `[V2]`-строк (legacy “справочно” отключён)
+
+**24.12.2025** — Выполнено B6: legacy компоненты изолированы (нет runtime-зависимостей, добавлены compile-time/guard rail)

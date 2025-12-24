@@ -8,6 +8,7 @@ using IspAudit.Utils;
 
 namespace IspAudit.Core.Modules
 {
+    [Obsolete("Legacy-классификатор: не используется в runtime-пайплайне v2; оставлен для smoke/debug и совместимости.", error: false)]
     public class StandardBlockageClassifier : IBlockageClassifier
     {
         private readonly IBlockageStateStore? _stateStore;

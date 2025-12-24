@@ -90,6 +90,8 @@ namespace TestNetworkApp.Smoke
                 var reBlockageSignals = new Regex(@"\bBlockageSignals\b", RegexOptions.Compiled);
                 var reGetSignalsCall = new Regex(@"\bGetSignals\s*\(", RegexOptions.Compiled);
                 var reLegacySignals = new Regex(@"\blegacySignals\s*\.", RegexOptions.Compiled);
+                var reNewLegacyClassifier = new Regex(@"\bnew\s+StandardBlockageClassifier\b", RegexOptions.Compiled);
+                var reCallLegacyClassifier = new Regex(@"\bStandardBlockageClassifier\s*\.\s*ClassifyBlockage\s*\(", RegexOptions.Compiled);
 
                 var allowedBlockageSignalsFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 {
@@ -105,7 +107,8 @@ namespace TestNetworkApp.Smoke
                     var text = File.ReadAllText(file);
 
                     // 1) GetSignals(...) и legacySignals.* запрещены в v2 runtime-пути без исключений.
-                    if (reGetSignalsCall.IsMatch(text) || reLegacySignals.IsMatch(text))
+                    // 2) Создание/вызов legacy-классификатора запрещено в runtime-пути (должно быть v2-only).
+                    if (reGetSignalsCall.IsMatch(text) || reLegacySignals.IsMatch(text) || reNewLegacyClassifier.IsMatch(text) || reCallLegacyClassifier.IsMatch(text))
                     {
                         var rel = Path.GetRelativePath(root, file);
                         offenders.Add(rel.Replace('\\', '/'));

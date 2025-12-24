@@ -20,6 +20,7 @@ namespace TestNetworkApp.Smoke
 {
     internal static partial class SmokeTests
     {
+#pragma warning disable CS0618 // Smoke-тесты намеренно используют legacy-классификатор для проверки маппинга кодов.
         public static async Task<SmokeTestResult> Pipe_ConnectionMonitor_PublishesEvents_OnTcpConnect(CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();
