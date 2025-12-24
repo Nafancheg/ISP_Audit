@@ -93,6 +93,7 @@
 - Добавлен smoke-тест `DPI2-022`: параметры `TlsFragment` влияют на пресет и флаг `AutoAdjustAggressive`.
 - Детерминизм: `StandardStrategySelectorV2` задаёт `TlsFragmentSizes` в `BypassPlan` (иначе executor зависел бы от текущего выбранного пресета пользователя).
 - Добавлен smoke-тест `DPI2-023`: селектор v2 кладёт `TlsFragmentSizes` в план.
+- Добавлен smoke-тест `DPI2-024`: e2e проверка `selector → plan → ApplyV2PlanAsync` (manual apply использует параметры плана детерминированно).
 - Для контроля Gate 1→2 в UI-логе используются строки с префиксом `[V2][GATE1]` (не чаще 1 раза в минуту на HostKey).
 
 ---

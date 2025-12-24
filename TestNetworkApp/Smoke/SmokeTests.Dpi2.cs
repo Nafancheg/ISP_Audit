@@ -1082,6 +1082,106 @@ namespace TestNetworkApp.Smoke
                     "OK: PresetName и sizes присутствуют" );
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_E2E_SelectorPlan_ManualApply_UsesPlanParams(CancellationToken ct)
+            => RunAsync("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", () =>
+            {
+                // 1) Формируем план через селектор (это и есть e2e часть: plan должен включать параметры).
+                var selector = new StandardStrategySelectorV2(feedbackStore: null);
+
+                var diagnosis = new DiagnosisResult
+                {
+                    DiagnosisId = DiagnosisId.SilentDrop,
+                    Confidence = 80,
+                    ExplanationNotes = new[] { "smoke-e2e" },
+                    InputSignals = new BlockageSignalsV2
+                    {
+                        HostKey = "203.0.113.98",
+                        CapturedAtUtc = DateTimeOffset.UtcNow,
+                        AggregationWindow = TimeSpan.FromSeconds(30),
+
+                        HasDnsFailure = false,
+                        HasFakeIp = false,
+                        HasHttpRedirect = false,
+
+                        HasTcpTimeout = true,
+                        HasTcpReset = false,
+                        RetransmissionRate = 0.25,
+                        RstTtlDelta = null,
+                        RstLatency = null,
+
+                        HasTlsTimeout = false,
+                        HasTlsAuthFailure = false,
+                        HasTlsReset = false,
+
+                        SampleSize = 1,
+                        IsUnreliable = false
+                    },
+                    DiagnosedAtUtc = DateTimeOffset.UtcNow
+                };
+
+                var plan = selector.Select(diagnosis, warningLog: null);
+                if (plan.Strategies.Count == 0)
+                {
+                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что селектор вернёт непустой план");
+                }
+
+                // 2) Применяем план через реальный executor (manual apply) в smoke-режиме (без TrafficEngine/WinDivert).
+                var engine = new TrafficEngine(progress: null);
+                var baseProfile = BypassProfile.CreateDefault();
+                var tlsService = new TlsBypassService(engine, baseProfile, log: null, startMetricsTimer: false, useTrafficEngine: false, nowProvider: () => DateTime.Now);
+                var controller = new BypassController(tlsService, baseProfile);
+
+                controller.ApplyV2PlanAsync(plan, timeout: TimeSpan.FromSeconds(2), cancellationToken: CancellationToken.None)
+                    .GetAwaiter().GetResult();
+
+                if (!controller.IsFragmentEnabled)
+                {
+                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что после apply будет включён TLS_FRAGMENT");
+                }
+
+                if (controller.IsDisorderEnabled)
+                {
+                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что TLS_DISORDER будет выключен (Fragment и Disorder взаимоисключающие)");
+                }
+
+                if (!controller.IsDropRstEnabled)
+                {
+                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что после apply будет включён DROP_RST (из плана селектора)");
+                }
+
+                if (controller.SelectedFragmentPreset == null)
+                {
+                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что SelectedFragmentPreset будет выбран после apply");
+                }
+
+                if (!string.Equals(controller.SelectedFragmentPreset.Name, "Стандарт", StringComparison.Ordinal))
+                {
+                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали, что пресет будет 'Стандарт' (из параметров плана), получили '{controller.SelectedFragmentPreset.Name}'");
+                }
+
+                var gotSizes = controller.SelectedFragmentPreset.Sizes.ToArray();
+                if (gotSizes.Length != 1 || gotSizes[0] != 64)
+                {
+                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали sizes=[64] (из параметров плана), получили [{string.Join(",", gotSizes)}]");
+                }
+
+                if (controller.IsAutoAdjustAggressive)
+                {
+                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали AutoAdjustAggressive=false (из параметров плана)");
+                }
+
+                return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: параметры плана применены детерминированно" );
+            }, ct);
+
         public static async Task<SmokeTestResult> Dpi2_ExecutorV2_Cancel_RollbacksToPreviousState(CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();

@@ -442,6 +442,27 @@
 **Входные данные:** `BypassPlan` с `TlsFragment` + `DropRst`  
 **Ожидаемый результат:** `BypassController` отражает включённые опции
 
+**Test ID:** `DPI2-022`  
+**Что проверяет:** Параметры `TlsFragment` из `BypassPlan` реально влияют на выбранный пресет и `AutoAdjustAggressive`  
+**Для чего:** Executor должен применять то, что описано в плане (детерминизм), а не текущее UI-состояние  
+**Критерий успеха:** После применения выбран пресет по sizes и включён `AutoAdjustAggressive=true`  
+**Входные данные:** `BypassPlan` с `TlsFragment.Parameters: { TlsFragmentSizes=[32,32], AutoAdjustAggressive=true }`  
+**Ожидаемый результат:** `SelectedFragmentPreset.Sizes == [32,32]`, `IsAutoAdjustAggressive == true`
+
+**Test ID:** `DPI2-023`  
+**Что проверяет:** Селектор v2 кладёт параметры `TlsFragment` (PresetName/TlsFragmentSizes) прямо в `BypassPlan`  
+**Для чего:** Детерминизм: executor не должен зависеть от текущего пресета пользователя  
+**Критерий успеха:** В плане у `TlsFragment` присутствуют `PresetName` и `TlsFragmentSizes`  
+**Входные данные:** `DiagnosisResult(SilentDrop, confidence=80)`  
+**Ожидаемый результат:** `plan.Strategies[].Parameters` содержит `PresetName="Стандарт"` и `TlsFragmentSizes=[64]`
+
+**Test ID:** `DPI2-024`  
+**Что проверяет:** E2E цепочку `selector → plan → ApplyV2PlanAsync` (параметры из плана реально применяются)  
+**Для чего:** Самый важный функциональный контракт: рекомендации v2 должны быть исполнимы и детерминированы  
+**Критерий успеха:** После apply включены ожидаемые флаги и выбран ожидаемый пресет/размеры из параметров плана  
+**Входные данные:** `DiagnosisResult(SilentDrop, confidence=80)` → `StandardStrategySelectorV2.Select(...)`  
+**Ожидаемый результат:** `IsFragmentEnabled=true`, `IsDropRstEnabled=true`, `SelectedFragmentPreset.Name=="Стандарт"`, sizes `[64]`, `AutoAdjustAggressive=false`
+
 **Test ID:** `DPI2-020`  
 **Что проверяет:** Отмена/таймаут применения приводит к безопасному откату (rollback)  
 **Для чего:** Не оставлять систему в частично применённом состоянии при Cancel/Timeout  

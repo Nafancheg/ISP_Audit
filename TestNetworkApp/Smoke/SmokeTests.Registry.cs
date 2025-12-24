@@ -106,6 +106,7 @@ namespace TestNetworkApp.Smoke
                 ["DPI2-021"] = Dpi2_Pipeline_DoesNotAutoApply_BypassControllerOrTlsBypassService,
                 ["DPI2-022"] = Dpi2_ExecutorV2_TlsFragment_Params_AffectPresetAndAutoAdjust,
                 ["DPI2-023"] = Dpi2_StrategySelector_PopulatesTlsFragmentParameters,
+                ["DPI2-024"] = Dpi2_E2E_SelectorPlan_ManualApply_UsesPlanParams,
 
                 ["CFG-001"] = Cfg_BypassProfile_Load,
                 ["CFG-002"] = Cfg_BypassProfile_SaveChanges,
