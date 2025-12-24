@@ -1,13 +1,10 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using System.Windows.Threading;
 using MaterialDesignThemes.Wpf;
 using IspAudit.Bypass;
 using IspAudit.Models;
@@ -33,10 +30,6 @@ namespace IspAudit.ViewModels
 
         private static readonly string LogsDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
         private static readonly string LogFilePath = InitializeLogFilePath();
-
-        // Событие для UI: чтобы пользователь видел журнал прямо в окне,
-        // а не искал файлы логов на диске.
-        public static event Action<string>? OnGlobalLog;
 
         private static string InitializeLogFilePath()
         {
@@ -72,15 +65,6 @@ namespace IspAudit.ViewModels
                 System.Diagnostics.Debug.WriteLine(message);
             }
             catch { }
-
-            try
-            {
-                OnGlobalLog?.Invoke(message);
-            }
-            catch
-            {
-                // Не ломаем приложение из-за UI-журнала.
-            }
         }
 
         #endregion
@@ -150,7 +134,6 @@ namespace IspAudit.ViewModels
                 if (value == "start")
                 {
                     Results.ResetStatuses();
-                    ClearUiLog();
                 }
             }
         }
@@ -351,29 +334,11 @@ namespace IspAudit.ViewModels
         private volatile bool _pendingRetestAfterRun;
         private string _pendingRetestReason = "";
 
-        private readonly object _uiLogLock = new();
-        private readonly List<string> _uiLogLines = new(capacity: 256);
-        private string _uiLogText = "";
-
-        public string UiLogText
-        {
-            get => _uiLogText;
-            private set
-            {
-                if (string.Equals(_uiLogText, value, StringComparison.Ordinal)) return;
-                _uiLogText = value;
-                OnPropertyChanged(nameof(UiLogText));
-            }
-        }
-
         public MainViewModelRefactored()
         {
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             Log("MainViewModelRefactored: Инициализация");
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-            // Подписываем UI на глобальные логи.
-            OnGlobalLog += AppendToUiLog;
 
             // Create TrafficEngine
             var progress = new Progress<string>(msg => Log(msg));
@@ -402,7 +367,6 @@ namespace IspAudit.ViewModels
             Orchestrator.OnPipelineMessage += msg => 
             {
                 CurrentAction = msg;
-                AppendToUiLog(msg);
                 Results.ParsePipelineMessage(msg);
                 UpdateUserMessage(msg);
             };
@@ -468,117 +432,6 @@ namespace IspAudit.ViewModels
             ApplyRecommendationsCommand = new RelayCommand(async _ => await ApplyRecommendationsAsync(), _ => HasRecommendations && !IsApplyingRecommendations);
 
             Log("✓ MainViewModelRefactored инициализирован");
-        }
-
-        private void ClearUiLog()
-        {
-            void Update()
-            {
-                lock (_uiLogLock)
-                {
-                    _uiLogLines.Clear();
-                    UiLogText = string.Empty;
-                }
-            }
-
-            var dispatcher = Application.Current?.Dispatcher;
-            if (dispatcher == null || dispatcher.CheckAccess())
-            {
-                Update();
-                return;
-            }
-
-            dispatcher.BeginInvoke((Action)Update, DispatcherPriority.Background);
-        }
-
-        private void AppendToUiLog(string message)
-        {
-            var line = FormatUiLogLine(message);
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                return;
-            }
-
-            void Update()
-            {
-                lock (_uiLogLock)
-                {
-                    _uiLogLines.Add(line);
-                    if (_uiLogLines.Count > 200)
-                    {
-                        _uiLogLines.RemoveRange(0, _uiLogLines.Count - 200);
-                    }
-
-                    // В UI показываем последние строки, чтобы не раздувать TextBox.
-                    var sb = new StringBuilder(capacity: 4096);
-                    var start = Math.Max(0, _uiLogLines.Count - 120);
-                    for (int i = start; i < _uiLogLines.Count; i++)
-                    {
-                        sb.AppendLine(_uiLogLines[i]);
-                    }
-
-                    UiLogText = sb.ToString().TrimEnd();
-                }
-            }
-
-            var dispatcher = Application.Current?.Dispatcher;
-            if (dispatcher == null || dispatcher.CheckAccess())
-            {
-                Update();
-                return;
-            }
-
-            dispatcher.BeginInvoke((Action)Update, DispatcherPriority.Background);
-        }
-
-        private static string? FormatUiLogLine(string message)
-        {
-            if (string.IsNullOrWhiteSpace(message)) return null;
-
-            // Скрываем откровенно технические/шумные строки.
-            if (message.Contains("[PipelineHealth]", StringComparison.OrdinalIgnoreCase)) return null;
-            if (message.Contains("[V2][GATE1]", StringComparison.OrdinalIgnoreCase)) return null;
-
-            var s = message.Trim();
-
-            // Убираем ведущие теги вида [X] [Y] ...
-            while (s.StartsWith("[", StringComparison.Ordinal))
-            {
-                var end = s.IndexOf(']');
-                if (end <= 0) break;
-                s = s.Substring(end + 1).TrimStart();
-            }
-
-            // Ключи/метрики — это для разработчика, не для пользователя.
-            if (s.Contains("hostKey=", StringComparison.OrdinalIgnoreCase)) return null;
-            if (s.Contains("recentCount=", StringComparison.OrdinalIgnoreCase)) return null;
-
-            // Человеческие формулировки для важных UX-событий.
-            if (message.Contains("[AutoRetest]", StringComparison.OrdinalIgnoreCase))
-            {
-                if (s.StartsWith("Bypass option changed", StringComparison.OrdinalIgnoreCase))
-                {
-                    return "Обход изменён — повторная проверка будет выполнена автоматически.";
-                }
-
-                if (s.StartsWith("Running scheduled retest", StringComparison.OrdinalIgnoreCase))
-                {
-                    return "Запущена повторная проверка после изменений обхода.";
-                }
-            }
-
-            if (message.Contains("[V2]", StringComparison.OrdinalIgnoreCase) && s.Contains("Рекомендация", StringComparison.OrdinalIgnoreCase))
-            {
-                s = s.Replace("💡", "", StringComparison.Ordinal).Trim();
-            }
-
-            // Ограничение длины: журнал должен быть читабельным.
-            if (s.Length > 260)
-            {
-                s = s.Substring(0, 260) + "…";
-            }
-
-            return string.IsNullOrWhiteSpace(s) ? null : s;
         }
 
         public async Task InitializeAsync()
