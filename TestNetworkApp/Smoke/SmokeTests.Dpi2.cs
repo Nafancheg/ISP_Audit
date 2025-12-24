@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
@@ -26,6 +28,110 @@ namespace TestNetworkApp.Smoke
 {
     internal static partial class SmokeTests
     {
+        public static Task<SmokeTestResult> Dpi2_Guard_NoLegacySignalsOrGetSignals_InV2RuntimePath(CancellationToken ct)
+            => RunAsync("DPI2-025", "Guard: в v2 runtime-пути нет BlockageSignals/GetSignals", () =>
+            {
+                static string? TryFindRepoRoot(string startDir)
+                {
+                    try
+                    {
+                        var dir = new DirectoryInfo(startDir);
+                        while (dir != null)
+                        {
+                            var sln = Path.Combine(dir.FullName, "ISP_Audit.sln");
+                            var csproj = Path.Combine(dir.FullName, "ISP_Audit.csproj");
+                            if (File.Exists(sln) || File.Exists(csproj))
+                            {
+                                return dir.FullName;
+                            }
+
+                            dir = dir.Parent;
+                        }
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+
+                    return null;
+                }
+
+                var root =
+                    TryFindRepoRoot(Environment.CurrentDirectory) ??
+                    TryFindRepoRoot(AppContext.BaseDirectory) ??
+                    Environment.CurrentDirectory;
+
+                var filesToCheck = new List<string>();
+
+                // Ключевые runtime-файлы, где ранее могли протекать legacy зависимости.
+                filesToCheck.Add(Path.Combine(root, "Utils", "LiveTestingPipeline.cs"));
+                filesToCheck.Add(Path.Combine(root, "Utils", "AutoHostlistService.cs"));
+                filesToCheck.Add(Path.Combine(root, "ViewModels", "DiagnosticOrchestrator.cs"));
+                filesToCheck.Add(Path.Combine(root, "ViewModels", "TestResultsManager.cs"));
+
+                // Весь v2 слой.
+                var v2Dir = Path.Combine(root, "Core", "IntelligenceV2");
+                if (Directory.Exists(v2Dir))
+                {
+                    filesToCheck.AddRange(Directory.GetFiles(v2Dir, "*.cs", SearchOption.AllDirectories));
+                }
+
+                filesToCheck = filesToCheck
+                    .Where(File.Exists)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (filesToCheck.Count == 0)
+                {
+                    return new SmokeTestResult("DPI2-025", "Guard: в v2 runtime-пути нет BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Не нашли файлы для проверки. root='{root}'");
+                }
+
+                var reBlockageSignals = new Regex(@"\bBlockageSignals\b", RegexOptions.Compiled);
+                var reGetSignalsCall = new Regex(@"\bGetSignals\s*\(", RegexOptions.Compiled);
+                var reLegacySignals = new Regex(@"\blegacySignals\s*\.", RegexOptions.Compiled);
+
+                var allowedBlockageSignalsFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    Path.Combine(root, "Core", "IntelligenceV2", "Signals", "InspectionSignalsSnapshot.cs"),
+                    Path.Combine(root, "Core", "IntelligenceV2", "Signals", "SignalsAdapterV2.cs")
+                };
+
+                var offenders = new List<string>();
+                foreach (var file in filesToCheck)
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    var text = File.ReadAllText(file);
+
+                    // 1) GetSignals(...) и legacySignals.* запрещены в v2 runtime-пути без исключений.
+                    if (reGetSignalsCall.IsMatch(text) || reLegacySignals.IsMatch(text))
+                    {
+                        var rel = Path.GetRelativePath(root, file);
+                        offenders.Add(rel.Replace('\\', '/'));
+                        continue;
+                    }
+
+                    // 2) BlockageSignals как тип допустим только в bridge-слоях (адаптер/снимок).
+                    // В остальном v2 слой не должен зависеть от legacy агрегата.
+                    var isInV2Layer = file.StartsWith(v2Dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+                    if (isInV2Layer && !allowedBlockageSignalsFiles.Contains(file) && reBlockageSignals.IsMatch(text))
+                    {
+                        var rel = Path.GetRelativePath(root, file);
+                        offenders.Add(rel.Replace('\\', '/'));
+                    }
+                }
+
+                if (offenders.Count > 0)
+                {
+                    return new SmokeTestResult("DPI2-025", "Guard: в v2 runtime-пути нет BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Найдены следы legacy в v2 runtime-пути: " + string.Join(", ", offenders));
+                }
+
+                return new SmokeTestResult("DPI2-025", "Guard: в v2 runtime-пути нет BlockageSignals/GetSignals", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: checkedFiles={filesToCheck.Count}, root='{root}'");
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_SignalsAdapter_Observe_AdaptsLegacySignals_ToTtlStore(CancellationToken ct)
             => RunAsync("DPI2-001", "SignalsAdapterV2 адаптирует legacy сигналы и пишет в TTL-store", () =>
             {
