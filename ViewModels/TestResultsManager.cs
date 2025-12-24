@@ -571,6 +571,13 @@ namespace IspAudit.ViewModels
                 {
                     var isV2 = msg.TrimStart().StartsWith("[V2]", StringComparison.OrdinalIgnoreCase);
 
+                    // v2 — единственный источник рекомендаций для UI.
+                    // Legacy сообщения могут присутствовать в логе, но не должны менять стратегию карточки.
+                    if (!isV2)
+                    {
+                        return;
+                    }
+
                     var parts = msg.Split(':');
                     if (parts.Length >= 2)
                     {
@@ -599,22 +606,6 @@ namespace IspAudit.ViewModels
                             t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
                         if (result != null)
                         {
-                            // Legacy не должен перетирать v2.
-                            // Если уже есть стратегия от v2 — оставляем её, но можем добавить legacy как справочную строку в Details.
-                            if (!isV2 && result.IsBypassStrategyFromV2)
-                            {
-                                var legacyLine = $"(legacy) 💡 Рекомендация: {strategy}";
-                                if (string.IsNullOrWhiteSpace(result.Details))
-                                {
-                                    result.Details = legacyLine;
-                                }
-                                else if (!result.Details.Contains(legacyLine, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    result.Details += "\n" + legacyLine;
-                                }
-                                return;
-                            }
-
                             result.BypassStrategy = strategy;
                             if (isV2)
                             {

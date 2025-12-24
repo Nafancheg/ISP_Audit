@@ -1210,6 +1210,13 @@ namespace IspAudit.ViewModels
             var isV2 = msg.TrimStart().StartsWith("[V2]", StringComparison.OrdinalIgnoreCase)
                 || msg.Contains("v2:", StringComparison.OrdinalIgnoreCase);
 
+            // B5: v2 — единственный источник рекомендаций.
+            // Legacy строки допускаются в логах, но не должны влиять на UI рекомендации.
+            if (!isV2)
+            {
+                return;
+            }
+
             // Нас интересуют строки вида "💡 Рекомендация: TLS_FRAGMENT" или "→ Стратегия: DROP_RST".
             // Не используем Split(':'), потому что в сообщении может быть host:port или другие двоеточия.
             var raw = TryExtractAfterMarker(msg, "Рекомендация:")
@@ -1256,25 +1263,11 @@ namespace IspAudit.ViewModels
 
                 if (ServiceStrategies.Contains(token))
                 {
-                    if (isV2)
-                    {
-                        _recommendedStrategies.Add(token);
-                    }
-                    else
-                    {
-                        _legacyRecommendedStrategies.Add(token);
-                    }
+                    _recommendedStrategies.Add(token);
                 }
                 else
                 {
-                    if (isV2)
-                    {
-                        _manualRecommendations.Add(token);
-                    }
-                    else
-                    {
-                        _legacyManualRecommendations.Add(token);
-                    }
+                    _manualRecommendations.Add(token);
                 }
             }
 
@@ -1491,22 +1484,11 @@ namespace IspAudit.ViewModels
                 RecommendedStrategiesText = BuildRecommendationPanelText();
             }
 
-            // Ручные рекомендации показываем отдельной строкой в UI.
-            var legacyManualTokens = _legacyManualRecommendations
-                .Where(t => !_manualRecommendations.Contains(t))
-                .ToList();
-
             var manualText = _manualRecommendations.Count == 0
                 ? null
                 : $"Ручные действия: {string.Join(", ", _manualRecommendations)}";
 
-            var legacyManualText = legacyManualTokens.Count == 0
-                ? null
-                : $"Legacy (справочно): {string.Join(", ", legacyManualTokens)}";
-
-            ManualRecommendationsText = manualText == null
-                ? (legacyManualText ?? "")
-                : (legacyManualText == null ? manualText : $"{manualText}\n{legacyManualText}");
+            ManualRecommendationsText = manualText ?? "";
 
             OnPropertyChanged(nameof(HasRecommendations));
             OnPropertyChanged(nameof(HasAnyRecommendations));
@@ -1527,18 +1509,7 @@ namespace IspAudit.ViewModels
 
             var applyHint = $"Что попробовать: нажмите «Применить рекомендации v2» (включит: {strategies})";
 
-            // Legacy показываем только если есть v2 рекомендации (и только как справочно)
-            var legacyTokens = _legacyRecommendedStrategies
-                .Where(t => !_recommendedStrategies.Contains(t))
-                .ToList();
-
-            var legacyText = legacyTokens.Count == 0
-                ? null
-                : $"Legacy (справочно): {string.Join(", ", legacyTokens)}";
-
-            return legacyText == null
-                ? $"{header}\n{applyHint}"
-                : $"{header}\n{applyHint}\n{legacyText}";
+            return $"{header}\n{applyHint}";
         }
 
         private static bool IsStrategyActive(string strategy, BypassController bypassController)

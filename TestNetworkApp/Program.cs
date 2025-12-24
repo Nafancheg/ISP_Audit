@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -192,6 +193,43 @@ namespace TestNetworkApp
                 mgr.ParsePipelineMessage(line);
             }
 
+            // Gate B5: legacy рекомендации не должны менять стратегию карточки.
+            var youtubeCard = mgr.TestResults.FirstOrDefault(r =>
+                string.Equals(r.Target?.Name, "youtube.com", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Target?.Host, "youtube.com", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Target?.SniHost, "youtube.com", StringComparison.OrdinalIgnoreCase));
+
+            if (youtubeCard == null)
+            {
+                throw new InvalidOperationException("UI-Reducer smoke: не найдена карточка youtube.com (ожидали сценарий SNI Detected)");
+            }
+
+            if (!string.IsNullOrWhiteSpace(youtubeCard.BypassStrategy))
+            {
+                throw new InvalidOperationException(
+                    $"UI-Reducer smoke: BypassStrategy должна быть пустой до рекомендаций, получили '{youtubeCard.BypassStrategy}'");
+            }
+
+            var legacyRecommendation = "💡 Рекомендация: DROP_RST";
+            Console.WriteLine($"> {legacyRecommendation}");
+            mgr.ParsePipelineMessage(legacyRecommendation);
+
+            if (!string.IsNullOrWhiteSpace(youtubeCard.BypassStrategy) || youtubeCard.IsBypassStrategyFromV2)
+            {
+                throw new InvalidOperationException(
+                    "UI-Reducer smoke: legacy рекомендация не должна менять BypassStrategy/IsBypassStrategyFromV2");
+            }
+
+            var v2Recommendation = "[V2] 💡 Рекомендация: DROP_RST";
+            Console.WriteLine($"> {v2Recommendation}");
+            mgr.ParsePipelineMessage(v2Recommendation);
+
+            if (!string.Equals(youtubeCard.BypassStrategy, "DROP_RST", StringComparison.OrdinalIgnoreCase) || !youtubeCard.IsBypassStrategyFromV2)
+            {
+                throw new InvalidOperationException(
+                    $"UI-Reducer smoke: ожидали BypassStrategy=DROP_RST (v2), получили '{youtubeCard.BypassStrategy}', IsBypassStrategyFromV2={youtubeCard.IsBypassStrategyFromV2}");
+            }
+
             Console.WriteLine("\n--- Итоговые карточки ---");
             foreach (var r in mgr.TestResults)
             {
@@ -203,6 +241,7 @@ namespace TestNetworkApp
             Console.WriteLine("\nОжидаемое поведение:");
             Console.WriteLine("- facebook.com должен существовать (миграция с IP), а статус при Pass+Fail в окне → 'Нестабильно'.");
             Console.WriteLine("- youtube.com должен быть ключом карточки, а при Fail+Pass в окне → 'Нестабильно'.");
+            Console.WriteLine("- legacy '💡 Рекомендация/→ Стратегия' не меняют BypassStrategy; v2 '[V2] ...' меняют.");
         }
 
         // Вызов из smoke-раннера без дублирования логики.
