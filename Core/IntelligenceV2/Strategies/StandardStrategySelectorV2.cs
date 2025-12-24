@@ -218,6 +218,23 @@ public sealed class StandardStrategySelectorV2
         // ВАЖНО: не читаем diagnosis.InputSignals / метрики — только DiagnosisId.
         return diagnosisId switch
         {
+            // Fallback: если данных мало и диагноз остался Unknown, всё равно полезно предложить
+            // самый базовый и относительно безопасный TLS-обход. Это помогает восстановить
+            // поведение "хотя бы не хуже" legacy без возврата legacy-классификатора.
+            DiagnosisId.Unknown =>
+            [
+                new StrategyTemplate(
+                    StrategyId.TlsFragment,
+                    BasePriority: 60,
+                    Risk: RiskLevel.Medium,
+                    Parameters: new Dictionary<string, object?>
+                    {
+                        ["PresetName"] = "Стандарт",
+                        ["TlsFragmentSizes"] = new[] { 64 },
+                        ["AutoAdjustAggressive"] = false
+                    })
+            ],
+
             // Вариант C: DoH не рекомендуем при "чисто DNS" диагнозе,
             // чтобы не повышать риск ложных рекомендаций и не путать UX.
             DiagnosisId.DnsHijack =>

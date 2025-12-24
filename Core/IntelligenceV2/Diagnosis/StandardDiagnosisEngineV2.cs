@@ -87,13 +87,15 @@ public sealed class StandardDiagnosisEngineV2
         }
 
         // 1) Качество данных
+        // Важно: "мало событий" не должно превращать диагностику в тупик без рекомендаций.
+        // Если иных фактов нет — помечаем как Unknown, но даём возможность UI показать консервативный план (fallback).
         if (signals.IsUnreliable)
         {
-            notes.Insert(0, "Недостаточно данных: мало событий в окне");
+            notes.Insert(0, "Недостаточно данных: мало событий в окне (вывод может быть неточным)");
             return new DiagnosisResult
             {
                 DiagnosisId = DiagnosisId.Unknown,
-                Confidence = 25,
+                Confidence = 50,
                 MatchedRuleName = "unreliable-sample",
                 ExplanationNotes = notes,
                 Evidence = evidence,
