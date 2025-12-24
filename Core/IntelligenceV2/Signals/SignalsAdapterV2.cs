@@ -59,22 +59,6 @@ public sealed class SignalsAdapterV2
         return "<unknown>";
     }
 
-    public void Observe(HostTested tested, BlockageSignals legacySignals, IProgress<string>? progress = null)
-    {
-        var hostKey = BuildStableHostKey(tested);
-        var tsUtc = DateTimeOffset.UtcNow;
-
-        // Важно для Gate 1→2 и логов: события в цепочке должны иметь восстанавливаемый порядок.
-        // Поэтому внутри одного Observe(...) делаем временные метки строго возрастающими.
-        AppendHostTested(hostKey, tested, tsUtc);
-        tsUtc = tsUtc.AddMilliseconds(1);
-
-        AppendFromLegacySignals(hostKey, legacySignals, ref tsUtc);
-
-        // Gate 1→2: показываем компактную строку, если у хоста уже накопилась "цепочка".
-        TryReportGate1To2(hostKey, tsUtc, progress);
-    }
-
     public void Observe(HostTested tested, InspectionSignalsSnapshot inspectionSignals, IProgress<string>? progress = null)
     {
         var hostKey = BuildStableHostKey(tested);
@@ -91,9 +75,18 @@ public sealed class SignalsAdapterV2
         TryReportGate1To2(hostKey, tsUtc, progress);
     }
 
+    [Obsolete("Legacy overload. Используйте Observe/BuildSnapshot с InspectionSignalsSnapshot (SignalSequence-only, legacy off).", error: true)]
+    public void Observe(HostTested tested, BlockageSignals legacySignals, IProgress<string>? progress = null)
+    {
+        // Этот overload сохранён только для исторической совместимости, но его использование запрещено.
+        // Компилятор блокирует вызовы через Obsolete(error:true).
+        throw new NotSupportedException("Legacy overload запрещён. Используйте InspectionSignalsSnapshot.");
+    }
+
+    [Obsolete("Legacy overload. Используйте BuildSnapshot с InspectionSignalsSnapshot (SignalSequence-only, legacy off).", error: true)]
     public BlockageSignalsV2 BuildSnapshot(HostTested tested, BlockageSignals legacySignals, TimeSpan window)
     {
-        return BuildSnapshot(tested, InspectionSignalsSnapshot.FromLegacy(legacySignals), window);
+        throw new NotSupportedException("Legacy overload запрещён. Используйте InspectionSignalsSnapshot.");
     }
 
     public BlockageSignalsV2 BuildSnapshot(HostTested tested, InspectionSignalsSnapshot inspectionSignals, TimeSpan window)
