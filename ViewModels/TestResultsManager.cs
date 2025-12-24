@@ -910,9 +910,38 @@ namespace IspAudit.ViewModels
         private string NormalizeHost(string host)
         {
             if (string.IsNullOrEmpty(host)) return host;
+            host = SanitizeHostnameToken(host);
             if (host.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
                 return host.Substring(4);
             return host;
+        }
+
+        private static string SanitizeHostnameToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return value;
+
+            var s = value.Trim();
+            if (s.Length > 255) s = s.Substring(0, 255);
+
+            // Срезаем хвост на первом невалидном символе.
+            // Разрешаем только ASCII hostname: a-z, 0-9, '.', '-'
+            int end = 0;
+            for (; end < s.Length; end++)
+            {
+                char c = s[end];
+                bool ok =
+                    (c >= 'a' && c <= 'z') ||
+                    (c >= 'A' && c <= 'Z') ||
+                    (c >= '0' && c <= '9') ||
+                    c == '.' || c == '-';
+
+                if (!ok) break;
+            }
+
+            var cleaned = end == s.Length ? s : s.Substring(0, end);
+            cleaned = cleaned.Trim('.');
+
+            return string.IsNullOrWhiteSpace(cleaned) ? s : cleaned;
         }
 
         private string SelectUiKey(string hostFromLine, string msg)

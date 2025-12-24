@@ -262,11 +262,15 @@ public sealed class StandardDiagnosisEngineV2
         // 8) TLS timeout без дополнительных улик
         if (signals.HasTlsTimeout || signals.HasTlsAuthFailure || signals.HasTlsReset)
         {
+            var confidence = 50;
+            if (signals.HasTlsTimeout) confidence = 55;
+            if (signals.HasTlsReset) confidence = 60;
+
             return new DiagnosisResult
             {
-                DiagnosisId = DiagnosisId.Unknown,
-                Confidence = signals.HasTlsAuthFailure ? 45 : 50,
-                MatchedRuleName = signals.HasTlsAuthFailure ? "tls-auth-failure-only" : "tls-issue-only",
+                DiagnosisId = DiagnosisId.TlsInterference,
+                Confidence = signals.HasTlsAuthFailure ? Math.Min(50, confidence) : confidence,
+                MatchedRuleName = signals.HasTlsAuthFailure ? "tls-auth-failure" : "tls-interference",
                 ExplanationNotes = notes,
                 Evidence = evidence,
                 InputSignals = signals,

@@ -331,6 +331,9 @@ namespace IspAudit.ViewModels
 
         private readonly IspAudit.Core.Traffic.TrafficEngine _trafficEngine;
 
+        private volatile bool _pendingRetestAfterRun;
+        private string _pendingRetestReason = "";
+
         public MainViewModelRefactored()
         {
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -371,6 +374,12 @@ namespace IspAudit.ViewModels
             {
                 ScreenState = "done";
                 CommandManager.InvalidateRequerySuggested();
+
+                if (_pendingRetestAfterRun)
+                {
+                    _pendingRetestAfterRun = false;
+                    _ = RunPendingRetestAfterRunAsync();
+                }
             };
             Orchestrator.PropertyChanged += (s, e) => 
             {
@@ -637,8 +646,7 @@ namespace IspAudit.ViewModels
 
         private async void CheckAndRetestFailedTargets(string? propertyName)
         {
-            // Если диагностика завершена (IsDone) и изменилась настройка bypass
-            if (!IsDone || string.IsNullOrEmpty(propertyName)) return;
+            if (string.IsNullOrEmpty(propertyName)) return;
 
             // Проверяем, что изменилось именно свойство bypass
             if (propertyName != nameof(Bypass.IsFragmentEnabled) &&
@@ -649,6 +657,19 @@ namespace IspAudit.ViewModels
             {
                 return;
             }
+
+            // Во время активной диагностики Orchestrator.RetestTargetsAsync запрещён.
+            // Поэтому откладываем ретест до завершения (done).
+            if (IsRunning)
+            {
+                _pendingRetestAfterRun = true;
+                _pendingRetestReason = propertyName;
+                Log($"[AutoRetest] Bypass option changed ({propertyName}) during running. Retest scheduled after diagnostic ends.");
+                return;
+            }
+
+            // Если диагностика ещё не завершена — ничего не делаем.
+            if (!IsDone) return;
 
             // Находим проблемные цели (не OK)
             var failedTargets = Results.TestResults
@@ -662,6 +683,32 @@ namespace IspAudit.ViewModels
             
             // Запускаем ретест
             await Orchestrator.RetestTargetsAsync(failedTargets, Bypass);
+        }
+
+        private async Task RunPendingRetestAfterRunAsync()
+        {
+            try
+            {
+                if (!IsDone) return;
+
+                var failedTargets = Results.TestResults
+                    .Where(r => r.Status != TestStatus.Pass)
+                    .Select(r => r.Target)
+                    .ToList();
+
+                if (failedTargets.Count == 0) return;
+
+                Log($"[AutoRetest] Running scheduled retest after run (reason={_pendingRetestReason}). Targets={failedTargets.Count}");
+                await Orchestrator.RetestTargetsAsync(failedTargets, Bypass);
+            }
+            catch (Exception ex)
+            {
+                Log($"[AutoRetest] Error: {ex.Message}");
+            }
+            finally
+            {
+                _pendingRetestReason = "";
+            }
         }
 
         private void ApplyTheme(bool isDark)

@@ -142,6 +142,7 @@ Smoke-хелперы (для детерминированных проверок
 1) **Signals → Diagnosis → Selector → Plan**
 - `SignalsAdapterV2` пишет события в TTL-store (`InMemorySignalSequenceStore`).
 - `StandardDiagnosisEngineV2` ставит диагноз по `BlockageSignalsV2` и формирует фактологичное объяснение.
+- Введён консервативный диагноз `TlsInterference` для случаев, когда наблюдаются только TLS-проблемы (timeout/auth failure/reset) без достаточных дополнительных улик — это позволяет селектору предложить TLS-стратегии (manual apply).
 - `StandardStrategySelectorV2` строит `BypassPlan` по `DiagnosisId + Confidence` (с защитами confidence/risk/unimplemented) и может учитывать feedback.
 
 2) **Нет auto-apply (безопасность/контроль пользователя)**

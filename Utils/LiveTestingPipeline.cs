@@ -364,7 +364,8 @@ namespace IspAudit.Utils
                     // Доставляем план наружу (UI/оркестратор). Не применяется автоматически.
                     try
                     {
-                        OnV2PlanBuilt?.Invoke(tested.Host.Key, plan);
+                        var planHostKey = tested.Host.RemoteIp?.ToString() ?? tested.Host.Key;
+                        OnV2PlanBuilt?.Invoke(planHostKey, plan);
                     }
                     catch
                     {
@@ -377,15 +378,24 @@ namespace IspAudit.Utils
                     // Принимаем решение о показе через единый фильтр
                     var decision = _filter.ShouldDisplay(blocked);
 
+                    var remoteIp = tested.Host.RemoteIp;
+                    var remoteIpString = remoteIp?.ToString();
+
                     // Пытаемся обновить hostname из кеша (мог появиться за время теста)
                     var hostname = tested.SniHostname ?? tested.Hostname;
                     if (string.IsNullOrEmpty(hostname) && _dnsParser != null)
                     {
-                        _dnsParser.DnsCache.TryGetValue(tested.Host.RemoteIp.ToString(), out hostname);
+                        if (!string.IsNullOrEmpty(remoteIpString))
+                        {
+                            _dnsParser.DnsCache.TryGetValue(remoteIpString, out hostname);
+                        }
                     }
                     if (string.IsNullOrEmpty(hostname) && _dnsParser != null)
                     {
-                        _dnsParser.SniCache.TryGetValue(tested.Host.RemoteIp.ToString(), out hostname);
+                        if (!string.IsNullOrEmpty(remoteIpString))
+                        {
+                            _dnsParser.SniCache.TryGetValue(remoteIpString, out hostname);
+                        }
                     }
 
                     // Auto-hostlist: добавляем кандидатов только по не-шумовым хостам.
@@ -397,7 +407,7 @@ namespace IspAudit.Utils
                     // В сообщениях пайплайна используем IP как технический якорь.
                     // UI-слой может отображать карточки по человеко‑понятному ключу (SNI/hostname),
                     // сохраняя IP как FallbackIp для корреляции.
-                    var displayHost = tested.Host.RemoteIp.ToString();
+                    var displayHost = remoteIpString ?? tested.Host.Key;
 
                     var sni = tested.SniHostname;
                     if (string.IsNullOrWhiteSpace(sni) && _dnsParser != null)

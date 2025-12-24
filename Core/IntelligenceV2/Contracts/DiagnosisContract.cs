@@ -49,6 +49,12 @@ public enum DiagnosisId
     MultiLayerBlock,
 
     /// <summary>
+    /// Проблема на уровне TLS рукопожатия (timeout/auth failure/reset) без достаточных дополнительных улик.
+    /// Это не доказательство DPI, но практический сигнал «TLS-обход может помочь».
+    /// </summary>
+    TlsInterference,
+
+    /// <summary>
     /// Легитимная недоступность (не блокировка).
     /// </summary>
     NoBlockage,

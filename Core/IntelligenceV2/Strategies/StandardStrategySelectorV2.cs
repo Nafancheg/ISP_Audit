@@ -247,6 +247,23 @@ public sealed class StandardStrategySelectorV2
                 new StrategyTemplate(StrategyId.DropRst, BasePriority: 50, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
             ],
 
+            DiagnosisId.TlsInterference =>
+            [
+                // Консервативно: предлагаем TLS-обход, но без high-risk. Параметры по умолчанию.
+                new StrategyTemplate(StrategyId.TlsDisorder, BasePriority: 90, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
+                new StrategyTemplate(
+                    StrategyId.TlsFragment,
+                    BasePriority: 80,
+                    Risk: RiskLevel.Medium,
+                    Parameters: new Dictionary<string, object?>
+                    {
+                        ["PresetName"] = "Стандарт",
+                        ["TlsFragmentSizes"] = new[] { 64 },
+                        ["AutoAdjustAggressive"] = false
+                    }),
+                new StrategyTemplate(StrategyId.DropRst, BasePriority: 30, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
+            ],
+
             // Будущие диагнозы (может появиться в следующих итерациях diagnosis engine)
             DiagnosisId.ActiveDpiEdge or DiagnosisId.StatefulDpi =>
             [

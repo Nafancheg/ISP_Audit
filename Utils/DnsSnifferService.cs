@@ -338,7 +338,29 @@ namespace IspAudit.Utils
                     if (nameStart + nameLen > pos + extLen) return false;
 
                     hostname = System.Text.Encoding.ASCII.GetString(payload.Slice(nameStart, nameLen));
-                    return !string.IsNullOrWhiteSpace(hostname);
+                    if (string.IsNullOrWhiteSpace(hostname)) return false;
+
+                    // Санитайз: иногда при фрагментации/реассемблинге можно получить ложноположительный
+                    // "hostname" с бинарными байтами. В таком случае не репортим SNI.
+                    hostname = hostname.Trim();
+                    if (hostname.Length < 1 || hostname.Length > 255) return false;
+
+                    for (int i = 0; i < hostname.Length; i++)
+                    {
+                        char c = hostname[i];
+                        bool ok =
+                            (c >= 'a' && c <= 'z') ||
+                            (c >= 'A' && c <= 'Z') ||
+                            (c >= '0' && c <= '9') ||
+                            c == '.' || c == '-';
+
+                        if (!ok)
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
                 }
 
                 pos += extLen;

@@ -527,6 +527,12 @@ namespace TestNetworkApp.Smoke
 
                 var result = engine.Diagnose(signals);
 
+                if (result.DiagnosisId != DiagnosisId.TlsInterference)
+                {
+                    return new SmokeTestResult("DPI2-005", "DiagnosisEngine v2: пояснение содержит факты, но не упоминает стратегии", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали TlsInterference, получили {result.DiagnosisId} (conf={result.Confidence})");
+                }
+
                 var text = string.Join(" | ", result.ExplanationNotes);
                 var forbidden = new[]
                 {

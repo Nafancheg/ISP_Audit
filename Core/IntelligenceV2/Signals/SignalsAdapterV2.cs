@@ -64,10 +64,10 @@ public sealed class SignalsAdapterV2
         var hostKey = BuildStableHostKey(tested);
         var tsUtc = DateTimeOffset.UtcNow;
 
-        // Важно для Gate 1→2 и логов: события в цепочке должны иметь восстанавливаемый порядок.
-        // Поэтому внутри одного Observe(...) делаем временные метки строго возрастающими.
+        // Важно: НЕ «двигаем время в будущее» искусственно (AddMilliseconds), иначе при грубой
+        // дискретности таймера Windows BuildSnapshot() может взять capturedAtUtc <= ObservedAtUtc
+        // и не увидеть часть событий в окне. Порядок обеспечивается порядком Append(...) в store.
         AppendHostTested(hostKey, tested, tsUtc);
-        tsUtc = tsUtc.AddMilliseconds(1);
 
         AppendFromInspectionSignals(hostKey, inspectionSignals, ref tsUtc);
 
@@ -154,7 +154,9 @@ public sealed class SignalsAdapterV2
             HasTlsReset = false,
 
             SampleSize = windowEvents.Count,
-            IsUnreliable = windowEvents.Count < 2
+            // Если в окне мало событий, но есть «сильный» наблюдаемый факт (TLS timeout, DNS failure и т.п.)
+            // — это уже достаточная база для консервативного диагноза.
+            IsUnreliable = windowEvents.Count < 2 && !(hasDnsFailure || hasTcpTimeout || hasTcpReset || hasTlsTimeout || hasTlsAuthFailure || hasHttpRedirect || retxRate != null)
         };
     }
 
@@ -318,7 +320,7 @@ public sealed class SignalsAdapterV2
         // - минимум 3 события
         // - минимум 3 разных типа
         // - обязательно HostTested + минимум 2 события "других слоёв"
-        // - временная последовательность восстанавливается (ObservedAtUtc строго возрастает)
+        // - временная последовательность восстанавливается (ObservedAtUtc не убывает)
         if (recent.Count < 3) return;
         if (!recent.HasType(SignalEventType.HostTested)) return;
 
@@ -338,7 +340,9 @@ public sealed class SignalsAdapterV2
 
         for (var i = 1; i < recent.Count; i++)
         {
-            if (recent[i - 1].ObservedAtUtc >= recent[i].ObservedAtUtc)
+            // На Windows DateTimeOffset.UtcNow может иметь грубую дискретность,
+            // поэтому допустимы одинаковые метки времени у соседних событий.
+            if (recent[i - 1].ObservedAtUtc > recent[i].ObservedAtUtc)
             {
                 return;
             }
