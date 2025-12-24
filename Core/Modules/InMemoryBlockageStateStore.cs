@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Net;
 using IspAudit.Core.Interfaces;
+using IspAudit.Core.IntelligenceV2.Signals;
 using IspAudit.Core.Models;
 
 namespace IspAudit.Core.Modules
@@ -10,7 +11,7 @@ namespace IspAudit.Core.Modules
     /// Простое in-memory хранилище состояния блокировок per-host.
     /// Потокобезопасно и не требует внешних зависимостей.
     /// </summary>
-    public sealed class InMemoryBlockageStateStore : IBlockageStateStore
+    public sealed class InMemoryBlockageStateStore : IBlockageStateStore, IInspectionSignalsProvider
     {
         private readonly ConcurrentDictionary<string, HostBlockageState> _states = new();
         private readonly ConcurrentDictionary<string, byte> _seenTargets = new();
@@ -168,6 +169,93 @@ namespace IspAudit.Core.Modules
                 hasSuspiciousRst,
                 suspiciousRstDetails,
                 udpUnanswered);
+        }
+
+        public InspectionSignalsSnapshot GetInspectionSignalsSnapshot(HostTested tested)
+        {
+            if (tested.Host.RemoteIp == null)
+            {
+                return InspectionSignalsSnapshot.Empty;
+            }
+
+            var ip = tested.Host.RemoteIp;
+
+            var retransmissions = 0;
+            var totalPackets = 0;
+            if (_retransmissionTracker != null)
+            {
+                try
+                {
+                    var tStats = _retransmissionTracker.GetStatsForIp(ip);
+                    retransmissions = tStats.Retransmissions;
+                    totalPackets = tStats.TotalPackets;
+                }
+                catch
+                {
+                    retransmissions = 0;
+                    totalPackets = 0;
+                }
+            }
+
+            var hasHttpRedirect = false;
+            string? redirectTo = null;
+            if (_httpRedirectDetector != null)
+            {
+                try
+                {
+                    if (_httpRedirectDetector.TryGetRedirectHost(ip, out var target))
+                    {
+                        hasHttpRedirect = true;
+                        redirectTo = target;
+                    }
+                }
+                catch
+                {
+                    hasHttpRedirect = false;
+                    redirectTo = null;
+                }
+            }
+
+            var hasSuspiciousRst = false;
+            string? suspiciousRstDetails = null;
+            if (_rstInspectionService != null)
+            {
+                try
+                {
+                    if (_rstInspectionService.HasSuspiciousRst(ip, out var details))
+                    {
+                        hasSuspiciousRst = true;
+                        suspiciousRstDetails = details;
+                    }
+                }
+                catch
+                {
+                    hasSuspiciousRst = false;
+                    suspiciousRstDetails = null;
+                }
+            }
+
+            var udpUnanswered = 0;
+            if (_udpInspectionService != null)
+            {
+                try
+                {
+                    udpUnanswered = _udpInspectionService.GetUnansweredHandshakeCount(ip);
+                }
+                catch
+                {
+                    udpUnanswered = 0;
+                }
+            }
+
+            return new InspectionSignalsSnapshot(
+                Retransmissions: Math.Max(0, retransmissions),
+                TotalPackets: Math.Max(0, totalPackets),
+                HasHttpRedirect: hasHttpRedirect,
+                RedirectToHost: redirectTo,
+                HasSuspiciousRst: hasSuspiciousRst,
+                SuspiciousRstDetails: suspiciousRstDetails,
+                UdpUnansweredHandshakes: Math.Max(0, udpUnanswered));
         }
 
         private static string BuildKey(IPAddress ip, int port, string? hostname)

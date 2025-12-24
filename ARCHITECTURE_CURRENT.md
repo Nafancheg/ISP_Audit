@@ -117,7 +117,7 @@ Smoke-хелперы (для детерминированных проверок
 
 Статус: частично реализовано.
 * Контрактный слой v2: `Core/IntelligenceV2/Contracts`.
-* Step 1 (Signals): в runtime подключён сбор фактов в TTL-store через `SignalsAdapterV2` (в `LiveTestingPipeline`, этап Classification).
+* Step 1 (Signals): в runtime подключён сбор фактов в TTL-store через `SignalsAdapterV2` (в `LiveTestingPipeline`, этап Classification). Для v2-ветки факты инспекции снимаются через `IInspectionSignalsProvider` в виде `InspectionSignalsSnapshot` (без зависимости от legacy `BlockageSignals`).
 * Step 2 (Diagnosis): в runtime подключена постановка диагноза через `StandardDiagnosisEngineV2` по агрегированному срезу `BlockageSignalsV2`.
 * Step 3 (Selector/Plan): в runtime подключён `StandardStrategySelectorV2`, который строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI (без auto-apply).
 * Step 4 (ExecutorMvp): добавлен `Core/IntelligenceV2/Execution/BypassExecutorMvp.cs` — **только** форматирование/логирование (диагноз + уверенность + короткое объяснение + список стратегий), без вызова `TrafficEngine`/`BypassController` и без авто-применения.
@@ -192,7 +192,7 @@ Smoke-хелперы (для детерминированных проверок
 Ограничение (важно): Diagnosis Engine v2 **не знает** про стратегии/обход (нет ссылок на StrategyId/Bypass/TlsBypassService/параметры) и формирует пояснения только из наблюдаемых фактов (timeout, DNS fail, retx-rate, HTTP redirect).
 
 Примечание по RST-уликам (v2):
-* `SignalsAdapterV2.BuildSnapshot(...)` извлекает `RstTtlDelta` из `BlockageSignals.SuspiciousRstDetails` (форматы `TTL=.. (обычный=min-max)`/`expected min-max`).
+* `SignalsAdapterV2.BuildSnapshot(...)` извлекает `RstTtlDelta` из `InspectionSignalsSnapshot.SuspiciousRstDetails` (форматы `TTL=.. (обычный=min-max)`/`expected min-max`).
 * `RstLatency` берётся как приближённая метрика из `HostTested.TcpLatencyMs` для случая `TCP_CONNECTION_RESET`.
 * `StandardDiagnosisEngineV2` использует эти поля, чтобы выдавать `ActiveDpiEdge` (быстрый RST) или `StatefulDpi` (медленный RST) вместо `Unknown`.
 
@@ -212,7 +212,7 @@ Smoke-хелперы (для детерминированных проверок
 *   TTL событий: 10 минут (очистка должна выполняться при Append в сторе).
 
 Точки интеграции (на текущий момент):
-* `LiveTestingPipeline.ClassifierWorker`: после снятия legacy `BlockageSignals` вызывается `SignalsAdapterV2.Observe(...)`.
+* `LiveTestingPipeline.ClassifierWorker`: legacy `BlockageSignals` остаётся для UI/Auto-hostlist, но v2-ветка вызывает `SignalsAdapterV2.Observe(...)` с `InspectionSignalsSnapshot` (из `IInspectionSignalsProvider`, с фолбэком из legacy).
 * Затем строится `BlockageSignalsV2` (агрегация по окну) и вызывается `StandardDiagnosisEngineV2.Diagnose(...)`. Результат используется для формирования компактного «хвоста фактов» в UI-логе.
 * Затем вызывается `StandardStrategySelectorV2.Select(diagnosis, ...)`, а Step 4 формирует компактный пользовательский вывод (1–2 строки на хост, без спама) и список стратегий для панели рекомендаций.
 * Для ручной проверки Gate 1→2 в UI-логе используются строки с префиксом `[V2][GATE1]`.
@@ -252,7 +252,7 @@ Smoke-хелперы (для детерминированных проверок
 *   **`InMemoryBlockageStateStore` (`Core/Modules/InMemoryBlockageStateStore.cs`)**:
     *   Хранит историю проверок за текущую сессию.
     *   Предотвращает повторное тестирование одних и тех же хостов (дедупликация).
-    *   Уведомляет инспекционные сервисы о новых событиях.
+    *   Дополнительно реализует `IInspectionSignalsProvider`, чтобы v2-контур мог снимать инспекционные факты без зависимости от legacy `BlockageSignals`.
 
 ### 3.4 Inspection Services (Глубокий анализ)
 

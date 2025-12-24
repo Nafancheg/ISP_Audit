@@ -75,7 +75,28 @@ public sealed class SignalsAdapterV2
         TryReportGate1To2(hostKey, tsUtc, progress);
     }
 
+    public void Observe(HostTested tested, InspectionSignalsSnapshot inspectionSignals, IProgress<string>? progress = null)
+    {
+        var hostKey = BuildStableHostKey(tested);
+        var tsUtc = DateTimeOffset.UtcNow;
+
+        // Важно для Gate 1→2 и логов: события в цепочке должны иметь восстанавливаемый порядок.
+        // Поэтому внутри одного Observe(...) делаем временные метки строго возрастающими.
+        AppendHostTested(hostKey, tested, tsUtc);
+        tsUtc = tsUtc.AddMilliseconds(1);
+
+        AppendFromInspectionSignals(hostKey, inspectionSignals, ref tsUtc);
+
+        // Gate 1→2: показываем компактную строку, если у хоста уже накопилась "цепочка".
+        TryReportGate1To2(hostKey, tsUtc, progress);
+    }
+
     public BlockageSignalsV2 BuildSnapshot(HostTested tested, BlockageSignals legacySignals, TimeSpan window)
+    {
+        return BuildSnapshot(tested, InspectionSignalsSnapshot.FromLegacy(legacySignals), window);
+    }
+
+    public BlockageSignalsV2 BuildSnapshot(HostTested tested, InspectionSignalsSnapshot inspectionSignals, TimeSpan window)
     {
         var hostKey = BuildStableHostKey(tested);
         var capturedAtUtc = DateTimeOffset.UtcNow;
@@ -90,7 +111,7 @@ public sealed class SignalsAdapterV2
 
         var hasTcpReset =
             string.Equals(normalizedCode, BlockageCode.TcpConnectionReset, StringComparison.Ordinal) ||
-            legacySignals.HasSuspiciousRst ||
+            inspectionSignals.HasSuspiciousRst ||
             windowEvents.HasType(SignalEventType.SuspiciousRstObserved);
 
         var hasTlsTimeout = string.Equals(normalizedCode, BlockageCode.TlsHandshakeTimeout, StringComparison.Ordinal);
@@ -99,16 +120,16 @@ public sealed class SignalsAdapterV2
         var hasTlsAuthFailure = string.Equals(normalizedCode, BlockageCode.TlsAuthFailure, StringComparison.Ordinal);
 
         double? retxRate = null;
-        if (legacySignals.TotalPackets > 0)
+        if (inspectionSignals.TotalPackets > 0)
         {
-            retxRate = Math.Clamp((double)legacySignals.RetransmissionCount / legacySignals.TotalPackets, 0.0, 1.0);
+            retxRate = Math.Clamp((double)inspectionSignals.Retransmissions / inspectionSignals.TotalPackets, 0.0, 1.0);
         }
 
         var hasFakeIp = IsFakeIp(tested.Host.RemoteIp);
 
-        var hasHttpRedirect = legacySignals.HasHttpRedirectDpi || windowEvents.HasType(SignalEventType.HttpRedirectObserved);
+        var hasHttpRedirect = inspectionSignals.HasHttpRedirect || windowEvents.HasType(SignalEventType.HttpRedirectObserved);
 
-        var rstTtlDelta = TryExtractRstTtlDelta(legacySignals, windowEvents);
+        var rstTtlDelta = TryExtractRstTtlDelta(inspectionSignals, windowEvents);
         TimeSpan? rstLatency = null;
         if (hasTcpReset && tested.TcpLatencyMs is int latencyMs && latencyMs > 0)
         {
@@ -144,12 +165,12 @@ public sealed class SignalsAdapterV2
         };
     }
 
-    private static int? TryExtractRstTtlDelta(BlockageSignals legacySignals, IReadOnlyList<SignalEvent> windowEvents)
+    private static int? TryExtractRstTtlDelta(InspectionSignalsSnapshot inspectionSignals, IReadOnlyList<SignalEvent> windowEvents)
     {
         string? details = null;
-        if (legacySignals.HasSuspiciousRst && !string.IsNullOrWhiteSpace(legacySignals.SuspiciousRstDetails))
+        if (inspectionSignals.HasSuspiciousRst && !string.IsNullOrWhiteSpace(inspectionSignals.SuspiciousRstDetails))
         {
-            details = legacySignals.SuspiciousRstDetails;
+            details = inspectionSignals.SuspiciousRstDetails;
         }
         else
         {
@@ -198,6 +219,11 @@ public sealed class SignalsAdapterV2
 
     private void AppendFromLegacySignals(string hostKey, BlockageSignals signals, ref DateTimeOffset tsUtc)
     {
+        AppendFromInspectionSignals(hostKey, InspectionSignalsSnapshot.FromLegacy(signals), ref tsUtc);
+    }
+
+    private void AppendFromInspectionSignals(string hostKey, InspectionSignalsSnapshot signals, ref DateTimeOffset tsUtc)
+    {
         // TcpRetransStats (дедуплим очень часто)
         if (signals.TotalPackets > 0)
         {
@@ -205,7 +231,7 @@ public sealed class SignalsAdapterV2
                 SignalEventType.TcpRetransStats,
                 tsUtc,
                 source: "TcpRetransmissionTracker",
-                value: new TcpRetransPayload(signals.RetransmissionCount, signals.TotalPackets),
+                value: new TcpRetransPayload(signals.Retransmissions, signals.TotalPackets),
                 reason: null))
             {
                 tsUtc = tsUtc.AddMilliseconds(1);
@@ -225,7 +251,7 @@ public sealed class SignalsAdapterV2
             }
         }
 
-        if (signals.HasHttpRedirectDpi)
+        if (signals.HasHttpRedirect)
         {
             if (AppendDebounced(hostKey,
                 SignalEventType.HttpRedirectObserved,

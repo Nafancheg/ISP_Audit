@@ -76,7 +76,7 @@
 - В MVP запрещён auto-apply: допускается только ручное применение рекомендаций пользователем.
 
 Актуализация (Runtime, 16.12.2025):
-- Step 1 v2 Signals частично подключён: `SignalsAdapterV2` пишет события в `InMemorySignalSequenceStore` на этапе Classification в `LiveTestingPipeline`.
+- Step 1 v2 Signals частично подключён: `SignalsAdapterV2` пишет события в `InMemorySignalSequenceStore` на этапе Classification в `LiveTestingPipeline`. Для v2-ветки инспекционные факты берутся через `IInspectionSignalsProvider` в виде `InspectionSignalsSnapshot` (без зависимости от legacy `BlockageSignals`).
     - Есть защиты от роста памяти: debounce одинаковых событий и cap числа событий на HostKey (in-memory store).
     - Политика DoH в v2 рекомендациях консервативная: DoH не рекомендуется при "чистом DNS" диагнозе, а только в multi-layer сценариях.
 - Step 2 v2 Diagnosis подключён: `StandardDiagnosisEngineV2` ставит диагноз по `BlockageSignalsV2` и возвращает пояснения, основанные на фактах (DNS fail, TCP/TLS timeout, TLS auth failure, retx-rate, HTTP redirect, RST TTL delta/latency) без привязки к стратегиям/обходу.

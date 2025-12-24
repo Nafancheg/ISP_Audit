@@ -347,12 +347,17 @@ namespace IspAudit.Utils
                     // Снимаем агрегированные сигналы для Auto-hostlist и диагностики.
                     var signals = _stateStore.GetSignals(tested, TimeSpan.FromSeconds(60));
 
+                    // v2: снимаем «сенсорные» факты без зависимости от legacy BlockageSignals.
+                    // Пока legacy-сигналы остаются для UI/AutoHostlist, но v2 контур может быть переведён отдельно.
+                    var inspection = (_stateStore as IInspectionSignalsProvider)?.GetInspectionSignalsSnapshot(tested)
+                        ?? InspectionSignalsSnapshot.FromLegacy(signals);
+
                     // v2: записываем факты в последовательность событий + минимальный Gate-лог.
                     // Окно Gate-логов использует дефолт контракта (30 сек), но сами legacy signals сняты за 60 сек.
-                    _signalsAdapterV2.Observe(tested, signals, _progress);
+                    _signalsAdapterV2.Observe(tested, inspection, _progress);
 
                     // v2: строим агрегированный срез и ставим диагноз (без стратегий/обхода)
-                    var snapshot = _signalsAdapterV2.BuildSnapshot(tested, signals, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
+                    var snapshot = _signalsAdapterV2.BuildSnapshot(tested, inspection, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
                     var diagnosis = _diagnosisEngineV2.Diagnose(snapshot);
 
                     // v2: формируем план рекомендаций строго по диагнозу.
