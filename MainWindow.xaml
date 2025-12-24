@@ -290,6 +290,26 @@
                             </Border>
                         </StackPanel>
                     </Border>
+
+                    <!-- UI журнал: короткие, понятные пользователю события -->
+                    <Border Background="{DynamicResource MaterialDesignPaper}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="6"
+                            Padding="12,10" Margin="0,16,0,0"
+                            Visibility="{Binding IsStart, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <materialDesign:PackIcon Kind="TextBox" Width="16" Height="16" Margin="0,0,6,0" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                                <TextBlock Text="Журнал" FontWeight="SemiBold" FontSize="13"/>
+                            </StackPanel>
+                            <TextBox Style="{StaticResource ModernTextBoxStyle}"
+                                     Text="{Binding UiLogText, Mode=OneWay}"
+                                     IsReadOnly="True"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     Height="140"
+                                     materialDesign:HintAssist.Hint="Что происходит прямо сейчас"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
         </Border>
