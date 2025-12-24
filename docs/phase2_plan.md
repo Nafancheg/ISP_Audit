@@ -568,7 +568,7 @@ public sealed class BypassPlan
 
 Сейчас (как есть в коде):
 - v2 использует `SignalSequence`, но наполнение и часть вычислений идут через legacy `BlockageSignals` (мост в `SignalsAdapterV2`).
-- `AutoHostlistService` принимает legacy `BlockageSignals`.
+- `AutoHostlistService` принимает `InspectionSignalsSnapshot` (v2 DTO) и не требует legacy `BlockageSignals`.
 - UI допускает legacy “справочные” рекомендации.
 
 Ниже — поэтапная миграция без «быстрых выключателей», с проверяемыми gates.
@@ -607,7 +607,7 @@ public sealed class BypassPlan
 
 ### B4) Перевести AutoHostlistService на v2-снимок
 
-**Что:** заменить вход `AutoHostlistService.Observe(..., BlockageSignals, ...)` на `BlockageSignalsV2` (или на минимальный v2 DTO), чтобы auto-hostlist строился по тем же фактам, что и диагноз.
+**Что:** заменить вход `AutoHostlistService.Observe(..., BlockageSignals, ...)` на минимальный v2 DTO (`InspectionSignalsSnapshot`), чтобы auto-hostlist строился по тем же фактам, что и диагноз.
 
 **Gate:**
 - Auto-hostlist не зависит от `BlockageSignals`.

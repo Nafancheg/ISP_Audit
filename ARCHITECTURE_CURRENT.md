@@ -107,7 +107,7 @@ Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|
     *   Выполняет дедупликацию целей на сессию через `IBlockageStateStore.TryBeginHostTest(...)`, чтобы повторные события соединения не запускали повторное тестирование.
     *   Публикует периодический `[PipelineHealth]` лог со счётчиками этапов (enqueue/test/classify/ui), чтобы диагностировать потери данных и «затыки» очередей без привязки к сценариям.
     *   Обеспечивает параллельную обработку множества хостов.
-    *   Опционально принимает `AutoHostlistService`: на этапе Classification (пока) считывает legacy `BlockageSignals` из `InMemoryBlockageStateStore` и добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения). Сам v2-контур (Signals→Diagnosis→Plan) и формирование `HostBlocked` для UI не требуют чтения `BlockageSignals`.
+    *   Опционально принимает `AutoHostlistService`: на этапе Classification добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения). Auto-hostlist питается `InspectionSignalsSnapshot` (без чтения legacy `BlockageSignals`).
 
 Smoke-хелперы (для детерминированных проверок без WinDivert/реальной сети):
 * `DnsParserService.TryExtractSniFromTlsClientHelloPayload(...)` — извлечение SNI из TLS payload.

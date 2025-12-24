@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using IspAudit.Core.IntelligenceV2.Signals;
 using IspAudit.Core.Models;
 
 namespace IspAudit.Utils
@@ -97,6 +98,69 @@ namespace IspAudit.Utils
                 key,
                 _ => new CandidateState(key, nowUtc, signals),
                 (_, existing) => existing.Merge(nowUtc, signals));
+
+            EnforceLimit();
+            PublishIfNeeded(nowUtc, state);
+        }
+
+        /// <summary>
+        /// Наблюдать результат теста и инспекционные сигналы (v2, без зависимости от legacy BlockageSignals).
+        /// </summary>
+        public void Observe(HostTested tested, InspectionSignalsSnapshot signals, string? hostname)
+        {
+            if (!Enabled)
+            {
+                return;
+            }
+
+            // В legacy пути использовался HardFailCount из агрегата. Здесь считаем простой эквивалент:
+            // сколько базовых тестов (DNS/TCP/TLS) не прошло для данного результата.
+            var hardFailCount = (tested.DnsOk ? 0 : 1) + (tested.TcpOk ? 0 : 1) + (tested.TlsOk ? 0 : 1);
+
+            // Берем только те хосты, по которым реально есть подозрительные сигналы.
+            // Стараемся сохранить семантику legacy эвристик:
+            // - significant retransmissions: >5% при total>10
+            // - UDP: считаем кандидатом только если есть реальные фейлы/неуспехи
+            var hasSignificantRetransmissions = signals.TotalPackets > 10 && ((double)signals.Retransmissions / signals.TotalPackets) > 0.05;
+            var hasUdpBlockage = signals.UdpUnansweredHandshakes > 2;
+
+            var isCandidate =
+                hasSignificantRetransmissions ||
+                signals.HasHttpRedirect ||
+                signals.HasSuspiciousRst ||
+                // UDP/QUIC сигнал сам по себе (при TCP/TLS OK) часто не означает проблему для пользователя.
+                // Добавляем по UDP только если есть реальные фейлы/неуспехи.
+                (hasUdpBlockage && (hardFailCount > 0 || !tested.TlsOk || !tested.TcpOk));
+
+            if (!isCandidate)
+            {
+                return;
+            }
+
+            var key = BuildKey(tested, hostname);
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return;
+            }
+
+            // Для hostlist нужны именно доменные имена. Голые IP мало полезны и только засоряют список.
+            if (System.Net.IPAddress.TryParse(key, out _))
+            {
+                return;
+            }
+
+            // Шумовые/служебные домены не добавляем в hostlist.
+            if (LooksLikeHostname(key) && NoiseHostFilter.Instance.IsNoiseHost(key))
+            {
+                return;
+            }
+
+            var nowUtc = DateTime.UtcNow;
+
+            var state = _candidates.AddOrUpdate(
+                key,
+                _ => new CandidateState(key, nowUtc, signals, hasSignificantRetransmissions, hasUdpBlockage, hardFailCount),
+                (_, existing) => existing.Merge(nowUtc, signals, hasSignificantRetransmissions, hasUdpBlockage, hardFailCount));
 
             EnforceLimit();
             PublishIfNeeded(nowUtc, state);
@@ -206,6 +270,16 @@ namespace IspAudit.Utils
             public bool HasHttpRedirectDpi { get; private set; }
             public bool HasSuspiciousRst { get; private set; }
 
+            public CandidateState(string key, DateTime firstSeenUtc, InspectionSignalsSnapshot signals, bool hasSignificantRetransmissions, bool hasUdpBlockage, int hardFailCount)
+            {
+                Key = key;
+                FirstSeenUtc = firstSeenUtc;
+                LastSeenUtc = firstSeenUtc;
+                Hits = 1;
+
+                ApplySignals(signals, hasSignificantRetransmissions, hasUdpBlockage, hardFailCount);
+            }
+
             public CandidateState(string key, DateTime firstSeenUtc, BlockageSignals signals)
             {
                 Key = key;
@@ -224,6 +298,14 @@ namespace IspAudit.Utils
                 return this;
             }
 
+            public CandidateState Merge(DateTime nowUtc, InspectionSignalsSnapshot signals, bool hasSignificantRetransmissions, bool hasUdpBlockage, int hardFailCount)
+            {
+                Hits++;
+                LastSeenUtc = nowUtc;
+                ApplySignals(signals, hasSignificantRetransmissions, hasUdpBlockage, hardFailCount);
+                return this;
+            }
+
             private void ApplySignals(BlockageSignals signals)
             {
                 RetransmissionMax = Math.Max(RetransmissionMax, signals.RetransmissionCount);
@@ -238,6 +320,24 @@ namespace IspAudit.Utils
                 if (signals.HasSuspiciousRst) score += 2;
                 if (signals.HasUdpBlockage) score += 2;
                 if (signals.HardFailCount > 0) score += 1;
+
+                Score = Math.Max(Score, score);
+            }
+
+            private void ApplySignals(InspectionSignalsSnapshot signals, bool hasSignificantRetransmissions, bool hasUdpBlockage, int hardFailCount)
+            {
+                RetransmissionMax = Math.Max(RetransmissionMax, signals.Retransmissions);
+                UdpUnansweredMax = Math.Max(UdpUnansweredMax, signals.UdpUnansweredHandshakes);
+                HasHttpRedirectDpi |= signals.HasHttpRedirect;
+                HasSuspiciousRst |= signals.HasSuspiciousRst;
+
+                // Простой скоринг: чем больше "жёстких" сигналов, тем выше.
+                var score = 0;
+                if (hasSignificantRetransmissions) score += 2;
+                if (signals.HasHttpRedirect) score += 3;
+                if (signals.HasSuspiciousRst) score += 2;
+                if (hasUdpBlockage) score += 2;
+                if (hardFailCount > 0) score += 1;
 
                 Score = Math.Max(Score, score);
             }

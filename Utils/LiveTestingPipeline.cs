@@ -391,10 +391,7 @@ namespace IspAudit.Utils
                     // Auto-hostlist: добавляем кандидатов только по не-шумовым хостам.
                     if (_autoHostlist != null)
                     {
-                        // Пока Auto-hostlist питается legacy BlockageSignals.
-                        // Это отдельный шаг миграции (вариант B), поэтому читаем legacy только при включённом Auto-hostlist.
-                        var legacySignals = _stateStore.GetSignals(tested, TimeSpan.FromSeconds(60));
-                        _autoHostlist.Observe(tested, legacySignals, hostname);
+                        _autoHostlist.Observe(tested, inspection, hostname);
                     }
 
                     // В сообщениях пайплайна используем IP как технический якорь.
