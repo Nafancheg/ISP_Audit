@@ -225,26 +225,44 @@ public sealed class StandardStrategySelectorV2
 
             DiagnosisId.SilentDrop =>
             [
-                new StrategyTemplate(StrategyId.TlsFragment, basePriority: 90, risk: RiskLevel.Medium),
-                new StrategyTemplate(StrategyId.DropRst, basePriority: 50, risk: RiskLevel.Medium),
+                new StrategyTemplate(
+                    StrategyId.TlsFragment,
+                    BasePriority: 90,
+                    Risk: RiskLevel.Medium,
+                    Parameters: new Dictionary<string, object?>
+                    {
+                        // Явно задаём параметры, чтобы план был детерминированным.
+                        // Иначе executor оставит текущий пресет пользователя, и результат будет зависеть от UI-состояния.
+                        ["TlsFragmentSizes"] = new[] { 64 },
+                        ["AutoAdjustAggressive"] = false
+                    }),
+                new StrategyTemplate(StrategyId.DropRst, BasePriority: 50, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
             ],
 
             DiagnosisId.MultiLayerBlock =>
             [
-                new StrategyTemplate(StrategyId.UseDoh, basePriority: 100, risk: RiskLevel.Low),
-                new StrategyTemplate(StrategyId.TlsDisorder, basePriority: 90, risk: RiskLevel.Medium),
-                new StrategyTemplate(StrategyId.DropRst, basePriority: 50, risk: RiskLevel.Medium),
+                new StrategyTemplate(StrategyId.UseDoh, BasePriority: 100, Risk: RiskLevel.Low, Parameters: new Dictionary<string, object?>()),
+                new StrategyTemplate(StrategyId.TlsDisorder, BasePriority: 90, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
+                new StrategyTemplate(StrategyId.DropRst, BasePriority: 50, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
             ],
 
             // Будущие диагнозы (может появиться в следующих итерациях diagnosis engine)
             DiagnosisId.ActiveDpiEdge or DiagnosisId.StatefulDpi =>
             [
-                new StrategyTemplate(StrategyId.TlsDisorder, basePriority: 90, risk: RiskLevel.Medium),
-                new StrategyTemplate(StrategyId.TlsFragment, basePriority: 80, risk: RiskLevel.Medium),
-                new StrategyTemplate(StrategyId.DropRst, basePriority: 50, risk: RiskLevel.Medium),
+                new StrategyTemplate(StrategyId.TlsDisorder, BasePriority: 90, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
+                new StrategyTemplate(
+                    StrategyId.TlsFragment,
+                    BasePriority: 80,
+                    Risk: RiskLevel.Medium,
+                    Parameters: new Dictionary<string, object?>
+                    {
+                        ["TlsFragmentSizes"] = new[] { 64 },
+                        ["AutoAdjustAggressive"] = false
+                    }),
+                new StrategyTemplate(StrategyId.DropRst, BasePriority: 50, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
 
                 // High-risk стратегия: разрешена только при confidence >= 70.
-                new StrategyTemplate(StrategyId.AggressiveFragment, basePriority: 20, risk: RiskLevel.High)
+                new StrategyTemplate(StrategyId.AggressiveFragment, BasePriority: 20, Risk: RiskLevel.High, Parameters: new Dictionary<string, object?>())
             ],
 
             _ => new List<StrategyTemplate>()
@@ -257,10 +275,6 @@ public sealed class StandardStrategySelectorV2
         RiskLevel Risk,
         Dictionary<string, object?> Parameters)
     {
-        public StrategyTemplate(StrategyId id, int basePriority, RiskLevel risk)
-            : this(id, basePriority, risk, new Dictionary<string, object?>())
-        {
-        }
     }
 
     private readonly record struct RankedStrategy(BypassStrategy Strategy, int FeedbackBoost)

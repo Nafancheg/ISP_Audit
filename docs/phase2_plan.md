@@ -17,6 +17,7 @@
     - `Cancel` отменяет текущий ручной apply (через отдельный CTS), даже если диагностика уже завершилась.
     - Apply пропускается, если план «устарел» и относится не к последней v2‑цели (stale plan guard).
 - Параметры стратегий поддерживаются там, где это реально исполняется: `StrategyId.TlsFragment` может получать `TlsFragmentSizes`/`PresetName`/`AutoAdjustAggressive`; парсинг параметров вынесен в `Core/IntelligenceV2/Execution/TlsFragmentPlanParamsParser.cs` (smoke: `DPI2-022`).
+- Детерминизм: `StandardStrategySelectorV2` теперь заполняет `TlsFragmentSizes` прямо в `BypassPlan`, чтобы executor не зависел от текущего выбранного пресета в UI (smoke: `DPI2-023`).
 - Feedback store + ранжирование уже есть (MVP): `Core/IntelligenceV2/Feedback/*` и поддержка в селекторе.
 
 ### Целевое состояние (практичное)

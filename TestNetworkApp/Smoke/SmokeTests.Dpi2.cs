@@ -1004,6 +1004,72 @@ namespace TestNetworkApp.Smoke
                     "OK: параметры применены" );
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_StrategySelector_PopulatesTlsFragmentParameters(CancellationToken ct)
+            => RunAsync("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (TlsFragmentSizes) в плане", () =>
+            {
+                var selector = new StandardStrategySelectorV2(feedbackStore: null);
+
+                var diagnosis = new DiagnosisResult
+                {
+                    DiagnosisId = DiagnosisId.SilentDrop,
+                    Confidence = 80,
+                    ExplanationNotes = new[] { "smoke" },
+                    InputSignals = new BlockageSignalsV2
+                    {
+                        HostKey = "203.0.113.99",
+                        CapturedAtUtc = DateTimeOffset.UtcNow,
+                        AggregationWindow = TimeSpan.FromSeconds(30),
+
+                        HasDnsFailure = false,
+                        HasFakeIp = false,
+                        HasHttpRedirect = false,
+
+                        HasTcpTimeout = true,
+                        HasTcpReset = false,
+                        RetransmissionRate = 0.25,
+                        RstTtlDelta = null,
+                        RstLatency = null,
+
+                        HasTlsTimeout = false,
+                        HasTlsAuthFailure = false,
+                        HasTlsReset = false,
+
+                        SampleSize = 1,
+                        IsUnreliable = false
+                    },
+                    DiagnosedAtUtc = DateTimeOffset.UtcNow
+                };
+
+                var plan = selector.Select(diagnosis, warningLog: null);
+                var fragment = plan.Strategies.FirstOrDefault(s => s.Id == StrategyId.TlsFragment);
+                if (fragment == null)
+                {
+                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что план будет содержать TlsFragment");
+                }
+
+                if (fragment.Parameters == null || fragment.Parameters.Count == 0)
+                {
+                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что у TlsFragment будут параметры");
+                }
+
+                if (!fragment.Parameters.TryGetValue("TlsFragmentSizes", out var raw) || raw is not int[] sizes)
+                {
+                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что параметр TlsFragmentSizes будет int[]");
+                }
+
+                if (sizes.Length != 1 || sizes[0] != 64)
+                {
+                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали sizes=[64], получили [{string.Join(",", sizes)}]");
+                }
+
+                return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (TlsFragmentSizes) в плане", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: параметры присутствуют" );
+            }, ct);
+
         public static async Task<SmokeTestResult> Dpi2_ExecutorV2_Cancel_RollbacksToPreviousState(CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();

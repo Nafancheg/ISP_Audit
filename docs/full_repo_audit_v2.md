@@ -91,6 +91,8 @@
 - Ручной apply поддерживает `AggressiveFragment`: выбирается пресет фрагментации «Агрессивный» и включается `AutoAdjustAggressive`.
 - Ручной apply поддерживает параметры `TlsFragment` (например, `TlsFragmentSizes`, `PresetName`, `AutoAdjustAggressive`); парсинг вынесен в `Core/IntelligenceV2/Execution/TlsFragmentPlanParamsParser.cs`.
 - Добавлен smoke-тест `DPI2-022`: параметры `TlsFragment` влияют на пресет и флаг `AutoAdjustAggressive`.
+- Детерминизм: `StandardStrategySelectorV2` задаёт `TlsFragmentSizes` в `BypassPlan` (иначе executor зависел бы от текущего выбранного пресета пользователя).
+- Добавлен smoke-тест `DPI2-023`: селектор v2 кладёт `TlsFragmentSizes` в план.
 - Для контроля Gate 1→2 в UI-логе используются строки с префиксом `[V2][GATE1]` (не чаще 1 раза в минуту на HostKey).
 
 ---
