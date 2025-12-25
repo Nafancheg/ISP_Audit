@@ -220,7 +220,10 @@ namespace IspAudit.ViewModels
 
         public bool HasRecommendations => _lastV2Plan != null && _recommendedStrategies.Count > 0;
 
-        public bool HasAnyRecommendations => HasRecommendations || _manualRecommendations.Count > 0;
+        public bool HasAnyRecommendations => _recommendedStrategies.Count > 0
+            || _manualRecommendations.Count > 0
+            || _lastV2Plan != null
+            || !string.IsNullOrWhiteSpace(_lastV2DiagnosisSummary);
 
         public string RecommendedStrategiesText
         {
