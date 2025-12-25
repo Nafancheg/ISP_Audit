@@ -364,7 +364,14 @@ namespace IspAudit.Utils
                     // Доставляем план наружу (UI/оркестратор). Не применяется автоматически.
                     try
                     {
-                        var planHostKey = tested.Host.RemoteIp?.ToString() ?? tested.Host.Key;
+                        // Для UX важно привязывать план к «человеческому» ключу (SNI/hostname),
+                        // иначе кнопка применения/сопоставление с диагнозом может расходиться.
+                        var planHostKey =
+                            tested.SniHostname ??
+                            tested.Hostname ??
+                            tested.ReverseDnsHostname ??
+                            tested.Host.RemoteIp?.ToString() ??
+                            tested.Host.Key;
                         OnV2PlanBuilt?.Invoke(planHostKey, plan);
                     }
                     catch

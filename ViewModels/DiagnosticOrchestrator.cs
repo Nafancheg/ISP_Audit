@@ -72,6 +72,8 @@ namespace IspAudit.ViewModels
         private string _flowModeText = "WinDivert";
         private string? _stopReason;
 
+        public bool LastRunWasUserCancelled { get; private set; }
+
         private readonly record struct PendingSni(System.Net.IPAddress RemoteIp, string Hostname, int Port, DateTime SeenUtc);
 
         // Статус авто-bypass (показываем в UI во время диагностики)
@@ -267,6 +269,8 @@ namespace IspAudit.ViewModels
             try
             {
                 Log($"[Orchestrator] Старт диагностики: {targetExePath}");
+
+                LastRunWasUserCancelled = false;
 
                 ResetRecommendations();
                 
@@ -815,6 +819,7 @@ namespace IspAudit.ViewModels
                 Log("[Orchestrator] Отмена...");
                 DiagnosticStatus = "Остановка...";
                 _stopReason = "UserCancel";
+                LastRunWasUserCancelled = true;
 
                 // Сначала отменяем токен — это прервёт await foreach в CollectAsync
                 _cts.Cancel();
@@ -1330,18 +1335,25 @@ namespace IspAudit.ViewModels
 
             try
             {
-                // Хост:port в начале строки
-                var host = "";
-                var afterPrefix = msg.Substring(2).TrimStart();
-                var firstToken = afterPrefix.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(firstToken))
+                // Ключ цели: предпочитаем SNI (человеко‑понятный), иначе берём IP из "host:port".
+                var sni = TryExtractInlineToken(msg, "SNI");
+                if (!string.IsNullOrWhiteSpace(sni) && sni != "-")
                 {
-                    host = firstToken.Split(':').FirstOrDefault() ?? "";
+                    _lastV2DiagnosisHostKey = sni;
                 }
-
-                if (!string.IsNullOrWhiteSpace(host))
+                else
                 {
-                    _lastV2DiagnosisHostKey = host;
+                    var host = "";
+                    var afterPrefix = msg.Substring(2).TrimStart();
+                    var firstToken = afterPrefix.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+                    if (!string.IsNullOrWhiteSpace(firstToken))
+                    {
+                        host = firstToken.Split(':').FirstOrDefault() ?? "";
+                    }
+                    if (!string.IsNullOrWhiteSpace(host))
+                    {
+                        _lastV2DiagnosisHostKey = host;
+                    }
                 }
 
                 // Вытаскиваем компактный текст v2 в скобках (он уже пользовательский)
@@ -1349,15 +1361,42 @@ namespace IspAudit.ViewModels
                 if (m.Success)
                 {
                     var tail = m.Value.Trim();
-                    _lastV2DiagnosisSummary = string.IsNullOrWhiteSpace(host)
+                    _lastV2DiagnosisSummary = string.IsNullOrWhiteSpace(_lastV2DiagnosisHostKey)
                         ? $"{tail}"
-                        : $"{tail} (цель: {host})";
+                        : $"{tail} (цель: {_lastV2DiagnosisHostKey})";
                 }
             }
             catch
             {
                 // Игнорируем ошибки парсинга
             }
+        }
+
+        private static string? TryExtractInlineToken(string msg, string token)
+        {
+            try
+            {
+                var m = Regex.Match(msg, $@"\b{Regex.Escape(token)}=([^\s\|]+)", RegexOptions.IgnoreCase);
+                return m.Success ? m.Groups[1].Value.Trim() : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string FormatStrategyTokenForUi(string token)
+        {
+            // Должно совпадать с текстами тумблеров в MainWindow.xaml.
+            return token.ToUpperInvariant() switch
+            {
+                "TLS_FRAGMENT" => "Frag",
+                "TLS_DISORDER" => "Frag+Rev",
+                "TLS_FAKE" => "TLS Fake",
+                "DROP_RST" => "Drop RST",
+                "DOH" => "🔒 DoH",
+                _ => token
+            };
         }
 
         private static string MapStrategyToken(string token)
@@ -1465,7 +1504,12 @@ namespace IspAudit.ViewModels
             // Убираем рекомендации, если всё уже включено (актуально при ручном переключении)
             _recommendedStrategies.RemoveWhere(s => IsStrategyActive(s, bypassController));
 
-            var hasAny = _recommendedStrategies.Count > 0 || _manualRecommendations.Count > 0;
+            // Важно для UX: если v2 уже диагностировал проблему/построил план,
+            // панель рекомендаций не должна «исчезать» сразу после ручного включения тумблеров.
+            var hasAny = _recommendedStrategies.Count > 0
+                || _manualRecommendations.Count > 0
+                || _lastV2Plan != null
+                || !string.IsNullOrWhiteSpace(_lastV2DiagnosisSummary);
 
             if (!hasAny)
             {
@@ -1477,7 +1521,10 @@ namespace IspAudit.ViewModels
                     ? "[V2] Диагноз определён"
                     : _lastV2DiagnosisSummary;
 
-                RecommendedStrategiesText = $"{header}\nАвтоматических рекомендаций нет";
+                // Если план был, но рекомендации уже включены вручную — объясняем, почему кнопка может быть не нужна.
+                RecommendedStrategiesText = _lastV2Plan != null
+                    ? $"{header}\nРекомендации уже применены (вручную или ранее)"
+                    : $"{header}\nАвтоматических рекомендаций нет";
             }
             else
             {
@@ -1501,7 +1548,7 @@ namespace IspAudit.ViewModels
         {
             // Пишем текст так, чтобы пользователь видел «что попробовать», а не только метрики.
             // Важно: v2 — приоритетно; legacy — только справочно.
-            var strategies = string.Join(", ", _recommendedStrategies);
+            var strategies = string.Join(", ", _recommendedStrategies.Select(FormatStrategyTokenForUi));
 
             var header = string.IsNullOrWhiteSpace(_lastV2DiagnosisSummary)
                 ? "[V2] Диагноз определён"

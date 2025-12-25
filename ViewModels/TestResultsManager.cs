@@ -578,51 +578,58 @@ namespace IspAudit.ViewModels
                         return;
                     }
 
-                    var parts = msg.Split(':');
-                    if (parts.Length >= 2)
+                    var raw = TryExtractAfterMarker(msg, "Рекомендация:")
+                        ?? TryExtractAfterMarker(msg, "Стратегия:");
+                    if (string.IsNullOrWhiteSpace(raw))
                     {
-                        // Для "💡 Рекомендация: DROP_RST" берем вторую часть
-                        // Для "→ Стратегия: DROP_RST" тоже вторую
-                        var strategy = parts[1].Trim();
-                        
-                        // Если в строке есть скобки с деталями (фейлов за 60s...), отрезаем их для поля стратегии
-                        var parenIndex = strategy.IndexOf('(');
-                        if (parenIndex > 0)
+                        return;
+                    }
+
+                    var strategy = raw.Trim();
+
+                    // Если в строке есть скобки с деталями (conf/фейлы/окно), отрезаем их для поля стратегии
+                    var parenIndex = strategy.IndexOf('(');
+                    if (parenIndex > 0)
+                    {
+                        strategy = strategy.Substring(0, parenIndex).Trim();
+                    }
+
+                    // v2 может выдавать список стратегий в одной строке (через запятую/плюс).
+                    // Для UX на карточке показываем весь список (чтобы не «терять» DROP_RST).
+                    var tokens = strategy
+                        .Split(new[] { ',', '+', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Select(MapV2StrategyTokenForUi)
+                        .Where(t => !string.IsNullOrWhiteSpace(t))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    if (tokens.Count == 0)
+                    {
+                        return;
+                    }
+
+                    var uiStrategy = string.Join(" + ", tokens);
+
+                    var result = TestResults.FirstOrDefault(t =>
+                        t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
+                    if (result != null)
+                    {
+                        result.BypassStrategy = uiStrategy;
+                        if (isV2)
                         {
-                            strategy = strategy.Substring(0, parenIndex).Trim();
+                            result.IsBypassStrategyFromV2 = true;
                         }
 
-                        // v2 может выдавать список стратегий в одной строке (через запятую/плюс),
-                        // чтобы не перегружать UI. Для поля стратегии берём первую.
-                        var first = strategy
-                            .Split(new[] { ',', '+', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                            .FirstOrDefault();
-                        if (!string.IsNullOrWhiteSpace(first))
+                        if (uiStrategy.Equals("ROUTER_REDIRECT", StringComparison.OrdinalIgnoreCase))
                         {
-                            strategy = first;
+                            result.Status = TestStatus.Warn;
+                            result.Details = result.Details?.Replace("Блокировка", "Информация: Fake IP (VPN/туннель)")
+                                ?? "Fake IP обнаружен";
+                            Log($"[UI] ROUTER_REDIRECT → Status=Warn для {_lastUpdatedHost}");
                         }
-
-                        var result = TestResults.FirstOrDefault(t => 
-                            t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
-                        if (result != null)
+                        else if (uiStrategy != PipelineContract.BypassNone && uiStrategy != PipelineContract.BypassUnknown)
                         {
-                            result.BypassStrategy = strategy;
-                            if (isV2)
-                            {
-                                result.IsBypassStrategyFromV2 = true;
-                            }
-                            
-                            if (strategy == "ROUTER_REDIRECT")
-                            {
-                                result.Status = TestStatus.Warn;
-                                result.Details = result.Details?.Replace("Блокировка", "Информация: Fake IP (VPN/туннель)") 
-                                    ?? "Fake IP обнаружен";
-                                Log($"[UI] ROUTER_REDIRECT → Status=Warn для {_lastUpdatedHost}");
-                            }
-                            else if (strategy != PipelineContract.BypassNone && strategy != PipelineContract.BypassUnknown)
-                            {
-                                Log($"[UI] Bypass strategy for {_lastUpdatedHost}: {strategy}");
-                            }
+                            Log($"[UI] Bypass strategy for {_lastUpdatedHost}: {uiStrategy}");
                         }
                     }
                 }
@@ -638,6 +645,54 @@ namespace IspAudit.ViewModels
                 }
             }
             catch { }
+        }
+
+        private static string? TryExtractAfterMarker(string msg, string marker)
+        {
+            try
+            {
+                var idx = msg.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+                if (idx < 0) return null;
+                idx += marker.Length;
+                return idx >= msg.Length ? null : msg.Substring(idx);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string MapV2StrategyTokenForUi(string token)
+        {
+            var t = token.Trim();
+            if (string.IsNullOrWhiteSpace(t)) return string.Empty;
+
+            // Поддерживаем enum-названия v2 и "v2:"-префикс из логов.
+            if (t.StartsWith("v2:", StringComparison.OrdinalIgnoreCase))
+            {
+                t = t.Substring(3).Trim();
+            }
+
+            t = t switch
+            {
+                "TlsFragment" => "TLS_FRAGMENT",
+                "TlsDisorder" => "TLS_DISORDER",
+                "TlsFakeTtl" => "TLS_FAKE",
+                "DropRst" => "DROP_RST",
+                "UseDoh" => "DOH",
+                _ => t.ToUpperInvariant()
+            };
+
+            // Должно совпадать с текстами тумблеров в MainWindow.xaml.
+            return t switch
+            {
+                "TLS_FRAGMENT" => "Frag",
+                "TLS_DISORDER" => "Frag+Rev",
+                "TLS_FAKE" => "TLS Fake",
+                "DROP_RST" => "Drop RST",
+                "DOH" => "🔒 DoH",
+                _ => t
+            };
         }
 
         private void ApplyNameTokensFromMessage(string hostKey, string msg)

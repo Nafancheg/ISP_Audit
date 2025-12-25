@@ -378,7 +378,15 @@ namespace IspAudit.ViewModels
                 if (_pendingRetestAfterRun)
                 {
                     _pendingRetestAfterRun = false;
-                    _ = RunPendingRetestAfterRunAsync();
+                    if (!Orchestrator.LastRunWasUserCancelled)
+                    {
+                        _ = RunPendingRetestAfterRunAsync();
+                    }
+                    else
+                    {
+                        Log($"[AutoRetest] Skip scheduled retest after cancel (reason={_pendingRetestReason})");
+                        _pendingRetestReason = "";
+                    }
                 }
             };
             Orchestrator.PropertyChanged += (s, e) => 
