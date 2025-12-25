@@ -1260,9 +1260,11 @@ namespace IspAudit.ViewModels
             {
                 if (IsStrategyActive(token, bypassController))
                 {
-                    // Уже включено — удаляем из списка, чтобы не спамить UI
+                    // Уже включено вручную — считаем это ручным применением,
+                    // чтобы панель рекомендаций была видима и не исчезала.
                     _recommendedStrategies.Remove(token);
                     _legacyRecommendedStrategies.Remove(token);
+                    _manualRecommendations.Add(token);
                     continue;
                 }
 
