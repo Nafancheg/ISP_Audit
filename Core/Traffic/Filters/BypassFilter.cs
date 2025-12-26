@@ -16,6 +16,7 @@ namespace IspAudit.Core.Traffic.Filters
         private readonly BypassProfile _profile;
         private readonly Action<string>? _log;
         private readonly string _presetName;
+        private readonly bool _allowNoSni;
         private static bool _verbosePacketLog = false; // выключаем пометку каждого пакета, чтобы не раздувать лог
         private readonly ConcurrentDictionary<ConnectionKey, ConnectionState> _connections = new();
         private long _packetsProcessed;
@@ -37,6 +38,11 @@ namespace IspAudit.Core.Traffic.Filters
             _profile = profile;
             _log = logAction;
             _presetName = presetName;
+            // Для v2 пресета разрешаем обход даже без SNI:
+            // - ECH/ESNI и некоторые варианты ClientHello могут не содержать SNI
+            // - при сегментации/обрезании парсер SNI может не увидеть extension
+            // В этом режиме гейт по 443 + ClientHello остаётся, чтобы не ломать прочий трафик.
+            _allowNoSni = string.Equals(_presetName, "v2", StringComparison.OrdinalIgnoreCase);
         }
 
         public bool Process(InterceptedPacket packet, PacketContext context, IPacketSender sender)
@@ -104,11 +110,11 @@ namespace IspAudit.Core.Traffic.Filters
             }
 
             // 2. TLS Fragmentation / Fake / Disorder
-            if (isTcp && 
-                payloadLength >= _profile.TlsFragmentThreshold && 
+            if (isTcp &&
+                payloadLength >= _profile.TlsFragmentThreshold &&
                 packet.Info.DstPort == 443 &&
                 isClientHello &&
-                hasSni)
+                (hasSni || _allowNoSni))
             {
                 // 2.1 TTL Trick (send fake packet with low TTL)
                 if (_profile.TtlTrick)

@@ -269,13 +269,24 @@ namespace IspAudit.Bypass
             else if (options.FragmentEnabled)
                 tlsStrategy = TlsBypassStrategy.Fragment;
 
+            // Для v2 делаем обход более "липким":
+            // - ClientHello часто сегментируется на несколько TCP пакетов
+            // - порог 128 может не дать шанса стратегии сработать
+            // В v2 мы дополнительно разрешаем обход без SNI в BypassFilter, поэтому
+            // снижение threshold здесь не приводит к обязательному парсингу SNI.
+            int tlsThreshold = _baseProfile.TlsFragmentThreshold;
+            if (string.Equals(options.PresetName, "v2", StringComparison.OrdinalIgnoreCase))
+            {
+                tlsThreshold = 1;
+            }
+
             return new BypassProfile
             {
                 DropTcpRst = options.DropRstEnabled,
                 FragmentTlsClientHello = options.FragmentEnabled || options.DisorderEnabled || options.FakeEnabled,
                 TlsStrategy = tlsStrategy,
                 TlsFirstFragmentSize = _baseProfile.TlsFirstFragmentSize,
-                TlsFragmentThreshold = _baseProfile.TlsFragmentThreshold,
+                TlsFragmentThreshold = tlsThreshold,
                 TlsFragmentSizes = options.FragmentSizes,
                 TtlTrick = options.TtlTrickEnabled,
                 TtlTrickValue = options.TtlTrickValue,
@@ -334,7 +345,7 @@ namespace IspAudit.Bypass
                     ClientHellosNon443 = snapshot.ClientHellosNon443,
                     ClientHellosNoSni = snapshot.ClientHellosNoSni,
                     PresetName = options.PresetName,
-                    FragmentThreshold = _baseProfile.TlsFragmentThreshold,
+                    FragmentThreshold = string.Equals(options.PresetName, "v2", StringComparison.OrdinalIgnoreCase) ? 1 : _baseProfile.TlsFragmentThreshold,
                     MinChunk = (options.FragmentSizes ?? Array.Empty<int>()).DefaultIfEmpty(0).Min()
                 };
 
