@@ -27,13 +27,12 @@ namespace TestNetworkApp.Smoke
             try
             {
                 var uiLines = new ConcurrentQueue<string>();
-                var progress = new Progress<string>(msg =>
+                // В smoke-тестах важно, чтобы Report был синхронным.
+                // System.Progress может постить в SynchronizationContext, который не «пампится» в консольном раннере,
+                // из-за чего UI-строки иногда не попадают в очередь (флапающий тест).
+                IProgress<string> progress = new InlineProgress(msg =>
                 {
-                    // Сохраняем только то, что похоже на UI-строки.
-                    if (!string.IsNullOrWhiteSpace(msg))
-                    {
-                        uiLines.Enqueue(msg);
-                    }
+                    if (!string.IsNullOrWhiteSpace(msg)) uiLines.Enqueue(msg);
                 });
 
                 var config = new PipelineConfig
@@ -117,6 +116,11 @@ namespace TestNetworkApp.Smoke
             {
                 return new SmokeTestResult("E2E-001", "E2E: Enqueue→Test→Classify→UI", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
             }
+        }
+
+        private sealed class InlineProgress(Action<string> onReport) : IProgress<string>
+        {
+            public void Report(string value) => onReport(value);
         }
 
         public static async Task<SmokeTestResult> E2E_BypassEnabled_ProducesFragmentationMetrics(CancellationToken ct)

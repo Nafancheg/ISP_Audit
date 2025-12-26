@@ -224,10 +224,11 @@ namespace TestNetworkApp
             Console.WriteLine($"> {v2Recommendation}");
             mgr.ParsePipelineMessage(v2Recommendation);
 
-            if (!string.Equals(youtubeCard.BypassStrategy, "DROP_RST", StringComparison.OrdinalIgnoreCase) || !youtubeCard.IsBypassStrategyFromV2)
+                // В UI стратегия отображается человеко-читаемо (см. MapV2StrategyTokenForUi в TestResultsManager).
+                if (!string.Equals(youtubeCard.BypassStrategy, "Drop RST", StringComparison.OrdinalIgnoreCase) || !youtubeCard.IsBypassStrategyFromV2)
             {
                 throw new InvalidOperationException(
-                    $"UI-Reducer smoke: ожидали BypassStrategy=DROP_RST (v2), получили '{youtubeCard.BypassStrategy}', IsBypassStrategyFromV2={youtubeCard.IsBypassStrategyFromV2}");
+                    $"UI-Reducer smoke: ожидали BypassStrategy=Drop RST (v2), получили '{youtubeCard.BypassStrategy}', IsBypassStrategyFromV2={youtubeCard.IsBypassStrategyFromV2}");
             }
 
             Console.WriteLine("\n--- Итоговые карточки ---");
