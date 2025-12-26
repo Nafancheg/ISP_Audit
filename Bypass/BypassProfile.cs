@@ -81,6 +81,17 @@ namespace IspAudit.Bypass
         /// </summary>
         public bool AutoTtl { get; init; }
 
+        /// <summary>
+        /// Разрешить применение TLS-обхода даже когда SNI не распознан/отсутствует.
+        /// Используется как опция совместимости для ECH/ESNI и сегментации ClientHello.
+        /// </summary>
+        public bool AllowNoSni { get; init; }
+
+        /// <summary>
+        /// QUIC fallback: глушить UDP/443, чтобы браузер/клиент откатился на TCP/HTTPS.
+        /// </summary>
+        public bool DropUdp443 { get; init; }
+
         public IReadOnlyList<BypassRedirectRule> RedirectRules { get; init; } = Array.Empty<BypassRedirectRule>();
 
         public static BypassProfile CreateDefault() => _default.Value;
@@ -106,6 +117,8 @@ namespace IspAudit.Bypass
                     TtlTrick = profile.TtlTrick,
                     TtlTrickValue = profile.TtlTrickValue,
                     AutoTtl = profile.AutoTtl,
+                    AllowNoSni = profile.AllowNoSni,
+                    DropUdp443 = profile.DropUdp443,
                     RedirectRules = profile.RedirectRules?
                         .Select(r => new BypassRedirectRuleDocument
                         {
@@ -166,6 +179,52 @@ namespace IspAudit.Bypass
                 {
                     doc.AutoTtl = autoTtl.Value;
                 }
+
+                var optionsWrite = new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                };
+                optionsWrite.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+
+                var updatedJson = JsonSerializer.Serialize(doc, optionsWrite);
+                File.WriteAllText(path, updatedJson);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Обновляет только вспомогательные флаги bypass (QUIC fallback / Allow-no-SNI) в файле профиля.
+        /// </summary>
+        public static bool TryUpdateAssistSettings(bool allowNoSni, bool dropUdp443)
+        {
+            try
+            {
+                var path = GetProfilePath();
+
+                var optionsRead = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    ReadCommentHandling = JsonCommentHandling.Skip,
+                };
+                optionsRead.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+
+                BypassProfileDocument doc;
+                if (File.Exists(path))
+                {
+                    var json = File.ReadAllText(path);
+                    doc = JsonSerializer.Deserialize<BypassProfileDocument>(json, optionsRead) ?? new BypassProfileDocument();
+                }
+                else
+                {
+                    doc = new BypassProfileDocument();
+                }
+
+                doc.AllowNoSni = allowNoSni;
+                doc.DropUdp443 = dropUdp443;
 
                 var optionsWrite = new JsonSerializerOptions
                 {
@@ -268,6 +327,8 @@ namespace IspAudit.Bypass
                     TtlTrick = doc.TtlTrick,
                     TtlTrickValue = doc.TtlTrickValue > 0 ? doc.TtlTrickValue : 3,
                     AutoTtl = doc.AutoTtl,
+                    AllowNoSni = doc.AllowNoSni,
+                    DropUdp443 = doc.DropUdp443,
                     RedirectRules = doc.RedirectRules?
                         .Select(r => r.ToRule())
                         .Where(r => r != null)!
@@ -329,6 +390,8 @@ namespace IspAudit.Bypass
                 TlsFragmentSizes = new List<int> { 64 },
                 FragmentPresetName = "Профиль",
                 AutoAdjustAggressive = false,
+                AllowNoSni = false,
+                DropUdp443 = false,
                 RedirectRules = new[] { defaultRule, defaultTcpRule }
             };
         }
@@ -375,6 +438,8 @@ namespace IspAudit.Bypass
             public bool TtlTrick { get; set; }
             public int TtlTrickValue { get; set; } = 3;
             public bool AutoTtl { get; set; }
+            public bool AllowNoSni { get; set; }
+            public bool DropUdp443 { get; set; }
             public string? FragmentPresetName { get; set; }
             public bool AutoAdjustAggressive { get; set; }
             public List<BypassRedirectRuleDocument>? RedirectRules { get; set; }

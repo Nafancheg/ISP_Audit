@@ -378,6 +378,44 @@ namespace IspAudit.ViewModels
         }
 
         /// <summary>
+        /// QUIC fallback: глушить UDP/443, чтобы клиент откатился на TCP/HTTPS.
+        /// </summary>
+        public bool IsQuicFallbackEnabled
+        {
+            get => _currentOptions.DropUdp443;
+            set
+            {
+                if (_currentOptions.DropUdp443 == value) return;
+
+                _currentOptions = _currentOptions with { DropUdp443 = value };
+                OnPropertyChanged(nameof(IsQuicFallbackEnabled));
+                PersistAssistSettings();
+                NotifyActiveStatesChanged();
+                CheckCompatibility();
+                _ = ApplyBypassOptionsAsync();
+            }
+        }
+
+        /// <summary>
+        /// Разрешить применение TLS-обхода даже когда SNI не распознан/отсутствует.
+        /// </summary>
+        public bool IsAllowNoSniEnabled
+        {
+            get => _currentOptions.AllowNoSni;
+            set
+            {
+                if (_currentOptions.AllowNoSni == value) return;
+
+                _currentOptions = _currentOptions with { AllowNoSni = value };
+                OnPropertyChanged(nameof(IsAllowNoSniEnabled));
+                PersistAssistSettings();
+                NotifyActiveStatesChanged();
+                CheckCompatibility();
+                _ = ApplyBypassOptionsAsync();
+            }
+        }
+
+        /// <summary>
         /// DoH (DNS-over-HTTPS) включен
         /// </summary>
         public bool IsDoHEnabled
@@ -460,6 +498,8 @@ namespace IspAudit.ViewModels
                 if (IsDisorderEnabled) parts.Add("Disorder");
                 if (IsFakeEnabled) parts.Add("Fake");
                 if (IsDropRstEnabled) parts.Add("DROP RST");
+                if (IsQuicFallbackEnabled) parts.Add("DROP UDP/443");
+                if (IsAllowNoSniEnabled) parts.Add("AllowNoSNI");
                 return parts.Count > 0 ? string.Join(" + ", parts) : "Выключен";
             }
         }
@@ -1323,6 +1363,8 @@ namespace IspAudit.ViewModels
                 if (oldOptions.DisorderEnabled != _currentOptions.DisorderEnabled) OnPropertyChanged(nameof(IsDisorderEnabled));
                 if (oldOptions.FakeEnabled != _currentOptions.FakeEnabled) OnPropertyChanged(nameof(IsFakeEnabled));
                 if (oldOptions.DropRstEnabled != _currentOptions.DropRstEnabled) OnPropertyChanged(nameof(IsDropRstEnabled));
+                if (oldOptions.DropUdp443 != _currentOptions.DropUdp443) OnPropertyChanged(nameof(IsQuicFallbackEnabled));
+                if (oldOptions.AllowNoSni != _currentOptions.AllowNoSni) OnPropertyChanged(nameof(IsAllowNoSniEnabled));
                 
                 OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
                 CheckCompatibility();
@@ -1338,6 +1380,13 @@ namespace IspAudit.ViewModels
                 _currentOptions.FragmentSizes,
                 _currentOptions.PresetName,
                 _currentOptions.AutoAdjustAggressive);
+        }
+
+        private void PersistAssistSettings()
+        {
+            BypassProfile.TryUpdateAssistSettings(
+                _currentOptions.AllowNoSni,
+                _currentOptions.DropUdp443);
         }
 
         private void Log(string message)

@@ -4,6 +4,8 @@
   "ttlTrick": false,
   "ttlTrickValue": 3,
   "autoTtl": false,
+  "allowNoSni": false,
+  "dropUdp443": false,
   "tlsFirstFragmentSize": 64,
   "tlsFragmentThreshold": 128,
   "tlsFragmentSizes": [64],

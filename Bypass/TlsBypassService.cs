@@ -146,6 +146,8 @@ namespace IspAudit.Bypass
                 DisorderEnabled = false,
                 FakeEnabled = false,
                 DropRstEnabled = false,
+                AllowNoSni = false,
+                DropUdp443 = false,
                 // Важно: DisableAsync должен полностью выключать bypass.
                 // Иначе TtlTrickEnabled из профиля может оставить IsAnyEnabled()==true
                 // и фильтр будет пересоздан/останется в TrafficEngine.
@@ -269,16 +271,11 @@ namespace IspAudit.Bypass
             else if (options.FragmentEnabled)
                 tlsStrategy = TlsBypassStrategy.Fragment;
 
-            // Для v2 делаем обход более "липким":
+            // Делаем обход более "липким" при включённом AllowNoSni:
             // - ClientHello часто сегментируется на несколько TCP пакетов
             // - порог 128 может не дать шанса стратегии сработать
-            // В v2 мы дополнительно разрешаем обход без SNI в BypassFilter, поэтому
-            // снижение threshold здесь не приводит к обязательному парсингу SNI.
-            int tlsThreshold = _baseProfile.TlsFragmentThreshold;
-            if (string.Equals(options.PresetName, "v2", StringComparison.OrdinalIgnoreCase))
-            {
-                tlsThreshold = 1;
-            }
+            // В этом режиме мы не зависим от успешного парсинга SNI.
+            var tlsThreshold = options.AllowNoSni ? 1 : _baseProfile.TlsFragmentThreshold;
 
             return new BypassProfile
             {
@@ -291,6 +288,8 @@ namespace IspAudit.Bypass
                 TtlTrick = options.TtlTrickEnabled,
                 TtlTrickValue = options.TtlTrickValue,
                 AutoTtl = options.AutoTtlEnabled,
+                AllowNoSni = options.AllowNoSni,
+                DropUdp443 = options.DropUdp443,
                 RedirectRules = _baseProfile.RedirectRules
             };
         }
@@ -346,7 +345,7 @@ namespace IspAudit.Bypass
                     ClientHellosNon443 = snapshot.ClientHellosNon443,
                     ClientHellosNoSni = snapshot.ClientHellosNoSni,
                     PresetName = options.PresetName,
-                    FragmentThreshold = string.Equals(options.PresetName, "v2", StringComparison.OrdinalIgnoreCase) ? 1 : _baseProfile.TlsFragmentThreshold,
+                    FragmentThreshold = options.AllowNoSni ? 1 : _baseProfile.TlsFragmentThreshold,
                     MinChunk = (options.FragmentSizes ?? Array.Empty<int>()).DefaultIfEmpty(0).Min()
                 };
 
@@ -449,6 +448,17 @@ namespace IspAudit.Bypass
         public bool DisorderEnabled { get; init; }
         public bool FakeEnabled { get; init; }
         public bool DropRstEnabled { get; init; }
+
+        /// <summary>
+        /// Разрешить применение TLS-обхода даже когда SNI не распознан/отсутствует.
+        /// </summary>
+        public bool AllowNoSni { get; init; }
+
+        /// <summary>
+        /// QUIC fallback: глушить UDP/443, чтобы клиент откатился на TCP/HTTPS.
+        /// </summary>
+        public bool DropUdp443 { get; init; }
+
         public IReadOnlyList<int> FragmentSizes { get; init; } = Array.Empty<int>();
         public string PresetName { get; init; } = string.Empty;
         public bool AutoAdjustAggressive { get; init; }
@@ -467,6 +477,8 @@ namespace IspAudit.Bypass
                 DisorderEnabled = false,
                 FakeEnabled = false,
                 DropRstEnabled = baseProfile.DropTcpRst,
+                AllowNoSni = baseProfile.AllowNoSni,
+                DropUdp443 = baseProfile.DropUdp443,
                 FragmentSizes = fragments,
                 PresetName = string.IsNullOrWhiteSpace(baseProfile.FragmentPresetName) ? "Профиль" : baseProfile.FragmentPresetName,
                 AutoAdjustAggressive = baseProfile.AutoAdjustAggressive,
@@ -478,7 +490,7 @@ namespace IspAudit.Bypass
 
         public bool IsAnyEnabled()
         {
-            return FragmentEnabled || DisorderEnabled || FakeEnabled || DropRstEnabled || TtlTrickEnabled;
+            return FragmentEnabled || DisorderEnabled || FakeEnabled || DropRstEnabled || AllowNoSni || DropUdp443 || TtlTrickEnabled;
         }
 
         public string FragmentSizesAsText()
@@ -508,6 +520,8 @@ namespace IspAudit.Bypass
             if (DisorderEnabled) parts.Add("Disorder");
             if (FakeEnabled) parts.Add("Fake");
             if (DropRstEnabled) parts.Add("DROP RST");
+            if (DropUdp443) parts.Add("DROP UDP/443");
+            if (AllowNoSni) parts.Add("AllowNoSNI");
             if (TtlTrickEnabled) parts.Add(AutoTtlEnabled ? $"AutoTTL({TtlTrickValue})" : $"TTL({TtlTrickValue})");
             return parts.Count > 0 ? string.Join(" + ", parts) : "Выключен";
         }

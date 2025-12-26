@@ -144,7 +144,7 @@
                                 <TabItem Header="Стратегии" FontSize="13">
                                     <StackPanel Margin="0,8,0,0">
                                         <!-- Кнопки в две колонки -->
-                                        <UniformGrid Columns="2" Rows="3" HorizontalAlignment="Stretch">
+                                        <UniformGrid Columns="2" Rows="4" HorizontalAlignment="Stretch">
                                             <ToggleButton IsChecked="{Binding IsFragmentEnabled, Mode=TwoWay}"
                                                           Content="Frag"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
@@ -167,6 +167,18 @@
                                                           Content="Drop RST"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="Блокировка TCP RST пакетов"
+                                                          Margin="4,0,0,4"/>
+
+                                            <ToggleButton IsChecked="{Binding IsQuicFallbackEnabled, Mode=TwoWay}"
+                                                          Content="QUIC→TCP"
+                                                          Style="{StaticResource BypassToggleButtonStyle}"
+                                                          ToolTip="QUIC fallback: глушить UDP/443, чтобы клиент откатился на TCP/HTTPS"
+                                                          Margin="0,0,4,4"/>
+
+                                            <ToggleButton IsChecked="{Binding IsAllowNoSniEnabled, Mode=TwoWay}"
+                                                          Content="No SNI"
+                                                          Style="{StaticResource BypassToggleButtonStyle}"
+                                                          ToolTip="Разрешить обход даже когда SNI не распознан/отсутствует (ECH/ESNI/сегментация)"
                                                           Margin="4,0,0,4"/>
 
                                             <ToggleButton IsChecked="{Binding IsDoHEnabled, Mode=TwoWay}"
