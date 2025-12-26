@@ -669,15 +669,34 @@ public sealed class BypassPlan
 
 ---
 
-## ✅ Вариант B: планомерный полный переезд (SignalSequence-only, legacy выключен)
+## ✅ Вариант B: переезд на SignalSequence-only (выполнен)
 
-Цель варианта B: сделать v2 **самодостаточным по данным** — чтобы цепочка
-`Signals → Diagnosis → Selector → Plan` не зависела от legacy агрегата `BlockageSignals` и стора `IBlockageStateStore.GetSignals(...)`.
+> **Статус:** завершён. v2 самодостаточен по данным.
 
-Сейчас (как есть в коде):
-- v2 использует `SignalSequence` и вход `InspectionSignalsSnapshot`; legacy `BlockageSignals` overload в `SignalsAdapterV2` запрещён компиляцией.
-- `AutoHostlistService` принимает `InspectionSignalsSnapshot` (v2 DTO) и не требует legacy `BlockageSignals`.
-- UI допускает legacy “справочные” рекомендации.
+**Итог миграции:**
+- ✅ B1: v2-источники фактов — события пишутся напрямую в `SignalSequence`.
+- ✅ B2: `SignalsAdapterV2.Observe(...)` принимает `InspectionSignalsSnapshot`, legacy overload запрещён.
+- ✅ B3: Legacy state store вынесен; v2 не вызывает `GetSignals(...)`.
+- ✅ B4: `AutoHostlistService` работает от `InspectionSignalsSnapshot`.
+- ✅ B5: UI принимает только `[V2]` рекомендации.
+- ✅ B6: Legacy компоненты изолированы (smoke/debug-only).
+
+<details>
+<summary>Детали шагов B1–B6 (архив)</summary>
+
+**B1) v2-источники фактов:** сенсоры пишут события напрямую в `SignalSequence`.
+
+**B2) SignalsAdapterV2 без BlockageSignals:** `Observe(...)` принимает `HostTested` + `InspectionSignalsSnapshot`.
+
+**B3) Legacy state store вынесен:** v2-ветка не вызывает `GetSignals(...)`.
+
+**B4) AutoHostlistService на v2-снимок:** основной вход принимает `InspectionSignalsSnapshot`.
+
+**B5) UI без legacy-рекомендаций:** Non-[V2] сообщения не меняют `BypassStrategy`.
+
+**B6) Изоляция legacy:** `StandardBlockageClassifier` выведен из runtime (smoke/debug-only).
+
+</details>
 
 Ниже — поэтапная миграция без «быстрых выключателей», с проверяемыми gates.
 
