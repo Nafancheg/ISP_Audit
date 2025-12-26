@@ -29,6 +29,7 @@ namespace IspAudit.Core.Traffic.Filters
         private long _tlsClientHellosShort;
         private long _tlsClientHellosNon443;
         private long _tlsClientHellosNoSni;
+        private long _udp443Dropped;
 
         public string Name => "BypassFilter";
         public int Priority => 100; // High priority
@@ -48,6 +49,15 @@ namespace IspAudit.Core.Traffic.Filters
         public bool Process(InterceptedPacket packet, PacketContext context, IPacketSender sender)
         {
             Interlocked.Increment(ref _packetsProcessed);
+
+            // V2: YouTube и многие современные сайты по умолчанию используют QUIC (UDP/443).
+            // TLS обход работает только на TCP, поэтому для v2-пресета принудительно глушим UDP:443,
+            // чтобы браузер откатился на TCP/HTTPS и обход мог применяться.
+            if (_allowNoSni && packet.Info.IsUdp && packet.Info.DstPort == 443)
+            {
+                Interlocked.Increment(ref _udp443Dropped);
+                return false;
+            }
 
             var payloadLength = packet.Info.PayloadLength;
             var isTcp = packet.Info.IsTcp;
@@ -437,7 +447,8 @@ namespace IspAudit.Core.Traffic.Filters
                 ClientHellosObserved = Interlocked.Read(ref _tlsClientHellosObserved),
                 ClientHellosShort = Interlocked.Read(ref _tlsClientHellosShort),
                 ClientHellosNon443 = Interlocked.Read(ref _tlsClientHellosNon443),
-                ClientHellosNoSni = Interlocked.Read(ref _tlsClientHellosNoSni)
+                ClientHellosNoSni = Interlocked.Read(ref _tlsClientHellosNoSni),
+                Udp443Dropped = Interlocked.Read(ref _udp443Dropped)
             };
         }
 
@@ -453,6 +464,7 @@ namespace IspAudit.Core.Traffic.Filters
             public long ClientHellosShort { get; init; }
             public long ClientHellosNon443 { get; init; }
             public long ClientHellosNoSni { get; init; }
+            public long Udp443Dropped { get; init; }
         }
 
         private readonly struct ConnectionState

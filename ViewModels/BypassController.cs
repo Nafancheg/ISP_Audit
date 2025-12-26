@@ -1285,7 +1285,7 @@ namespace IspAudit.ViewModels
                 BypassPlanText = string.IsNullOrWhiteSpace(planWithPreset) ? "-" : planWithPreset;
                 BypassMetricsSince = metrics.Since;
                 BypassMetricsText =
-                    $"TLS: {metrics.TlsHandled}; thr: {metrics.FragmentThreshold}; min: {metrics.MinChunk}; Hello@443: {metrics.ClientHellosObserved}; <thr: {metrics.ClientHellosShort}; !=443: {metrics.ClientHellosNon443}; фрагм.: {metrics.ClientHellosFragmented}; RST(443,bypass): {metrics.RstDroppedRelevant}; RST(всего): {metrics.RstDropped}";
+                    $"TLS: {metrics.TlsHandled}; thr: {metrics.FragmentThreshold}; min: {metrics.MinChunk}; Hello@443: {metrics.ClientHellosObserved}; <thr: {metrics.ClientHellosShort}; !=443: {metrics.ClientHellosNon443}; фрагм.: {metrics.ClientHellosFragmented}; UDP443 drop: {metrics.Udp443Dropped}; RST(443,bypass): {metrics.RstDroppedRelevant}; RST(всего): {metrics.RstDropped}";
             });
         }
 

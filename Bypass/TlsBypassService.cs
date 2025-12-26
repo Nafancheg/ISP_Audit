@@ -338,6 +338,7 @@ namespace IspAudit.Bypass
                     ClientHellosFragmented = snapshot.ClientHellosFragmented,
                     RstDroppedRelevant = snapshot.RstDroppedRelevant,
                     RstDropped = snapshot.RstDropped,
+                    Udp443Dropped = snapshot.Udp443Dropped,
                     Plan = string.IsNullOrWhiteSpace(snapshot.LastFragmentPlan) ? "-" : snapshot.LastFragmentPlan,
                     Since = since == DateTime.MinValue ? "-" : since.ToString("HH:mm:ss"),
                     ClientHellosObserved = snapshot.ClientHellosObserved,
@@ -521,6 +522,7 @@ namespace IspAudit.Bypass
         public long ClientHellosFragmented { get; init; }
         public long RstDroppedRelevant { get; init; }
         public long RstDropped { get; init; }
+        public long Udp443Dropped { get; init; }
         public string Plan { get; init; } = "-";
         public string Since { get; init; } = "-";
         public long ClientHellosObserved { get; init; }
