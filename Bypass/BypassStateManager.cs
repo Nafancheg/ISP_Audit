@@ -15,36 +15,93 @@ namespace IspAudit.Bypass
     {
         internal static bool EnforceManagerUsage;
 
-        private static readonly AsyncLocal<int> Depth = new();
+        private sealed class GuardState
+        {
+            public int ManagerDepth;
+            public int StrictDepth;
+        }
 
-        internal static bool IsInManagerScope => Depth.Value > 0;
+        private static readonly AsyncLocal<GuardState?> State = new();
+
+        private static GuardState GetOrCreateState()
+        {
+            var s = State.Value;
+            if (s != null) return s;
+            s = new GuardState();
+            State.Value = s;
+            return s;
+        }
+
+        internal static bool IsInManagerScope => State.Value?.ManagerDepth > 0;
+        internal static bool IsStrictMode => State.Value?.StrictDepth > 0;
 
         internal static IDisposable EnterScope()
         {
-            Depth.Value = Depth.Value + 1;
-            return new Scope();
+            var s = GetOrCreateState();
+            s.ManagerDepth++;
+            return new Scope(isStrict: false);
+        }
+
+        /// <summary>
+        /// Smoke-хук: включает строгий режим guard для текущего async-потока.
+        /// В этом режиме любые вызовы TrafficEngine/TlsBypassService вне manager-scope приводят к исключению.
+        /// </summary>
+        internal static IDisposable EnterStrictModeForSmoke()
+        {
+            var s = GetOrCreateState();
+            s.StrictDepth++;
+            return new Scope(isStrict: true);
         }
 
         internal static void WarnIfBypassed(Action<string>? log, string action)
         {
             if (!EnforceManagerUsage) return;
             if (IsInManagerScope) return;
-            log?.Invoke($"[Bypass][ERROR] {action}: вызов в обход BypassStateManager");
+
+            var message = $"[Bypass][ERROR] {action}: вызов в обход BypassStateManager";
+            if (IsStrictMode)
+            {
+                throw new InvalidOperationException(message);
+            }
+
+            log?.Invoke(message);
         }
 
         internal static void WarnIfBypassed(IProgress<string>? progress, string action)
         {
             if (!EnforceManagerUsage) return;
             if (IsInManagerScope) return;
-            progress?.Report($"[TrafficEngine][ERROR] {action}: вызов в обход BypassStateManager");
+
+            var message = $"[TrafficEngine][ERROR] {action}: вызов в обход BypassStateManager";
+            if (IsStrictMode)
+            {
+                throw new InvalidOperationException(message);
+            }
+
+            progress?.Report(message);
         }
 
-        private sealed class Scope : IDisposable
+        private sealed class Scope(bool isStrict) : IDisposable
         {
             public void Dispose()
             {
-                var current = Depth.Value;
-                Depth.Value = current > 0 ? current - 1 : 0;
+                var s = State.Value;
+                if (s == null) return;
+
+                if (isStrict)
+                {
+                    s.StrictDepth = s.StrictDepth > 0 ? s.StrictDepth - 1 : 0;
+                }
+                else
+                {
+                    s.ManagerDepth = s.ManagerDepth > 0 ? s.ManagerDepth - 1 : 0;
+                }
+
+                if (s.ManagerDepth == 0 && s.StrictDepth == 0)
+                {
+                    // Не удерживаем state в AsyncLocal без необходимости.
+                    State.Value = null;
+                }
             }
         }
     }

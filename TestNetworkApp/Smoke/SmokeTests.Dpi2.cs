@@ -28,6 +28,48 @@ namespace TestNetworkApp.Smoke
 {
     internal static partial class SmokeTests
     {
+        public static Task<SmokeTestResult> Dpi2_Guard_BypassStateManager_IsSingleSourceOfTruth(CancellationToken ct)
+            => RunAsyncAwait("DPI2-026", "Guard: TrafficEngine/TlsBypassService только через BypassStateManager", async innerCt =>
+            {
+                // Важно: enforce включается при создании менеджера.
+                using var engine = new TrafficEngine(progress: null);
+                var profile = BypassProfile.CreateDefault();
+
+                var manager = BypassStateManager.GetOrCreate(engine, baseProfile: profile, log: null);
+
+                // 1) В strict-режиме прямой вызов TrafficEngine вне manager-scope должен падать.
+                using (BypassStateManagerGuard.EnterStrictModeForSmoke())
+                {
+                    try
+                    {
+                        engine.RegisterFilter(new NoOpPacketFilter());
+                        return new SmokeTestResult("DPI2-026", "Guard: TrafficEngine/TlsBypassService только через BypassStateManager", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали исключение при прямом вызове TrafficEngine.RegisterFilter вне manager-scope");
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // OK
+                    }
+
+                    try
+                    {
+                        await manager.TlsService.ApplyAsync(TlsBypassOptions.CreateDefault(profile), innerCt).ConfigureAwait(false);
+                        return new SmokeTestResult("DPI2-026", "Guard: TrafficEngine/TlsBypassService только через BypassStateManager", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали исключение при прямом вызове TlsBypassService.ApplyAsync вне manager-scope");
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // OK
+                    }
+                }
+
+                // 2) Через менеджер (manager-scope) — не должно падать.
+                await manager.ApplyTlsOptionsAsync(TlsBypassOptions.CreateDefault(profile), innerCt).ConfigureAwait(false);
+
+                return new SmokeTestResult("DPI2-026", "Guard: TrafficEngine/TlsBypassService только через BypassStateManager", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: direct calls blocked, manager calls allowed");
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_Guard_NoLegacySignalsOrGetSignals_InV2RuntimePath(CancellationToken ct)
             => RunAsync("DPI2-025", "Guard: в v2 runtime-пути нет BlockageSignals/GetSignals", () =>
             {
@@ -134,6 +176,17 @@ namespace TestNetworkApp.Smoke
                 return new SmokeTestResult("DPI2-025", "Guard: в v2 runtime-пути нет BlockageSignals/GetSignals", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: checkedFiles={filesToCheck.Count}, root='{root}'");
             }, ct);
+
+        private sealed class NoOpPacketFilter : IPacketFilter
+        {
+            public string Name => "NoOp";
+            public int Priority => 0;
+
+            public bool Process(InterceptedPacket packet, PacketContext ctx, IPacketSender sender)
+            {
+                return true;
+            }
+        }
 
         public static Task<SmokeTestResult> Dpi2_SignalsAdapter_Observe_AdaptsLegacySignals_ToTtlStore(CancellationToken ct)
             => RunAsync("DPI2-001", "SignalsAdapterV2 адаптирует legacy сигналы и пишет в TTL-store", () =>

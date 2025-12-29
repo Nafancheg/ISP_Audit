@@ -92,6 +92,28 @@ namespace TestNetworkApp.Smoke
             }
         }
 
+        private static async Task<SmokeTestResult> RunAsyncAwait(string id, string name, Func<CancellationToken, Task<SmokeTestResult>> body, CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                ct.ThrowIfCancellationRequested();
+                var result = await body(ct).ConfigureAwait(false);
+                sw.Stop();
+                return result with { Duration = sw.Elapsed };
+            }
+            catch (OperationCanceledException)
+            {
+                sw.Stop();
+                return new SmokeTestResult(id, name, SmokeOutcome.Skip, sw.Elapsed, "Отменено");
+            }
+            catch (Exception ex)
+            {
+                sw.Stop();
+                return new SmokeTestResult(id, name, SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
         private static T GetPrivateField<T>(object instance, string fieldName)
         {
             var field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
