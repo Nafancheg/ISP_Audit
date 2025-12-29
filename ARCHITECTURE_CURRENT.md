@@ -71,6 +71,7 @@ graph TD
     *   Управляет состоянием UI (загрузка, ошибки, результаты).
     *   Инициализирует `DiagnosticOrchestrator`.
     *   Обрабатывает команды пользователя (Start/Stop, Open Report).
+    *   **P0.6 Смена сети (staged revalidation):** подписывается на системные события смены сети (через `NetworkChangeMonitor`) и показывает уведомление «Проверить/Отключить/Игнорировать». «Проверить» запускает staged-проверку `Activation → Outcome` и затем предлагает запустить полную диагностику (без auto-apply).
 *   **`BypassController`**: ViewModel, отвечающая за настройки обхода.
     *   Связывает UI-тумблеры (Fragment/Disorder/Fake/Drop RST/DoH + assist-флаги `QUIC→TCP` и `No SNI`) с `TlsBypassService` (регистрация фильтра управляется сервисом).
     *   Восстанавливает пресет/автокоррекцию и assist-флаги из `bypass_profile.json`; сохраняет выбранный пресет отдельно (обновляя только поля фрагментации) и assist-флаги отдельно (без перезаписи TTL/redirect rules).

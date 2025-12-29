@@ -406,6 +406,8 @@ namespace IspAudit.Bypass
             }
         }
 
+        public string GetOutcomeTargetHost() => _outcomeTargetHost;
+
         public OutcomeStatusSnapshot GetOutcomeStatusSnapshot()
         {
             var options = _tlsService.GetOptionsSnapshot();
@@ -415,6 +417,58 @@ namespace IspAudit.Bypass
             }
 
             return _lastOutcomeSnapshot;
+        }
+
+        /// <summary>
+        /// Немедленно выполняет outcome-probe (без delay), чтобы переоценить доступность цели.
+        /// Используется для staged revalidation при смене сети.
+        /// </summary>
+        public async Task<OutcomeStatusSnapshot> RunOutcomeProbeNowAsync(
+            string? hostOverride = null,
+            TimeSpan? timeoutOverride = null,
+            CancellationToken cancellationToken = default)
+        {
+            var options = _tlsService.GetOptionsSnapshot();
+            if (!options.IsAnyEnabled())
+            {
+                _lastOutcomeSnapshot = new OutcomeStatusSnapshot(OutcomeStatus.Unknown, "UNKNOWN", "bypass отключён");
+                return _lastOutcomeSnapshot;
+            }
+
+            var host = string.IsNullOrWhiteSpace(hostOverride)
+                ? _outcomeTargetHost
+                : (hostOverride ?? string.Empty).Trim();
+
+            if (string.IsNullOrWhiteSpace(host))
+            {
+                _lastOutcomeSnapshot = new OutcomeStatusSnapshot(OutcomeStatus.Unknown, "UNKNOWN", "нет цели для outcome-check");
+                return _lastOutcomeSnapshot;
+            }
+
+            // Отменяем отложенную проверку (если была запланирована), и выполняем probe прямо сейчас.
+            CancelOutcomeProbe();
+
+            var timeoutMs = ReadMsEnvAllowZero("ISP_AUDIT_OUTCOME_TIMEOUT_MS", (int)OutcomeDefaultTimeout.TotalMilliseconds);
+            var timeout = timeoutOverride ?? TimeSpan.FromMilliseconds(timeoutMs);
+
+            _lastOutcomeSnapshot = new OutcomeStatusSnapshot(OutcomeStatus.Unknown, "UNKNOWN", "выполняю outcome-probe");
+
+            try
+            {
+                var snapshot = await RunOutcomeProbeAsync(host, timeout, cancellationToken).ConfigureAwait(false);
+                _lastOutcomeSnapshot = snapshot;
+                return snapshot;
+            }
+            catch (OperationCanceledException)
+            {
+                _lastOutcomeSnapshot = new OutcomeStatusSnapshot(OutcomeStatus.Unknown, "UNKNOWN", "outcome-probe отменён");
+                return _lastOutcomeSnapshot;
+            }
+            catch (Exception ex)
+            {
+                _lastOutcomeSnapshot = new OutcomeStatusSnapshot(OutcomeStatus.Failed, "FAILED", $"outcome-probe error: {ex.Message}");
+                return _lastOutcomeSnapshot;
+            }
         }
 
         internal void SetOutcomeProbeForSmoke(Func<string, CancellationToken, Task<OutcomeStatusSnapshot>> probe)

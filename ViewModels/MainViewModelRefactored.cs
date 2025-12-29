@@ -3,11 +3,13 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using MaterialDesignThemes.Wpf;
 using IspAudit.Bypass;
 using IspAudit.Models;
+using IspAudit.Utils;
 using IspAudit.Wpf;
 
 // Явно указываем WPF вместо WinForms
@@ -155,6 +157,33 @@ namespace IspAudit.ViewModels
         {
             get => _isUnlimitedTime;
             set { _isUnlimitedTime = value; OnPropertyChanged(nameof(IsUnlimitedTime)); }
+        }
+
+        private bool _isNetworkChangePromptVisible;
+        private string _networkChangePromptText = string.Empty;
+        private bool _isNetworkRevalidating;
+        private CancellationTokenSource? _networkRevalidateCts;
+
+        public bool IsNetworkChangePromptVisible
+        {
+            get => _isNetworkChangePromptVisible;
+            private set
+            {
+                if (_isNetworkChangePromptVisible == value) return;
+                _isNetworkChangePromptVisible = value;
+                OnPropertyChanged(nameof(IsNetworkChangePromptVisible));
+            }
+        }
+
+        public string NetworkChangePromptText
+        {
+            get => _networkChangePromptText;
+            private set
+            {
+                if (string.Equals(_networkChangePromptText, value, StringComparison.Ordinal)) return;
+                _networkChangePromptText = value;
+                OnPropertyChanged(nameof(NetworkChangePromptText));
+            }
         }
 
         private bool _isSteamMode;
@@ -327,12 +356,20 @@ namespace IspAudit.ViewModels
         public ICommand DisableAllBypassCommand { get; }
         public ICommand ApplyRecommendationsCommand { get; }
 
+        // P0.6: Network change staged revalidation
+        public ICommand NetworkRevalidateCommand { get; }
+        public ICommand NetworkDisableBypassCommand { get; }
+        public ICommand NetworkIgnoreCommand { get; }
+
         #endregion
 
         #region Constructor
 
         private readonly IspAudit.Core.Traffic.TrafficEngine _trafficEngine;
         private readonly BypassStateManager _bypassState;
+
+        private readonly NetworkChangeMonitor? _networkChangeMonitor;
+        private volatile bool _pendingNetworkChangePrompt;
 
         private volatile bool _pendingRetestAfterRun;
         private string _pendingRetestReason = "";
@@ -394,6 +431,12 @@ namespace IspAudit.ViewModels
                         _pendingRetestReason = "";
                     }
                 }
+
+                if (_pendingNetworkChangePrompt)
+                {
+                    _pendingNetworkChangePrompt = false;
+                    ShowNetworkChangePrompt();
+                }
             };
             Orchestrator.PropertyChanged += (s, e) => 
             {
@@ -445,6 +488,29 @@ namespace IspAudit.ViewModels
 
             ApplyRecommendationsCommand = new RelayCommand(async _ => await ApplyRecommendationsAsync(), _ => HasRecommendations && !IsApplyingRecommendations);
 
+            NetworkRevalidateCommand = new RelayCommand(async _ => await RunNetworkRevalidationAsync(), _ => ShowBypassPanel && IsNetworkChangePromptVisible);
+            NetworkDisableBypassCommand = new RelayCommand(async _ => await DisableBypassFromNetworkPromptAsync(), _ => ShowBypassPanel && IsNetworkChangePromptVisible);
+            NetworkIgnoreCommand = new RelayCommand(_ => HideNetworkChangePrompt(), _ => IsNetworkChangePromptVisible);
+
+            // NetworkChange monitor (P0.6): запускаем только когда есть WPF Application.
+            // В smoke/console окружении Application.Current обычно null, и мы избегаем подписок на системные события.
+            if (Application.Current != null)
+            {
+                _networkChangeMonitor = new NetworkChangeMonitor(Log);
+                _networkChangeMonitor.NetworkChanged += _ =>
+                {
+                    try
+                    {
+                        Application.Current?.Dispatcher.Invoke(() => OnNetworkChanged());
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                };
+                _networkChangeMonitor.Start();
+            }
+
             Log("✓ MainViewModelRefactored инициализирован");
         }
 
@@ -464,6 +530,141 @@ namespace IspAudit.ViewModels
             catch
             {
                 // ignore
+            }
+
+            try
+            {
+                _networkChangeMonitor?.Dispose();
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void OnNetworkChanged()
+        {
+            Log("[P0.6][NET] Событие смены сети");
+
+            // UX: если обход не включён (нет опций) — уведомление не нужно.
+            var snapshot = _bypassState.GetOptionsSnapshot();
+            if (!snapshot.IsAnyEnabled())
+            {
+                Log("[P0.6][NET] Skip: bypass options not enabled");
+                return;
+            }
+
+            if (!ShowBypassPanel)
+            {
+                Log("[P0.6][NET] Skip: bypass panel hidden (no admin rights)");
+                return;
+            }
+
+            // Если сейчас идёт диагностика — откладываем UX до завершения.
+            if (IsRunning || IsApplyingRecommendations)
+            {
+                _pendingNetworkChangePrompt = true;
+                Log("[P0.6][NET] Defer prompt: diagnostic/apply in progress");
+                return;
+            }
+
+            ShowNetworkChangePrompt();
+        }
+
+        private void ShowNetworkChangePrompt()
+        {
+            IsNetworkChangePromptVisible = true;
+            NetworkChangePromptText =
+                "Обнаружена смена сети.\n" +
+                "Рекомендуется перепроверить состояние обхода.\n" +
+                "Действия: «Проверить», «Отключить», «Игнорировать».";
+        }
+
+        private void HideNetworkChangePrompt()
+        {
+            try
+            {
+                _networkRevalidateCts?.Cancel();
+                _networkRevalidateCts?.Dispose();
+            }
+            catch
+            {
+                // ignore
+            }
+            finally
+            {
+                _networkRevalidateCts = null;
+            }
+
+            IsNetworkChangePromptVisible = false;
+        }
+
+        private async Task DisableBypassFromNetworkPromptAsync()
+        {
+            try
+            {
+                await Bypass.DisableAllAsync();
+                EnableAutoBypass = false;
+
+                NetworkChangePromptText =
+                    "Bypass отключён.\n" +
+                    "Если проблема осталась — запустите полную диагностику.";
+            }
+            catch (Exception ex)
+            {
+                NetworkChangePromptText = $"Ошибка отключения bypass: {ex.Message}";
+            }
+        }
+
+        private async Task RunNetworkRevalidationAsync()
+        {
+            if (_isNetworkRevalidating)
+            {
+                return;
+            }
+
+            _isNetworkRevalidating = true;
+            try
+            {
+                _networkRevalidateCts?.Cancel();
+                _networkRevalidateCts?.Dispose();
+                _networkRevalidateCts = new CancellationTokenSource();
+                var ct = _networkRevalidateCts.Token;
+
+                NetworkChangePromptText = "Проверяю состояние обхода…";
+
+                // Stage 1: health/activation (быстро)
+                var activation = _bypassState.GetActivationStatusSnapshot();
+                Log($"[P0.6][STAGE1] ACT={activation.Text}; {activation.Details}");
+
+                // Stage 2: outcome check (активный probe)
+                var host = _bypassState.GetOutcomeTargetHost();
+                if (string.IsNullOrWhiteSpace(host))
+                {
+                    Log("[P0.6][STAGE2] OUT=UNKNOWN: no target host");
+                }
+
+                var outcome = await _bypassState.RunOutcomeProbeNowAsync(cancellationToken: ct);
+                Log($"[P0.6][STAGE2] OUT={outcome.Text}; {outcome.Details}");
+
+                // Stage 3: предложение запустить полную диагностику
+                NetworkChangePromptText =
+                    "Проверка завершена.\n" +
+                    $"Stage 1: ACT: {activation.Text}.\n" +
+                    $"Stage 2: OUT: {outcome.Text}.\n" +
+                    "Stage 3: если проблема осталась — нажмите «Начать диагностику» для полного прогона.";
+            }
+            catch (OperationCanceledException)
+            {
+                NetworkChangePromptText = "Проверка отменена.";
+            }
+            catch (Exception ex)
+            {
+                NetworkChangePromptText = $"Ошибка проверки: {ex.Message}";
+            }
+            finally
+            {
+                _isNetworkRevalidating = false;
             }
         }
 

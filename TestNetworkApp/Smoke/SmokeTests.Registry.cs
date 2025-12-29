@@ -28,6 +28,7 @@ namespace TestNetworkApp.Smoke
                 ["UI-010"] = Ui_ParsePipelineMessage_ParsesUiLines,
                 ["UI-011"] = Ui_UiReducerSmoke,
                 ["UI-012"] = Ui_SniHostname_HasPriorityOverIp_InCardKey,
+                ["UI-013"] = Ui_NetworkChangePrompt_ShowsAndHides_NoGui,
 
                 ["ORCH-001"] = Orch_Pipeline_StartStop_ViaRetestTargets,
                 ["ORCH-002"] = Orch_MonitoringServices_StartStop_AdminGated,

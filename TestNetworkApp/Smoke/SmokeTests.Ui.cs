@@ -217,6 +217,39 @@ namespace TestNetworkApp.Smoke
                     "OK: пресет сохраняется, профиль не повреждается");
             }, ct);
 
+        public static Task<SmokeTestResult> Ui_NetworkChangePrompt_ShowsAndHides_NoGui(CancellationToken ct)
+            => RunAsync("UI-013", "P0.6: Network change prompt показывается/скрывается без GUI", () =>
+            {
+                var vm = new MainViewModelRefactored();
+
+                // Вызываем приватный ShowNetworkChangePrompt через reflection:
+                // в smoke-окружении мы не подписываемся на реальные NetworkChange события.
+                InvokePrivateMethod(vm, "ShowNetworkChangePrompt");
+
+                if (!vm.IsNetworkChangePromptVisible)
+                {
+                    return new SmokeTestResult("UI-013", "P0.6: Network change prompt показывается/скрывается без GUI", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали IsNetworkChangePromptVisible=true после ShowNetworkChangePrompt");
+                }
+
+                if (string.IsNullOrWhiteSpace(vm.NetworkChangePromptText))
+                {
+                    return new SmokeTestResult("UI-013", "P0.6: Network change prompt показывается/скрывается без GUI", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "NetworkChangePromptText пустой после ShowNetworkChangePrompt");
+                }
+
+                // Проверяем, что команда «Игнорировать» скрывает уведомление.
+                vm.NetworkIgnoreCommand.Execute(null);
+                if (vm.IsNetworkChangePromptVisible)
+                {
+                    return new SmokeTestResult("UI-013", "P0.6: Network change prompt показывается/скрывается без GUI", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали IsNetworkChangePromptVisible=false после NetworkIgnoreCommand");
+                }
+
+                return new SmokeTestResult("UI-013", "P0.6: Network change prompt показывается/скрывается без GUI", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: prompt показывается и скрывается по команде");
+            }, ct);
+
         public static async Task<SmokeTestResult> Ui_BypassMetrics_UpdatesFromService(CancellationToken ct)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
