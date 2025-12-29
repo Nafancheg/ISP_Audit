@@ -87,6 +87,10 @@ graph TD
     *   **Activation Detection (по метрикам):**
         *   Вычисляет статус активации: `ENGINE_DEAD / NOT_ACTIVATED / ACTIVATED / NO_TRAFFIC / UNKNOWN`.
         *   Используется для наблюдаемости (в UI выводится как `ACT: ...`).
+    *   **Outcome Check (HTTPS):**
+        *   Отдельно от activation вычисляет outcome `SUCCESS / FAILED / UNKNOWN`.
+        *   Для HTTPS outcome основан на **активном tagged probe** (TCP+TLS+HTTP к цели) и не опирается на пассивный анализ HTTPS.
+        *   Probe-поток исключается из пользовательских метрик bypass (чтобы не создавать ложную «активацию» только из-за probe).
     *   Сериализует операции `Apply/Disable` и управляет жизненным циклом `TrafficEngine` и регистрацией фильтров.
     *   Используется одновременно `BypassController` и `DiagnosticOrchestrator`, чтобы избежать гонок/рассинхронизаций.
     *   Включает guard: попытки вызывать `TrafficEngine.*`/`TlsBypassService.*` вне manager-scope логируются и могут считаться ошибкой в smoke.

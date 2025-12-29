@@ -18,6 +18,9 @@ namespace IspAudit.Core.Traffic.Filters
         private readonly string _presetName;
         private static bool _verbosePacketLog = false; // выключаем пометку каждого пакета, чтобы не раздувать лог
         private readonly ConcurrentDictionary<ConnectionKey, ConnectionState> _connections = new();
+        // Реестр «служебных» (tagged) соединений, которые не должны попадать в пользовательские метрики.
+        // Используется для outcome-probe (HTTPS), чтобы не было ложной активации/эффекта только из-за probe.
+        private readonly ConcurrentDictionary<ConnectionKey, long> _probeFlowsUntilTick = new();
         private long _packetsProcessed;
         private long _rstDropped;
         private long _rstDroppedRelevant;
@@ -40,16 +43,70 @@ namespace IspAudit.Core.Traffic.Filters
             _presetName = presetName;
         }
 
+        /// <summary>
+        /// Зарегистрировать 5-tuple соединения, которое следует исключить из пользовательских метрик.
+        /// Важно: обход/модификация трафика сохраняется, исключаются только счётчики/план/вердикт.
+        /// </summary>
+        internal void RegisterProbeFlow(uint srcIp, uint dstIp, ushort srcPort, ushort dstPort, TimeSpan ttl)
+        {
+            if (ttl <= TimeSpan.Zero) ttl = TimeSpan.FromSeconds(30);
+            var until = Environment.TickCount64 + (long)ttl.TotalMilliseconds;
+            _probeFlowsUntilTick[new ConnectionKey(srcIp, dstIp, srcPort, dstPort)] = until;
+        }
+
+        private bool IsProbeFlow(PacketInfo info)
+        {
+            if (!info.IsIpv4) return false;
+
+            if (_probeFlowsUntilTick.IsEmpty) return false;
+
+            var now = Environment.TickCount64;
+            var key = new ConnectionKey(info.SrcIpInt, info.DstIpInt, info.SrcPort, info.DstPort);
+
+            if (_probeFlowsUntilTick.TryGetValue(key, out var until))
+            {
+                if (now <= until)
+                {
+                    return true;
+                }
+
+                _probeFlowsUntilTick.TryRemove(key, out _);
+                return false;
+            }
+
+            // Ленивая чистка: если словарь разросся (редко), удаляем просроченные записи.
+            if (_probeFlowsUntilTick.Count > 64)
+            {
+                foreach (var kv in _probeFlowsUntilTick)
+                {
+                    if (now > kv.Value)
+                    {
+                        _probeFlowsUntilTick.TryRemove(kv.Key, out _);
+                    }
+                }
+            }
+
+            return false;
+        }
+
         public bool Process(InterceptedPacket packet, PacketContext context, IPacketSender sender)
         {
-            Interlocked.Increment(ref _packetsProcessed);
+            var isProbe = IsProbeFlow(packet.Info);
+
+            if (!isProbe)
+            {
+                Interlocked.Increment(ref _packetsProcessed);
+            }
 
             // QUIC fallback: многие клиенты/браузеры по умолчанию используют QUIC (UDP/443).
             // TLS обход работает только на TCP, поэтому при включённом DropUdp443
             // принудительно глушим UDP:443, чтобы клиент откатился на TCP/HTTPS.
             if (_profile.DropUdp443 && packet.Info.IsUdp && packet.Info.DstPort == 443)
             {
-                Interlocked.Increment(ref _udp443Dropped);
+                if (!isProbe)
+                {
+                    Interlocked.Increment(ref _udp443Dropped);
+                }
                 return false;
             }
 
@@ -68,15 +125,24 @@ namespace IspAudit.Core.Traffic.Filters
                 {
                     if (packet.Info.DstPort != 443)
                     {
-                        Interlocked.Increment(ref _tlsClientHellosNon443);
+                        if (!isProbe)
+                        {
+                            Interlocked.Increment(ref _tlsClientHellosNon443);
+                        }
                     }
                     else
                     {
-                        Interlocked.Increment(ref _tlsClientHellosObserved);
+                        if (!isProbe)
+                        {
+                            Interlocked.Increment(ref _tlsClientHellosObserved);
+                        }
 
                         if (payloadLength < _profile.TlsFragmentThreshold)
                         {
-                            Interlocked.Increment(ref _tlsClientHellosShort);
+                            if (!isProbe)
+                            {
+                                Interlocked.Increment(ref _tlsClientHellosShort);
+                            }
                         }
                         else
                         {
@@ -85,7 +151,10 @@ namespace IspAudit.Core.Traffic.Filters
                             hasSni = HasSniExtension(payloadSpan);
                             if (!hasSni)
                             {
-                                Interlocked.Increment(ref _tlsClientHellosNoSni);
+                                if (!isProbe)
+                                {
+                                    Interlocked.Increment(ref _tlsClientHellosNoSni);
+                                }
                             }
                         }
                     }
@@ -95,14 +164,20 @@ namespace IspAudit.Core.Traffic.Filters
             // 1. RST Blocking
             if (_profile.DropTcpRst && packet.Info.IsTcp && packet.Info.IsRst)
             {
-                Interlocked.Increment(ref _rstDropped);
+                if (!isProbe)
+                {
+                    Interlocked.Increment(ref _rstDropped);
+                }
 
                 if (packet.Info.DstPort == 443)
                 {
                     var key = new ConnectionKey(packet.Info.SrcIpInt, packet.Info.DstIpInt, packet.Info.SrcPort, packet.Info.DstPort);
                     if (_connections.TryGetValue(key, out var state) && state.BypassApplied)
                     {
-                        Interlocked.Increment(ref _rstDroppedRelevant);
+                        if (!isProbe)
+                        {
+                            Interlocked.Increment(ref _rstDroppedRelevant);
+                        }
                         if (_verbosePacketLog)
                         {
                             _log?.Invoke($"[Bypass][RST] preset={_presetName}, rst@443 after bypass, conn={packet.Info.SrcIpInt}->{packet.Info.DstIpInt}:{packet.Info.DstPort}");
@@ -133,9 +208,12 @@ namespace IspAudit.Core.Traffic.Filters
 
                 if (ProcessTlsStrategy(packet, context, sender, isNewConnection, fragmentPlan))
                 {
-                    Interlocked.Increment(ref _clientHellosFragmented);
-                    Interlocked.Increment(ref _tlsHandled);
-                    _lastFragmentPlan = fragmentPlan != null ? string.Join('/', fragmentPlan.Select(f => f.PayloadLength)) : "";
+                    if (!isProbe)
+                    {
+                        Interlocked.Increment(ref _clientHellosFragmented);
+                        Interlocked.Increment(ref _tlsHandled);
+                        _lastFragmentPlan = fragmentPlan != null ? string.Join('/', fragmentPlan.Select(f => f.PayloadLength)) : "";
+                    }
                     if (_verbosePacketLog)
                     {
                         _log?.Invoke($"[Bypass][TLS] preset={_presetName}, payload={packet.Info.PayloadLength}, plan={_lastFragmentPlan}, strategy={_profile.TlsStrategy}, result=fragmented");

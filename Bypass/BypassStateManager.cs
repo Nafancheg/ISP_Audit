@@ -4,6 +4,7 @@ using System.Threading;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using System.Net;
 using IspAudit.Core.Traffic;
 
 namespace IspAudit.Bypass
@@ -176,6 +177,11 @@ namespace IspAudit.Bypass
         private DateTime _lastMetricsSnapshotUtc = DateTime.MinValue;
         private TlsBypassMetrics? _lastMetricsSnapshot;
 
+        private string _outcomeTargetHost = string.Empty;
+        private OutcomeStatusSnapshot _lastOutcomeSnapshot = new(OutcomeStatus.Unknown, "UNKNOWN", "нет данных");
+        private CancellationTokenSource? _outcomeCts;
+        private Func<string, CancellationToken, Task<OutcomeStatusSnapshot>>? _outcomeProbeOverrideForSmoke;
+
         private static readonly TimeSpan WatchdogDefaultTick = TimeSpan.FromSeconds(60);
         private static readonly TimeSpan WatchdogDefaultStale = TimeSpan.FromSeconds(120);
         private static readonly TimeSpan WatchdogEngineGrace = TimeSpan.FromSeconds(15);
@@ -183,6 +189,10 @@ namespace IspAudit.Bypass
         private static readonly TimeSpan ActivationDefaultWarmup = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan ActivationDefaultNoTraffic = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan ActivationDefaultStale = TimeSpan.FromSeconds(120);
+
+        private static readonly TimeSpan OutcomeDefaultDelay = TimeSpan.FromSeconds(12);
+        private static readonly TimeSpan OutcomeDefaultTimeout = TimeSpan.FromSeconds(6);
+        private static readonly TimeSpan OutcomeProbeFlowTtl = TimeSpan.FromSeconds(30);
 
         public TrafficEngine TrafficEngine => _trafficEngine;
         public BypassProfile BaseProfile { get; }
@@ -383,6 +393,35 @@ namespace IspAudit.Bypass
 
         public TlsBypassOptions GetOptionsSnapshot() => _tlsService.GetOptionsSnapshot();
 
+        /// <summary>
+        /// Задать цель для outcome-check (обычно — hostKey последнего v2 плана/диагноза).
+        /// Если цель не задана, outcome остаётся UNKNOWN.
+        /// </summary>
+        public void SetOutcomeTargetHost(string? host)
+        {
+            _outcomeTargetHost = (host ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(_outcomeTargetHost))
+            {
+                _lastOutcomeSnapshot = new OutcomeStatusSnapshot(OutcomeStatus.Unknown, "UNKNOWN", "нет цели для outcome-check");
+            }
+        }
+
+        public OutcomeStatusSnapshot GetOutcomeStatusSnapshot()
+        {
+            var options = _tlsService.GetOptionsSnapshot();
+            if (!options.IsAnyEnabled())
+            {
+                return new OutcomeStatusSnapshot(OutcomeStatus.Unknown, "UNKNOWN", "bypass отключён");
+            }
+
+            return _lastOutcomeSnapshot;
+        }
+
+        internal void SetOutcomeProbeForSmoke(Func<string, CancellationToken, Task<OutcomeStatusSnapshot>> probe)
+        {
+            _outcomeProbeOverrideForSmoke = probe;
+        }
+
         public ActivationStatusSnapshot GetActivationStatusSnapshot()
         {
             var options = _tlsService.GetOptionsSnapshot();
@@ -499,10 +538,15 @@ namespace IspAudit.Bypass
                     _lastBypassActivatedUtc = DateTime.UtcNow;
                     _lastMetricsEventUtc = DateTime.UtcNow;
                     _journal.SetBypassActive(true, "apply");
+
+                    ScheduleOutcomeProbeIfPossible();
                 }
                 else
                 {
                     _journal.SetBypassActive(false, "apply_disable");
+
+                    CancelOutcomeProbe();
+                    _lastOutcomeSnapshot = new OutcomeStatusSnapshot(OutcomeStatus.Unknown, "UNKNOWN", "bypass отключён");
                 }
             }
             finally
@@ -524,11 +568,94 @@ namespace IspAudit.Bypass
 
                 _lastBypassActivatedUtc = DateTime.MinValue;
                 _journal.SetBypassActive(false, reason);
+
+                CancelOutcomeProbe();
+                _lastOutcomeSnapshot = new OutcomeStatusSnapshot(OutcomeStatus.Unknown, "UNKNOWN", "bypass отключён");
             }
             finally
             {
                 _applyGate.Release();
             }
+        }
+
+        private void CancelOutcomeProbe()
+        {
+            try
+            {
+                _outcomeCts?.Cancel();
+                _outcomeCts?.Dispose();
+            }
+            catch
+            {
+                // ignore
+            }
+            finally
+            {
+                _outcomeCts = null;
+            }
+        }
+
+        private void ScheduleOutcomeProbeIfPossible()
+        {
+            var host = _outcomeTargetHost;
+            if (string.IsNullOrWhiteSpace(host))
+            {
+                _lastOutcomeSnapshot = new OutcomeStatusSnapshot(OutcomeStatus.Unknown, "UNKNOWN", "нет цели для outcome-check");
+                return;
+            }
+
+            CancelOutcomeProbe();
+            _outcomeCts = new CancellationTokenSource();
+            var ct = _outcomeCts.Token;
+
+            var delayMs = ReadMsEnvAllowZero("ISP_AUDIT_OUTCOME_DELAY_MS", (int)OutcomeDefaultDelay.TotalMilliseconds);
+            var timeoutMs = ReadMsEnvAllowZero("ISP_AUDIT_OUTCOME_TIMEOUT_MS", (int)OutcomeDefaultTimeout.TotalMilliseconds);
+
+            var delay = TimeSpan.FromMilliseconds(delayMs);
+            var timeout = TimeSpan.FromMilliseconds(timeoutMs);
+
+            _lastOutcomeSnapshot = new OutcomeStatusSnapshot(OutcomeStatus.Unknown, "UNKNOWN", "ожидание outcome-probe");
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    if (delay > TimeSpan.Zero)
+                    {
+                        await Task.Delay(delay, ct).ConfigureAwait(false);
+                    }
+
+                    var snapshot = await RunOutcomeProbeAsync(host, timeout, ct).ConfigureAwait(false);
+                    _lastOutcomeSnapshot = snapshot;
+                }
+                catch (OperationCanceledException)
+                {
+                    _lastOutcomeSnapshot = new OutcomeStatusSnapshot(OutcomeStatus.Unknown, "UNKNOWN", "outcome-probe отменён");
+                }
+                catch (Exception ex)
+                {
+                    _lastOutcomeSnapshot = new OutcomeStatusSnapshot(OutcomeStatus.Failed, "FAILED", $"outcome-probe error: {ex.Message}");
+                }
+            }, CancellationToken.None);
+        }
+
+        private async Task<OutcomeStatusSnapshot> RunOutcomeProbeAsync(string host, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            // Smoke-хук: детерминированная подмена, без реальной сети.
+            if (_outcomeProbeOverrideForSmoke != null)
+            {
+                return await _outcomeProbeOverrideForSmoke(host, cancellationToken).ConfigureAwait(false);
+            }
+
+            return await HttpsOutcomeProbe.RunAsync(
+                host,
+                onConnected: (local, remote) =>
+                {
+                    // Регистрируем flow в фильтре, чтобы probe не попадал в пользовательские метрики.
+                    _tlsService.RegisterOutcomeProbeFlow(local, remote, OutcomeProbeFlowTtl);
+                },
+                timeout: timeout,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
         public async Task ApplyPreemptiveAsync(CancellationToken cancellationToken = default)
@@ -555,6 +682,8 @@ namespace IspAudit.Bypass
             {
                 // ignore
             }
+
+            CancelOutcomeProbe();
 
             _tlsService.Dispose();
             _applyGate.Dispose();

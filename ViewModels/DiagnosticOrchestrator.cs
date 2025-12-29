@@ -1471,7 +1471,7 @@ namespace IspAudit.ViewModels
             try
             {
                 Log($"[V2][APPLY] host={hostKey}; plan={planStrategies}; before={beforeState}");
-                await bypassController.ApplyV2PlanAsync(_lastV2Plan, V2ApplyTimeout, ct).ConfigureAwait(false);
+                await bypassController.ApplyV2PlanAsync(_lastV2Plan, hostKey, V2ApplyTimeout, ct).ConfigureAwait(false);
 
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[V2][APPLY] OK; after={afterState}");

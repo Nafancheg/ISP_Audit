@@ -97,6 +97,7 @@
 - Введён `BypassStateManager` как single source of truth для управления `TrafficEngine` и `TlsBypassService`.
 - Добавлен fail-safe слой (Lite Watchdog + crash recovery): журнал сессии bypass + авто-Disable при некорректном завершении/пропаже heartbeat.
 - Добавлена Activation Detection (по метрикам): статус `ENGINE_DEAD/NOT_ACTIVATED/ACTIVATED/NO_TRAFFIC/UNKNOWN` для наблюдаемости.
+- Добавлен Outcome Check для HTTPS: `SUCCESS/FAILED/UNKNOWN` через tagged outcome-probe (активная TCP+TLS+HTTP проверка цели), probe исключается из пользовательских метрик (smoke gate: `DPI2-029`).
 - `BypassController` и `DiagnosticOrchestrator` используют один экземпляр менеджера, чтобы исключить гонки Apply/Disable и рассинхронизацию фильтров/engine.
 - Добавлен guard: прямые вызовы методов `TrafficEngine`/`TlsBypassService` вне manager-scope логируются (и могут быть зафиксированы smoke-гейтами).
 

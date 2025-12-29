@@ -1,6 +1,8 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Core.Traffic;
@@ -99,6 +101,32 @@ namespace IspAudit.Bypass
         }
 
         internal Task PullMetricsOnceAsyncForSmoke() => PullMetricsAsync();
+
+        /// <summary>
+        /// Outcome-probe (HTTPS): зарегистрировать 5-tuple соединения, которое нужно исключить из пользовательских метрик.
+        /// Важно: обход сохраняется (пакеты всё ещё обрабатываются фильтром), исключаются только счётчики.
+        /// </summary>
+        internal void RegisterOutcomeProbeFlow(IPEndPoint local, IPEndPoint remote, TimeSpan ttl)
+        {
+            try
+            {
+                if (local == null || remote == null) return;
+                if (local.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) return;
+                if (remote.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) return;
+
+                var srcIp = BinaryPrimitives.ReadUInt32BigEndian(local.Address.GetAddressBytes());
+                var dstIp = BinaryPrimitives.ReadUInt32BigEndian(remote.Address.GetAddressBytes());
+
+                lock (_sync)
+                {
+                    _filter?.RegisterProbeFlow(srcIp, dstIp, (ushort)local.Port, (ushort)remote.Port, ttl);
+                }
+            }
+            catch
+            {
+                // Игнорируем: это наблюдаемость, не критический путь.
+            }
+        }
 
         /// <summary>
         /// Текущий снимок опций (без повторного построения профиля).

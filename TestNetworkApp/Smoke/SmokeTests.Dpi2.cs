@@ -249,6 +249,207 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_OutcomeCheck_Https_TaggedProbe_IsDeterministic_ViaTaggedProbe(CancellationToken ct)
+            => RunAsyncAwait("DPI2-029", "Outcome Check (HTTPS): SUCCESS/FAILED/UNKNOWN via tagged probe", async innerCt =>
+            {
+                var prevDelay = Environment.GetEnvironmentVariable("ISP_AUDIT_OUTCOME_DELAY_MS");
+                var prevTimeout = Environment.GetEnvironmentVariable("ISP_AUDIT_OUTCOME_TIMEOUT_MS");
+
+                try
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_OUTCOME_DELAY_MS", "0");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_OUTCOME_TIMEOUT_MS", "0");
+
+                    using var engine = new TrafficEngine(progress: null);
+                    var profile = BypassProfile.CreateDefault();
+
+                    var tls = new TlsBypassService(
+                        trafficEngine: engine,
+                        baseProfile: profile,
+                        log: null,
+                        startMetricsTimer: false,
+                        useTrafficEngine: false,
+                        nowProvider: null);
+
+                    var manager = BypassStateManager.GetOrCreateFromService(tls, profile, log: null);
+                    await manager.InitializeOnStartupAsync(innerCt).ConfigureAwait(false);
+
+                    // 0) Без цели: outcome остаётся UNKNOWN.
+                    manager.SetOutcomeTargetHost(null);
+                    await manager.ApplyTlsOptionsAsync(TlsBypassOptions.CreateDefault(profile) with
+                    {
+                        DisorderEnabled = true,
+                        DropRstEnabled = true
+                    }, innerCt).ConfigureAwait(false);
+
+                    var o0 = manager.GetOutcomeStatusSnapshot();
+                    if (o0.Status != OutcomeStatus.Unknown)
+                    {
+                        return new SmokeTestResult("DPI2-029", "Outcome Check (HTTPS): SUCCESS/FAILED/UNKNOWN via tagged probe", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали UNKNOWN без цели, получили {o0.Text} ({o0.Details})");
+                    }
+
+                    // 1) SUCCESS через детерминированную подмену probe.
+                    manager.SetOutcomeProbeForSmoke(async (host, token) =>
+                    {
+                        await Task.Delay(1, token).ConfigureAwait(false);
+                        return new OutcomeStatusSnapshot(OutcomeStatus.Success, "SUCCESS", $"smoke:{host}");
+                    });
+
+                    manager.SetOutcomeTargetHost("example.com");
+                    await manager.ApplyTlsOptionsAsync(TlsBypassOptions.CreateDefault(profile) with
+                    {
+                        DisorderEnabled = true,
+                        DropRstEnabled = true
+                    }, innerCt).ConfigureAwait(false);
+
+                    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(1);
+                    OutcomeStatusSnapshot o1;
+                    do
+                    {
+                        o1 = manager.GetOutcomeStatusSnapshot();
+                        if (o1.Status != OutcomeStatus.Unknown) break;
+                        await Task.Delay(10, innerCt).ConfigureAwait(false);
+                    } while (DateTime.UtcNow < deadline);
+
+                    if (o1.Status != OutcomeStatus.Success)
+                    {
+                        return new SmokeTestResult("DPI2-029", "Outcome Check (HTTPS): SUCCESS/FAILED/UNKNOWN via tagged probe", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали SUCCESS, получили {o1.Text} ({o1.Details})");
+                    }
+
+                    // 2) FAILED через детерминированную подмену probe.
+                    manager.SetOutcomeProbeForSmoke(async (host, token) =>
+                    {
+                        await Task.Delay(1, token).ConfigureAwait(false);
+                        return new OutcomeStatusSnapshot(OutcomeStatus.Failed, "FAILED", $"smoke:{host}");
+                    });
+
+                    manager.SetOutcomeTargetHost("example.com");
+                    await manager.ApplyTlsOptionsAsync(TlsBypassOptions.CreateDefault(profile) with
+                    {
+                        DisorderEnabled = true,
+                        DropRstEnabled = true
+                    }, innerCt).ConfigureAwait(false);
+
+                    deadline = DateTime.UtcNow + TimeSpan.FromSeconds(1);
+                    OutcomeStatusSnapshot o2;
+                    do
+                    {
+                        o2 = manager.GetOutcomeStatusSnapshot();
+                        if (o2.Status != OutcomeStatus.Unknown) break;
+                        await Task.Delay(10, innerCt).ConfigureAwait(false);
+                    } while (DateTime.UtcNow < deadline);
+
+                    if (o2.Status != OutcomeStatus.Failed)
+                    {
+                        return new SmokeTestResult("DPI2-029", "Outcome Check (HTTPS): SUCCESS/FAILED/UNKNOWN via tagged probe", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали FAILED, получили {o2.Text} ({o2.Details})");
+                    }
+
+                    return new SmokeTestResult("DPI2-029", "Outcome Check (HTTPS): SUCCESS/FAILED/UNKNOWN via tagged probe", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: outcome для HTTPS детерминированен и не основан на пассивном анализе");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_OUTCOME_DELAY_MS", prevDelay);
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_OUTCOME_TIMEOUT_MS", prevTimeout);
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> Dpi2_OutcomeCheck_Https_TaggedProbe_IsDeterministic(CancellationToken ct)
+            => RunAsyncAwait("DPI2-029", "Outcome Check (HTTPS): SUCCESS/FAILED/UNKNOWN через tagged probe (smoke) გარეშე пассивных выводов", async innerCt =>
+            {
+                var prevDelay = Environment.GetEnvironmentVariable("ISP_AUDIT_OUTCOME_DELAY_MS");
+                var prevTimeout = Environment.GetEnvironmentVariable("ISP_AUDIT_OUTCOME_TIMEOUT_MS");
+
+                try
+                {
+                    // Мгновенный запуск outcome-probe.
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_OUTCOME_DELAY_MS", "0");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_OUTCOME_TIMEOUT_MS", "100");
+
+                    using var engine = new TrafficEngine(progress: null);
+                    var profile = BypassProfile.CreateDefault();
+
+                    var tls = new TlsBypassService(
+                        trafficEngine: engine,
+                        baseProfile: profile,
+                        log: null,
+                        startMetricsTimer: false,
+                        useTrafficEngine: false,
+                        nowProvider: null);
+
+                    var manager = BypassStateManager.GetOrCreateFromService(tls, profile, log: null);
+                    await manager.InitializeOnStartupAsync(innerCt).ConfigureAwait(false);
+
+                    // 1) Нет цели -> UNKNOWN
+                    manager.SetOutcomeTargetHost(null);
+                    await manager.ApplyTlsOptionsAsync(TlsBypassOptions.CreateDefault(profile) with
+                    {
+                        DisorderEnabled = true,
+                        DropRstEnabled = true
+                    }, innerCt).ConfigureAwait(false);
+
+                    var o0 = manager.GetOutcomeStatusSnapshot();
+                    if (o0.Status != OutcomeStatus.Unknown)
+                    {
+                        return new SmokeTestResult("DPI2-029", "Outcome Check (HTTPS): SUCCESS/FAILED/UNKNOWN через tagged probe (smoke) ", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали UNKNOWN без цели, получили {o0.Text} ({o0.Details})");
+                    }
+
+                    await manager.DisableTlsAsync("smoke_reset", innerCt).ConfigureAwait(false);
+
+                    // 2) С целью + smoke-probe -> SUCCESS
+                    manager.SetOutcomeProbeForSmoke((host, token) =>
+                        Task.FromResult(new OutcomeStatusSnapshot(OutcomeStatus.Success, "SUCCESS", $"smoke:{host}")));
+
+                    manager.SetOutcomeTargetHost("example.com");
+
+                    await manager.ApplyTlsOptionsAsync(TlsBypassOptions.CreateDefault(profile) with
+                    {
+                        DisorderEnabled = true,
+                        DropRstEnabled = true
+                    }, innerCt).ConfigureAwait(false);
+
+                    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+                    OutcomeStatusSnapshot last = manager.GetOutcomeStatusSnapshot();
+                    while (DateTime.UtcNow < deadline)
+                    {
+                        last = manager.GetOutcomeStatusSnapshot();
+                        if (last.Status == OutcomeStatus.Success)
+                        {
+                            break;
+                        }
+
+                        await Task.Delay(20, innerCt).ConfigureAwait(false);
+                    }
+
+                    if (last.Status != OutcomeStatus.Success)
+                    {
+                        return new SmokeTestResult("DPI2-029", "Outcome Check (HTTPS): SUCCESS/FAILED/UNKNOWN через tagged probe (smoke) ", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали SUCCESS, получили {last.Text} ({last.Details})");
+                    }
+
+                    // 3) Disable сбрасывает outcome на UNKNOWN (bypass off)
+                    await manager.DisableTlsAsync("smoke_disable", innerCt).ConfigureAwait(false);
+                    var off = manager.GetOutcomeStatusSnapshot();
+                    if (off.Status != OutcomeStatus.Unknown)
+                    {
+                        return new SmokeTestResult("DPI2-029", "Outcome Check (HTTPS): SUCCESS/FAILED/UNKNOWN через tagged probe (smoke) ", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"После Disable ожидали UNKNOWN, получили {off.Text} ({off.Details})");
+                    }
+
+                    return new SmokeTestResult("DPI2-029", "Outcome Check (HTTPS): SUCCESS/FAILED/UNKNOWN через tagged probe (smoke) ", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: outcome для HTTPS детерминирован (smoke-probe) и не строится на пассивных выводах");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_OUTCOME_DELAY_MS", prevDelay);
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_OUTCOME_TIMEOUT_MS", prevTimeout);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_Guard_BypassStateManager_IsSingleSourceOfTruth(CancellationToken ct)
             => RunAsyncAwait("DPI2-026", "Guard: TrafficEngine/TlsBypassService только через BypassStateManager", async innerCt =>
             {

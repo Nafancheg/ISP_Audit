@@ -1100,6 +1100,15 @@ namespace IspAudit.ViewModels
             }
         }
 
+        /// <summary>
+        /// Overload: применить v2 план и одновременно задать цель для HTTPS outcome-check.
+        /// </summary>
+        public Task ApplyV2PlanAsync(BypassPlan plan, string? outcomeTargetHost, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            _stateManager.SetOutcomeTargetHost(outcomeTargetHost);
+            return ApplyV2PlanAsync(plan, timeout, cancellationToken);
+        }
+
         private TlsFragmentPreset? ResolvePresetByNameOrAlias(string presetName)
         {
             if (string.IsNullOrWhiteSpace(presetName))
@@ -1364,8 +1373,9 @@ namespace IspAudit.ViewModels
                 BypassMetricsSince = metrics.Since;
 
                 var activation = _stateManager.GetActivationStatusSnapshot();
+                var outcome = _stateManager.GetOutcomeStatusSnapshot();
                 BypassMetricsText =
-                    $"ACT: {activation.Text}; TLS: {metrics.TlsHandled}; thr: {metrics.FragmentThreshold}; min: {metrics.MinChunk}; Hello@443: {metrics.ClientHellosObserved}; <thr: {metrics.ClientHellosShort}; !=443: {metrics.ClientHellosNon443}; фрагм.: {metrics.ClientHellosFragmented}; UDP443 drop: {metrics.Udp443Dropped}; RST(443,bypass): {metrics.RstDroppedRelevant}; RST(всего): {metrics.RstDropped}";
+                    $"ACT: {activation.Text}; OUT: {outcome.Text}; TLS: {metrics.TlsHandled}; thr: {metrics.FragmentThreshold}; min: {metrics.MinChunk}; Hello@443: {metrics.ClientHellosObserved}; <thr: {metrics.ClientHellosShort}; !=443: {metrics.ClientHellosNon443}; фрагм.: {metrics.ClientHellosFragmented}; UDP443 drop: {metrics.Udp443Dropped}; RST(443,bypass): {metrics.RstDroppedRelevant}; RST(всего): {metrics.RstDropped}";
             });
         }
 
