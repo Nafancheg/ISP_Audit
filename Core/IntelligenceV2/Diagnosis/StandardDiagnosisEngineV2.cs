@@ -23,6 +23,24 @@ public sealed class StandardDiagnosisEngineV2
             ["unreliable"] = signals.IsUnreliable ? "1" : "0"
         };
 
+        // Assist-ориентированные факты (для QA/логов). Сами по себе диагноз не определяют.
+        if (signals.UdpUnansweredHandshakes > 0)
+        {
+            notes.Add($"UDP: безответных рукопожатий={signals.UdpUnansweredHandshakes}");
+            evidence["udpUnanswered"] = signals.UdpUnansweredHandshakes.ToString();
+        }
+
+        if (signals.HostTestedCount > 0)
+        {
+            evidence["hostTestedCount"] = signals.HostTestedCount.ToString();
+            evidence["hostTestedNoSni"] = signals.HostTestedNoSniCount.ToString();
+
+            if (signals.HostTestedNoSniCount > 0)
+            {
+                notes.Add($"SNI: отсутствует в {signals.HostTestedNoSniCount}/{signals.HostTestedCount} тестах");
+            }
+        }
+
         // Факты (без предположений)
         if (signals.HasDnsFailure)
         {

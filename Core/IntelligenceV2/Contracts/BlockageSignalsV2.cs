@@ -72,6 +72,26 @@ public sealed class BlockageSignalsV2
     /// </summary>
     public bool HasHttpRedirect { get; init; }
 
+    // UDP/QUIC уровень
+
+    /// <summary>
+    /// Количество безответных UDP рукопожатий (DTLS/QUIC) в окне.
+    /// Используется для рекомендаций QUIC fallback (DropUdp443).
+    /// </summary>
+    public int UdpUnansweredHandshakes { get; init; }
+
+    // SNI/качество имени (из HostTested)
+
+    /// <summary>
+    /// Количество событий HostTested в окне агрегации.
+    /// </summary>
+    public int HostTestedCount { get; init; }
+
+    /// <summary>
+    /// Количество HostTested без SNI (пусто/не извлечено).
+    /// </summary>
+    public int HostTestedNoSniCount { get; init; }
+
     // TLS уровень
 
     /// <summary>

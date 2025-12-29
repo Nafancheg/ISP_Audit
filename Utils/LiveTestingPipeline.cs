@@ -494,7 +494,12 @@ namespace IspAudit.Utils
         private static string BuildBypassStrategyText(BypassPlan plan)
         {
             // Короткая строка для UI/логов. Не привязана к авто-применению.
-            var ids = string.Join(" + ", plan.Strategies.Select(s => s.Id));
+            var tokens = new List<string>(capacity: plan.Strategies.Count + 2);
+            tokens.AddRange(plan.Strategies.Select(s => s.Id.ToString()));
+            if (plan.DropUdp443) tokens.Add("DropUdp443");
+            if (plan.AllowNoSni) tokens.Add("AllowNoSni");
+
+            var ids = tokens.Count == 0 ? PipelineContract.BypassNone : string.Join(" + ", tokens);
             return $"v2:{ids} (conf={plan.PlanConfidence})";
         }
 

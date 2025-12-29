@@ -97,6 +97,22 @@ public sealed class SignalsAdapterV2
 
         var windowEvents = _store.ReadWindow(hostKey, fromUtc, capturedAtUtc);
 
+        // HostTested count + no-SNI ratio
+        var hostTestedCount = 0;
+        var hostTestedNoSniCount = 0;
+        for (var i = 0; i < windowEvents.Count; i++)
+        {
+            var e = windowEvents[i];
+            if (e.Type != SignalEventType.HostTested) continue;
+            hostTestedCount++;
+
+            // SNI кладём в metadata только если он есть (см. BuildHostMeta).
+            if (e.Metadata == null || !e.Metadata.TryGetValue("sni", out var sni) || string.IsNullOrWhiteSpace(sni))
+            {
+                hostTestedNoSniCount++;
+            }
+        }
+
         var normalizedCode = BlockageCode.Normalize(tested.BlockageType);
 
         var hasDnsFailure = !tested.DnsOk || (!string.IsNullOrWhiteSpace(tested.DnsStatus) && !string.Equals(tested.DnsStatus, BlockageCode.StatusOk, StringComparison.OrdinalIgnoreCase));
@@ -121,6 +137,19 @@ public sealed class SignalsAdapterV2
         var hasFakeIp = IsFakeIp(tested.Host.RemoteIp);
 
         var hasHttpRedirect = inspectionSignals.HasHttpRedirect || windowEvents.HasType(SignalEventType.HttpRedirectObserved);
+
+        // UDP unanswered: берём максимум между последним инспекционным срезом и событиями в окне.
+        var udpUnanswered = Math.Max(0, inspectionSignals.UdpUnansweredHandshakes);
+        for (var i = windowEvents.Count - 1; i >= 0; i--)
+        {
+            var e = windowEvents[i];
+            if (e.Type != SignalEventType.UdpHandshakeUnanswered) continue;
+            if (e.Value is int v)
+            {
+                udpUnanswered = Math.Max(udpUnanswered, v);
+                break;
+            }
+        }
 
         var rstTtlDelta = TryExtractRstTtlDelta(inspectionSignals, windowEvents);
         TimeSpan? rstLatency = null;
@@ -148,6 +177,10 @@ public sealed class SignalsAdapterV2
             HasFakeIp = hasFakeIp,
 
             HasHttpRedirect = hasHttpRedirect,
+
+            UdpUnansweredHandshakes = udpUnanswered,
+            HostTestedCount = hostTestedCount,
+            HostTestedNoSniCount = hostTestedNoSniCount,
 
             HasTlsTimeout = hasTlsTimeout,
             HasTlsAuthFailure = hasTlsAuthFailure,

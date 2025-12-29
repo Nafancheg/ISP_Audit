@@ -10,7 +10,7 @@ namespace IspAudit.Core.IntelligenceV2.Strategies;
 /// <summary>
 /// Минимальный селектор стратегий v2 (MVP).
 /// ВАЖНО: решение принимает строго по <see cref="DiagnosisResult"/> (id + confidence),
-/// не читает сенсоры/метрики/тайминги.
+/// но может использовать минимальные факты из InputSignals для assist-рекомендаций (QUIC fallback / allow-no-SNI).
 /// </summary>
 public sealed class StandardStrategySelectorV2
 {
@@ -117,16 +117,44 @@ public sealed class StandardStrategySelectorV2
         // а исполнитель всё равно вынужден выбрать одну (см. профиль TLS strategy).
         ordered = KeepOnlyOneTlsModeStrategy(ordered);
 
+        // Assist-рекомендации (MVP):
+        // - DropUdp443: если есть признаки QUIC/UDP активности, а мы рекомендуем TLS-обход (который работает только на TCP).
+        // - AllowNoSni: если SNI часто отсутствует в HostTested, а мы рекомендуем TLS-обход.
+        var hasTlsBypassStrategy = ordered.Any(s => s.Id is StrategyId.TlsFragment or StrategyId.TlsDisorder or StrategyId.AggressiveFragment or StrategyId.TlsFakeTtl);
+
+        var signals = diagnosis.InputSignals;
+        var recommendDropUdp443 = hasTlsBypassStrategy && signals.UdpUnansweredHandshakes >= 2;
+
+        var recommendAllowNoSni = false;
+        if (hasTlsBypassStrategy && signals.HostTestedCount >= 2)
+        {
+            var ratio = (double)signals.HostTestedNoSniCount / Math.Max(1, signals.HostTestedCount);
+            recommendAllowNoSni = signals.HostTestedNoSniCount >= 2 && ratio >= 0.70;
+        }
+
         var anyFeedbackApplied = ranked.Any(r => r.FeedbackBoost != 0);
+
+        var reasoning = anyFeedbackApplied
+            ? "план сформирован по диагнозу v2 (feedback)"
+            : "план сформирован по диагноза v2 (MVP)";
+
+        if (recommendDropUdp443)
+        {
+            reasoning += "; assist: QUIC→TCP";
+        }
+        if (recommendAllowNoSni)
+        {
+            reasoning += "; assist: No SNI";
+        }
 
         return new BypassPlan
         {
             ForDiagnosis = forDiagnosisId,
             PlanConfidence = confidence,
             PlannedAtUtc = DateTimeOffset.UtcNow,
-            Reasoning = anyFeedbackApplied
-                ? "план сформирован по диагнозу v2 (feedback)"
-                : "план сформирован по диагноза v2 (MVP)",
+            Reasoning = reasoning,
+            DropUdp443 = recommendDropUdp443,
+            AllowNoSni = recommendAllowNoSni,
             Strategies = ordered
         };
     }

@@ -163,6 +163,7 @@ Smoke-хелперы (для детерминированных проверок
  - `StrategyId.AggressiveFragment` при ручном apply выбирает пресет фрагментации «Агрессивный» и включает `AutoAdjustAggressive`.
  - `StrategyId.TlsFragment` может нести параметры (например, `TlsFragmentSizes`, `PresetName`, `AutoAdjustAggressive`). Парсинг параметров вынесен в `Core/IntelligenceV2/Execution/TlsFragmentPlanParamsParser.cs`, применение выполняет `BypassController.ApplyV2PlanAsync`.
  - Детерминизм: `StandardStrategySelectorV2` заполняет `TlsFragmentSizes` в плане, чтобы executor не зависел от текущего состояния UI-панели пресетов.
+ - Assist-флаги v2: `BypassPlan` также может включать `DropUdp443` (QUIC→TCP) и `AllowNoSni` (No SNI), выставляемые селектором по наблюдаемым сигналам (UDP unanswered + статистика отсутствия SNI). При ручном apply контроллер включает эти флаги вместе со стратегиями.
  - Smoke: `DPI2-022` проверяет применение параметров из `BypassPlan`, `DPI2-023` проверяет, что селектор кладёт `TlsFragmentSizes` (и PresetName) в план, `DPI2-024` проверяет e2e цепочку `selector → plan → ApplyV2PlanAsync` (параметры из плана реально применяются).
 
 4) **Важное ограничение реализации TLS-обхода (почему “Disorder vs Fragment” не складываются как сумма)**

@@ -680,6 +680,8 @@ namespace IspAudit.ViewModels
                 "TlsFakeTtl" => "TLS_FAKE",
                 "DropRst" => "DROP_RST",
                 "UseDoh" => "DOH",
+                "DropUdp443" => "DROP_UDP_443",
+                "AllowNoSni" => "ALLOW_NO_SNI",
                 _ => t.ToUpperInvariant()
             };
 
@@ -691,6 +693,8 @@ namespace IspAudit.ViewModels
                 "TLS_FAKE" => "TLS Fake",
                 "DROP_RST" => "Drop RST",
                 "DOH" => "🔒 DoH",
+                "DROP_UDP_443" => "QUIC→TCP",
+                "ALLOW_NO_SNI" => "No SNI",
                 _ => t
             };
         }

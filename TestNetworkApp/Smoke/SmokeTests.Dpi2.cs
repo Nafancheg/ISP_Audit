@@ -635,7 +635,14 @@ namespace TestNetworkApp.Smoke
                         CapturedAtUtc = DateTimeOffset.UtcNow,
                         AggregationWindow = TimeSpan.FromSeconds(30),
                         SampleSize = 3,
-                        IsUnreliable = false
+                        IsUnreliable = false,
+
+                        // Assist-сигналы для рекомендаций:
+                        // - есть UDP/QUIC активность
+                        // - SNI отсутствует в большинстве HostTested
+                        UdpUnansweredHandshakes = 3,
+                        HostTestedCount = 3,
+                        HostTestedNoSniCount = 3
                     },
                     DiagnosedAtUtc = DateTimeOffset.UtcNow
                 };
@@ -678,6 +685,18 @@ namespace TestNetworkApp.Smoke
                 {
                     return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали, что селектор выберет ровно одну TLS-стратегию, но нашли обе: {line}");
+                }
+
+                if (!plan.DropUdp443 || !line.Contains("DROP_UDP_443", StringComparison.Ordinal))
+                {
+                    return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали assist DropUdp443 и токен DROP_UDP_443 в строке рекомендации: plan.DropUdp443={plan.DropUdp443}, line={line}");
+                }
+
+                if (!plan.AllowNoSni || !line.Contains("ALLOW_NO_SNI", StringComparison.Ordinal))
+                {
+                    return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали assist AllowNoSni и токен ALLOW_NO_SNI в строке рекомендации: plan.AllowNoSni={plan.AllowNoSni}, line={line}");
                 }
 
                 return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Pass, TimeSpan.Zero,
@@ -1028,6 +1047,8 @@ namespace TestNetworkApp.Smoke
                     PlanConfidence = 80,
                     PlannedAtUtc = DateTimeOffset.UtcNow,
                     Reasoning = "smoke",
+                    DropUdp443 = true,
+                    AllowNoSni = true,
                     Strategies = new List<BypassStrategy>
                     {
                         new BypassStrategy { Id = StrategyId.TlsFragment, BasePriority = 90, Risk = RiskLevel.Medium },
@@ -1054,6 +1075,18 @@ namespace TestNetworkApp.Smoke
                 {
                     return new SmokeTestResult("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что после ApplyV2PlanAsync будет включён DROP_RST");
+                }
+
+                if (!controller.IsQuicFallbackEnabled)
+                {
+                    return new SmokeTestResult("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что после ApplyV2PlanAsync будет включён QUIC→TCP (DropUdp443)" );
+                }
+
+                if (!controller.IsAllowNoSniEnabled)
+                {
+                    return new SmokeTestResult("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что после ApplyV2PlanAsync будет включён No SNI (AllowNoSni)" );
                 }
 
                 return new SmokeTestResult("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Pass, TimeSpan.Zero,

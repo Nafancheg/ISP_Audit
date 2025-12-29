@@ -78,6 +78,17 @@ public sealed class BypassPlan
     public string Reasoning { get; init; } = string.Empty;
 
     /// <summary>
+    /// (Assist) Рекомендовать QUIC fallback: подавлять UDP/443, чтобы клиент откатился на TCP/HTTPS.
+    /// </summary>
+    public bool DropUdp443 { get; init; }
+
+    /// <summary>
+    /// (Assist) Рекомендовать разрешить обход даже при отсутствии распознанного SNI.
+    /// Полезно при ECH/ESNI или если SNI не удаётся извлечь в текущем окружении.
+    /// </summary>
+    public bool AllowNoSni { get; init; }
+
+    /// <summary>
     /// Время формирования плана (UTC).
     /// </summary>
     public DateTimeOffset PlannedAtUtc { get; init; }

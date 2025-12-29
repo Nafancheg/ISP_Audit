@@ -183,9 +183,12 @@ public sealed class BypassExecutorMvp
     private static string MapToLegacyStrategyToken(string token)
     {
         var t = token.Trim();
-        if (t.Length == 0) return string.Empty;
+        if (string.IsNullOrWhiteSpace(t)) return string.Empty;
 
-        // Поддерживаем как уже-legacy, так и enum-имена v2.
+        // Поддерживаем и enum-названия, и уже-нормализованные токены.
+        // Новые assist-токены:
+        // - DropUdp443 => DROP_UDP_443
+        // - AllowNoSni => ALLOW_NO_SNI
         return t switch
         {
             "TlsFragment" => "TLS_FRAGMENT",
@@ -193,6 +196,8 @@ public sealed class BypassExecutorMvp
             "TlsFakeTtl" => "TLS_FAKE",
             "DropRst" => "DROP_RST",
             "UseDoh" => "DOH",
+            "DropUdp443" => "DROP_UDP_443",
+            "AllowNoSni" => "ALLOW_NO_SNI",
             _ => t.ToUpperInvariant()
         };
     }

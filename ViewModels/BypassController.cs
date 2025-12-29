@@ -827,13 +827,17 @@ namespace IspAudit.ViewModels
                 FragmentEnabled = false,
                 DisorderEnabled = false,
                 FakeEnabled = false,
-                DropRstEnabled = false
+                DropRstEnabled = false,
+                DropUdp443 = false,
+                AllowNoSni = false
             };
 
             OnPropertyChanged(nameof(IsFragmentEnabled));
             OnPropertyChanged(nameof(IsDisorderEnabled));
             OnPropertyChanged(nameof(IsFakeEnabled));
             OnPropertyChanged(nameof(IsDropRstEnabled));
+            OnPropertyChanged(nameof(IsQuicFallbackEnabled));
+            OnPropertyChanged(nameof(IsAllowNoSniEnabled));
             NotifyActiveStatesChanged();
             CheckCompatibility();
 
@@ -964,6 +968,19 @@ namespace IspAudit.ViewModels
                     }
                 }
 
+                // Assist-флаги из плана (включаем только если селектор их рекомендовал).
+                if (plan.DropUdp443)
+                {
+                    updated = updated with { DropUdp443 = true };
+                    Log("[V2][Executor] Assist: включаем QUIC→TCP (DROP UDP/443)");
+                }
+
+                if (plan.AllowNoSni)
+                {
+                    updated = updated with { AllowNoSni = true };
+                    Log("[V2][Executor] Assist: включаем No SNI (разрешить обход без SNI)");
+                }
+
                 if (requestedPreset != null)
                 {
                     // Если пресет создан из параметров v2 и отсутствует в списке — добавим, чтобы UI мог корректно отобразить выбранный вариант.
@@ -1003,6 +1020,8 @@ namespace IspAudit.ViewModels
                     OnPropertyChanged(nameof(IsDisorderEnabled));
                     OnPropertyChanged(nameof(IsFakeEnabled));
                     OnPropertyChanged(nameof(IsDropRstEnabled));
+                    OnPropertyChanged(nameof(IsQuicFallbackEnabled));
+                    OnPropertyChanged(nameof(IsAllowNoSniEnabled));
                     OnPropertyChanged(nameof(IsAutoAdjustAggressive));
                     OnPropertyChanged(nameof(SelectedFragmentPreset));
                     OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
@@ -1012,6 +1031,9 @@ namespace IspAudit.ViewModels
 
                 // Сохраняем параметры фрагментации/пресета и флаг авто-подстройки.
                 PersistFragmentPreset();
+
+                // Сохраняем assist-флаги (QUIC→TCP / No SNI) в профиль.
+                PersistAssistSettings();
 
                 Log("[V2][Executor] Applying bypass options...");
                 await ApplyBypassOptionsAsync(linked.Token).ConfigureAwait(false);
