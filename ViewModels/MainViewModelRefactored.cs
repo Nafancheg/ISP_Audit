@@ -332,6 +332,7 @@ namespace IspAudit.ViewModels
         #region Constructor
 
         private readonly IspAudit.Core.Traffic.TrafficEngine _trafficEngine;
+        private readonly BypassStateManager _bypassState;
 
         private volatile bool _pendingRetestAfterRun;
         private string _pendingRetestReason = "";
@@ -351,9 +352,12 @@ namespace IspAudit.ViewModels
                 Application.Current?.Dispatcher.Invoke(() => TrafficEngineLatency = ms);
             };
 
+            // Единый владелец bypass/TrafficEngine
+            _bypassState = BypassStateManager.GetOrCreate(_trafficEngine, baseProfile: null, log: Log);
+
             // Создаём контроллеры
-            Bypass = new BypassController(_trafficEngine);
-            Orchestrator = new DiagnosticOrchestrator(_trafficEngine);
+            Bypass = new BypassController(_bypassState);
+            Orchestrator = new DiagnosticOrchestrator(_bypassState);
             Results = new TestResultsManager();
 
             // Подписываемся на события

@@ -26,8 +26,7 @@ namespace IspAudit.ViewModels
     /// </summary>
     public class BypassController : INotifyPropertyChanged
     {
-        private readonly TlsBypassService _tlsService;
-        private readonly BypassProfile _baseProfile;
+        private readonly BypassStateManager _stateManager;
         private TlsBypassOptions _currentOptions;
         private TlsFragmentPreset? _selectedPreset;
 
@@ -134,11 +133,10 @@ namespace IspAudit.ViewModels
 
         public string SelectedFragmentPresetLabel => _selectedPreset != null ? $"{_selectedPreset.Name} ({string.Join('/', _currentOptions.FragmentSizes)})" : string.Empty;
 
-        public BypassController(TrafficEngine trafficEngine)
+        public BypassController(BypassStateManager stateManager)
         {
-            _baseProfile = BypassProfile.CreateDefault();
-            _tlsService = new TlsBypassService(trafficEngine, _baseProfile, Log);
-            _currentOptions = _tlsService.GetOptionsSnapshot();
+            _stateManager = stateManager ?? throw new ArgumentNullException(nameof(stateManager));
+            _currentOptions = _stateManager.GetOptionsSnapshot();
 
             _autoHostlist = new AutoHostlistService();
             _autoHostlist.Changed += () =>
@@ -158,7 +156,7 @@ namespace IspAudit.ViewModels
                 DropRstEnabled = false
             };
 
-            FragmentPresets = _tlsService.FragmentPresets.ToList();
+            FragmentPresets = _stateManager.FragmentPresets.ToList();
             _selectedPreset = FragmentPresets
                 .FirstOrDefault(p => string.Equals(p.Name, _currentOptions.PresetName, StringComparison.OrdinalIgnoreCase))
                 ?? FragmentPresets.FirstOrDefault();
@@ -172,9 +170,9 @@ namespace IspAudit.ViewModels
                 };
             }
 
-            _tlsService.MetricsUpdated += OnMetricsUpdated;
-            _tlsService.VerdictChanged += OnVerdictChanged;
-            _tlsService.StateChanged += OnStateChanged;
+            _stateManager.MetricsUpdated += OnMetricsUpdated;
+            _stateManager.VerdictChanged += OnVerdictChanged;
+            _stateManager.StateChanged += OnStateChanged;
 
             SetDnsPresetCommand = new RelayCommand(param =>
             {
@@ -185,11 +183,18 @@ namespace IspAudit.ViewModels
             }, _ => true);
         }
 
+        public BypassController(TrafficEngine trafficEngine)
+            : this(BypassStateManager.GetOrCreate(trafficEngine, baseProfile: null, log: null))
+        {
+        }
+
         internal BypassController(TlsBypassService tlsService, BypassProfile baseProfile)
         {
-            _baseProfile = baseProfile ?? throw new ArgumentNullException(nameof(baseProfile));
-            _tlsService = tlsService ?? throw new ArgumentNullException(nameof(tlsService));
-            _currentOptions = _tlsService.GetOptionsSnapshot();
+            if (tlsService == null) throw new ArgumentNullException(nameof(tlsService));
+            if (baseProfile == null) throw new ArgumentNullException(nameof(baseProfile));
+
+            _stateManager = BypassStateManager.GetOrCreateFromService(tlsService, baseProfile, Log);
+            _currentOptions = _stateManager.GetOptionsSnapshot();
 
             _autoHostlist = new AutoHostlistService();
             _autoHostlist.Changed += () =>
@@ -209,7 +214,7 @@ namespace IspAudit.ViewModels
                 DropRstEnabled = false
             };
 
-            FragmentPresets = _tlsService.FragmentPresets.ToList();
+            FragmentPresets = _stateManager.FragmentPresets.ToList();
             _selectedPreset = FragmentPresets
                 .FirstOrDefault(p => string.Equals(p.Name, _currentOptions.PresetName, StringComparison.OrdinalIgnoreCase))
                 ?? FragmentPresets.FirstOrDefault();
@@ -223,9 +228,9 @@ namespace IspAudit.ViewModels
                 };
             }
 
-            _tlsService.MetricsUpdated += OnMetricsUpdated;
-            _tlsService.VerdictChanged += OnVerdictChanged;
-            _tlsService.StateChanged += OnStateChanged;
+            _stateManager.MetricsUpdated += OnMetricsUpdated;
+            _stateManager.VerdictChanged += OnVerdictChanged;
+            _stateManager.StateChanged += OnStateChanged;
 
             SetDnsPresetCommand = new RelayCommand(param =>
             {
@@ -272,7 +277,7 @@ namespace IspAudit.ViewModels
         /// <summary>
         /// Сервис TLS bypass (единый источник настроек и метрик).
         /// </summary>
-        public TlsBypassService TlsService => _tlsService;
+        public TlsBypassService TlsService => _stateManager.TlsService;
 
         /// <summary>
         /// Bypass активен в данный момент
@@ -730,7 +735,7 @@ namespace IspAudit.ViewModels
             {
                 var normalized = _currentOptions.Normalize();
                 _currentOptions = normalized;
-                await _tlsService.ApplyAsync(normalized, cancellationToken).ConfigureAwait(false);
+                await _stateManager.ApplyTlsOptionsAsync(normalized, cancellationToken).ConfigureAwait(false);
 
                 Application.Current?.Dispatcher.Invoke(() =>
                 {
@@ -863,7 +868,7 @@ namespace IspAudit.ViewModels
             });
 
             await RestoreDoHAsync().ConfigureAwait(false);
-        }
+            }
 
         /// <summary>
         /// Применить v2 план рекомендаций (ТОЛЬКО вручную), с таймаутом/отменой и безопасным откатом.
@@ -895,7 +900,7 @@ namespace IspAudit.ViewModels
             try
             {
                 linked.Token.ThrowIfCancellationRequested();
-
+                    _currentOptions = _stateManager.GetOptionsSnapshot();
                 var updated = _currentOptions;
                 var enableDoH = false;
                 TlsFragmentPreset? requestedPreset = null;
@@ -1242,8 +1247,8 @@ namespace IspAudit.ViewModels
                     DropRstEnabled = true
                 };
 
-                await _tlsService.ApplyPreemptiveAsync().ConfigureAwait(false);
-                _currentOptions = _tlsService.GetOptionsSnapshot();
+                await _stateManager.ApplyPreemptiveAsync().ConfigureAwait(false);
+                _currentOptions = _stateManager.GetOptionsSnapshot();
 
                 Application.Current?.Dispatcher.Invoke(() =>
                 {
@@ -1339,7 +1344,7 @@ namespace IspAudit.ViewModels
         {
             Application.Current?.Dispatcher.Invoke(() =>
             {
-                _currentOptions = _tlsService.GetOptionsSnapshot();
+                _currentOptions = _stateManager.GetOptionsSnapshot();
                 OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
 
                 var plan = string.IsNullOrWhiteSpace(metrics.Plan) ? "-" : metrics.Plan;
@@ -1372,7 +1377,7 @@ namespace IspAudit.ViewModels
             Application.Current?.Dispatcher.Invoke(() =>
             {
                 var oldOptions = _currentOptions;
-                _currentOptions = _tlsService.GetOptionsSnapshot();
+                _currentOptions = _stateManager.GetOptionsSnapshot();
                 IsBypassActive = state.IsActive;
                 
                 var planWithPreset = string.IsNullOrWhiteSpace(state.Plan)

@@ -44,6 +44,7 @@ namespace IspAudit.ViewModels
         // Мониторинговые сервисы
         private ConnectionMonitorService? _connectionMonitor;
         private readonly TrafficEngine _trafficEngine;
+        private readonly BypassStateManager _stateManager;
         private TrafficMonitorFilter? _trafficMonitorFilter;
         private TcpRetransmissionTracker? _tcpRetransmissionTracker;
         private HttpRedirectDetector? _httpRedirectDetector;
@@ -121,9 +122,15 @@ namespace IspAudit.ViewModels
         public event Action<string>? OnPipelineMessage;
         public event Action? OnDiagnosticComplete;
 
-        public DiagnosticOrchestrator(TrafficEngine trafficEngine)
+        public DiagnosticOrchestrator(BypassStateManager stateManager)
         {
-            _trafficEngine = trafficEngine;
+            _stateManager = stateManager ?? throw new ArgumentNullException(nameof(stateManager));
+            _trafficEngine = _stateManager.TrafficEngine;
+        }
+
+        public DiagnosticOrchestrator(TrafficEngine trafficEngine)
+            : this(BypassStateManager.GetOrCreate(trafficEngine, baseProfile: null, log: null))
+        {
         }
 
         #region Properties
@@ -969,9 +976,9 @@ namespace IspAudit.ViewModels
             
             // Traffic Engine (замена NetworkMonitorService)
             _trafficMonitorFilter = new TrafficMonitorFilter();
-            _trafficEngine.RegisterFilter(_trafficMonitorFilter);
+            _stateManager.RegisterEngineFilter(_trafficMonitorFilter);
             
-            await _trafficEngine.StartAsync(_cts.Token).ConfigureAwait(false);
+            await _stateManager.StartEngineAsync(_cts.Token).ConfigureAwait(false);
 
             // TCP Retransmission Tracker — подписываем на TrafficMonitorFilter
             _tcpRetransmissionTracker = new TcpRetransmissionTracker();
@@ -1167,7 +1174,7 @@ namespace IspAudit.ViewModels
                 // Don't stop TrafficEngine, just remove filter
                 if (_trafficMonitorFilter != null)
                 {
-                    _trafficEngine.RemoveFilter(_trafficMonitorFilter.Name);
+                    _stateManager.RemoveEngineFilter(_trafficMonitorFilter.Name);
                 }
 
                 if (_connectionMonitor != null) await _connectionMonitor.StopAsync().ConfigureAwait(false);

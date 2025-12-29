@@ -37,6 +37,11 @@ namespace IspAudit.Bypass
 
         public IReadOnlyList<TlsFragmentPreset> FragmentPresets => _presets;
 
+        /// <summary>
+        /// Внутренний доступ для BypassStateManager (smoke/тестовый путь).
+        /// </summary>
+        internal TrafficEngine TrafficEngineForManager => _trafficEngine;
+
         public TlsBypassService(TrafficEngine trafficEngine, BypassProfile baseProfile, Action<string>? log = null)
             : this(trafficEngine, baseProfile, log, startMetricsTimer: true, useTrafficEngine: true, nowProvider: null)
         {
@@ -111,6 +116,8 @@ namespace IspAudit.Bypass
         /// </summary>
         public async Task ApplyAsync(TlsBypassOptions options, CancellationToken cancellationToken = default)
         {
+            BypassStateManagerGuard.WarnIfBypassed(_log, "TlsBypassService.ApplyAsync");
+
             lock (_sync)
             {
                 _options = options.Normalize();
@@ -140,6 +147,7 @@ namespace IspAudit.Bypass
         /// </summary>
         public Task DisableAsync(CancellationToken cancellationToken = default)
         {
+            BypassStateManagerGuard.WarnIfBypassed(_log, "TlsBypassService.DisableAsync");
             return ApplyAsync(_options with
             {
                 FragmentEnabled = false,

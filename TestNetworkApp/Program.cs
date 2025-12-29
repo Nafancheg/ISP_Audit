@@ -34,7 +34,7 @@ namespace TestNetworkApp
             if (args.Length > 0 && string.Equals(args[0], "--smoke", StringComparison.OrdinalIgnoreCase))
             {
                 // Формат:
-                // --smoke [all|infra|pipe|insp|ui|bypass|dpi2] [--no-skip|--strict] [--json <path>]
+                // --smoke [all|infra|pipe|insp|ui|bypass|dpi2|orch|cfg|err|e2e|perf|reg] [--no-skip|--strict] [--json <path>]
                 var category = "all";
                 bool noSkip = false;
                 string? jsonOut = null;
@@ -65,7 +65,13 @@ namespace TestNetworkApp
                         string.Equals(a, "insp", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(a, "ui", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(a, "bypass", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(a, "dpi2", StringComparison.OrdinalIgnoreCase))
+                        string.Equals(a, "dpi2", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(a, "orch", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(a, "cfg", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(a, "err", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(a, "e2e", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(a, "perf", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(a, "reg", StringComparison.OrdinalIgnoreCase))
                     {
                         category = a;
                         continue;

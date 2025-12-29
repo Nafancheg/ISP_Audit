@@ -57,6 +57,7 @@ namespace IspAudit.Core.Traffic
 
         public void RegisterFilter(IPacketFilter filter)
         {
+            BypassStateManagerGuard.WarnIfBypassed(_progress, "TrafficEngine.RegisterFilter");
             lock (_filters)
             {
                 _filters.Add(filter);
@@ -67,6 +68,7 @@ namespace IspAudit.Core.Traffic
 
         public void RemoveFilter(string filterName)
         {
+            BypassStateManagerGuard.WarnIfBypassed(_progress, "TrafficEngine.RemoveFilter");
             lock (_filters)
             {
                 _filters.RemoveAll(f => f.Name == filterName);
@@ -75,6 +77,7 @@ namespace IspAudit.Core.Traffic
 
         public void ClearFilters()
         {
+            BypassStateManagerGuard.WarnIfBypassed(_progress, "TrafficEngine.ClearFilters");
             lock (_filters)
             {
                 _filters.Clear();
@@ -83,6 +86,7 @@ namespace IspAudit.Core.Traffic
 
         public Task StartAsync(CancellationToken cancellationToken = default)
         {
+            BypassStateManagerGuard.WarnIfBypassed(_progress, "TrafficEngine.StartAsync");
             lock (_stateLock)
             {
                 if (IsRunning || _isStopping) return Task.CompletedTask;
@@ -115,6 +119,7 @@ namespace IspAudit.Core.Traffic
 
         public async Task StopAsync()
         {
+            BypassStateManagerGuard.WarnIfBypassed(_progress, "TrafficEngine.StopAsync");
             Task? loopTask;
             lock (_stateLock)
             {

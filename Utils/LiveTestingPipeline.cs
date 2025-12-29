@@ -231,40 +231,58 @@ namespace IspAudit.Utils
         /// <returns>true если все хосты обработаны, false если таймаут</returns>
         public async Task<bool> DrainAndCompleteAsync(TimeSpan timeout)
         {
-            // Закрываем входную очередь - больше хостов не будет
+            // Закрываем входную очередь - больше хостов не будет.
+            // ВАЖНО: завершение делаем по цепочке (tester→classifier→ui), иначе возможна гонка:
+            // PendingCount не учитывает элементы, уже лежащие в Channel, и ранний TryComplete может
+            // закрыть _bypassQueue до того, как ClassifierWorker успеет написать туда элемент.
             _snifferQueue.Writer.TryComplete();
-            
-            _progress?.Report($"[Pipeline] Ожидание завершения тестов... (в очереди: {PendingCount})");
-            
+
+            _progress?.Report($"[Pipeline] Ожидание завершения тестов... (pending: {PendingCount})");
+
             var deadline = DateTime.UtcNow + timeout;
-            
-            // Ждём пока все очереди опустеют
-            while (PendingCount > 0 && DateTime.UtcNow < deadline)
+
+            async Task<bool> WaitTaskWithDeadlineAsync(Task task)
             {
-                await Task.Delay(200).ConfigureAwait(false);
-                
-                // Логируем прогресс каждые 2 секунды
-                if ((int)(deadline - DateTime.UtcNow).TotalSeconds % 2 == 0)
+                var remaining = deadline - DateTime.UtcNow;
+                if (remaining <= TimeSpan.Zero) return false;
+                var completedTask = await Task.WhenAny(task, Task.Delay(remaining)).ConfigureAwait(false);
+                return completedTask == task;
+            }
+
+            // 1) Ждём, пока тестер дочитает sniffer-очередь и допишет всё в tester-очередь.
+            if (_workers.Length >= 1)
+            {
+                if (!await WaitTaskWithDeadlineAsync(_workers[0]).ConfigureAwait(false))
                 {
-                    _progress?.Report($"[Pipeline] Осталось в очереди: {PendingCount}");
+                    _progress?.Report("[Pipeline] ⚠ Таймаут на завершении TesterWorker");
+                    return false;
                 }
             }
-            
-            var completed = PendingCount == 0;
-            if (completed)
-            {
-                _progress?.Report("[Pipeline] ✓ Все тесты завершены");
-            }
-            else
-            {
-                _progress?.Report($"[Pipeline] ⚠ Таймаут, не завершено: {PendingCount}");
-            }
-            
-            // Закрываем остальные очереди
             _testerQueue.Writer.TryComplete();
+
+            // 2) Ждём, пока классификатор дочитает tester-очередь и допишет всё в bypass-очередь.
+            if (_workers.Length >= 2)
+            {
+                if (!await WaitTaskWithDeadlineAsync(_workers[1]).ConfigureAwait(false))
+                {
+                    _progress?.Report("[Pipeline] ⚠ Таймаут на завершении ClassifierWorker");
+                    return false;
+                }
+            }
             _bypassQueue.Writer.TryComplete();
-            
-            return completed;
+
+            // 3) Ждём, пока UI воркер дочитает bypass-очередь и выплюнет все строки.
+            if (_workers.Length >= 3)
+            {
+                if (!await WaitTaskWithDeadlineAsync(_workers[2]).ConfigureAwait(false))
+                {
+                    _progress?.Report("[Pipeline] ⚠ Таймаут на завершении UiWorker");
+                    return false;
+                }
+            }
+
+            _progress?.Report("[Pipeline] ✓ Все тесты завершены");
+            return true;
         }
 
         /// <summary>
