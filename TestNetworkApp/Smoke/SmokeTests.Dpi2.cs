@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,6 +29,105 @@ namespace TestNetworkApp.Smoke
 {
     internal static partial class SmokeTests
     {
+        public static Task<SmokeTestResult> Dpi2_Watchdog_CrashRecovery_AndTimeout_DisablesBypass(CancellationToken ct)
+            => RunAsyncAwait("DPI2-027", "Watchdog: crash recovery + timeout => Disable", async innerCt =>
+            {
+                var prevSessionPath = Environment.GetEnvironmentVariable("ISP_AUDIT_BYPASS_SESSION_PATH");
+                var prevTick = Environment.GetEnvironmentVariable("ISP_AUDIT_WATCHDOG_TICK_MS");
+                var prevStale = Environment.GetEnvironmentVariable("ISP_AUDIT_WATCHDOG_STALE_MS");
+
+                var tempDir = Path.Combine(Path.GetTempPath(), "isp_audit_smoke", Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(tempDir);
+
+                try
+                {
+                    // 1) Crash recovery: если прошлый shutdown был не clean при активном bypass — при старте должно выполниться Disable.
+                    var crashFile = Path.Combine(tempDir, "bypass_session_crash.json");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_BYPASS_SESSION_PATH", crashFile);
+
+                    File.WriteAllText(crashFile,
+                        "{\"Version\":1,\"CleanShutdown\":false,\"WasBypassActive\":true,\"UpdatedAtUtc\":\"2025-12-29T00:00:00+00:00\",\"LastReason\":\"smoke_seed\"}");
+
+                    using (var engine = new TrafficEngine(progress: null))
+                    {
+                        var profile = BypassProfile.CreateDefault();
+                        var manager = BypassStateManager.GetOrCreate(engine, baseProfile: profile, log: null);
+                        await manager.InitializeOnStartupAsync(innerCt).ConfigureAwait(false);
+                    }
+
+                    var crashJson = File.ReadAllText(crashFile);
+                    using (var doc = JsonDocument.Parse(crashJson))
+                    {
+                        if (!doc.RootElement.TryGetProperty("WasBypassActive", out var active) || active.GetBoolean() != false)
+                        {
+                            return new SmokeTestResult("DPI2-027", "Watchdog: crash recovery + timeout => Disable", SmokeOutcome.Fail, TimeSpan.Zero,
+                                "Crash recovery: ожидали WasBypassActive=false после InitializeOnStartupAsync");
+                        }
+                    }
+
+                    // 2) Watchdog timeout: при активном bypass и отсутствии heartbeat/метрик менеджер должен сам выключить bypass.
+                    var watchdogFile = Path.Combine(tempDir, "bypass_session_watchdog.json");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_BYPASS_SESSION_PATH", watchdogFile);
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_WATCHDOG_TICK_MS", "20");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_WATCHDOG_STALE_MS", "50");
+
+                    using (var engine = new TrafficEngine(progress: null))
+                    {
+                        var profile = BypassProfile.CreateDefault();
+
+                        // Smoke-safe: не трогаем WinDivert, только логику менеджера.
+                        var tls = new TlsBypassService(
+                            trafficEngine: engine,
+                            baseProfile: profile,
+                            log: null,
+                            startMetricsTimer: false,
+                            useTrafficEngine: false,
+                            nowProvider: null);
+
+                        var manager = BypassStateManager.GetOrCreateFromService(tls, profile, log: null);
+                        await manager.InitializeOnStartupAsync(innerCt).ConfigureAwait(false);
+
+                        // Включаем любую «реальную» стратегию, чтобы IsAnyEnabled()==true.
+                        var options = TlsBypassOptions.CreateDefault(profile) with
+                        {
+                            DisorderEnabled = true,
+                            DropRstEnabled = true
+                        };
+
+                        await manager.ApplyTlsOptionsAsync(options, innerCt).ConfigureAwait(false);
+
+                        // Ждём, пока watchdog успеет отработать.
+                        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+                        while (DateTime.UtcNow < deadline)
+                        {
+                            if (!manager.GetOptionsSnapshot().IsAnyEnabled())
+                            {
+                                break;
+                            }
+
+                            await Task.Delay(25, innerCt).ConfigureAwait(false);
+                        }
+
+                        if (manager.GetOptionsSnapshot().IsAnyEnabled())
+                        {
+                            return new SmokeTestResult("DPI2-027", "Watchdog: crash recovery + timeout => Disable", SmokeOutcome.Fail, TimeSpan.Zero,
+                                "Watchdog timeout: ожидали авто-Disable при отсутствии heartbeat/метрик");
+                        }
+                    }
+
+                    return new SmokeTestResult("DPI2-027", "Watchdog: crash recovery + timeout => Disable", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: crash_recovery и watchdog_timeout выключают bypass детерминированно");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_BYPASS_SESSION_PATH", prevSessionPath);
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_WATCHDOG_TICK_MS", prevTick);
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_WATCHDOG_STALE_MS", prevStale);
+
+                    try { Directory.Delete(tempDir, recursive: true); } catch { }
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_Guard_BypassStateManager_IsSingleSourceOfTruth(CancellationToken ct)
             => RunAsyncAwait("DPI2-026", "Guard: TrafficEngine/TlsBypassService только через BypassStateManager", async innerCt =>
             {

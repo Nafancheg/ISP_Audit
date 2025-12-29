@@ -31,4 +31,21 @@ public partial class App : System.Windows.Application
             this.Shutdown();
         }
     }
+
+    protected override void OnExit(System.Windows.ExitEventArgs e)
+    {
+        try
+        {
+            if (this.MainWindow?.DataContext is IspAudit.ViewModels.MainViewModelRefactored vm)
+            {
+                vm.OnAppExit();
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        base.OnExit(e);
+    }
 }

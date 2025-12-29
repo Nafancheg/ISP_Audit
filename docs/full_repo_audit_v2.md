@@ -95,6 +95,7 @@
 
 Актуализация (Runtime, 29.12.2025): Bypass State Manager (2.V2.12)
 - Введён `BypassStateManager` как single source of truth для управления `TrafficEngine` и `TlsBypassService`.
+- Добавлен fail-safe слой (Lite Watchdog + crash recovery): журнал сессии bypass + авто-Disable при некорректном завершении/пропаже heartbeat.
 - `BypassController` и `DiagnosticOrchestrator` используют один экземпляр менеджера, чтобы исключить гонки Apply/Disable и рассинхронизацию фильтров/engine.
 - Добавлен guard: прямые вызовы методов `TrafficEngine`/`TlsBypassService` вне manager-scope логируются (и могут быть зафиксированы smoke-гейтами).
 

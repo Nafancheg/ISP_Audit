@@ -80,6 +80,10 @@ graph TD
 Важно (runtime): QUIC fallback и режим allow-no-SNI — это явные флаги профиля/опций, а не «пресет». При включённом `DropUdp443` фильтр `BypassFilter` глушит UDP/443 (`Udp443Dropped++`), чтобы клиент откатился на TCP/HTTPS. При включённом `AllowNoSni` обход может применяться даже если SNI не распознан/отсутствует (ECH/ESNI/сегментация ClientHello).
 
 *   **`BypassStateManager`**: единый владелец состояния обхода (SSoT) для `TrafficEngine` и `TlsBypassService`.
+    *   **Fail-safe (Lite Watchdog + crash recovery):**
+        *   Ведёт журнал сессии bypass (LocalAppData) с флагами `CleanShutdown`/`WasBypassActive`.
+        *   При старте, если прошлый shutdown был не clean при активном bypass — выполняет принудительный `Disable`.
+        *   При активном bypass и отсутствии heartbeat/метрик дольше окна — выполняет авто-`Disable`.
     *   Сериализует операции `Apply/Disable` и управляет жизненным циклом `TrafficEngine` и регистрацией фильтров.
     *   Используется одновременно `BypassController` и `DiagnosticOrchestrator`, чтобы избежать гонок/рассинхронизаций.
     *   Включает guard: попытки вызывать `TrafficEngine.*`/`TlsBypassService.*` вне manager-scope логируются и могут считаться ошибкой в smoke.

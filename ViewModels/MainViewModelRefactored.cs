@@ -454,6 +454,19 @@ namespace IspAudit.ViewModels
             await Bypass.InitializeOnStartupAsync();
         }
 
+        public void OnAppExit()
+        {
+            try
+            {
+                _bypassState.MarkCleanShutdown();
+                Log("[Bypass][Watchdog] Clean shutdown отмечен");
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
         #endregion
 
         #region Command Handlers

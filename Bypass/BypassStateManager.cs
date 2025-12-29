@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Threading;
+using System.IO;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using IspAudit.Core.Traffic;
 
@@ -167,6 +168,16 @@ namespace IspAudit.Bypass
         private readonly Action<string>? _log;
         private readonly SemaphoreSlim _applyGate = new(1, 1);
 
+        private readonly BypassSessionJournal _journal;
+        private System.Threading.Timer? _watchdogTimer;
+        private volatile bool _watchdogInitialized;
+        private DateTime _lastMetricsEventUtc = DateTime.MinValue;
+        private DateTime _lastBypassActivatedUtc = DateTime.MinValue;
+
+        private static readonly TimeSpan WatchdogDefaultTick = TimeSpan.FromSeconds(60);
+        private static readonly TimeSpan WatchdogDefaultStale = TimeSpan.FromSeconds(120);
+        private static readonly TimeSpan WatchdogEngineGrace = TimeSpan.FromSeconds(15);
+
         public TrafficEngine TrafficEngine => _trafficEngine;
         public BypassProfile BaseProfile { get; }
 
@@ -198,9 +209,22 @@ namespace IspAudit.Bypass
             BaseProfile = baseProfile;
             _log = log;
 
+            _journal = new BypassSessionJournal(BypassSessionJournal.GetDefaultPath(), _log);
+
             // Важно: лог прокидываем на самый нижний уровень, чтобы любые проблемы
             // в обходе (метрики/вердикт/движок) были видны пользователю.
             _tlsService = new TlsBypassService(_trafficEngine, BaseProfile, _log);
+
+            // Heartbeat для watchdog.
+            _tlsService.MetricsUpdated += _ =>
+            {
+                var snapshot = _tlsService.GetOptionsSnapshot();
+                if (snapshot.IsAnyEnabled())
+                {
+                    _lastMetricsEventUtc = DateTime.UtcNow;
+                    _journal.TouchHeartbeat("metrics");
+                }
+            };
 
             // Включаем guard: все последующие вызовы к TrafficEngine/TlsBypassService,
             // сделанные не из менеджера, будут логироваться как ошибка.
@@ -214,7 +238,119 @@ namespace IspAudit.Bypass
             BaseProfile = baseProfile;
             _log = log;
 
+            _journal = new BypassSessionJournal(BypassSessionJournal.GetDefaultPath(), _log);
+
+            _tlsService.MetricsUpdated += _ =>
+            {
+                var snapshot = _tlsService.GetOptionsSnapshot();
+                if (snapshot.IsAnyEnabled())
+                {
+                    _lastMetricsEventUtc = DateTime.UtcNow;
+                    _journal.TouchHeartbeat("metrics");
+                }
+            };
+
             BypassStateManagerGuard.EnforceManagerUsage = true;
+        }
+
+        public async Task InitializeOnStartupAsync(CancellationToken cancellationToken = default)
+        {
+            if (_watchdogInitialized) return;
+            _watchdogInitialized = true;
+
+            _journal.MarkSessionStarted();
+
+            // Crash recovery: если в прошлой сессии bypass был активен и не было clean shutdown — принудительно выключаем.
+            if (_journal.StartupWasUncleanAndBypassActive)
+            {
+                _log?.Invoke("[Bypass][Watchdog] crash_recovery: обнаружена некорректно завершённая сессия при активном bypass — выполняем Disable");
+                try
+                {
+                    await DisableTlsAsync("crash_recovery", cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _log?.Invoke($"[Bypass][Watchdog] crash_recovery: ошибка Disable: {ex.Message}");
+                }
+            }
+
+            StartWatchdogTimer();
+        }
+
+        public void MarkCleanShutdown()
+        {
+            // Важно: отмечаем clean shutdown независимо от прав администратора.
+            _journal.MarkCleanShutdown("clean_shutdown");
+        }
+
+        private void StartWatchdogTimer()
+        {
+            if (_watchdogTimer != null) return;
+
+            var tick = ReadMsEnv("ISP_AUDIT_WATCHDOG_TICK_MS", (int)WatchdogDefaultTick.TotalMilliseconds);
+            _watchdogTimer = new System.Threading.Timer(_ => _ = WatchdogTickAsync(), null, dueTime: tick, period: tick);
+        }
+
+        private static int ReadMsEnv(string name, int fallback)
+        {
+            try
+            {
+                var raw = Environment.GetEnvironmentVariable(name);
+                if (string.IsNullOrWhiteSpace(raw)) return fallback;
+                return int.TryParse(raw, out var v) && v > 0 ? v : fallback;
+            }
+            catch
+            {
+                return fallback;
+            }
+        }
+
+        private async Task WatchdogTickAsync()
+        {
+            try
+            {
+                var snapshot = _tlsService.GetOptionsSnapshot();
+                if (!snapshot.IsAnyEnabled())
+                {
+                    return;
+                }
+
+                // Отмечаем, что bypass активен в текущей сессии (важно для crash recovery).
+                _journal.SetBypassActive(true, "bypass_active");
+
+                var nowUtc = DateTime.UtcNow;
+                var staleMs = ReadMsEnv("ISP_AUDIT_WATCHDOG_STALE_MS", (int)WatchdogDefaultStale.TotalMilliseconds);
+                var stale = TimeSpan.FromMilliseconds(staleMs);
+
+                // Если bypass активен, но метрики/heartbeat не обновлялись слишком долго — fail-safe отключаем.
+                if (_lastMetricsEventUtc != DateTime.MinValue && (nowUtc - _lastMetricsEventUtc) > stale)
+                {
+                    _log?.Invoke($"[Bypass][Watchdog] watchdog_timeout: нет heartbeat/метрик {(nowUtc - _lastMetricsEventUtc).TotalSeconds:F0}с — выполняем Disable");
+                    await DisableTlsAsync("watchdog_timeout", CancellationToken.None).ConfigureAwait(false);
+                    return;
+                }
+
+                // Если движок не запущен после активации bypass — отключаем (обычно означает проблему с WinDivert/правами).
+                if (!_trafficEngine.IsRunning)
+                {
+                    if (_lastBypassActivatedUtc == DateTime.MinValue)
+                    {
+                        _lastBypassActivatedUtc = nowUtc;
+                        return;
+                    }
+
+                    if ((nowUtc - _lastBypassActivatedUtc) > WatchdogEngineGrace)
+                    {
+                        _log?.Invoke("[Bypass][Watchdog] engine_dead: bypass активен, но TrafficEngine не запущен — выполняем Disable");
+                        await DisableTlsAsync("engine_dead", CancellationToken.None).ConfigureAwait(false);
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Bypass][Watchdog] Ошибка watchdog: {ex.Message}");
+            }
         }
 
         public TlsBypassOptions GetOptionsSnapshot() => _tlsService.GetOptionsSnapshot();
@@ -249,7 +385,19 @@ namespace IspAudit.Bypass
             try
             {
                 using var scope = BypassStateManagerGuard.EnterScope();
-                await _tlsService.ApplyAsync(options, cancellationToken).ConfigureAwait(false);
+                var normalized = options.Normalize();
+                await _tlsService.ApplyAsync(normalized, cancellationToken).ConfigureAwait(false);
+
+                if (normalized.IsAnyEnabled())
+                {
+                    _lastBypassActivatedUtc = DateTime.UtcNow;
+                    _lastMetricsEventUtc = DateTime.UtcNow;
+                    _journal.SetBypassActive(true, "apply");
+                }
+                else
+                {
+                    _journal.SetBypassActive(false, "apply_disable");
+                }
             }
             finally
             {
@@ -257,13 +405,19 @@ namespace IspAudit.Bypass
             }
         }
 
-        public async Task DisableTlsAsync(CancellationToken cancellationToken = default)
+        public Task DisableTlsAsync(CancellationToken cancellationToken = default)
+            => DisableTlsAsync("manual_disable", cancellationToken);
+
+        public async Task DisableTlsAsync(string reason, CancellationToken cancellationToken = default)
         {
             await _applyGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 using var scope = BypassStateManagerGuard.EnterScope();
                 await _tlsService.DisableAsync(cancellationToken).ConfigureAwait(false);
+
+                _lastBypassActivatedUtc = DateTime.MinValue;
+                _journal.SetBypassActive(false, reason);
             }
             finally
             {
@@ -287,6 +441,15 @@ namespace IspAudit.Bypass
 
         public void Dispose()
         {
+            try
+            {
+                _watchdogTimer?.Dispose();
+            }
+            catch
+            {
+                // ignore
+            }
+
             _tlsService.Dispose();
             _applyGate.Dispose();
         }

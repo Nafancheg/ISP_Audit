@@ -463,6 +463,15 @@
 **Входные данные:** Созданный `BypassStateManager` + попытки прямого вызова API  
 **Ожидаемый результат:** Direct calls → exception; Manager calls → PASS
 
+**Test ID:** `DPI2-027`  
+**Что проверяет:** Watchdog: crash recovery + watchdog timeout выключают bypass  
+**Для чего:** Fail-safe: после некорректного завершения/зависания метрик обход не должен оставаться активным  
+**Критерий успеха:**
+- При наличии `WasBypassActive=true` и `CleanShutdown=false` в журнале сессии выполняется принудительный `Disable`.
+- При активном bypass и отсутствии heartbeat/метрик дольше окна — выполняется авто-`Disable`.
+**Входные данные:** Временный файл журнала сессии (`ISP_AUDIT_BYPASS_SESSION_PATH`) + ускоренные таймауты watchdog  
+**Ожидаемый результат:** `WasBypassActive` становится `false`, а опции bypass отключаются автоматически
+
 ### 5.5 Feedback & Rerank
 **Test ID:** `DPI2-014`  
 **Что проверяет:** Ранжирование стратегий по feedback поверх basePriority  

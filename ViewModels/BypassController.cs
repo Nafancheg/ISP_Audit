@@ -599,6 +599,17 @@ namespace IspAudit.ViewModels
             // Проверка VPN
             CheckVpnStatus();
 
+            // Crash recovery + watchdog инициализируем всегда (даже без admin),
+            // чтобы корректно обработать некорректно завершённую прошлую сессию.
+            try
+            {
+                await _stateManager.InitializeOnStartupAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Log($"[Bypass][Watchdog] Init failed: {ex.Message}");
+            }
+
             if (!TrafficEngine.HasAdministratorRights)
             {
                 Log("[Bypass] No admin rights - bypass not available");
