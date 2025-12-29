@@ -84,6 +84,9 @@ graph TD
         *   Ведёт журнал сессии bypass (LocalAppData) с флагами `CleanShutdown`/`WasBypassActive`.
         *   При старте, если прошлый shutdown был не clean при активном bypass — выполняет принудительный `Disable`.
         *   При активном bypass и отсутствии heartbeat/метрик дольше окна — выполняет авто-`Disable`.
+    *   **Activation Detection (по метрикам):**
+        *   Вычисляет статус активации: `ENGINE_DEAD / NOT_ACTIVATED / ACTIVATED / NO_TRAFFIC / UNKNOWN`.
+        *   Используется для наблюдаемости (в UI выводится как `ACT: ...`).
     *   Сериализует операции `Apply/Disable` и управляет жизненным циклом `TrafficEngine` и регистрацией фильтров.
     *   Используется одновременно `BypassController` и `DiagnosticOrchestrator`, чтобы избежать гонок/рассинхронизаций.
     *   Включает guard: попытки вызывать `TrafficEngine.*`/`TlsBypassService.*` вне manager-scope логируются и могут считаться ошибкой в smoke.

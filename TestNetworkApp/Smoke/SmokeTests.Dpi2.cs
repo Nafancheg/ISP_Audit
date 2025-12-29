@@ -128,6 +128,127 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_ActivationDetection_Statuses_AreDeterministic(CancellationToken ct)
+            => RunAsyncAwait("DPI2-028", "Activation Detection: ENGINE_DEAD/NOT_ACTIVATED/ACTIVATED/NO_TRAFFIC/UNKNOWN", async innerCt =>
+            {
+                var prevEngineGrace = Environment.GetEnvironmentVariable("ISP_AUDIT_ACTIVATION_ENGINE_GRACE_MS");
+                var prevWarmup = Environment.GetEnvironmentVariable("ISP_AUDIT_ACTIVATION_WARMUP_MS");
+                var prevNoTraffic = Environment.GetEnvironmentVariable("ISP_AUDIT_ACTIVATION_NO_TRAFFIC_MS");
+                var prevStale = Environment.GetEnvironmentVariable("ISP_AUDIT_ACTIVATION_STALE_MS");
+
+                try
+                {
+                    // Для smoke отключаем ENGINE_DEAD по engine.IsRunning, чтобы можно было проверить метрики без WinDivert.
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_ACTIVATION_ENGINE_GRACE_MS", "999999");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_ACTIVATION_WARMUP_MS", "0");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_ACTIVATION_NO_TRAFFIC_MS", "0");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_ACTIVATION_STALE_MS", "999999");
+
+                    using var engine = new TrafficEngine(progress: null);
+                    var profile = BypassProfile.CreateDefault();
+
+                    var tls = new TlsBypassService(
+                        trafficEngine: engine,
+                        baseProfile: profile,
+                        log: null,
+                        startMetricsTimer: false,
+                        useTrafficEngine: false,
+                        nowProvider: null);
+
+                    var manager = BypassStateManager.GetOrCreateFromService(tls, profile, log: null);
+                    await manager.InitializeOnStartupAsync(innerCt).ConfigureAwait(false);
+
+                    await manager.ApplyTlsOptionsAsync(TlsBypassOptions.CreateDefault(profile) with
+                    {
+                        DisorderEnabled = true,
+                        DropRstEnabled = true
+                    }, innerCt).ConfigureAwait(false);
+
+                    // 1) NO_TRAFFIC
+                    manager.SetMetricsSnapshotForSmoke(new TlsBypassMetrics
+                    {
+                        ClientHellosObserved = 0,
+                        ClientHellosFragmented = 0,
+                        TlsHandled = 0,
+                        RstDropped = 0,
+                        RstDroppedRelevant = 0,
+                        Udp443Dropped = 0
+                    });
+
+                    var s1 = manager.GetActivationStatusSnapshot();
+                    if (s1.Status != ActivationStatus.NoTraffic)
+                    {
+                        return new SmokeTestResult("DPI2-028", "Activation Detection: ENGINE_DEAD/NOT_ACTIVATED/ACTIVATED/NO_TRAFFIC/UNKNOWN", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали NO_TRAFFIC, получили {s1.Text} ({s1.Details})");
+                    }
+
+                    // 2) NOT_ACTIVATED (трафик есть, эффекта нет)
+                    manager.SetMetricsSnapshotForSmoke(new TlsBypassMetrics
+                    {
+                        ClientHellosObserved = 10,
+                        ClientHellosFragmented = 0,
+                        TlsHandled = 0,
+                        RstDropped = 0,
+                        RstDroppedRelevant = 0,
+                        Udp443Dropped = 0
+                    });
+
+                    var s2 = manager.GetActivationStatusSnapshot();
+                    if (s2.Status != ActivationStatus.NotActivated)
+                    {
+                        return new SmokeTestResult("DPI2-028", "Activation Detection: ENGINE_DEAD/NOT_ACTIVATED/ACTIVATED/NO_TRAFFIC/UNKNOWN", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали NOT_ACTIVATED, получили {s2.Text} ({s2.Details})");
+                    }
+
+                    // 3) ACTIVATED
+                    manager.SetMetricsSnapshotForSmoke(new TlsBypassMetrics
+                    {
+                        ClientHellosObserved = 10,
+                        ClientHellosFragmented = 2,
+                        TlsHandled = 2,
+                        RstDropped = 0,
+                        RstDroppedRelevant = 0,
+                        Udp443Dropped = 0
+                    });
+
+                    var s3 = manager.GetActivationStatusSnapshot();
+                    if (s3.Status != ActivationStatus.Activated)
+                    {
+                        return new SmokeTestResult("DPI2-028", "Activation Detection: ENGINE_DEAD/NOT_ACTIVATED/ACTIVATED/NO_TRAFFIC/UNKNOWN", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали ACTIVATED, получили {s3.Text} ({s3.Details})");
+                    }
+
+                    // 4) ENGINE_DEAD по stale метрикам
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_ACTIVATION_STALE_MS", "1");
+                    manager.SetMetricsSnapshotForSmoke(new TlsBypassMetrics
+                    {
+                        ClientHellosObserved = 10,
+                        ClientHellosFragmented = 1,
+                        TlsHandled = 1,
+                        RstDropped = 0,
+                        RstDroppedRelevant = 0,
+                        Udp443Dropped = 0
+                    }, atUtc: DateTime.UtcNow - TimeSpan.FromSeconds(10));
+
+                    var s4 = manager.GetActivationStatusSnapshot();
+                    if (s4.Status != ActivationStatus.EngineDead)
+                    {
+                        return new SmokeTestResult("DPI2-028", "Activation Detection: ENGINE_DEAD/NOT_ACTIVATED/ACTIVATED/NO_TRAFFIC/UNKNOWN", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали ENGINE_DEAD, получили {s4.Text} ({s4.Details})");
+                    }
+
+                    return new SmokeTestResult("DPI2-028", "Activation Detection: ENGINE_DEAD/NOT_ACTIVATED/ACTIVATED/NO_TRAFFIC/UNKNOWN", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: статусы детерминированны");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_ACTIVATION_ENGINE_GRACE_MS", prevEngineGrace);
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_ACTIVATION_WARMUP_MS", prevWarmup);
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_ACTIVATION_NO_TRAFFIC_MS", prevNoTraffic);
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_ACTIVATION_STALE_MS", prevStale);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_Guard_BypassStateManager_IsSingleSourceOfTruth(CancellationToken ct)
             => RunAsyncAwait("DPI2-026", "Guard: TrafficEngine/TlsBypassService только через BypassStateManager", async innerCt =>
             {

@@ -1362,8 +1362,10 @@ namespace IspAudit.ViewModels
                 var planWithPreset = string.IsNullOrWhiteSpace(metrics.PresetName) ? plan : $"{plan} · {metrics.PresetName}";
                 BypassPlanText = string.IsNullOrWhiteSpace(planWithPreset) ? "-" : planWithPreset;
                 BypassMetricsSince = metrics.Since;
+
+                var activation = _stateManager.GetActivationStatusSnapshot();
                 BypassMetricsText =
-                    $"TLS: {metrics.TlsHandled}; thr: {metrics.FragmentThreshold}; min: {metrics.MinChunk}; Hello@443: {metrics.ClientHellosObserved}; <thr: {metrics.ClientHellosShort}; !=443: {metrics.ClientHellosNon443}; фрагм.: {metrics.ClientHellosFragmented}; UDP443 drop: {metrics.Udp443Dropped}; RST(443,bypass): {metrics.RstDroppedRelevant}; RST(всего): {metrics.RstDropped}";
+                    $"ACT: {activation.Text}; TLS: {metrics.TlsHandled}; thr: {metrics.FragmentThreshold}; min: {metrics.MinChunk}; Hello@443: {metrics.ClientHellosObserved}; <thr: {metrics.ClientHellosShort}; !=443: {metrics.ClientHellosNon443}; фрагм.: {metrics.ClientHellosFragmented}; UDP443 drop: {metrics.Udp443Dropped}; RST(443,bypass): {metrics.RstDroppedRelevant}; RST(всего): {metrics.RstDropped}";
             });
         }
 

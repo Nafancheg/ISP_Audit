@@ -104,6 +104,7 @@ namespace TestNetworkApp.Smoke
                 ["DPI2-025"] = Dpi2_Guard_NoLegacySignalsOrGetSignals_InV2RuntimePath,
                 ["DPI2-026"] = Dpi2_Guard_BypassStateManager_IsSingleSourceOfTruth,
                 ["DPI2-027"] = Dpi2_Watchdog_CrashRecovery_AndTimeout_DisablesBypass,
+                ["DPI2-028"] = Dpi2_ActivationDetection_Statuses_AreDeterministic,
                 ["DPI2-019"] = Dpi2_ExecutorV2_ManualApply_MapsPlanToBypassOptions,
                 ["DPI2-020"] = Dpi2_ExecutorV2_Cancel_RollbacksToPreviousState,
                 ["DPI2-021"] = Dpi2_Pipeline_DoesNotAutoApply_BypassControllerOrTlsBypassService,
