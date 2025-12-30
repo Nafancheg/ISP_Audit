@@ -78,7 +78,7 @@ graph TD
     *   Пресеты фрагментации (стандарт/умеренный/агрессивный/профиль) и логика автокоррекции живут в сервисе, контроллер лишь проксирует выбор без собственного таймера.
     *   Метрики/вердикт приходят из событий `TlsBypassService` (`MetricsUpdated/VerdictChanged/StateChanged`): UI показывает план фрагментации, таймстамп начала метрик, активный пресет/мин. чанк и не подсвечивает карточку при серых статусах «нет данных/не 443».
 
-Важно (runtime): QUIC fallback и режим allow-no-SNI — это явные флаги профиля/опций, а не «пресет». При включённом `DropUdp443` фильтр `BypassFilter` глушит UDP/443 (`Udp443Dropped++`), чтобы клиент откатился на TCP/HTTPS. При включённом `AllowNoSni` обход может применяться даже если SNI не распознан/отсутствует (ECH/ESNI/сегментация ClientHello).
+Важно (runtime): QUIC fallback и режим allow-no-SNI — это явные флаги профиля/опций, а не «пресет». При включённом `DropUdp443` QUIC fallback работает **селективно**: `BypassStateManager` поддерживает observed IPv4 адреса цели (с TTL/cap, cold-start через DNS resolve host) и прокидывает их в `TlsBypassService`, а `BypassFilter` глушит UDP/443 (`Udp443Dropped++`) **только** для пакетов на эти IP, чтобы клиент откатился на TCP/HTTPS. Для IPv6 трафика селективность пока недоступна (адреса не парсятся), поэтому сохраняется прежнее поведение drop при включённом `DropUdp443`. При включённом `AllowNoSni` обход может применяться даже если SNI не распознан/отсутствует (ECH/ESNI/сегментация ClientHello).
 
 *   **`BypassStateManager`**: единый владелец состояния обхода (SSoT) для `TrafficEngine` и `TlsBypassService`.
     *   **Fail-safe (Lite Watchdog + crash recovery):**

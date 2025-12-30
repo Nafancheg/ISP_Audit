@@ -357,6 +357,78 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_QuicFallback_DropUdp443_IsSelectiveByObservedIp(CancellationToken ct)
+            => RunAsync("DPI2-030", "QUIC fallback (DROP UDP/443): селективен по observed IP цели", () =>
+            {
+                static uint ToIpv4Int(IPAddress ip)
+                {
+                    var bytes = ip.GetAddressBytes();
+                    if (bytes.Length != 4) throw new ArgumentException("Ожидали IPv4 адрес", nameof(ip));
+                    return ((uint)bytes[0] << 24) | ((uint)bytes[1] << 16) | ((uint)bytes[2] << 8) | bytes[3];
+                }
+
+                // Важно: тестируем только селективность на уровне BypassFilter,
+                // без реального TrafficEngine/сети.
+                var profile = new BypassProfile
+                {
+                    DropUdp443 = true
+                };
+
+                var filter = new BypassFilter(profile, logAction: null, presetName: "smoke");
+
+                var targetIp = IPAddress.Parse("203.0.113.10");
+                var otherIp = IPAddress.Parse("198.51.100.20");
+                var srcIp = IPAddress.Parse("10.0.0.2");
+
+                filter.SetUdp443DropTargetIps(new[] { ToIpv4Int(targetIp) });
+
+                var udpToTarget = BuildIpv4UdpPacket(
+                    srcIp,
+                    targetIp,
+                    srcPort: 50000,
+                    dstPort: 443,
+                    ttl: 64,
+                    ipId: 1,
+                    payload: new byte[] { 1, 2, 3 });
+
+                var udpToOther = BuildIpv4UdpPacket(
+                    srcIp,
+                    otherIp,
+                    srcPort: 50001,
+                    dstPort: 443,
+                    ttl: 64,
+                    ipId: 2,
+                    payload: new byte[] { 4, 5, 6 });
+
+                var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+                var sender = new DummyPacketSender();
+
+                var allow1 = filter.Process(new InterceptedPacket(udpToTarget, udpToTarget.Length), ctx, sender);
+                var allow2 = filter.Process(new InterceptedPacket(udpToOther, udpToOther.Length), ctx, sender);
+
+                if (allow1)
+                {
+                    return new SmokeTestResult("DPI2-030", "QUIC fallback (DROP UDP/443): селективен по observed IP цели", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали DROP UDP/443 для пакета к target IP, но пакет был пропущен");
+                }
+
+                if (!allow2)
+                {
+                    return new SmokeTestResult("DPI2-030", "QUIC fallback (DROP UDP/443): селективен по observed IP цели", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали PASS UDP/443 для пакета к НЕ-целевому IP, но пакет был дропнут");
+                }
+
+                var metrics = filter.GetMetrics();
+                if (metrics.Udp443Dropped != 1)
+                {
+                    return new SmokeTestResult("DPI2-030", "QUIC fallback (DROP UDP/443): селективен по observed IP цели", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали Udp443Dropped=1, получили {metrics.Udp443Dropped}");
+                }
+
+                return new SmokeTestResult("DPI2-030", "QUIC fallback (DROP UDP/443): селективен по observed IP цели", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: UDP/443 дропается только к target IP");
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_Guard_BypassStateManager_IsSingleSourceOfTruth(CancellationToken ct)
             => RunAsyncAwait("DPI2-026", "Guard: TrafficEngine/TlsBypassService только через BypassStateManager", async innerCt =>
             {

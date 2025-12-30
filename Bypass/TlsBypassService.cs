@@ -33,6 +33,10 @@ namespace IspAudit.Bypass
         private readonly AutoTtlAdjustStrategy _autoTtl;
         private readonly IReadOnlyList<TlsFragmentPreset> _presets;
 
+        // Селективный QUIC fallback (DROP UDP/443): observed IPv4 адреса (dst ip) текущей цели.
+        // Хранится в сервисе, чтобы переживать пересоздание фильтра при Apply.
+        private uint[] _udp443DropTargetIps = Array.Empty<uint>();
+
         public event Action<TlsBypassMetrics>? MetricsUpdated;
         public event Action<TlsBypassVerdict>? VerdictChanged;
         public event Action<TlsBypassState>? StateChanged;
@@ -97,6 +101,33 @@ namespace IspAudit.Bypass
                 }
 
                 _metricsSince = metricsSince ?? _now();
+
+                // Smoke может подменять фильтр напрямую — пробрасываем текущие target IP.
+                _filter.SetUdp443DropTargetIps(_udp443DropTargetIps);
+            }
+        }
+
+        /// <summary>
+        /// Для BypassStateManager: задать observed IPv4 адреса цели, к которым применять DROP UDP/443.
+        /// </summary>
+        internal void SetUdp443DropTargetIpsForManager(IEnumerable<uint>? dstIpInts)
+        {
+            var snapshot = dstIpInts == null
+                ? Array.Empty<uint>()
+                : dstIpInts.Where(v => v != 0).Distinct().Take(32).ToArray();
+
+            lock (_sync)
+            {
+                _udp443DropTargetIps = snapshot;
+                _filter?.SetUdp443DropTargetIps(_udp443DropTargetIps);
+            }
+        }
+
+        internal uint[] GetUdp443DropTargetIpsSnapshot()
+        {
+            lock (_sync)
+            {
+                return _udp443DropTargetIps.Length == 0 ? Array.Empty<uint>() : _udp443DropTargetIps.ToArray();
             }
         }
 
