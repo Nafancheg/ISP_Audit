@@ -1377,6 +1377,57 @@ namespace TestNetworkApp.Smoke
                     $"OK: warnings={warnings.Count}, strategies={plan.Strategies.Count}");
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_StrategySelector_PopulatesDeferredStrategies_ForDpi(CancellationToken ct)
+            => RunAsync("DPI2-033", "Отложенные стратегии попадают в план как DeferredStrategies", () =>
+            {
+                var selector = new StandardStrategySelectorV2();
+
+                var diagnosis = new DiagnosisResult
+                {
+                    DiagnosisId = DiagnosisId.ActiveDpiEdge,
+                    Confidence = 80,
+                    MatchedRuleName = "smoke",
+                    ExplanationNotes = Array.Empty<string>(),
+                    Evidence = new Dictionary<string, string>(),
+                    InputSignals = new BlockageSignalsV2
+                    {
+                        HostKey = "example.com",
+                        CapturedAtUtc = DateTimeOffset.UtcNow,
+                        AggregationWindow = TimeSpan.FromSeconds(30),
+                        SampleSize = 3,
+                        IsUnreliable = false
+                    },
+                    DiagnosedAtUtc = DateTimeOffset.UtcNow
+                };
+
+                var plan = selector.Select(diagnosis);
+
+                var deferredIds = plan.DeferredStrategies.Select(d => d.Id).ToHashSet();
+
+                if (!deferredIds.Contains(StrategyId.HttpHostTricks)
+                    || !deferredIds.Contains(StrategyId.QuicObfuscation)
+                    || !deferredIds.Contains(StrategyId.BadChecksum))
+                {
+                    return new SmokeTestResult("DPI2-033", "Отложенные стратегии попадают в план как DeferredStrategies", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали deferred HttpHostTricks/QuicObfuscation/BadChecksum, получили: {string.Join(", ", deferredIds)}");
+                }
+
+                if (plan.Strategies.Any(s => s.Id is StrategyId.HttpHostTricks or StrategyId.QuicObfuscation or StrategyId.BadChecksum))
+                {
+                    return new SmokeTestResult("DPI2-033", "Отложенные стратегии попадают в план как DeferredStrategies", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Отложенная стратегия попала в Strategies (ожидали только в DeferredStrategies)");
+                }
+
+                if (string.IsNullOrWhiteSpace(plan.Reasoning) || !plan.Reasoning.Contains("deferred:", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SmokeTestResult("DPI2-033", "Отложенные стратегии попадают в план как DeferredStrategies", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали, что Reasoning содержит 'deferred:', получили: '{plan.Reasoning}'");
+                }
+
+                return new SmokeTestResult("DPI2-033", "Отложенные стратегии попадают в план как DeferredStrategies", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: deferred={plan.DeferredStrategies.Count}, strategies={plan.Strategies.Count}");
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_StrategySelector_Feedback_AffectsOrdering_WhenEnoughSamples(CancellationToken ct)
             => RunAsync("DPI2-014", "Feedback влияет на ранжирование (достаточно выборок, детерминизм)", () =>
             {

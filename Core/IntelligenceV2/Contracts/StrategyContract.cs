@@ -53,6 +53,28 @@ public sealed class BypassStrategy
 }
 
 /// <summary>
+/// Отложенная рекомендация: стратегия известна, но пока не может быть применена автоматически
+/// (нет реализации, есть блокер на уровне движка или требуется ручная настройка).
+/// </summary>
+public sealed class DeferredBypassStrategy
+{
+    /// <summary>
+    /// Идентификатор стратегии.
+    /// </summary>
+    public required StrategyId Id { get; init; }
+
+    /// <summary>
+    /// Почему стратегия отложена.
+    /// </summary>
+    public string Reason { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Уровень риска (для UI/сортировки). На исполнение не влияет.
+    /// </summary>
+    public RiskLevel Risk { get; init; }
+}
+
+/// <summary>
 /// План рекомендаций (список стратегий), сформированный на основе диагноза.
 /// </summary>
 public sealed class BypassPlan
@@ -61,6 +83,12 @@ public sealed class BypassPlan
     /// Список стратегий в порядке применения/проб.
     /// </summary>
     public List<BypassStrategy> Strategies { get; init; } = new();
+
+    /// <summary>
+    /// Список отложенных стратегий (не применяется автоматически в текущем MVP).
+    /// Используется для UI/логов и как «вектор» будущих улучшений.
+    /// </summary>
+    public List<DeferredBypassStrategy> DeferredStrategies { get; init; } = new();
 
     /// <summary>
     /// Для какого диагноза построен план.

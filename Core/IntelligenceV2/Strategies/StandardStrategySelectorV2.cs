@@ -36,6 +36,13 @@ public sealed class StandardStrategySelectorV2
         StrategyId.UseDoh,
     ];
 
+    private static readonly HashSet<StrategyId> DeferredStrategies =
+    [
+        StrategyId.HttpHostTricks,
+        StrategyId.QuicObfuscation,
+        StrategyId.BadChecksum,
+    ];
+
     /// <summary>
     /// Построить план рекомендаций.
     /// Жёсткие защиты:
@@ -61,6 +68,7 @@ public sealed class StandardStrategySelectorV2
         }
 
         var filtered = new List<BypassStrategy>(capacity: candidates.Count);
+        var deferred = new List<DeferredBypassStrategy>(capacity: 3);
 
         foreach (var candidate in candidates)
         {
@@ -71,6 +79,20 @@ public sealed class StandardStrategySelectorV2
 
             if (!ImplementedStrategies.Contains(candidate.Id))
             {
+                // Отложенные стратегии не должны попадать в применяемый список, но должны быть видны в UI/логах.
+                if (DeferredStrategies.Contains(candidate.Id))
+                {
+                    deferred.Add(new DeferredBypassStrategy
+                    {
+                        Id = candidate.Id,
+                        Risk = candidate.Risk,
+                        Reason = candidate.Id == StrategyId.BadChecksum
+                            ? "отложено: блокер на уровне движка"
+                            : "отложено: техника ещё не реализована"
+                    });
+                    continue;
+                }
+
                 EmitWarning(warningLog, $"[IntelligenceV2][Selector] Стратегия {candidate.Id} не реализована — пропуск.");
                 continue;
             }
@@ -84,7 +106,7 @@ public sealed class StandardStrategySelectorV2
             });
         }
 
-        if (filtered.Count == 0)
+        if (filtered.Count == 0 && deferred.Count == 0)
         {
             return CreateEmptyPlan(diagnosis.DiagnosisId, confidence, "все стратегии отфильтрованы по риску/реализации");
         }
@@ -147,6 +169,11 @@ public sealed class StandardStrategySelectorV2
             reasoning += "; assist: No SNI";
         }
 
+        if (deferred.Count > 0)
+        {
+            reasoning += "; deferred: " + string.Join(", ", deferred.Select(d => d.Id));
+        }
+
         return new BypassPlan
         {
             ForDiagnosis = forDiagnosisId,
@@ -155,7 +182,8 @@ public sealed class StandardStrategySelectorV2
             Reasoning = reasoning,
             DropUdp443 = recommendDropUdp443,
             AllowNoSni = recommendAllowNoSni,
-            Strategies = ordered
+            Strategies = ordered,
+            DeferredStrategies = deferred
         };
     }
 
@@ -324,6 +352,11 @@ public sealed class StandardStrategySelectorV2
                         ["AutoAdjustAggressive"] = false
                     }),
                 new StrategyTemplate(StrategyId.DropRst, BasePriority: 50, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
+
+                // Отложенные техники: показываем как deferred (без применения).
+                new StrategyTemplate(StrategyId.HttpHostTricks, BasePriority: 10, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
+                new StrategyTemplate(StrategyId.QuicObfuscation, BasePriority: 5, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
+                new StrategyTemplate(StrategyId.BadChecksum, BasePriority: 1, Risk: RiskLevel.High, Parameters: new Dictionary<string, object?>()),
 
                 // High-risk стратегия: разрешена только при confidence >= 70.
                 new StrategyTemplate(StrategyId.AggressiveFragment, BasePriority: 20, Risk: RiskLevel.High, Parameters: new Dictionary<string, object?>())

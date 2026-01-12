@@ -100,6 +100,7 @@ namespace TestNetworkApp.Smoke
                 ["DPI2-008"] = Dpi2_StrategySelector_HighRiskBlocked_WhenConfidenceBelow70,
                 ["DPI2-009"] = Dpi2_StrategySelector_EmptyPlan_WhenConfidenceBelow50,
                 ["DPI2-010"] = Dpi2_StrategySelector_WarnsAndSkips_UnimplementedStrategies,
+                ["DPI2-033"] = Dpi2_StrategySelector_PopulatesDeferredStrategies_ForDpi,
                 ["DPI2-014"] = Dpi2_StrategySelector_Feedback_AffectsOrdering_WhenEnoughSamples,
                 ["DPI2-015"] = Dpi2_StrategySelector_Feedback_DoesNotAffect_WhenNotEnoughSamples,
                 ["DPI2-011"] = Dpi2_ExecutorMvp_FormatsCompactOutput_OneLine,

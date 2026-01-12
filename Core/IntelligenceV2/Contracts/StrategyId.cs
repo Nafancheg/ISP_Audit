@@ -13,6 +13,11 @@ public enum StrategyId
 
     DropRst,
 
+    // Отложенные техники (не реализованы в MVP-исполнителе; должны отображаться как deferred).
+    HttpHostTricks,
+    QuicObfuscation,
+    BadChecksum,
+
     /// <summary>
     /// Будущая стратегия. В MVP НЕ добавлять в маппинг (реализация может отсутствовать).
     /// </summary>

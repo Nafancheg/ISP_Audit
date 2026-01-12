@@ -448,6 +448,13 @@
 **Входные данные:** `DiagnosisResult`, при котором селектор сформирует кандидата с нереализованной `StrategyId`  
 **Ожидаемый результат:** Warning в логе, стратегия не включена
 
+**Test ID:** `DPI2-033`  
+**Что проверяет:** Заполнение `BypassPlan.DeferredStrategies` для DPI-диагнозов  
+**Для чего:** Показывать «возможные будущие техники» без применения и без влияния на текущий план  
+**Критерий успеха:** `DeferredStrategies` содержит `HttpHostTricks`, `QuicObfuscation`, `BadChecksum`, но эти стратегии отсутствуют в `Strategies`  
+**Входные данные:** `DiagnosisResult` с `DiagnosisId.ActiveDpiEdge` или `DiagnosisId.StatefulDpi` и `confidence >= 70`  
+**Ожидаемый результат:** В `Reasoning` присутствует суффикс `deferred: ...`
+
 ### 5.4 Executor MVP
 **Test ID:** `DPI2-011`  
 **Что проверяет:** Форматирование вывода для UI (1-2 строки)  
