@@ -1,8 +1,8 @@
 # ISP Audit
 
-**Диагностика сетевых проблем и восстановление доступа для игр и приложений**
+**Диагностика сетевых проблем и оптимизация соединения для игр и приложений**
 
-Windows-приложение для анализа сетевого трафика, выявления проблем соединения (DPI, DNS, нестабильные TCP-сессии) и выдачи рекомендаций по обходу/восстановлению доступа. Применение обхода выполняется вручную (по кнопке/тумблерам) и требует запуска от администратора.
+Windows-приложение для анализа сетевого трафика, выявления проблем соединения (DNS, ошибки TLS, нестабильные TCP-сессии) и выдачи рекомендаций по оптимизации/стабилизации. Применение оптимизаций выполняется вручную (по кнопке/тумблерам) и требует запуска от администратора.
 
 ![.NET 9](https://img.shields.io/badge/.NET-9.0-purple)
 ![Windows](https://img.shields.io/badge/Windows-10%2F11-blue)
@@ -16,7 +16,7 @@ Windows-приложение для анализа сетевого трафик
 3. **Наблюдаете в реальном времени** как тестируются обнаруженные соединения
 4. **Получаете результат** — какие хосты работают нестабильно и почему
 
-По результатам диагностики формируются рекомендации v2. Обход/оптимизация включается вручную — через тумблеры или кнопкой «Применить рекомендации v2» (доступно только при запуске от администратора).
+По результатам диагностики формируются рекомендации v2. Оптимизация включается вручную — через тумблеры или кнопкой «Применить рекомендации v2» (доступно только при запуске от администратора).
 
 ## Интерфейс
 
@@ -30,23 +30,23 @@ Windows-приложение для анализа сетевого трафик
 - **DNS-мониторинг** — захват DNS-запросов/ответов приложения
 - **Параллельное тестирование** — проверка хостов по мере обнаружения
 - **Продвинутая детекция**:
-  - **HTTP Redirect** — обнаружение "заглушек" провайдера
-  - **RST Inspection** — анализ TTL для выявления DPI-инжектов
+    - **HTTP Redirect** — обнаружение нетипичных перенаправлений
+    - **RST Inspection** — анализ TTL и аномальных TCP RST
   - **TCP Retransmissions** — подсчет потерь пакетов
   - **Fail Counters** — анализ стабильности во времени
-- **Классификация проблем**: `DNS_FILTERED`, `TLS_AUTH_FAILURE` (legacy: `TLS_DPI`), `TCP_CONNECTION_RESET` (legacy: `TCP_RST`), `TCP_CONNECT_TIMEOUT` (legacy: `TCP_TIMEOUT`), `HTTP_REDIRECT_DPI`
+- **Классификация проблем**: DNS-ошибки, TCP-сбои, ошибки TLS, нетипичные HTTP-перенаправления
 
 ### Оптимизация соединения
-- **BypassStateManager** — единый владелец состояния обхода (Apply/Disable, fail-safe, наблюдаемость)
-- **TrafficEngine + BypassFilter** — перехват/модификация пакетов (WinDivert wrapper)
+- **Менеджер состояния оптимизаций** — единый владелец Apply/Disable, fail-safe, наблюдаемость
+- **TrafficEngine + фильтр модификации трафика** — перехват/модификация пакетов (WinDivert wrapper)
 - **TLS Fragmentation** — разбиение ClientHello для стабильности
 - **TLS Disorder** — отправка фрагментов в обратном порядке (улучшает совместимость)
 - **TLS Fake** — дополнительные пакеты для повышения стабильности
 - **RST Drop** — фильтрация аномальных TCP RST пакетов
 - **QUIC→TCP (Drop UDP/443)** — помогает откату с QUIC/HTTP3 на TCP/HTTPS (для IPv4 селективно по целевым IP)
-- **Allow No SNI** — позволяет применять обход даже когда SNI не распознан/отсутствует
-- **HTTP Host Tricks** — TCP/80: разрез заголовка `Host:` на два TCP сегмента и drop оригинала
-- **Bad Checksum** — фейковые TCP пакеты с испорченным checksum (для обходных техник)
+- **Allow No SNI** — позволяет применять оптимизацию даже когда SNI не распознан/отсутствует
+- **HTTP Host Compatibility** — TCP/80: разрез заголовка `Host:` на два TCP сегмента и drop оригинала
+- **Bad Checksum** — фейковые TCP пакеты с испорченным checksum (для совместимости некоторых техник)
 - **DoH (DNS-over-HTTPS)** — защищённый DNS через Cloudflare/Google/Quad9
 
 ### Отчётность
@@ -116,7 +116,7 @@ dotnet run
 4. Используйте приложение как обычно — ISP Audit анализирует трафик в фоне
 5. Закройте приложение или нажмите **Стоп** — получите результаты
 
-Если диагностика выявила проблемы, откройте панель Bypass и примените рекомендации v2 (или включите нужные тумблеры вручную).
+Если диагностика выявила проблемы, откройте панель оптимизации и примените рекомендации v2 (или включите нужные тумблеры вручную).
 
 ### Overlay (мини-окно)
 Во время диагностики отображается компактное окно поверх всех окон:
@@ -133,136 +133,17 @@ dotnet run
 
 | Статус | Описание | Решение |
 |--------|----------|--------|
-| `TLS_AUTH_FAILURE` (legacy: `TLS_DPI`) | Ошибка TLS рукопожатия (AuthenticationException) | Зависит от сценария (прокси/антивирус/фильтрация); часто помогает VPN |
-| `TLS_HANDSHAKE_TIMEOUT` (legacy: `TLS_TIMEOUT`) | TLS рукопожатие не завершается за таймаут | VPN / прокси |
-| `TCP_CONNECTION_RESET` (legacy: `TCP_RST`) | Сброс соединения (TCP reset) | DROP_RST |
-| `TCP_CONNECT_TIMEOUT` (legacy: `TCP_TIMEOUT`) | TCP connect не завершается за таймаут | VPN / прокси |
-| `DNS_FILTERED` | DNS возвращает пустой ответ | DoH |
-| `DNS_BOGUS` | DNS возвращает некорректный IP | DoH |
-| `HTTP_REDIRECT_DPI` | Подмена HTTP-ответа провайдером | VPN / TTL Trick |
+| `TLS_AUTH_FAILURE` | Ошибка TLS рукопожатия (AuthenticationException) | Зависит от сценария (прокси/антивирус/фильтрация); часто помогает VPN |
+| `TLS_HANDSHAKE_TIMEOUT` | TLS рукопожатие не завершается за таймаут | VPN / прокси |
+| `TCP_CONNECTION_RESET` | Сброс соединения (TCP reset) | DROP_RST |
+| `TCP_CONNECT_TIMEOUT` | TCP connect не завершается за таймаут | VPN / прокси |
+| `DNS_ISSUE` | DNS-ошибка (пустой ответ/некорректный IP) | DoH |
+| `HTTP_REDIRECT` | Нетипичный HTTP redirect | VPN / прокси |
 | `TCP_RETRY_HEAVY` | Высокий % ретрансмиссий пакетов | VPN / Проверка канала |
 
 ## Архитектура
 
-```mermaid
-graph TB
-    subgraph UI["🖥️ UI Layer"]
-        MainVM[MainViewModelRefactored]
-        BypassCtrl[BypassController]
-        TestResults[TestResultsManager]
-    end
-
-    subgraph Orchestration["🎭 Orchestration"]
-        Orchestrator[DiagnosticOrchestrator]
-        Pipeline[LiveTestingPipeline<br/>Channels]
-    end
-
-    subgraph Core["⚙️ Core Logic"]
-        ConnMon[ConnectionMonitor<br/>Service]
-        Collector[TrafficCollector<br/>Smart Sniffer]
-        Filters[NoiseHostFilter +<br/>UnifiedTrafficFilter]
-        Tester[StandardHostTester<br/>DNS/TCP/TLS]
-        Intelligence[SignalsAdapterV2 +<br/>DiagnosisEngineV2 +<br/>StrategySelectorV2]
-        StateStore[InMemoryBlockageStateStore]
-    end
-
-    subgraph Inspection["🔍 Inspection"]
-        Inspectors[RST/UDP/Retrans/<br/>Redirect Detectors]
-    end
-
-    subgraph Network["🌐 Network"]
-        WinDivert[WinDivert Driver]
-        Services[DnsSniffer<br/>PidTracker]
-        BypassState[BypassStateManager]
-        TlsSvc[TlsBypassService]
-        TrafficEngine[TrafficEngine]
-        BypassFilter[BypassFilter]
-    end
-
-    %% Main Flow
-    MainVM --> Orchestrator
-    Orchestrator --> Pipeline
-    Orchestrator --> ConnMon
-
-    ConnMon --> Collector
-    Pipeline -.->|Queue| Tester
-    Pipeline -.->|Queue| Intelligence
-
-    Collector --> Filters
-    Filters --> Pipeline
-    Tester --> Intelligence
-    Intelligence --> StateStore
-    StateStore --> Inspectors
-    StateStore --> TestResults
-
-    %% Network Layer
-    Services --> ConnMon
-    ConnMon --> WinDivert
-    Tester -.-> WinDivert
-
-    %% Bypass
-    BypassCtrl --> BypassState
-    BypassState --> TlsSvc
-    BypassState --> TrafficEngine
-    TrafficEngine --> BypassFilter
-    BypassFilter --> WinDivert
-    Intelligence -.->|Recommendations v2| BypassCtrl
-
-    %% Styling
-    classDef ui fill:#1976d2,stroke:#0d47a1,color:#fff
-    classDef core fill:#7b1fa2,stroke:#4a148c,color:#fff
-    classDef network fill:#388e3c,stroke:#1b5e20,color:#fff
-    classDef inspect fill:#f57c00,stroke:#e65100,color:#fff
-
-    class MainVM,BypassCtrl,TestResults ui
-    class ConnMon,Collector,Filters,Tester,Intelligence,StateStore core
-    class WinDivert,Services,BypassState,TlsSvc,TrafficEngine,BypassFilter network
-    class Inspectors inspect
-```
-
-### Ключевые компоненты
-
-#### 🖥️ UI Layer
-| Компонент | Файл | Описание |
-|-----------|------|----------|
-| MainViewModelRefactored | `ViewModels/MainViewModelRefactored.cs` | Корневая ViewModel, связывает UI и логику |
-| BypassController | `ViewModels/BypassController.cs` | Управление стратегиями обхода (Bypass) |
-| TestResultsManager | `ViewModels/TestResultsManager.cs` | Управление результатами тестов и рекомендациями |
-
-#### 🎭 Orchestration
-| Компонент | Файл | Описание |
-|-----------|------|----------|
-| DiagnosticOrchestrator | `ViewModels/DiagnosticOrchestrator.cs` | Координатор процесса диагностики |
-| LiveTestingPipeline | `Utils/LiveTestingPipeline.cs` | Конвейер обработки: Sniffer → Tester → Classifier |
-
-#### ⚙️ Core Logic
-| Компонент | Файл | Описание |
-|-----------|------|----------|
-| TrafficCollector | `Utils/TrafficCollector.cs` | Сбор сетевых событий и обогащение данными |
-| UnifiedTrafficFilter | `Utils/UnifiedTrafficFilter.cs` | Фильтрация шума и дедупликация |
-| StandardHostTester | `Core/Modules/StandardHostTester.cs` | Активное тестирование хостов (DNS, TCP, TLS) |
-| BlockageClassifier | `Core/Modules/StandardBlockageClassifier.cs` | Анализ результатов и определение типа блокировки |
-| DPI Intelligence v2 | `Core/IntelligenceV2/` | Селектор рекомендаций v2: signals → диагноз → BypassPlan (manual apply) |
-| BlockageStateStore | `Core/Modules/InMemoryBlockageStateStore.cs` | Хранение состояния блокировок и истории |
-
-#### 🔍 Inspection
-| Компонент | Файл | Описание |
-|-----------|------|----------|
-| RstInspectionService | `Core/Modules/RstInspectionService.cs` | Анализ TCP RST пакетов (TTL, Flags) |
-| HttpRedirectDetector | `Core/Modules/HttpRedirectDetector.cs` | Детекция HTTP-заглушек провайдера |
-| TcpRetransmissionTracker | `Core/Modules/TcpRetransmissionTracker.cs` | Подсчет потерь пакетов (Retransmissions) |
-| UdpInspectionService | `Core/Modules/UdpInspectionService.cs` | Анализ UDP трафика (QUIC/DTLS) |
-
-#### 🌐 Network
-| Компонент | Файл | Описание |
-|-----------|------|----------|
-| TrafficEngine | `Core/Traffic/TrafficEngine.cs` | Движок перехвата пакетов (WinDivert wrapper) |
-| BypassFilter | `Core/Traffic/Filters/BypassFilter.cs` | Применение стратегий обхода на уровне пакетов |
-| BypassStateManager | `Bypass/BypassStateManager.cs` | SSoT состояния обхода: безопасный Apply/Disable, fail-safe |
-| TlsBypassService | `Bypass/TlsBypassService.cs` | Конфигурирование bypass-профиля и логика TLS-обхода |
-| ConnectionMonitor | `Utils/ConnectionMonitorService.cs` | Мониторинг сокетов (WinDivert/IP Helper) |
-| DnsParser | `Utils/DnsSnifferService.cs` | Парсинг DNS-пакетов и SNI |
-| PidTracker | `Utils/PidTrackerService.cs` | Отслеживание PID целевого процесса |
+Подробное описание внутренних компонентов и актуальной схемы пайплайна — в `ARCHITECTURE_CURRENT.md`.
 
 ## Системные требования
 
