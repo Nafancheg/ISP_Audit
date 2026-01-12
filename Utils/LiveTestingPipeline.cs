@@ -427,6 +427,13 @@ namespace IspAudit.Utils
                     if (_autoHostlist != null)
                     {
                         _autoHostlist.Observe(tested, inspection, hostname);
+
+                        // v2: добавляем auto-hostlist как источник контекста (evidence/notes).
+                        // Важно: это не меняет диагноз напрямую, только делает хвост более информативным.
+                        if (_autoHostlist.TryGetCandidateFor(tested, hostname, out var candidate))
+                        {
+                            diagnosis = EnrichDiagnosisWithAutoHostlist(diagnosis, candidate);
+                        }
                     }
 
                     // В сообщениях пайплайна используем IP как технический якорь.
@@ -519,6 +526,38 @@ namespace IspAudit.Utils
 
             var ids = tokens.Count == 0 ? PipelineContract.BypassNone : string.Join(" + ", tokens);
             return $"v2:{ids} (conf={plan.PlanConfidence})";
+        }
+
+        private static DiagnosisResult EnrichDiagnosisWithAutoHostlist(DiagnosisResult diagnosis, AutoHostCandidate candidate)
+        {
+            var evidence = diagnosis.Evidence.Count == 0
+                ? new Dictionary<string, string>(StringComparer.Ordinal)
+                : new Dictionary<string, string>(diagnosis.Evidence, StringComparer.Ordinal);
+
+            // Ключи фиксируем с префиксом, чтобы не конфликтовать с другими evidence.
+            evidence.TryAdd("autoHL.key", candidate.Host);
+            evidence.TryAdd("autoHL.hits", candidate.Hits.ToString());
+            evidence.TryAdd("autoHL.score", candidate.Score.ToString());
+            evidence.TryAdd("autoHL.lastSeenUtc", candidate.LastSeenUtc.ToString("O"));
+
+            // Важно: UI форматтер берёт только первую ноту из хвоста.
+            // Поэтому auto-hostlist добавляем первой строкой.
+            var notes = diagnosis.ExplanationNotes.Count == 0
+                ? new List<string>(capacity: 1)
+                : diagnosis.ExplanationNotes.ToList();
+
+            notes.Insert(0, $"autoHL hits={candidate.Hits} score={candidate.Score}");
+
+            return new DiagnosisResult
+            {
+                DiagnosisId = diagnosis.DiagnosisId,
+                Confidence = diagnosis.Confidence,
+                MatchedRuleName = diagnosis.MatchedRuleName,
+                ExplanationNotes = notes,
+                Evidence = evidence,
+                InputSignals = diagnosis.InputSignals,
+                DiagnosedAtUtc = diagnosis.DiagnosedAtUtc,
+            };
         }
 
         private static string BuildEvidenceTail(DiagnosisResult diagnosis)

@@ -192,6 +192,31 @@ namespace IspAudit.Utils
 
         public int VisibleCount => _candidates.Values.Count(v => v.Hits >= MinHitsToShow);
 
+        /// <summary>
+        /// Попытаться получить текущего кандидата auto-hostlist для данного результата теста.
+        /// Используется для добавления контекста в v2 evidence/notes без линейного обхода snapshot.
+        /// </summary>
+        public bool TryGetCandidateFor(HostTested tested, string? hostname, out AutoHostCandidate candidate)
+        {
+            candidate = default;
+
+            var key = BuildKey(tested, hostname);
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            key = key.Trim();
+
+            if (_candidates.TryGetValue(key, out var state))
+            {
+                candidate = state.ToCandidate();
+                return true;
+            }
+
+            return false;
+        }
+
         private void PublishIfNeeded(DateTime nowUtc, CandidateState updated)
         {
             // Публикуем только если хост стал видимым или это не слишком часто.

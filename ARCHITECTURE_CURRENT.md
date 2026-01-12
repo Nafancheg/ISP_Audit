@@ -145,7 +145,7 @@ Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|
     *   Важно: `TrafficCollector` дедупит соединения по `RemoteIp:RemotePort:Protocol`, но в runtime допускает ограниченные «повторные обнаружения» этой же цели с кулдауном/лимитом — иначе ретесты физически не дойдут до pipeline.
     *   Публикует периодический `[PipelineHealth]` лог со счётчиками этапов (enqueue/test/classify/ui), чтобы диагностировать потери данных и «затыки» очередей без привязки к сценариям.
     *   Обеспечивает параллельную обработку множества хостов.
-    *   Опционально принимает `AutoHostlistService`: на этапе Classification добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения). Auto-hostlist питается `InspectionSignalsSnapshot` (без чтения legacy `BlockageSignals`).
+    *   Опционально принимает `AutoHostlistService`: на этапе Classification добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения). Auto-hostlist питается `InspectionSignalsSnapshot` (без чтения legacy `BlockageSignals`). Дополнительно, если хост стал кандидатом, этот контекст прокидывается в v2 хвост (evidence/notes) как короткая нота `autoHL hits=… score=…`.
 
 Smoke-хелперы (для детерминированных проверок без WinDivert/реальной сети):
 * `DnsParserService.TryExtractSniFromTlsClientHelloPayload(...)` — извлечение SNI из TLS payload.

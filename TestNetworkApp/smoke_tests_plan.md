@@ -174,6 +174,13 @@
 **Входные данные:** Запущенный пайплайн  
 **Ожидаемый результат:** Строка вида `[PipelineHealth] enqueue:10 test:9 classify:9 ui:8`
 
+**Test ID:** `PIPE-018`  
+**Что проверяет:** Auto-hostlist добавляется в v2 хвост (evidence/notes)  
+**Для чего:** Прокинуть auto-hostlist как источник контекста для v2 (сейчас: заметно в UI/QA; далее может участвовать в диагнозе)  
+**Критерий успеха:** В UI-строке с хвостом `[V2]` присутствует маркер `autoHL hits=... score=...`  
+**Входные данные:** Запущенный пайплайн с включённым `AutoHostlistService` и `InspectionSignalsSnapshot.HasSuspiciousRst=true`  
+**Ожидаемый результат:** Нота `autoHL` присутствует в хвосте v2
+
 ---
 
 ## 3. Inspection Services (Глубокий анализ)

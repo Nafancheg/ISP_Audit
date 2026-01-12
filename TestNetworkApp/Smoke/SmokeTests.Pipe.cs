@@ -9,6 +9,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
 using IspAudit.Core.Diagnostics;
+using IspAudit.Core.Interfaces;
+using IspAudit.Core.IntelligenceV2.Signals;
 using IspAudit.Core.Models;
 using IspAudit.Core.Modules;
 using IspAudit.Core.Traffic.Filters;
@@ -392,6 +394,142 @@ namespace TestNetworkApp.Smoke
             {
                 return new SmokeTestResult("PIPE-017", "Pipeline health-лог эмитится при активности", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
             }
+        }
+
+        public static Task<SmokeTestResult> Pipe_AutoHostlist_AppendedToV2Tail(CancellationToken ct)
+            => RunAsyncAwait("PIPE-018", "Auto-hostlist добавляется в v2 хвост (evidence/notes)", async _ =>
+            {
+                var uiLines = new List<string>();
+                IProgress<string> progress = new InlineProgress(msg =>
+                {
+                    if (!string.IsNullOrWhiteSpace(msg)) uiLines.Add(msg);
+                });
+
+                var config = new PipelineConfig
+                {
+                    EnableLiveTesting = true,
+                    EnableAutoBypass = false,
+                    MaxConcurrentTests = 1,
+                    TestTimeout = TimeSpan.FromSeconds(1)
+                };
+
+                var autoHostlist = new AutoHostlistService
+                {
+                    Enabled = true,
+                    MinHitsToShow = 1,
+                    PublishThrottle = TimeSpan.Zero
+                };
+
+                var inspection = new InspectionSignalsSnapshot
+                {
+                    Retransmissions = 0,
+                    TotalPackets = 30,
+                    HasHttpRedirect = false,
+                    HasSuspiciousRst = true,
+                    SuspiciousRstDetails = "TTL=64 (expected 50-55)",
+                    UdpUnansweredHandshakes = 0
+                };
+
+                var store = new FixedInspectionStateStore(inspection);
+
+                var tester = new FastSyntheticHostTester(host => new HostTested(
+                    Host: host,
+                    DnsOk: true,
+                    TcpOk: true,
+                    TlsOk: false,
+                    DnsStatus: BlockageCode.StatusOk,
+                    Hostname: host.Hostname,
+                    SniHostname: host.SniHostname,
+                    ReverseDnsHostname: null,
+                    TcpLatencyMs: 5,
+                    BlockageType: BlockageCode.TlsHandshakeTimeout,
+                    TestedAt: DateTime.UtcNow));
+
+                using var pipeline = new LiveTestingPipeline(
+                    config,
+                    progress,
+                    trafficEngine: null,
+                    dnsParser: null,
+                    filter: null,
+                    stateStore: store,
+                    autoHostlist: autoHostlist,
+                    tester: tester);
+
+                var ip = IPAddress.Parse("203.0.113.18");
+                var host = new HostDiscovered(
+                    Key: $"{ip}:443:TCP",
+                    RemoteIp: ip,
+                    RemotePort: 443,
+                    Protocol: BypassTransportProtocol.Tcp,
+                    DiscoveredAt: DateTime.UtcNow)
+                {
+                    Hostname = "example.com",
+                    SniHostname = "example.com"
+                };
+
+                await pipeline.EnqueueHostAsync(host).ConfigureAwait(false);
+                await pipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(6)).ConfigureAwait(false);
+
+                // Дождёмся UI-строки с хвостом [V2].
+                var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+                while (DateTime.UtcNow < deadline)
+                {
+                    if (uiLines.Any(l => l.Contains("autoHL", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        break;
+                    }
+
+                    await Task.Delay(50, ct).ConfigureAwait(false);
+                }
+
+                var found = uiLines.FirstOrDefault(l => l.Contains("autoHL", StringComparison.OrdinalIgnoreCase));
+                if (string.IsNullOrWhiteSpace(found))
+                {
+                    var sample = uiLines.FirstOrDefault(l => l.Contains("[V2]", StringComparison.OrdinalIgnoreCase))
+                        ?? uiLines.FirstOrDefault(l => l.StartsWith("❌", StringComparison.Ordinal))
+                        ?? "(no ui lines)";
+                    return new SmokeTestResult("PIPE-018", "Auto-hostlist добавляется в v2 хвост (evidence/notes)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Не нашли метку autoHL в UI хвосте. Пример: {sample}");
+                }
+
+                return new SmokeTestResult("PIPE-018", "Auto-hostlist добавляется в v2 хвост (evidence/notes)", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: {found}");
+            }, ct);
+
+        private sealed class FixedInspectionStateStore : IBlockageStateStore, IInspectionSignalsProvider
+        {
+            private readonly InspectionSignalsSnapshot _snapshot;
+
+            public FixedInspectionStateStore(InspectionSignalsSnapshot snapshot)
+            {
+                _snapshot = snapshot;
+            }
+
+            public bool TryBeginHostTest(HostDiscovered host, string? hostname = null) => true;
+
+            public void RegisterResult(HostTested tested)
+            {
+                // Для этого smoke-теста state-store используется только как источник v2 inspection snapshot.
+            }
+
+            public FailWindowStats GetFailStats(HostTested tested, TimeSpan window)
+                => new(FailCount: 0, HardFailCount: 0, LastFailAt: null, Window: window);
+
+            public BlockageSignals GetSignals(HostTested tested, TimeSpan window)
+                => new(
+                    FailCount: 0,
+                    HardFailCount: 0,
+                    LastFailAt: null,
+                    Window: window,
+                    RetransmissionCount: 0,
+                    TotalPackets: 0,
+                    HasHttpRedirectDpi: false,
+                    RedirectToHost: null,
+                    HasSuspiciousRst: false,
+                    SuspiciousRstDetails: null,
+                    UdpUnansweredHandshakes: 0);
+
+            public InspectionSignalsSnapshot GetInspectionSignalsSnapshot(HostTested tested) => _snapshot;
         }
 
         public static Task<SmokeTestResult> Pipe_UnifiedFilter_LoopbackDropped(CancellationToken ct)

@@ -72,6 +72,7 @@ namespace TestNetworkApp.Smoke
                 ["PIPE-010"] = Pipe_Tester_TlsHandshake_Google443_Sni,
                 ["PIPE-011"] = Pipe_Tester_ReverseDns_8888,
                 ["PIPE-017"] = Pipe_PipelineHealth_EmitsLog_OnActivity,
+                ["PIPE-018"] = Pipe_AutoHostlist_AppendedToV2Tail,
                 ["PIPE-012"] = Pipe_Classifier_DnsBlocked,
                 ["PIPE-013"] = Pipe_Classifier_TcpTimeout,
                 ["PIPE-014"] = Pipe_Classifier_TcpReset,
