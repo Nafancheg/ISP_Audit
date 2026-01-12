@@ -188,5 +188,22 @@ namespace IspAudit.Bypass
         [DllImport("WinDivert.dll", CallingConvention = CallingConvention.Winapi)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool WinDivertHelperCalcChecksums(byte[] packet, uint packetLen, ref Address address, ulong flags);
+
+        // Flags for WinDivertHelperCalcChecksums() (см. windivert.h)
+        public const ulong WINDIVERT_HELPER_NO_IP_CHECKSUM = 1;
+        public const ulong WINDIVERT_HELPER_NO_ICMP_CHECKSUM = 2;
+        public const ulong WINDIVERT_HELPER_NO_ICMPV6_CHECKSUM = 4;
+        public const ulong WINDIVERT_HELPER_NO_TCP_CHECKSUM = 8;
+        public const ulong WINDIVERT_HELPER_NO_UDP_CHECKSUM = 16;
+
+        /// <summary>
+        /// Сбрасывает биты валидности checksum в адресе (IP/TCP/UDP), чтобы WinDivertSend принял пакет даже при "плохих" checksum.
+        /// Биты: IPChecksum(21), TCPChecksum(22), UDPChecksum(23).
+        /// </summary>
+        public static void UnsetChecksumFlags(ref Address addr)
+        {
+            // Clear bits 21..23
+            addr.LayerEventFlags &= ~(0b111u << 21);
+        }
     }
 }

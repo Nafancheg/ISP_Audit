@@ -34,13 +34,13 @@ public sealed class StandardStrategySelectorV2
         StrategyId.TlsFragment,
         StrategyId.DropRst,
         StrategyId.UseDoh,
+        StrategyId.HttpHostTricks,
+        StrategyId.QuicObfuscation,
+        StrategyId.BadChecksum,
     ];
 
     private static readonly HashSet<StrategyId> DeferredStrategies =
     [
-        StrategyId.HttpHostTricks,
-        StrategyId.QuicObfuscation,
-        StrategyId.BadChecksum,
     ];
 
     /// <summary>
@@ -145,7 +145,8 @@ public sealed class StandardStrategySelectorV2
         var hasTlsBypassStrategy = ordered.Any(s => s.Id is StrategyId.TlsFragment or StrategyId.TlsDisorder or StrategyId.AggressiveFragment or StrategyId.TlsFakeTtl);
 
         var signals = diagnosis.InputSignals;
-        var recommendDropUdp443 = hasTlsBypassStrategy && signals.UdpUnansweredHandshakes >= 2;
+        var hasQuicObfuscation = ordered.Any(s => s.Id == StrategyId.QuicObfuscation);
+        var recommendDropUdp443 = hasQuicObfuscation || (hasTlsBypassStrategy && signals.UdpUnansweredHandshakes >= 2);
 
         var recommendAllowNoSni = false;
         if (hasTlsBypassStrategy && signals.HostTestedCount >= 2)

@@ -102,7 +102,7 @@ namespace TestNetworkApp.Smoke
                 ["DPI2-009"] = Dpi2_StrategySelector_EmptyPlan_WhenConfidenceBelow50,
                 ["DPI2-034"] = Dpi2_StrategySelector_DnsHijack_RecommendsUseDohOnly,
                 ["DPI2-010"] = Dpi2_StrategySelector_WarnsAndSkips_UnimplementedStrategies,
-                ["DPI2-033"] = Dpi2_StrategySelector_PopulatesDeferredStrategies_ForDpi,
+                ["DPI2-033"] = Dpi2_StrategySelector_Phase3Strategies_AreImplemented,
                 ["DPI2-014"] = Dpi2_StrategySelector_Feedback_AffectsOrdering_WhenEnoughSamples,
                 ["DPI2-015"] = Dpi2_StrategySelector_Feedback_DoesNotAffect_WhenNotEnoughSamples,
                 ["DPI2-011"] = Dpi2_ExecutorMvp_FormatsCompactOutput_OneLine,
@@ -142,6 +142,8 @@ namespace TestNetworkApp.Smoke
                 ["BYPASS-013"] = Bypass_TlsBypassService_AutoTtl_SelectsAndPersistsBest,
                 ["BYPASS-014"] = Bypass_TlsBypassService_AutoAdjustAggressive_EarlyRst_ShrinksMinChunkTo4,
                 ["BYPASS-015"] = Bypass_TlsBypassService_AutoAdjustAggressive_GreenOver30s_RelaxesMinChunk,
+                ["BYPASS-016"] = Bypass_BypassFilter_HttpHostTricks_SplitsHostHeader,
+                ["BYPASS-017"] = Bypass_BypassFilter_BadChecksum_UsesSendExWithoutRecalc,
             };
 
         public static Task<SmokeTestResult> NotImplemented(string id, string name, CancellationToken ct)

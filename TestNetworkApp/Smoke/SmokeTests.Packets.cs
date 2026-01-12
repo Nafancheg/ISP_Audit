@@ -43,6 +43,28 @@ namespace TestNetworkApp.Smoke
             public WinDivertNative.Address Address { get; }
         }
 
+        private sealed class CapturePacketSenderEx : IPacketSenderEx
+        {
+            public List<CapturedPacket> Sent { get; } = new();
+            public List<(CapturedPacket Packet, PacketSendOptions Options)> SentEx { get; } = new();
+
+            public bool Send(byte[] packet, int length, ref WinDivertNative.Address addr)
+            {
+                var copy = new byte[length];
+                Buffer.BlockCopy(packet, 0, copy, 0, length);
+                Sent.Add(new CapturedPacket(copy, length, addr));
+                return true;
+            }
+
+            public bool SendEx(byte[] packet, int length, ref WinDivertNative.Address addr, PacketSendOptions options)
+            {
+                var copy = new byte[length];
+                Buffer.BlockCopy(packet, 0, copy, 0, length);
+                SentEx.Add((new CapturedPacket(copy, length, addr), options));
+                return true;
+            }
+        }
+
         private static byte ReadIpv4Ttl(byte[] packet)
         {
             // TTL: IPv4 offset 8
@@ -53,6 +75,12 @@ namespace TestNetworkApp.Smoke
         {
             var ipHeaderLen = (packet[0] & 0x0F) * 4;
             return BinaryPrimitives.ReadUInt32BigEndian(packet.AsSpan(ipHeaderLen + 4, 4));
+        }
+
+        private static ushort ReadTcpChecksum(byte[] packet)
+        {
+            var ipHeaderLen = (packet[0] & 0x0F) * 4;
+            return BinaryPrimitives.ReadUInt16BigEndian(packet.AsSpan(ipHeaderLen + 16, 2));
         }
 
         private static int ReadTcpPayloadLength(byte[] packet)

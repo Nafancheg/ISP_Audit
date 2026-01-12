@@ -47,21 +47,21 @@ namespace IspAudit.ViewModels
         private string _bypassPlanText = "-";
         private string _bypassMetricsSince = "-";
         private string _bypassVerdictReason = "";
-        
+
         // DNS Presets
         private string _selectedDnsPreset = "Hybrid (CF + Yandex)";
-        public List<string> AvailableDnsPresets { get; } = new() 
-        { 
-            "Cloudflare", 
-            "Google", 
-            "Yandex", 
-            "Hybrid (CF + Yandex)" 
+        public List<string> AvailableDnsPresets { get; } = new()
+        {
+            "Cloudflare",
+            "Google",
+            "Yandex",
+            "Hybrid (CF + Yandex)"
         };
 
         public ICommand SetDnsPresetCommand { get; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
-        
+
         /// <summary>
         /// Событие для логирования (MainViewModel подписывается)
         /// </summary>
@@ -426,11 +426,11 @@ namespace IspAudit.ViewModels
         public bool IsDoHEnabled
         {
             get => _isDoHEnabled;
-            set 
-            { 
+            set
+            {
                 if (_isDoHEnabled != value)
                 {
-                    _isDoHEnabled = value; 
+                    _isDoHEnabled = value;
                     OnPropertyChanged(nameof(IsDoHEnabled));
                     CheckCompatibility();
                     if (value)
@@ -469,11 +469,11 @@ namespace IspAudit.ViewModels
         public string CompatibilityWarning
         {
             get => _compatibilityWarning;
-            private set 
-            { 
-                _compatibilityWarning = value; 
-                OnPropertyChanged(nameof(CompatibilityWarning)); 
-                OnPropertyChanged(nameof(HasCompatibilityWarning)); 
+            private set
+            {
+                _compatibilityWarning = value;
+                OnPropertyChanged(nameof(CompatibilityWarning));
+                OnPropertyChanged(nameof(HasCompatibilityWarning));
             }
         }
 
@@ -619,12 +619,12 @@ namespace IspAudit.ViewModels
             try
             {
                 Log("[Bypass] Initializing bypass on application startup...");
-                
+
                 // Автоматическое включение отключено по результатам аудита (риск скрытого поведения)
                 // _isDisorderEnabled = true;
                 // _isFragmentEnabled = false;
                 // _isDropRstEnabled = true;
-                
+
                 // Предварительная установка DoH по наличию бэкапа (чтобы UI не прыгал)
                 if (FixService.HasBackupFile)
                 {
@@ -634,12 +634,12 @@ namespace IspAudit.ViewModels
 
                 // Проверяем текущее состояние DNS (в фоновом потоке, чтобы не фризить UI)
                 var activePreset = await Task.Run(() => FixService.DetectActivePreset());
-                
+
                 if (activePreset != null)
                 {
                     _selectedDnsPreset = activePreset;
                     OnPropertyChanged(nameof(SelectedDnsPreset));
-                    
+
                     // Включаем галочку DoH только если есть файл бэкапа (индикатор того, что это мы настроили)
                     // Просто наличие 8.8.8.8 не гарантирует включенный DoH/HTTPS
                     if (FixService.HasBackupFile)
@@ -667,15 +667,15 @@ namespace IspAudit.ViewModels
                         OnPropertyChanged(nameof(IsDoHEnabled));
                     }
                 }
-                
+
                 OnPropertyChanged(nameof(IsDisorderEnabled));
                 OnPropertyChanged(nameof(IsFragmentEnabled));
                 OnPropertyChanged(nameof(IsDropRstEnabled));
                 // IsDoHEnabled уже обновлен выше
-                
+
                 // Проверяем совместимость после включения опций
                 CheckCompatibility();
-                
+
                 // Применяем WinDivert bypass
                 await ApplyBypassOptionsAsync().ConfigureAwait(false);
 
@@ -772,9 +772,9 @@ namespace IspAudit.ViewModels
             {
                 string presetName = SelectedDnsPreset;
                 Log($"[DoH] Applying DNS-over-HTTPS ({presetName})...");
-                
+
                 var (success, error) = await FixService.ApplyDnsFixAsync(presetName).ConfigureAwait(false);
-                
+
                 Application.Current?.Dispatcher.Invoke(() =>
                 {
                     if (success)
@@ -805,7 +805,7 @@ namespace IspAudit.ViewModels
             {
                 Log($"[DoH] Restoring original DNS settings...");
                 var (success, error) = await FixService.RestoreDnsAsync().ConfigureAwait(false);
-                
+
                 Application.Current?.Dispatcher.Invoke(() =>
                 {
                     if (success)
@@ -976,6 +976,19 @@ namespace IspAudit.ViewModels
                             break;
                         case StrategyId.UseDoh:
                             enableDoH = true;
+                            break;
+                        case StrategyId.QuicObfuscation:
+                            // Реализация MVP: QUIC obfuscation = QUIC→TCP fallback (DROP UDP/443).
+                            updated = updated with { DropUdp443 = true };
+                            Log("[V2][Executor] QuicObfuscation: включаем QUIC→TCP (DROP UDP/443)");
+                            break;
+                        case StrategyId.HttpHostTricks:
+                            updated = updated with { HttpHostTricksEnabled = true };
+                            Log("[V2][Executor] HttpHostTricks: включаем HTTP Host tricks");
+                            break;
+                        case StrategyId.BadChecksum:
+                            updated = updated with { BadChecksumEnabled = true };
+                            Log("[V2][Executor] BadChecksum: включаем bad checksum (только для фейковых пакетов)");
                             break;
                         default:
                             // Нереализованные/неподдерживаемые в bypass контроллере стратегии пропускаем.
@@ -1254,9 +1267,9 @@ namespace IspAudit.ViewModels
         public async Task EnablePreemptiveBypassAsync()
         {
             if (!TrafficEngine.HasAdministratorRights) return;
-            
+
             Log("[Bypass] Enabling preemptive TLS_DISORDER + DROP_RST...");
-            
+
             try
             {
                 _currentOptions = _currentOptions with
@@ -1294,31 +1307,31 @@ namespace IspAudit.ViewModels
         private void CheckCompatibility()
         {
             var warnings = new List<string>();
-            
+
             // Fragment + Disorder = взаимоисключающие
             if (IsFragmentEnabled && IsDisorderEnabled)
             {
                 warnings.Add("⚠️ Fragment + Disorder — выберите одну из стратегий фрагментации");
             }
-            
+
             // Fake без фрагментации — менее эффективно
             if (IsFakeEnabled && !IsFragmentEnabled && !IsDisorderEnabled)
             {
                 warnings.Add("ℹ️ Fake без фрагментации — рекомендуется добавить Fragment или Disorder");
             }
-            
+
             // DoH без других опций — только DNS защита
             if (IsDoHEnabled && !IsFragmentEnabled && !IsDisorderEnabled && !IsFakeEnabled && !IsDropRstEnabled)
             {
                 warnings.Add("ℹ️ Только DoH — защищает DNS, но DPI может блокировать трафик");
             }
-            
+
             // Только DROP RST без фрагментации — частичная защита
             if (IsDropRstEnabled && !IsFragmentEnabled && !IsDisorderEnabled && !IsFakeEnabled)
             {
                 warnings.Add("ℹ️ Только DROP RST — защита от RST-инъекций, но SNI виден DPI");
             }
-            
+
             CompatibilityWarning = warnings.Count > 0 ? string.Join("\n", warnings) : "";
         }
 
@@ -1402,7 +1415,7 @@ namespace IspAudit.ViewModels
                 var oldOptions = _currentOptions;
                 _currentOptions = _stateManager.GetOptionsSnapshot();
                 IsBypassActive = state.IsActive;
-                
+
                 var planWithPreset = string.IsNullOrWhiteSpace(state.Plan)
                     ? _currentOptions.PresetName
                     : $"{state.Plan} · {_currentOptions.PresetName}";
@@ -1415,7 +1428,7 @@ namespace IspAudit.ViewModels
                 if (oldOptions.DropRstEnabled != _currentOptions.DropRstEnabled) OnPropertyChanged(nameof(IsDropRstEnabled));
                 if (oldOptions.DropUdp443 != _currentOptions.DropUdp443) OnPropertyChanged(nameof(IsQuicFallbackEnabled));
                 if (oldOptions.AllowNoSni != _currentOptions.AllowNoSni) OnPropertyChanged(nameof(IsAllowNoSniEnabled));
-                
+
                 OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
                 CheckCompatibility();
                 NotifyActiveStatesChanged();

@@ -159,7 +159,7 @@ Smoke-хелперы (для детерминированных проверок
     * Гейтинг тестов по цели: `InMemoryBlockageStateStore.TryBeginHostTest(...)` использует кулдаун и лимит попыток, чтобы не спамить сеть, но при этом дать V2 накопить несколько наблюдений (SignalSequence) по проблемным/заблокированным хостам.
 * Step 2 (Diagnosis): в runtime подключена постановка диагноза через `StandardDiagnosisEngineV2` по агрегированному срезу `BlockageSignalsV2`.
 * Step 3 (Selector/Plan): в runtime подключён `StandardStrategySelectorV2`, который строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI (без auto-apply).
-    * План может содержать `DeferredStrategies` — отложенные техники (например, HTTP Host tricks / QUIC obfuscation / bad checksum), которые пока не применяются автоматически (MVP), но показываются в UI/логах и служат «вектором» для следующих итераций.
+    * План может содержать `DeferredStrategies` — отложенные техники (если появляются новые/экспериментальные стратегии). В текущем состоянии Phase 3 стратегии `HttpHostTricks`, `QuicObfuscation` и `BadChecksum` считаются **implemented** и попадают в `plan.Strategies`.
 * Step 4 (ExecutorMvp): добавлен `Core/IntelligenceV2/Execution/BypassExecutorMvp.cs` — **только** форматирование/логирование (диагноз + уверенность + короткое объяснение + список стратегий), без вызова `TrafficEngine`/`BypassController` и без авто-применения.
 * Ручное применение v2 плана (без auto-apply): `LiveTestingPipeline` публикует объектный `BypassPlan` через событие `OnV2PlanBuilt`, `DiagnosticOrchestrator` хранит последний план и применяет его только по клику пользователя через `BypassController.ApplyV2PlanAsync(...)` (таймаут/отмена/безопасный откат).
     * Защита от устаревшего плана: `DiagnosticOrchestrator.ApplyRecommendationsAsync(...)` применяет план только если `planHostKey` совпадает с последней v2-целью, извлечённой из UI‑диагноза (иначе — SKIP в лог).
@@ -191,6 +191,10 @@ Smoke-хелперы (для детерминированных проверок
  - `StrategyId.TlsFragment` может нести параметры (например, `TlsFragmentSizes`, `PresetName`, `AutoAdjustAggressive`). Парсинг параметров вынесен в `Core/IntelligenceV2/Execution/TlsFragmentPlanParamsParser.cs`, применение выполняет `BypassController.ApplyV2PlanAsync`.
  - Детерминизм: `StandardStrategySelectorV2` заполняет `TlsFragmentSizes` в плане, чтобы executor не зависел от текущего состояния UI-панели пресетов.
  - Assist-флаги v2: `BypassPlan` также может включать `DropUdp443` (QUIC→TCP) и `AllowNoSni` (No SNI), выставляемые селектором по наблюдаемым сигналам (UDP unanswered + статистика отсутствия SNI). При ручном apply контроллер включает эти флаги вместе со стратегиями.
+ - Phase 3 стратегии:
+     - `QuicObfuscation` реализована как включение `DropUdp443` (чтобы клиент ушёл с QUIC/HTTP3 на TCP/HTTPS).
+     - `HttpHostTricks` реализована в `BypassFilter` для исходящего HTTP (TCP/80): разрезает заголовок `Host:` на два TCP сегмента и дропает оригинальный пакет.
+     - `BadChecksum` реализована для фейковых TCP пакетов: инжект выполняется через расширенный send-путь без пересчёта checksum и со сбросом checksum-флагов адреса.
  - Smoke: `DPI2-022` проверяет применение параметров из `BypassPlan`, `DPI2-023` проверяет, что селектор кладёт `TlsFragmentSizes` (и PresetName) в план, `DPI2-024` проверяет e2e цепочку `selector → plan → ApplyV2PlanAsync` (параметры из плана реально применяются).
 
 4) **Важное ограничение реализации TLS-обхода (почему “Disorder vs Fragment” не складываются как сумма)**

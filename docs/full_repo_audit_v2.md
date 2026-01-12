@@ -89,7 +89,11 @@
     - Политика DoH в v2 рекомендациях: DoH рекомендуется как low-risk при `DnsHijack` (чисто DNS) и также используется в multi-layer сценариях.
 - Step 2 v2 Diagnosis подключён: `StandardDiagnosisEngineV2` ставит диагноз по `BlockageSignalsV2` и возвращает пояснения, основанные на фактах (DNS fail, TCP/TLS timeout, TLS auth failure, retx-rate, HTTP redirect, RST TTL/IPID delta + latency) без привязки к стратегиям/обходу. Для RST-кейсов DPI-id (`ActiveDpiEdge/StatefulDpi`) выдаётся только при устойчивости улик (`SuspiciousRstCount >= 2`), чтобы не создавать ложную уверенность по единичному событию. Для TLS-only кейсов добавлен консервативный диагноз `TlsInterference`, чтобы селектор мог сформировать план TLS-стратегий.
 - Step 3 v2 Selector подключён: `StandardStrategySelectorV2` строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI-лога (без auto-apply).
-    - План может включать `DeferredStrategies` — отложенные техники (например, HTTP Host tricks / QUIC obfuscation / bad checksum), которые пока не исполняются в MVP, но отображаются как часть плана/Reasoning.
+    - План может включать `DeferredStrategies` — отложенные техники (если появляются новые/экспериментальные стратегии). В текущем состоянии Phase 3 стратегии `HttpHostTricks`, `QuicObfuscation` и `BadChecksum` считаются implemented: попадают в `plan.Strategies` и реально применяются при ручном `ApplyV2PlanAsync`.
+    - Реализация Phase 3 в рантайме:
+        - `QuicObfuscation` → включает assist-флаг `DropUdp443` (QUIC→TCP fallback).
+        - `HttpHostTricks` → `BypassFilter` режет HTTP `Host:` по границе TCP сегментов (исходящий TCP/80) и дропает оригинал.
+        - `BadChecksum` → для фейковых TCP пакетов используется расширенный send без пересчёта checksum и со сбросом checksum-флагов адреса.
 - Step 4 v2 Executor (MVP) подключён: `BypassExecutorMvp` формирует компактный, читаемый пользователем вывод (диагноз + уверенность + 1 короткое объяснение + список стратегий) и **не** применяет обход.
 - Реальный executor v2 (ручной apply, без auto-apply): `LiveTestingPipeline` публикует объектный `BypassPlan` через `OnV2PlanBuilt`, `DiagnosticOrchestrator` хранит последний план и применяет его только по клику пользователя через `BypassController.ApplyV2PlanAsync(...)` (таймаут/отмена/безопасный откат).
 

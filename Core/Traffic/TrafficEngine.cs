@@ -8,7 +8,7 @@ using IspAudit.Bypass;
 
 namespace IspAudit.Core.Traffic
 {
-    public class TrafficEngine : IDisposable, IPacketSender
+    public class TrafficEngine : IDisposable, IPacketSender, IPacketSenderEx
     {
         private readonly List<IPacketFilter> _filters = new();
         private WinDivertNative.SafeHandle? _handle;
@@ -17,7 +17,7 @@ namespace IspAudit.Core.Traffic
         private readonly IProgress<string>? _progress;
         private readonly object _stateLock = new();
         private bool _isStopping;
-        
+
         // Performance metrics
         public event Action<double>? OnPerformanceUpdate;
         private long _totalProcessingTicks;
@@ -27,7 +27,7 @@ namespace IspAudit.Core.Traffic
         // Filter: Capture all IP packets (TCP/UDP/ICMP) to allow filters to decide
         // We exclude loopback to avoid noise if not needed, but for local testing we might need it.
         // Let's stick to "ip" for now.
-        private const string Filter = "ip"; 
+        private const string Filter = "ip";
         private const short Priority = 0; // Default priority
 
         public bool IsRunning => _loopTask != null && !_loopTask.IsCompleted;
@@ -93,13 +93,13 @@ namespace IspAudit.Core.Traffic
             }
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            
-            try 
+
+            try
             {
                 _progress?.Report("[TrafficEngine] Opening WinDivert handle...");
                 // Open in Active mode (no Sniff flag) to allow modification/dropping
                 _handle = WinDivertNative.Open(Filter, WinDivertNative.Layer.Network, Priority, WinDivertNative.OpenFlags.None);
-                
+
                 if (_handle.IsInvalid)
                 {
                      throw new Exception("Failed to open WinDivert handle. Check admin privileges or driver installation.");
@@ -135,7 +135,7 @@ namespace IspAudit.Core.Traffic
 
             _progress?.Report("[TrafficEngine] Stopping...");
             _cts?.Cancel();
-            
+
             // Closing handle breaks the Recv loop
             // Важно: не обнуляем _handle до завершения loop, иначе loop может передать null в WinDivertSend.
             try
@@ -162,7 +162,7 @@ namespace IspAudit.Core.Traffic
                     _progress?.Report($"[TrafficEngine] Error during stop: {ex.Message}");
                 }
             }
-            
+
             lock (_stateLock)
             {
                 _loopTask = null;
@@ -178,7 +178,7 @@ namespace IspAudit.Core.Traffic
         {
             var buffer = new byte[WinDivertNative.MaxPacketSize];
             var addr = new WinDivertNative.Address();
-            
+
             try
             {
                 while (!token.IsCancellationRequested)
@@ -197,14 +197,14 @@ namespace IspAudit.Core.Traffic
 
                     var packet = new InterceptedPacket(buffer, (int)readLen);
                     var ctx = new PacketContext(addr);
-                    
+
                     bool drop = false;
-                    
+
                     lock (_filters)
                     {
                         foreach (var filter in _filters)
                         {
-                            try 
+                            try
                             {
                                 if (!filter.Process(packet, ctx, this))
                                 {
@@ -252,10 +252,10 @@ namespace IspAudit.Core.Traffic
                             var avgTicks = (double)_totalProcessingTicks / _processedPacketsCount;
                             avgMs = avgTicks / 10000.0; // 10000 ticks in 1 ms
                         }
-                        
+
                         // Report even if 0 packets (to show idle state)
                         OnPerformanceUpdate?.Invoke(avgMs);
-                        
+
                         _totalProcessingTicks = 0;
                         _processedPacketsCount = 0;
                         _lastPerformanceReport = DateTime.UtcNow;
@@ -276,6 +276,24 @@ namespace IspAudit.Core.Traffic
 
             // Recalculate checksums before sending
             WinDivertNative.WinDivertHelperCalcChecksums(packet, (uint)length, ref addr, 0);
+
+            return WinDivertNative.WinDivertSend(handle, packet, (uint)length, out _, in addr);
+        }
+
+        public bool SendEx(byte[] packet, int length, ref WinDivertNative.Address addr, PacketSendOptions options)
+        {
+            var handle = _handle;
+            if (handle == null || handle.IsInvalid) return false;
+
+            if (options.UnsetChecksumFlagsInAddress)
+            {
+                WinDivertNative.UnsetChecksumFlags(ref addr);
+            }
+
+            if (options.RecalculateChecksums)
+            {
+                WinDivertNative.WinDivertHelperCalcChecksums(packet, (uint)length, ref addr, options.CalcChecksumsFlags);
+            }
 
             return WinDivertNative.WinDivertSend(handle, packet, (uint)length, out _, in addr);
         }

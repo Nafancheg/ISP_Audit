@@ -357,6 +357,8 @@ namespace IspAudit.Bypass
                 AutoTtl = options.AutoTtlEnabled,
                 AllowNoSni = options.AllowNoSni,
                 DropUdp443 = options.DropUdp443,
+                HttpHostTricks = options.HttpHostTricksEnabled,
+                BadChecksum = options.BadChecksumEnabled,
                 RedirectRules = _baseProfile.RedirectRules
             };
         }
@@ -526,6 +528,16 @@ namespace IspAudit.Bypass
         /// </summary>
         public bool DropUdp443 { get; init; }
 
+        /// <summary>
+        /// HTTP Host tricks (MVP): разрезать Host заголовок по границе TCP-сегментов.
+        /// </summary>
+        public bool HttpHostTricksEnabled { get; init; }
+
+        /// <summary>
+        /// Bad checksum (MVP): отправлять фейковые пакеты с некорректным TCP checksum.
+        /// </summary>
+        public bool BadChecksumEnabled { get; init; }
+
         public IReadOnlyList<int> FragmentSizes { get; init; } = Array.Empty<int>();
         public string PresetName { get; init; } = string.Empty;
         public bool AutoAdjustAggressive { get; init; }
@@ -546,6 +558,8 @@ namespace IspAudit.Bypass
                 DropRstEnabled = baseProfile.DropTcpRst,
                 AllowNoSni = baseProfile.AllowNoSni,
                 DropUdp443 = baseProfile.DropUdp443,
+                HttpHostTricksEnabled = baseProfile.HttpHostTricks,
+                BadChecksumEnabled = baseProfile.BadChecksum,
                 FragmentSizes = fragments,
                 PresetName = string.IsNullOrWhiteSpace(baseProfile.FragmentPresetName) ? "Профиль" : baseProfile.FragmentPresetName,
                 AutoAdjustAggressive = baseProfile.AutoAdjustAggressive,
@@ -557,7 +571,15 @@ namespace IspAudit.Bypass
 
         public bool IsAnyEnabled()
         {
-            return FragmentEnabled || DisorderEnabled || FakeEnabled || DropRstEnabled || AllowNoSni || DropUdp443 || TtlTrickEnabled;
+            return FragmentEnabled
+                || DisorderEnabled
+                || FakeEnabled
+                || DropRstEnabled
+                || AllowNoSni
+                || DropUdp443
+                || TtlTrickEnabled
+                || HttpHostTricksEnabled
+                || BadChecksumEnabled;
         }
 
         public string FragmentSizesAsText()
@@ -590,6 +612,8 @@ namespace IspAudit.Bypass
             if (DropUdp443) parts.Add("DROP UDP/443");
             if (AllowNoSni) parts.Add("AllowNoSNI");
             if (TtlTrickEnabled) parts.Add(AutoTtlEnabled ? $"AutoTTL({TtlTrickValue})" : $"TTL({TtlTrickValue})");
+            if (HttpHostTricksEnabled) parts.Add("HTTP Host tricks");
+            if (BadChecksumEnabled) parts.Add("BadChecksum");
             return parts.Count > 0 ? string.Join(" + ", parts) : "Выключен";
         }
     }

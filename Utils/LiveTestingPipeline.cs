@@ -28,11 +28,11 @@ namespace IspAudit.Utils
         private readonly IProgress<string>? _progress;
         private readonly TrafficEngine? _trafficEngine;
         private readonly DnsParserService? _dnsParser;
-        
+
         private readonly Channel<HostDiscovered> _snifferQueue;
         private readonly Channel<HostTested> _testerQueue;
         private readonly Channel<HostBlocked> _bypassQueue;
-        
+
         private readonly CancellationTokenSource _cts = new();
         private readonly Task[] _workers;
 
@@ -47,15 +47,15 @@ namespace IspAudit.Utils
         private long _statUiLogOnly;
         private long _statUiDropped;
         private Task? _healthTask;
-        
+
         // Единый фильтр трафика (дедупликация + шум + UI правила)
         private readonly ITrafficFilter _filter;
-        
+
         // Счётчики для отслеживания очереди
         private int _pendingInSniffer;
         private int _pendingInTester;
         private int _pendingInClassifier;
-        
+
         /// <summary>
         /// Количество хостов, ожидающих обработки во всех очередях
         /// </summary>
@@ -85,11 +85,11 @@ namespace IspAudit.Utils
 
         // Автоматический сбор hostlist (опционально)
         private readonly AutoHostlistService? _autoHostlist;
-        
+
         public LiveTestingPipeline(
-            PipelineConfig config, 
-            IProgress<string>? progress = null, 
-            TrafficEngine? trafficEngine = null, 
+            PipelineConfig config,
+            IProgress<string>? progress = null,
+            TrafficEngine? trafficEngine = null,
             DnsParserService? dnsParser = null,
             ITrafficFilter? filter = null,
             IBlockageStateStore? stateStore = null,
@@ -99,10 +99,10 @@ namespace IspAudit.Utils
             _config = config;
             _progress = progress;
             _dnsParser = dnsParser;
-            
+
             // Используем переданный фильтр или создаем новый
             _filter = filter ?? new UnifiedTrafficFilter();
-            
+
             // Используем переданный движок
             if (trafficEngine != null)
             {
@@ -127,13 +127,13 @@ namespace IspAudit.Utils
 
             // v2 executor (только форматирование/логирование)
             _executorV2 = new BypassExecutorMvp();
-            
+
             // Создаем bounded каналы для передачи данных между воркерами (защита от OOM)
             var channelOptions = new BoundedChannelOptions(1000) { FullMode = BoundedChannelFullMode.DropOldest };
             _snifferQueue = Channel.CreateBounded<HostDiscovered>(channelOptions);
             _testerQueue = Channel.CreateBounded<HostTested>(channelOptions);
             _bypassQueue = Channel.CreateBounded<HostBlocked>(channelOptions);
-            
+
             // Запускаем воркеры
             _workers = new[]
             {
@@ -223,7 +223,7 @@ namespace IspAudit.Utils
                 // Health-лог не должен валить pipeline
             }
         }
-        
+
         /// <summary>
         /// Завершает приём новых хостов и ожидает обработки всех в очереди
         /// </summary>
@@ -294,12 +294,12 @@ namespace IspAudit.Utils
             {
                 Interlocked.Decrement(ref _pendingInSniffer);
                 Interlocked.Increment(ref _statTesterDequeued);
-                
+
                 // Получаем hostname из объекта или кеша (если есть) для более умной дедупликации
                 var hostname = host.SniHostname ?? host.Hostname;
                 if (string.IsNullOrEmpty(hostname))
                 {
-                    hostname = _dnsParser?.DnsCache.TryGetValue(host.RemoteIp.ToString(), out var name) == true 
+                    hostname = _dnsParser?.DnsCache.TryGetValue(host.RemoteIp.ToString(), out var name) == true
                         ? name : null;
                 }
                 if (string.IsNullOrEmpty(hostname))
@@ -323,7 +323,7 @@ namespace IspAudit.Utils
                     Interlocked.Increment(ref _statTesterDropped);
                     continue;
                 }
-                
+
                 Interlocked.Increment(ref _pendingInTester);
                 try
                 {
@@ -449,7 +449,7 @@ namespace IspAudit.Utils
                     }
                     var rdns = tested.ReverseDnsHostname;
                     var namesSuffix = $" SNI={(string.IsNullOrWhiteSpace(sni) ? "-" : sni)} RDNS={(string.IsNullOrWhiteSpace(rdns) ? "-" : rdns)}";
-                    
+
                     // Перепроверяем шум с обновлённым hostname.
                     // Важно: НЕ отбрасываем реальные проблемы/блокировки только из-за шумового rDNS.
                     if (decision.Action != FilterAction.Process && !string.IsNullOrEmpty(hostname) && NoiseHostFilter.Instance.IsNoiseHost(hostname))
@@ -592,14 +592,14 @@ namespace IspAudit.Utils
                     }
                     var rdns = blocked.TestResult.ReverseDnsHostname;
                     var namesSuffix = $" SNI={(string.IsNullOrWhiteSpace(sni) ? "-" : sni)} RDNS={(string.IsNullOrWhiteSpace(rdns) ? "-" : rdns)}";
-                    
+
                     // Формируем детальное сообщение
                     var details = $"{host}:{port}{namesSuffix}";
                     if (blocked.TestResult.TcpLatencyMs > 0)
                     {
                         details += $" ({blocked.TestResult.TcpLatencyMs}ms)";
                     }
-                    
+
                     // Статус проверок
                     var checks = $"DNS:{(blocked.TestResult.DnsOk ? "✓" : "✗")} TCP:{(blocked.TestResult.TcpOk ? "✓" : "✗")} TLS:{(blocked.TestResult.TlsOk ? "✓" : "✗")}";
 
@@ -636,7 +636,7 @@ namespace IspAudit.Utils
                         : $"❌ {details} | {checks} | {blockage} {suffix}";
 
                     _progress?.Report(uiLine);
-                    
+
                     // Показываем рекомендацию, но НЕ применяем bypass автоматически
                     // Bypass должен применяться отдельной командой после завершения диагностики
                     if (blocked.BypassStrategy != PipelineContract.BypassNone && blocked.BypassStrategy != PipelineContract.BypassUnknown)
@@ -655,18 +655,18 @@ namespace IspAudit.Utils
         }
 
         private bool _disposed;
-        
+
         public void Dispose()
         {
             if (_disposed) return;
             _disposed = true;
-            
+
             try { _cts.Cancel(); } catch { }
-            
+
             _snifferQueue.Writer.TryComplete();
             _testerQueue.Writer.TryComplete();
             _bypassQueue.Writer.TryComplete();
-            
+
             // Ждём завершения воркеров максимум 3 секунды
             try
             {
@@ -680,7 +680,7 @@ namespace IspAudit.Utils
                 }
             }
             catch { }
-            
+
             try { _cts.Dispose(); } catch { }
         }
 
@@ -699,12 +699,12 @@ namespace IspAudit.Utils
             // Предполагаем порт 443, так как это наиболее вероятно для QUIC/Web
             var key = $"{ip}:443:UDP";
             var host = new HostDiscovered(
-                key, 
-                ip, 
-                443, 
-                IspAudit.Bypass.TransportProtocol.Udp, 
+                key,
+                ip,
+                443,
+                IspAudit.Bypass.TransportProtocol.Udp,
                 DateTime.UtcNow);
-            
+
             // 3. Отправляем в очередь на обработку
             _snifferQueue.Writer.TryWrite(host);
         }

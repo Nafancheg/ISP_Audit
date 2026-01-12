@@ -33,7 +33,7 @@ namespace IspAudit.Bypass
         public bool DropTcpRst { get; init; } = true;
 
         public bool FragmentTlsClientHello { get; init; } = true;
-        
+
         /// <summary>
         /// Стратегия обхода для TLS (HTTPS).
         /// </summary>
@@ -91,6 +91,18 @@ namespace IspAudit.Bypass
         /// QUIC fallback: глушить UDP/443, чтобы браузер/клиент откатился на TCP/HTTPS.
         /// </summary>
         public bool DropUdp443 { get; init; }
+
+        /// <summary>
+        /// HTTP Host tricks (MVP): попытка усложнить L7 разбор, разрезая Host заголовок по границе TCP-сегментов.
+        /// Важно: применяется только к исходящему TCP/80 и только один раз на соединение.
+        /// </summary>
+        public bool HttpHostTricks { get; init; }
+
+        /// <summary>
+        /// Bad checksum (MVP): отправка фейкового пакета с некорректным TCP checksum.
+        /// Важно: применяется только к фейковым пакетам (не меняет исходный трафик).
+        /// </summary>
+        public bool BadChecksum { get; init; }
 
         public IReadOnlyList<BypassRedirectRule> RedirectRules { get; init; } = Array.Empty<BypassRedirectRule>();
 

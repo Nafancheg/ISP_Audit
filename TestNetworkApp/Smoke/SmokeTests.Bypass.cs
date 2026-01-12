@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text.Json;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
@@ -789,6 +790,170 @@ namespace TestNetworkApp.Smoke
 
                 return new SmokeTestResult("BYPASS-011", "BypassFilter: порог threshold не фрагментирует короткий ClientHello (ShortClientHello++)", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: short={m.ClientHellosShort}");
+            }, ct);
+
+        public static Task<SmokeTestResult> Bypass_BypassFilter_HttpHostTricks_SplitsHostHeader(CancellationToken ct)
+            => RunAsync("BYPASS-016", "BypassFilter: HTTP Host tricks режет Host: на 2 TCP сегмента и дропает оригинал", () =>
+            {
+                var profile = new BypassProfile
+                {
+                    DropTcpRst = false,
+                    FragmentTlsClientHello = false,
+                    TlsStrategy = TlsBypassStrategy.None,
+                    TlsFragmentThreshold = 100,
+                    HttpHostTricks = true,
+                    RedirectRules = Array.Empty<BypassRedirectRule>()
+                };
+
+                var filter = new BypassFilter(profile, logAction: null, presetName: "smoke");
+                var sender = new CapturePacketSender();
+                var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+
+                var clientIp = IPAddress.Parse("10.10.0.2");
+                var serverIp = IPAddress.Parse("93.184.216.34");
+                var srcPort = (ushort)50100;
+                var seqBase = 123450u;
+
+                var http = "GET / HTTP/1.1\r\nHost: example.com\r\nUser-Agent: smoke\r\n\r\n";
+                var payload = Encoding.ASCII.GetBytes(http);
+
+                var pkt = BuildIpv4TcpPacket(clientIp, serverIp, srcPort, 80, ttl: 64, ipId: 200, seq: seqBase, tcpFlags: 0x18, payload: payload);
+                var forwarded = filter.Process(new InterceptedPacket(pkt, pkt.Length), ctx, sender);
+
+                if (forwarded)
+                {
+                    return new SmokeTestResult("BYPASS-016", "BypassFilter: HTTP Host tricks режет Host: на 2 TCP сегмента и дропает оригинал", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали drop оригинального пакета (Process вернёт false)");
+                }
+
+                if (sender.Sent.Count != 2)
+                {
+                    return new SmokeTestResult("BYPASS-016", "BypassFilter: HTTP Host tricks режет Host: на 2 TCP сегмента и дропает оригинал", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали 2 отправки (2 сегмента), получили: {sender.Sent.Count}");
+                }
+
+                var s0 = sender.Sent[0].Bytes;
+                var s1 = sender.Sent[1].Bytes;
+
+                var seq0 = ReadTcpSequence(s0);
+                var seq1 = ReadTcpSequence(s1);
+
+                var p0 = SliceTcpPayload(s0).ToArray();
+                var p1 = SliceTcpPayload(s1).ToArray();
+
+                if (seq0 != seqBase || seq1 != seqBase + (uint)p0.Length)
+                {
+                    return new SmokeTestResult("BYPASS-016", "BypassFilter: HTTP Host tricks режет Host: на 2 TCP сегмента и дропает оригинал", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Некорректный SEQ: ожидали [{seqBase},{seqBase + (uint)p0.Length}], получили: [{seq0},{seq1}]");
+                }
+
+                var reassembled = sender.Sent
+                    .Select(p => new { Seq = ReadTcpSequence(p.Bytes), Payload = SliceTcpPayload(p.Bytes).ToArray() })
+                    .OrderBy(x => x.Seq)
+                    .SelectMany(x => x.Payload)
+                    .ToArray();
+
+                if (!reassembled.SequenceEqual(payload))
+                {
+                    return new SmokeTestResult("BYPASS-016", "BypassFilter: HTTP Host tricks режет Host: на 2 TCP сегмента и дропает оригинал", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Реассемблинг по SEQ не совпал с исходным HTTP payload");
+                }
+
+                // Детерминированный split: после "Ho" внутри "Host".
+                // Проверяем, что граница действительно разделила слово.
+                var hostIndex = http.IndexOf("Host:", StringComparison.Ordinal);
+                if (hostIndex < 0)
+                {
+                    return new SmokeTestResult("BYPASS-016", "BypassFilter: HTTP Host tricks режет Host: на 2 TCP сегмента и дропает оригинал", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Тестовый HTTP payload не содержит 'Host:'");
+                }
+
+                var expectedSplit = hostIndex + 2; // после "Ho"
+                if (p0.Length != expectedSplit)
+                {
+                    return new SmokeTestResult("BYPASS-016", "BypassFilter: HTTP Host tricks режет Host: на 2 TCP сегмента и дропает оригинал", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Некорректная длина первого сегмента: ожидали split={expectedSplit}, получили={p0.Length}");
+                }
+
+                if (p0.Length < 1 || p1.Length < 1 || p0[^1] != (byte)'o' || p1[0] != (byte)'s')
+                {
+                    return new SmokeTestResult("BYPASS-016", "BypassFilter: HTTP Host tricks режет Host: на 2 TCP сегмента и дропает оригинал", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Граница сегментации не соответствует ожидаемому разрезу 'Ho'|'st:'");
+                }
+
+                return new SmokeTestResult("BYPASS-016", "BypassFilter: HTTP Host tricks режет Host: на 2 TCP сегмента и дропает оригинал", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: split={expectedSplit}, segLens=[{p0.Length},{p1.Length}]");
+            }, ct);
+
+        public static Task<SmokeTestResult> Bypass_BypassFilter_BadChecksum_UsesSendExWithoutRecalc(CancellationToken ct)
+            => RunAsync("BYPASS-017", "BypassFilter: BadChecksum портит TCP checksum у fake-пакета и отправляет через SendEx без пересчёта", () =>
+            {
+                var profile = new BypassProfile
+                {
+                    DropTcpRst = false,
+                    FragmentTlsClientHello = true,
+                    TlsStrategy = TlsBypassStrategy.Fake,
+                    TlsFragmentThreshold = 100,
+                    TlsFragmentSizes = new[] { 80, 220 },
+                    BadChecksum = true,
+                    RedirectRules = Array.Empty<BypassRedirectRule>()
+                };
+
+                var filter = new BypassFilter(profile, logAction: null, presetName: "smoke");
+                var sender = new CapturePacketSenderEx();
+                var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+
+                var clientIp = IPAddress.Parse("10.10.0.2");
+                var serverIp = IPAddress.Parse("93.184.216.34");
+                var srcPort = (ushort)50101;
+                var seqBase = 40000u;
+
+                var payload = BuildTlsClientHelloPayloadWithSni("example.com", desiredTotalLength: 200);
+                var pkt = BuildIpv4TcpPacket(clientIp, serverIp, srcPort, 443, ttl: 64, ipId: 201, seq: seqBase, tcpFlags: 0x18, payload: payload);
+
+                // Для наших smoke-пакетов checksum в заголовке TCP по умолчанию 0.
+                var originalChecksum = ReadTcpChecksum(pkt);
+                if (originalChecksum != 0)
+                {
+                    return new SmokeTestResult("BYPASS-017", "BypassFilter: BadChecksum портит TCP checksum у fake-пакета и отправляет через SendEx без пересчёта", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали исходный TCP checksum=0 в smoke-пакете, получили: 0x{originalChecksum:X4}");
+                }
+
+                var forwarded = filter.Process(new InterceptedPacket(pkt, pkt.Length), ctx, sender);
+                if (forwarded)
+                {
+                    return new SmokeTestResult("BYPASS-017", "BypassFilter: BadChecksum портит TCP checksum у fake-пакета и отправляет через SendEx без пересчёта", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали drop оригинального пакета (Process вернёт false)");
+                }
+
+                if (sender.SentEx.Count != 1)
+                {
+                    return new SmokeTestResult("BYPASS-017", "BypassFilter: BadChecksum портит TCP checksum у fake-пакета и отправляет через SendEx без пересчёта", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали 1 отправку через SendEx, получили: {sender.SentEx.Count}");
+                }
+
+                if (sender.Sent.Count != 0)
+                {
+                    return new SmokeTestResult("BYPASS-017", "BypassFilter: BadChecksum портит TCP checksum у fake-пакета и отправляет через SendEx без пересчёта", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Не ожидали обычных Send() при BadChecksum, но отправок Send(): {sender.Sent.Count}");
+                }
+
+                var (captured, options) = sender.SentEx[0];
+                if (options.RecalculateChecksums || !options.UnsetChecksumFlagsInAddress)
+                {
+                    return new SmokeTestResult("BYPASS-017", "BypassFilter: BadChecksum портит TCP checksum у fake-пакета и отправляет через SendEx без пересчёта", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали режим без пересчёта checksum и со сбросом addr-флагов, получили: Recalculate={options.RecalculateChecksums}, UnsetAddrFlags={options.UnsetChecksumFlagsInAddress}");
+                }
+
+                var fakeChecksum = ReadTcpChecksum(captured.Bytes);
+                if (fakeChecksum != 0xFFFF)
+                {
+                    return new SmokeTestResult("BYPASS-017", "BypassFilter: BadChecksum портит TCP checksum у fake-пакета и отправляет через SendEx без пересчёта", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали испорченный TCP checksum=0xFFFF (инверсия 0x0000), получили: 0x{fakeChecksum:X4}");
+                }
+
+                return new SmokeTestResult("BYPASS-017", "BypassFilter: BadChecksum портит TCP checksum у fake-пакета и отправляет через SendEx без пересчёта", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: SendEx вызван, checksum испорчен, пересчёт отключён");
             }, ct);
 
         public static Task<SmokeTestResult> Bypass_BypassFilter_TtlTrick_ManualEnabled_WithFragmentation(CancellationToken ct)
