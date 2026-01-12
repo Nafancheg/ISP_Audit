@@ -72,6 +72,16 @@ public sealed class StandardDiagnosisEngineV2
             notes.Add($"TCP: rst-ttl-delta={ttlDelta}");
             evidence["rstTtlDelta"] = ttlDelta.ToString();
         }
+        if (signals.RstIpIdDelta is int ipIdDelta)
+        {
+            notes.Add($"TCP: rst-ipid-delta={ipIdDelta}");
+            evidence["rstIpIdDelta"] = ipIdDelta.ToString();
+        }
+        if (signals.SuspiciousRstCount > 0)
+        {
+            notes.Add($"TCP: suspicious-rst-count={signals.SuspiciousRstCount}");
+            evidence["suspiciousRstCount"] = signals.SuspiciousRstCount.ToString();
+        }
         if (signals.RstLatency is TimeSpan rstLatency)
         {
             var ms = (int)Math.Max(0, Math.Round(rstLatency.TotalMilliseconds, MidpointRounding.AwayFromZero));
@@ -219,7 +229,15 @@ public sealed class StandardDiagnosisEngineV2
         // 7) RST: при наличии TTL delta (и желательно latency) можем различить active edge vs stateful DPI.
         if (signals.HasTcpReset)
         {
-            if (signals.RstTtlDelta is int d && d >= 6)
+            var hasTtlAnomaly = signals.RstTtlDelta is int ttl && ttl >= 6;
+            var hasIpIdAnomaly = signals.RstIpIdDelta is int ipidDelta && ipidDelta >= 1000;
+            var hasStrongAnomaly = hasTtlAnomaly || hasIpIdAnomaly;
+
+            // Устойчивость: не ставим уверенный DPI-диагноз по единичному событию.
+            // Считаем, что 2+ попадания в окне — минимально приемлемый признак повторяемости.
+            var isStable = signals.SuspiciousRstCount >= 2;
+
+            if (hasStrongAnomaly && isStable)
             {
                 // Порог latency: быстрый RST чаще характерен для "edge" (активная инъекция ближе к клиенту).
                 // Медленный RST — скорее stateful инспекция (ожидает контент/паттерн).
@@ -231,8 +249,8 @@ public sealed class StandardDiagnosisEngineV2
                         return new DiagnosisResult
                         {
                             DiagnosisId = DiagnosisId.ActiveDpiEdge,
-                            Confidence = 75,
-                            MatchedRuleName = "tcp-rst+ttl-delta+fast",
+                            Confidence = 80,
+                            MatchedRuleName = "tcp-rst+stable-anomaly+fast",
                             ExplanationNotes = notes,
                             Evidence = evidence,
                             InputSignals = signals,
@@ -245,8 +263,8 @@ public sealed class StandardDiagnosisEngineV2
                         return new DiagnosisResult
                         {
                             DiagnosisId = DiagnosisId.StatefulDpi,
-                            Confidence = 70,
-                            MatchedRuleName = "tcp-rst+ttl-delta+slow",
+                            Confidence = 75,
+                            MatchedRuleName = "tcp-rst+stable-anomaly+slow",
                             ExplanationNotes = notes,
                             Evidence = evidence,
                             InputSignals = signals,
@@ -258,8 +276,24 @@ public sealed class StandardDiagnosisEngineV2
                 return new DiagnosisResult
                 {
                     DiagnosisId = DiagnosisId.ActiveDpiEdge,
-                    Confidence = 60,
-                    MatchedRuleName = "tcp-rst+ttl-delta",
+                    Confidence = 65,
+                    MatchedRuleName = "tcp-rst+stable-anomaly",
+                    ExplanationNotes = notes,
+                    Evidence = evidence,
+                    InputSignals = signals,
+                    DiagnosedAtUtc = DateTimeOffset.UtcNow
+                };
+            }
+
+            if (hasStrongAnomaly && !isStable)
+            {
+                // Есть подозрительный RST, но нет устойчивости улик в окне.
+                // Возвращаем Unknown (без DPI-id), чтобы не создавать ложную уверенность на “рабочих” целях.
+                return new DiagnosisResult
+                {
+                    DiagnosisId = DiagnosisId.Unknown,
+                    Confidence = 55,
+                    MatchedRuleName = "tcp-rst+single-anomaly",
                     ExplanationNotes = notes,
                     Evidence = evidence,
                     InputSignals = signals,

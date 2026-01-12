@@ -49,6 +49,18 @@ public sealed class BlockageSignalsV2
     public int? RstTtlDelta { get; init; }
 
     /// <summary>
+    /// Аномалия IPv4 Identification (IPID) для RST (оценка дельты относительно «обычного» диапазона/последнего).
+    /// <see langword="null"/> означает, что данных нет или строка инспектора не содержит IPID.
+    /// </summary>
+    public int? RstIpIdDelta { get; init; }
+
+    /// <summary>
+    /// Количество событий «подозрительный RST» в окне.
+    /// Используется как признак устойчивости улик (чтобы не ставить уверенный DPI-диагноз по единичному событию).
+    /// </summary>
+    public int SuspiciousRstCount { get; init; }
+
+    /// <summary>
     /// Латентность до RST. <see langword="null"/>, если RST не наблюдался.
     /// </summary>
     public TimeSpan? RstLatency { get; init; }

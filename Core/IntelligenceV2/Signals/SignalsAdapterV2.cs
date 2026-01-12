@@ -27,6 +27,14 @@ public sealed class SignalsAdapterV2
         @"TTL=(?<ttl>\d+).*?\((?:обычный=|expected\s+)(?<min>\d+)-(?<max>\d+)\)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
+    // Парсим строку из RstInspectionService для IPID.
+    // Ожидаемый формат (runtime):
+    // - "IPID=12345 (обычный=10-20, last=15)"
+    // Допускаем английский вариант "expected" для smoke.
+    private static readonly Regex RstIpIdRangeRegex = new(
+        @"IPID=(?<ipid>\d+).*?\((?:обычный=|expected\s+)(?<min>\d+)-(?<max>\d+),\s*(?:last=|last\s+)(?<last>\d+)\)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
     // Ограничитель логов Gate 1→2: не чаще 1 раза в минуту на HostKey
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastGateLogUtc = new(StringComparer.Ordinal);
     private static readonly TimeSpan GateLogCooldown = TimeSpan.FromSeconds(60);
@@ -97,6 +105,22 @@ public sealed class SignalsAdapterV2
 
         var windowEvents = _store.ReadWindow(hostKey, fromUtc, capturedAtUtc);
 
+        // Устойчивость RST-улик: считаем, сколько раз в окне было событие suspicious RST.
+        // Важно: не хотим классифицировать ActiveDpiEdge/StatefulDpi по единичному событию.
+        var suspiciousRstCount = 0;
+        for (var i = 0; i < windowEvents.Count; i++)
+        {
+            if (windowEvents[i].Type == SignalEventType.SuspiciousRstObserved)
+            {
+                suspiciousRstCount++;
+            }
+        }
+        if (inspectionSignals.HasSuspiciousRst && suspiciousRstCount == 0)
+        {
+            // Фолбэк: если события не попали в окно из-за debounce/тайминга, но факт известен из последнего снимка.
+            suspiciousRstCount = 1;
+        }
+
         // HostTested count + no-SNI ratio
         var hostTestedCount = 0;
         var hostTestedNoSniCount = 0;
@@ -152,6 +176,7 @@ public sealed class SignalsAdapterV2
         }
 
         var rstTtlDelta = TryExtractRstTtlDelta(inspectionSignals, windowEvents);
+        var rstIpIdDelta = TryExtractRstIpIdDelta(inspectionSignals, windowEvents);
         TimeSpan? rstLatency = null;
         if (hasTcpReset && tested.TcpLatencyMs is int latencyMs && latencyMs > 0)
         {
@@ -171,6 +196,8 @@ public sealed class SignalsAdapterV2
             RetransmissionRate = retxRate,
 
             RstTtlDelta = rstTtlDelta,
+            RstIpIdDelta = rstIpIdDelta,
+            SuspiciousRstCount = suspiciousRstCount,
             RstLatency = rstLatency,
 
             HasDnsFailure = hasDnsFailure,
@@ -227,6 +254,45 @@ public sealed class SignalsAdapterV2
         var diffMin = Math.Abs(ttl - min);
         var diffMax = Math.Abs(ttl - max);
         return Math.Min(diffMin, diffMax);
+    }
+
+    private static int? TryExtractRstIpIdDelta(InspectionSignalsSnapshot inspectionSignals, IReadOnlyList<SignalEvent> windowEvents)
+    {
+        string? details = null;
+        if (inspectionSignals.HasSuspiciousRst && !string.IsNullOrWhiteSpace(inspectionSignals.SuspiciousRstDetails))
+        {
+            details = inspectionSignals.SuspiciousRstDetails;
+        }
+        else
+        {
+            // Фолбэк: возьмём строку из последнего события RST в окне.
+            for (var i = windowEvents.Count - 1; i >= 0; i--)
+            {
+                var e = windowEvents[i];
+                if (e.Type != SignalEventType.SuspiciousRstObserved) continue;
+                if (e.Value is string s && !string.IsNullOrWhiteSpace(s))
+                {
+                    details = s;
+                    break;
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(details)) return null;
+
+        var m = RstIpIdRangeRegex.Match(details);
+        if (!m.Success) return null;
+
+        if (!int.TryParse(m.Groups["ipid"].Value, out var ipid)) return null;
+        if (!int.TryParse(m.Groups["min"].Value, out var min)) return null;
+        if (!int.TryParse(m.Groups["max"].Value, out var max)) return null;
+        if (!int.TryParse(m.Groups["last"].Value, out var last)) return null;
+
+        var diffMin = Math.Abs(ipid - min);
+        var diffMax = Math.Abs(ipid - max);
+        var diffLast = Math.Abs(ipid - last);
+
+        return Math.Min(Math.Min(diffMin, diffMax), diffLast);
     }
 
     private void AppendHostTested(string hostKey, HostTested tested, DateTimeOffset nowUtc)

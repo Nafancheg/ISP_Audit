@@ -878,6 +878,8 @@ namespace TestNetworkApp.Smoke
                     RetransmissionRate = null,
 
                     RstTtlDelta = 10,
+                    RstIpIdDelta = null,
+                    SuspiciousRstCount = 2,
                     RstLatency = TimeSpan.FromMilliseconds(120),
 
                     HasTlsTimeout = false,
@@ -925,6 +927,8 @@ namespace TestNetworkApp.Smoke
                     RetransmissionRate = null,
 
                     RstTtlDelta = 10,
+                    RstIpIdDelta = null,
+                    SuspiciousRstCount = 2,
                     RstLatency = TimeSpan.FromMilliseconds(900),
 
                     HasTlsTimeout = false,
@@ -948,6 +952,110 @@ namespace TestNetworkApp.Smoke
 
                 return new SmokeTestResult("DPI2-018", "DiagnosisEngine v2: RST TTL delta + медленный reset => StatefulDpi", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: {result.DiagnosisId} ({result.Confidence}%)");
+            }, ct);
+
+        public static Task<SmokeTestResult> Dpi2_Aggregation_BuildSnapshot_ExtractsRstIpIdDelta_AndSuspiciousCount(CancellationToken ct)
+            => RunAsync("DPI2-031", "Агрегация v2: BuildSnapshot извлекает RstIpIdDelta и считает устойчивость suspicious RST", () =>
+            {
+                var store = new InMemorySignalSequenceStore();
+                var adapter = new SignalsAdapterV2(store);
+
+                var tested = CreateHostTested(remoteIp: IPAddress.Parse("203.0.113.33"), blockageType: BlockageCode.TcpConnectionReset);
+                var hostKey = SignalsAdapterV2.BuildStableHostKey(tested);
+
+                var now = DateTimeOffset.UtcNow;
+                store.Append(new SignalEvent
+                {
+                    HostKey = hostKey,
+                    Type = SignalEventType.SuspiciousRstObserved,
+                    ObservedAtUtc = now - TimeSpan.FromSeconds(2),
+                    Source = "smoke",
+                    Value = "IPID=110 (expected 100-120, last 105)",
+                    Reason = "rst",
+                    Metadata = null
+                });
+                store.Append(new SignalEvent
+                {
+                    HostKey = hostKey,
+                    Type = SignalEventType.SuspiciousRstObserved,
+                    ObservedAtUtc = now - TimeSpan.FromSeconds(1),
+                    Source = "smoke",
+                    Value = "IPID=110 (expected 100-120, last 105)",
+                    Reason = "rst",
+                    Metadata = null
+                });
+
+                var snap = adapter.BuildSnapshot(tested, InspectionSignalsSnapshot.Empty, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
+
+                if (snap.RstIpIdDelta != 5)
+                {
+                    return new SmokeTestResult("DPI2-031", "Агрегация v2: BuildSnapshot извлекает RstIpIdDelta и считает устойчивость suspicious RST", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали RstIpIdDelta=5 (IPID=110 vs expected 100-120, last 105), получили {snap.RstIpIdDelta}");
+                }
+
+                if (snap.SuspiciousRstCount != 2)
+                {
+                    return new SmokeTestResult("DPI2-031", "Агрегация v2: BuildSnapshot извлекает RstIpIdDelta и считает устойчивость suspicious RST", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали SuspiciousRstCount=2, получили {snap.SuspiciousRstCount}");
+                }
+
+                return new SmokeTestResult("DPI2-031", "Агрегация v2: BuildSnapshot извлекает RstIpIdDelta и считает устойчивость suspicious RST", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: rstIpIdDelta={snap.RstIpIdDelta}, suspiciousRstCount={snap.SuspiciousRstCount}");
+            }, ct);
+
+        public static Task<SmokeTestResult> Dpi2_DiagnosisEngine_SingleRstAnomaly_IsUnknown_NotDpi(CancellationToken ct)
+            => RunAsync("DPI2-032", "DiagnosisEngine v2: single suspicious RST anomaly => Unknown (без DPI-id)", () =>
+            {
+                var engine = new StandardDiagnosisEngineV2();
+
+                var signals = new BlockageSignalsV2
+                {
+                    HostKey = "203.0.113.44",
+                    CapturedAtUtc = DateTimeOffset.UtcNow,
+                    AggregationWindow = TimeSpan.FromSeconds(30),
+                    SampleSize = 1,
+                    IsUnreliable = false,
+
+                    HasDnsFailure = false,
+                    HasFakeIp = false,
+                    HasHttpRedirect = false,
+
+                    HasTcpTimeout = false,
+                    HasTcpReset = true,
+                    RetransmissionRate = null,
+
+                    RstTtlDelta = 10,
+                    RstIpIdDelta = null,
+                    SuspiciousRstCount = 1,
+                    RstLatency = TimeSpan.FromMilliseconds(120),
+
+                    HasTlsTimeout = false,
+                    HasTlsAuthFailure = false,
+                    HasTlsReset = false
+                };
+
+                var result = engine.Diagnose(signals);
+
+                if (result.DiagnosisId != DiagnosisId.Unknown)
+                {
+                    return new SmokeTestResult("DPI2-032", "DiagnosisEngine v2: single suspicious RST anomaly => Unknown (без DPI-id)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали Unknown, получили {result.DiagnosisId} (conf={result.Confidence}, rule={result.MatchedRuleName})");
+                }
+
+                if (result.Confidence != 55)
+                {
+                    return new SmokeTestResult("DPI2-032", "DiagnosisEngine v2: single suspicious RST anomaly => Unknown (без DPI-id)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали confidence=55 для single-anomaly, получили {result.Confidence} (rule={result.MatchedRuleName})");
+                }
+
+                if (!string.Equals(result.MatchedRuleName, "tcp-rst+single-anomaly", StringComparison.Ordinal))
+                {
+                    return new SmokeTestResult("DPI2-032", "DiagnosisEngine v2: single suspicious RST anomaly => Unknown (без DPI-id)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали rule=tcp-rst+single-anomaly, получили {result.MatchedRuleName}");
+                }
+
+                return new SmokeTestResult("DPI2-032", "DiagnosisEngine v2: single suspicious RST anomaly => Unknown (без DPI-id)", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: {result.DiagnosisId} ({result.Confidence}%) rule={result.MatchedRuleName}");
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_DiagnosisEngine_Explanation_IsFactBased_NoStrategiesMentioned(CancellationToken ct)

@@ -388,15 +388,29 @@
 **Что проверяет:** `RST TTL delta + fast` классифицируется как `ActiveDpiEdge`  
 **Для чего:** Уменьшить долю `Unknown` при RST-инъекциях  
 **Критерий успеха:** Диагноз `ActiveDpiEdge` и `confidence >= 60`  
-**Входные данные:** `HasTcpReset=true`, `RstTtlDelta=10`, `RstLatency=120ms`  
+**Входные данные:** `HasTcpReset=true`, `RstTtlDelta=10`, `RstLatency=120ms`, `SuspiciousRstCount>=2`  
 **Ожидаемый результат:** `DiagnosisId.ActiveDpiEdge`
 
 **Test ID:** `DPI2-018`  
 **Что проверяет:** `RST TTL delta + slow` классифицируется как `StatefulDpi`  
 **Для чего:** Разделять активную инъекцию и stateful инспекцию  
 **Критерий успеха:** Диагноз `StatefulDpi` и `confidence >= 60`  
-**Входные данные:** `HasTcpReset=true`, `RstTtlDelta=10`, `RstLatency=900ms`  
+**Входные данные:** `HasTcpReset=true`, `RstTtlDelta=10`, `RstLatency=900ms`, `SuspiciousRstCount>=2`  
 **Ожидаемый результат:** `DiagnosisId.StatefulDpi`
+
+**Test ID:** `DPI2-031`  
+**Что проверяет:** `BuildSnapshot` извлекает `RstIpIdDelta` и считает `SuspiciousRstCount`  
+**Для чего:** Поддержать альтернативную улику RST-инжекции (IPID) и «устойчивость» улик  
+**Критерий успеха:** `RstIpIdDelta` вычисляется из строки инспектора, `SuspiciousRstCount` равен числу событий в окне  
+**Входные данные:** 2 события `SuspiciousRstObserved` с `Value="IPID=110 (expected 100-120, last 105)"`  
+**Ожидаемый результат:** `RstIpIdDelta=5`, `SuspiciousRstCount=2`
+
+**Test ID:** `DPI2-032`  
+**Что проверяет:** Single anomaly по RST не выдаёт DPI-id  
+**Для чего:** Снизить ложную уверенность на «рабочих» целях при единичных событиях  
+**Критерий успеха:** Возвращается `DiagnosisId.Unknown` (без `ActiveDpiEdge/StatefulDpi`)  
+**Входные данные:** `HasTcpReset=true`, `RstTtlDelta=10`, `RstLatency=120ms`, `SuspiciousRstCount=1`  
+**Ожидаемый результат:** `DiagnosisId.Unknown`, `confidence=55`, `rule=tcp-rst+single-anomaly`
 
 ### 5.3 Strategy Selector
 **Test ID:** `DPI2-007`  

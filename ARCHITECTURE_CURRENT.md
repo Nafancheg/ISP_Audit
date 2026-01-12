@@ -235,8 +235,10 @@ Smoke-хелперы (для детерминированных проверок
 
 Примечание по RST-уликам (v2):
 * `SignalsAdapterV2.BuildSnapshot(...)` извлекает `RstTtlDelta` из `InspectionSignalsSnapshot.SuspiciousRstDetails` (форматы `TTL=.. (обычный=min-max)`/`expected min-max`).
+* `SignalsAdapterV2.BuildSnapshot(...)` извлекает `RstIpIdDelta` из `InspectionSignalsSnapshot.SuspiciousRstDetails` (формат `IPID=.. (обычный=min-max, last=..)` / `expected ...`).
+* `SuspiciousRstCount` — число событий `SuspiciousRstObserved` в окне агрегации (если событие есть только в «последнем снимке», фолбэк даёт минимум 1).
 * `RstLatency` берётся как приближённая метрика из `HostTested.TcpLatencyMs` для случая `TCP_CONNECTION_RESET`.
-* `StandardDiagnosisEngineV2` использует эти поля, чтобы выдавать `ActiveDpiEdge` (быстрый RST) или `StatefulDpi` (медленный RST) вместо `Unknown`.
+* `StandardDiagnosisEngineV2` использует эти поля, чтобы выдавать `ActiveDpiEdge` (быстрый RST) или `StatefulDpi` (медленный RST) вместо `Unknown`, но только при «устойчивых уликах» (`SuspiciousRstCount >= 2`).
 
 Ключевые принципы:
 *   Между диагностикой и обходом добавляется слой “интеллекта” (Signals → Diagnosis → Selector → Plan).
