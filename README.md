@@ -85,7 +85,12 @@ dotnet publish -c Release -r win-x64 /p:PublishSingleFile=true /p:SelfContained=
 ```
 
 ### TestNetworkApp (для разработки)
-Тестовое приложение для калибровки и проверки работы ISP Audit:
+`TestNetworkApp` используется в разработке в двух ролях:
+
+1) Генератор сетевой активности (для воспроизводимых сценариев)
+2) Runner smoke-тестов репозитория (CLI без GUI)
+
+Генератор сетевой активности:
 - Устанавливает соединения к 7 известным хостам (Google, YouTube, Discord, GitHub и др.)
 - Работает 60 секунд с повторяющимися запросами
 - Используйте как эталон для проверки захвата трафика
@@ -96,6 +101,19 @@ cd TestNetworkApp
 dotnet publish -c Release -r win-x64 --self-contained false -o bin/Publish
 
 # Использование: в ISP Audit выберите TestNetworkApp\bin\Publish\TestNetworkApp.exe
+```
+
+Smoke-тесты (runner):
+
+```powershell
+# Все smoke-тесты (нестрогий режим)
+dotnet run -c Debug --project TestNetworkApp\TestNetworkApp.csproj -- --smoke all
+
+# Строгий режим (любые SKIP считаются ошибкой)
+dotnet run -c Debug --project TestNetworkApp\TestNetworkApp.csproj -- --smoke all --strict
+
+# Отчёт в JSON
+dotnet run -c Debug --project TestNetworkApp\TestNetworkApp.csproj -- --smoke all --json artifacts\smoke_all.json
 ```
 
 ## Использование
