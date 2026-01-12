@@ -496,6 +496,77 @@ namespace TestNetworkApp.Smoke
                     $"OK: {found}");
             }, ct);
 
+        public static Task<SmokeTestResult> Pipe_AutoHostlist_V2Only_NoLegacyTypes(CancellationToken ct)
+            => RunAsync("PIPE-019", "Auto-hostlist v2-only: без BlockageSignals/GetSignals", () =>
+            {
+                var autoHostlist = new AutoHostlistService
+                {
+                    Enabled = true,
+                    MinHitsToShow = 1,
+                    PublishThrottle = TimeSpan.Zero
+                };
+
+                // 1) Smoke-контракт: не должны добавляться голые IP.
+                var testedIp = new HostTested(
+                    Host: new HostDiscovered(
+                        Key: "203.0.113.99:443:TCP",
+                        RemoteIp: IPAddress.Parse("203.0.113.99"),
+                        RemotePort: 443,
+                        Protocol: BypassTransportProtocol.Tcp,
+                        DiscoveredAt: DateTime.UtcNow),
+                    DnsOk: true,
+                    TcpOk: false,
+                    TlsOk: false,
+                    DnsStatus: BlockageCode.StatusOk,
+                    Hostname: null,
+                    SniHostname: null,
+                    ReverseDnsHostname: null,
+                    TcpLatencyMs: 0,
+                    BlockageType: BlockageCode.TcpConnectTimeout,
+                    TestedAt: DateTime.UtcNow);
+
+                var inspection = new InspectionSignalsSnapshot(
+                    Retransmissions: 0,
+                    TotalPackets: 20,
+                    HasHttpRedirect: false,
+                    RedirectToHost: null,
+                    HasSuspiciousRst: true,
+                    SuspiciousRstDetails: "TTL=64 (expected 50-55)",
+                    UdpUnansweredHandshakes: 0);
+
+                autoHostlist.Observe(testedIp, inspection, hostname: null);
+                if (autoHostlist.VisibleCount != 0)
+                {
+                    return new SmokeTestResult("PIPE-019", "Auto-hostlist v2-only: без BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что голый IP не попадёт в hostlist, но VisibleCount != 0");
+                }
+
+                // 2) Добавление домена работает на v2 snapshot без legacy типов.
+                var testedDomain = testedIp with
+                {
+                    Hostname = "example.com",
+                    SniHostname = "example.com",
+                    TestedAt = DateTime.UtcNow
+                };
+
+                autoHostlist.Observe(testedDomain, inspection, hostname: "example.com");
+                var snapshot = autoHostlist.GetSnapshot();
+                if (snapshot.Count == 0)
+                {
+                    return new SmokeTestResult("PIPE-019", "Auto-hostlist v2-only: без BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что домен попадёт в hostlist на v2 inspection signals, но snapshot пуст");
+                }
+
+                if (!snapshot.Any(c => string.Equals(c.Host, "example.com", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return new SmokeTestResult("PIPE-019", "Auto-hostlist v2-only: без BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали candidate example.com, получили: {string.Join(", ", snapshot.Select(s => s.Host))}");
+                }
+
+                return new SmokeTestResult("PIPE-019", "Auto-hostlist v2-only: без BlockageSignals/GetSignals", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: candidates={snapshot.Count}");
+            }, ct);
+
         private sealed class FixedInspectionStateStore : IBlockageStateStore, IInspectionSignalsProvider
         {
             private readonly InspectionSignalsSnapshot _snapshot;
@@ -516,18 +587,7 @@ namespace TestNetworkApp.Smoke
                 => new(FailCount: 0, HardFailCount: 0, LastFailAt: null, Window: window);
 
             public BlockageSignals GetSignals(HostTested tested, TimeSpan window)
-                => new(
-                    FailCount: 0,
-                    HardFailCount: 0,
-                    LastFailAt: null,
-                    Window: window,
-                    RetransmissionCount: 0,
-                    TotalPackets: 0,
-                    HasHttpRedirectDpi: false,
-                    RedirectToHost: null,
-                    HasSuspiciousRst: false,
-                    SuspiciousRstDetails: null,
-                    UdpUnansweredHandshakes: 0);
+                => throw new NotSupportedException("Legacy GetSignals не должен вызываться в v2-only smoke PIPE-018");
 
             public InspectionSignalsSnapshot GetInspectionSignalsSnapshot(HostTested tested) => _snapshot;
         }

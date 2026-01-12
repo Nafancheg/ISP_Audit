@@ -1,7 +1,7 @@
 # DPI Intelligence v2 — План внедрения
 
-**Дата:** 26.12.2025  
-**Статус:** MVP реализован, v2 — основной контур. Актуальный чеклист задач: [`docs/TODO.md`](TODO.md)  
+**Дата:** 26.12.2025
+**Статус:** MVP реализован, v2 — основной контур. Актуальный чеклист задач: [`docs/TODO.md`](TODO.md)
 **Цель:** Заменить хаотичные эвристики на экспертную систему с объяснимыми решениями (Signals → Diagnosis → Strategy → Executor)
 
 ---
@@ -302,7 +302,7 @@ public sealed class SignalSequence
 Это убирает проблему “T=0 vs T+2s vs T+5s”: адаптер дописывает события, а агрегатор пересчитывает признаки.
 
 ```csharp
-public sealed class BlockageSignalsV2 
+public sealed class BlockageSignalsV2
 {
     public required string HostKey { get; init; }
     public DateTimeOffset CapturedAtUtc { get; init; }
@@ -312,23 +312,23 @@ public sealed class BlockageSignalsV2
     public bool HasTcpReset { get; init; }
     public bool HasTcpTimeout { get; init; }
     public double? RetransmissionRate { get; init; }  // 0.0-1.0 или null если данных нет
-    
+
     // RST анализ
     public int? RstTtlDelta { get; set; }           // null если RST не было
     public TimeSpan? RstLatency { get; set; }       // null если RST не было
-    
+
     // DNS уровень
     public bool HasDnsFailure { get; init; }
     public bool HasFakeIp { get; init; }             // 198.18.x.x
-    
+
     // HTTP уровень
     public bool HasHttpRedirect { get; set; }
-    
+
     // TLS уровень
     public bool HasTlsTimeout { get; init; }
     public bool HasTlsAuthFailure { get; init; }
     public bool HasTlsReset { get; init; }
-    
+
     // Метаданные
     public int SampleSize { get; init; }
 
@@ -340,7 +340,7 @@ public sealed class BlockageSignalsV2
 ### DiagnosisResult (интерпретация)
 
 ```csharp
-public enum DiagnosisId 
+public enum DiagnosisId
 {
     None,                   // техническое значение по умолчанию (например, до вызова Diagnose); Diagnose его не возвращает
     Unknown,                // недостаточно данных / не сработало ни одно правило
@@ -353,7 +353,7 @@ public enum DiagnosisId
     NoBlockage              // легитимная недоступность
 }
 
-public sealed class DiagnosisResult 
+public sealed class DiagnosisResult
 {
     public required DiagnosisId DiagnosisId { get; init; }
     public required int Confidence { get; init; }                  // 0-100
@@ -368,7 +368,7 @@ public sealed class DiagnosisResult
 ### BypassPlan (рецепт)
 
 ```csharp
-public enum StrategyId 
+public enum StrategyId
 {
     None,
     TlsDisorder,
@@ -381,7 +381,7 @@ public enum StrategyId
 
 public enum RiskLevel { Low, Medium, High }
 
-public sealed class BypassStrategy 
+public sealed class BypassStrategy
 {
     public required StrategyId Id { get; init; }
     public int BasePriority { get; init; }                 // из таблицы маппинга
@@ -389,7 +389,7 @@ public sealed class BypassStrategy
     public RiskLevel Risk { get; init; }                   // Low/Medium/High
 }
 
-public sealed class BypassPlan 
+public sealed class BypassPlan
 {
     public List<BypassStrategy> Strategies { get; init; } = new();
     public DiagnosisId ForDiagnosis { get; init; }
@@ -405,8 +405,8 @@ public sealed class BypassPlan
 
 ### Шаг 0: Финализация контракта
 
-**Что:** Зафиксировать модели данных и интерфейсы  
-**Время:** 2-3 часа  
+**Что:** Зафиксировать модели данных и интерфейсы
+**Время:** 2-3 часа
 **Выход:** Этот документ + C# интерфейсы
 
 **Критерий готовности:**
@@ -444,8 +444,8 @@ public sealed class BypassPlan
 
 ### Шаг 1: Signals Adapter
 
-**Что:** Собрать временные события из существующих сервисов, поддерживать `SignalSequence` и логировать  
-**Время:** 1 день  
+**Что:** Собрать временные события из существующих сервисов, поддерживать `SignalSequence` и логировать
+**Время:** 1 день
 **Компонент:**
 - `Core/IntelligenceV2/Signals/SignalsAdapterV2.cs`
 - `Core/IntelligenceV2/Signals/InMemorySignalSequenceStore.cs`
@@ -477,8 +477,8 @@ public sealed class BypassPlan
 
 ### Шаг 2: Diagnosis Engine
 
-**Что:** Реализовать минимальный набор правил для MVP (без циклических зависимостей)  
-**Время:** 1-2 дня  
+**Что:** Реализовать минимальный набор правил для MVP (без циклических зависимостей)
+**Время:** 1-2 дня
 **Компонент:** `Core/IntelligenceV2/Diagnosis/StandardDiagnosisEngineV2.cs`
 
 **Диагнозы для MVP (поэтапно, без циклических зависимостей):**
@@ -520,8 +520,8 @@ public sealed class BypassPlan
 
 ### Шаг 3: Strategy Selector
 
-**Что:** Таблица маппинга диагноз → стратегии  
-**Время:** 4-6 часов  
+**Что:** Таблица маппинга диагноз → стратегии
+**Время:** 4-6 часов
 **Компонент:** `Core/IntelligenceV2/Strategies/StandardStrategySelectorV2.cs`
 
 **Реализация (в репозитории):**
@@ -543,8 +543,8 @@ public sealed class BypassPlan
 
 ### Шаг 4: Executor (MVP — только логирование)
 
-**Что:** Компонент который ПОКА ТОЛЬКО логирует рекомендации  
-**Время:** 2-3 часа  
+**Что:** Компонент который ПОКА ТОЛЬКО логирует рекомендации
+**Время:** 2-3 часа
 **Компонент:** `Core/IntelligenceV2/Execution/BypassExecutorMvp.cs`
 
 **ВАЖНО:** В MVP НЕ применяем стратегии автоматически.
@@ -567,8 +567,8 @@ public sealed class BypassPlan
 
 ### Шаг 5: Интеграция в UI
 
-**Что:** Заменить старые рекомендации на v2  
-**Время:** 4-6 часов  
+**Что:** Заменить старые рекомендации на v2
+**Время:** 4-6 часов
 **Компонент:** `ViewModels/DiagnosticOrchestrator.cs`
 
 **Переходный период (чтобы не было двух “конкурирующих истин”):**
@@ -793,12 +793,12 @@ public sealed class BypassPlan
 
 ## 📖 Глоссарий
 
-**Signals** — сырые факты из сенсоров (RST, timeout, retransmissions)  
-**Diagnosis** — интерпретация сигналов (ActiveDpiEdge, DnsHijack и т.д.)  
-**Strategy** — конкретная техника обхода (TlsFragment, UseDoh и т.д.)  
-**Plan** — упорядоченный список стратегий для попытки  
-**Executor** — компонент который применяет план  
-**Feedback** — запись результатов для обучения системы  
+**Signals** — сырые факты из сенсоров (RST, timeout, retransmissions)
+**Diagnosis** — интерпретация сигналов (ActiveDpiEdge, DnsHijack и т.д.)
+**Strategy** — конкретная техника обхода (TlsFragment, UseDoh и т.д.)
+**Plan** — упорядоченный список стратегий для попытки
+**Executor** — компонент который применяет план
+**Feedback** — запись результатов для обучения системы
 **Gate** — контрольная точка между шагами (требования к качеству)
 
 ---

@@ -397,12 +397,6 @@ namespace IspAudit.Utils
                         // Игнорируем ошибки подписчиков: пайплайн должен быть устойчив.
                     }
 
-                    // Формируем результат для UI/фильтра: стратегия всегда NONE, а в RecommendedAction кладём факты/уверенность.
-                    var blocked = BuildHostBlockedForUi(tested, inspection, diagnosis, plan);
-
-                    // Принимаем решение о показе через единый фильтр
-                    var decision = _filter.ShouldDisplay(blocked);
-
                     var remoteIp = tested.Host.RemoteIp;
                     var remoteIpString = remoteIp?.ToString();
 
@@ -435,6 +429,13 @@ namespace IspAudit.Utils
                             diagnosis = EnrichDiagnosisWithAutoHostlist(diagnosis, candidate);
                         }
                     }
+
+                    // Формируем результат для UI/фильтра: стратегия всегда NONE, а в RecommendedAction кладём факты/уверенность.
+                    // Важно: делаем это ПОСЛЕ EnrichDiagnosisWithAutoHostlist, чтобы метки autoHL попали в UI хвост.
+                    var blocked = BuildHostBlockedForUi(tested, inspection, diagnosis, plan);
+
+                    // Принимаем решение о показе через единый фильтр
+                    var decision = _filter.ShouldDisplay(blocked);
 
                     // В сообщениях пайплайна используем IP как технический якорь.
                     // UI-слой может отображать карточки по человеко‑понятному ключу (SNI/hostname),

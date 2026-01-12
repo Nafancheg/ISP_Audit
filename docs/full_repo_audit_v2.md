@@ -1,8 +1,8 @@
 # Полный аудит репозитория ISP_Audit v2
 
-**Дата**: 09.12.2025 (обновлено 10.12.2025, 17.12.2025)  
-**Версия проекта**: .NET 9, WPF  
-**Режим**: GUI-only (WinExe)  
+**Дата**: 09.12.2025 (обновлено 10.12.2025, 17.12.2025)
+**Версия проекта**: .NET 9, WPF
+**Режим**: GUI-only (WinExe)
 
 ---
 
@@ -84,8 +84,7 @@
 - В MVP запрещён auto-apply: допускается только ручное применение рекомендаций пользователем.
 
 Актуализация (Runtime, 16.12.2025):
-- Step 1 v2 Signals частично подключён: `SignalsAdapterV2` пишет события в `InMemorySignalSequenceStore` на этапе Classification в `LiveTestingPipeline`. Для v2-ветки инспекционные факты берутся через `IInspectionSignalsProvider` в виде `InspectionSignalsSnapshot` (без зависимости от legacy `BlockageSignals`).
-    - Защита от регрессий: legacy-оверлоады `SignalsAdapterV2` с параметром `BlockageSignals` запрещены на уровне компиляции (`[Obsolete(..., error: true)]`).
+- Step 1 v2 Signals подключён: `SignalsAdapterV2` пишет события в `InMemorySignalSequenceStore` на этапе Classification в `LiveTestingPipeline`. Инспекционные факты берутся через `IInspectionSignalsProvider` в виде `InspectionSignalsSnapshot` (v2-only, без legacy типов).
     - Есть защиты от роста памяти: debounce одинаковых событий и cap числа событий на HostKey (in-memory store).
     - Политика DoH в v2 рекомендациях: DoH рекомендуется как low-risk при `DnsHijack` (чисто DNS) и также используется в multi-layer сценариях.
 - Step 2 v2 Diagnosis подключён: `StandardDiagnosisEngineV2` ставит диагноз по `BlockageSignalsV2` и возвращает пояснения, основанные на фактах (DNS fail, TCP/TLS timeout, TLS auth failure, retx-rate, HTTP redirect, RST TTL/IPID delta + latency) без привязки к стратегиям/обходу. Для RST-кейсов DPI-id (`ActiveDpiEdge/StatefulDpi`) выдаётся только при устойчивости улик (`SuspiciousRstCount >= 2`), чтобы не создавать ложную уверенность по единичному событию. Для TLS-only кейсов добавлен консервативный диагноз `TlsInterference`, чтобы селектор мог сформировать план TLS-стратегий.
@@ -468,7 +467,7 @@ _bypassQueue = Channel.CreateUnbounded<HostBlocked>();
 // + TrafficCollector.cs:102
 ```
 
-**Риск:** При всплеске трафика (тысячи соединений) возможен OOM.  
+**Риск:** При всплеске трафика (тысячи соединений) возможен OOM.
 **Митигация:** На практике редко больше 100-200 хостов, но лучше использовать `BoundedChannel`.
 
 ---
@@ -485,7 +484,7 @@ else if (host.RemotePort == 443)
 }
 ```
 
-**Проблема:** TLS DPI для IP-only соединений не детектируется.  
+**Проблема:** TLS DPI для IP-only соединений не детектируется.
 **Обоснование:** Без SNI невозможно корректно проверить TLS — частично оправдано.
 
 ---

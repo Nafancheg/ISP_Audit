@@ -11,7 +11,7 @@ using IspAudit.Utils;
 namespace IspAudit.Core.IntelligenceV2.Signals;
 
 /// <summary>
-/// Адаптер сигналов v2: принимает существующие результаты (HostTested + legacy BlockageSignals)
+/// Адаптер сигналов v2: принимает результаты (HostTested + InspectionSignalsSnapshot)
 /// и записывает их в последовательность событий (SignalSequence) с TTL.
 /// Дополнительно умеет построить агрегированный срез BlockageSignalsV2 по окну.
 /// </summary>
@@ -81,20 +81,6 @@ public sealed class SignalsAdapterV2
 
         // Gate 1→2: показываем компактную строку, если у хоста уже накопилась "цепочка".
         TryReportGate1To2(hostKey, tsUtc, progress);
-    }
-
-    [Obsolete("Legacy overload. Используйте Observe/BuildSnapshot с InspectionSignalsSnapshot (SignalSequence-only, legacy off).", error: true)]
-    public void Observe(HostTested tested, BlockageSignals legacySignals, IProgress<string>? progress = null)
-    {
-        // Этот overload сохранён только для исторической совместимости, но его использование запрещено.
-        // Компилятор блокирует вызовы через Obsolete(error:true).
-        throw new NotSupportedException("Legacy overload запрещён. Используйте InspectionSignalsSnapshot.");
-    }
-
-    [Obsolete("Legacy overload. Используйте BuildSnapshot с InspectionSignalsSnapshot (SignalSequence-only, legacy off).", error: true)]
-    public BlockageSignalsV2 BuildSnapshot(HostTested tested, BlockageSignals legacySignals, TimeSpan window)
-    {
-        throw new NotSupportedException("Legacy overload запрещён. Используйте InspectionSignalsSnapshot.");
     }
 
     public BlockageSignalsV2 BuildSnapshot(HostTested tested, InspectionSignalsSnapshot inspectionSignals, TimeSpan window)
@@ -309,11 +295,6 @@ public sealed class SignalsAdapterV2
         };
 
         _store.Append(ev);
-    }
-
-    private void AppendFromLegacySignals(string hostKey, BlockageSignals signals, ref DateTimeOffset tsUtc)
-    {
-        AppendFromInspectionSignals(hostKey, InspectionSignalsSnapshot.FromLegacy(signals), ref tsUtc);
     }
 
     private void AppendFromInspectionSignals(string hostKey, InspectionSignalsSnapshot signals, ref DateTimeOffset tsUtc)

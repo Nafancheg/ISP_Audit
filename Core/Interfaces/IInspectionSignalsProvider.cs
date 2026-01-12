@@ -5,7 +5,7 @@ namespace IspAudit.Core.Interfaces;
 
 /// <summary>
 /// Источник «сырых» инспекционных сигналов (RST/HTTP redirect/UDP handshake/ретрансмиссии)
-/// для v2 контура, без зависимости от legacy агрегата <see cref="IspAudit.Core.Models.BlockageSignals"/>.
+/// для v2 контура, без зависимости от legacy агрегатов/типов.
 /// </summary>
 public interface IInspectionSignalsProvider
 {

@@ -49,63 +49,7 @@ namespace IspAudit.Utils
         }
 
         /// <summary>
-        /// Наблюдать результат теста и агрегированные сигналы.
-        /// </summary>
-        [Obsolete("Legacy overload отключён: используйте Observe(..., InspectionSignalsSnapshot, ...) (v2).", error: true)]
-        public void Observe(HostTested tested, BlockageSignals signals, string? hostname)
-        {
-            if (!Enabled)
-            {
-                return;
-            }
-
-            // Берем только те хосты, по которым реально есть подозрительные сигналы.
-            var isCandidate =
-                signals.HasSignificantRetransmissions ||
-                signals.HasHttpRedirectDpi ||
-                signals.HasSuspiciousRst ||
-                // UDP/QUIC сигнал сам по себе (при TCP/TLS OK) часто не означает проблему для пользователя.
-                // Добавляем по UDP только если есть реальные фейлы/неуспехи.
-                (signals.HasUdpBlockage && (signals.HardFailCount > 0 || !tested.TlsOk || !tested.TcpOk));
-
-            if (!isCandidate)
-            {
-                return;
-            }
-
-            var key = BuildKey(tested, hostname);
-            if (string.IsNullOrWhiteSpace(key))
-            {
-                return;
-            }
-
-            // Для hostlist нужны именно доменные имена. Голые IP мало полезны и только засоряют список.
-            if (System.Net.IPAddress.TryParse(key, out _))
-            {
-                return;
-            }
-
-            // Шумовые/служебные домены не добавляем в hostlist.
-            // Важно: фильтруем именно ключ кандидата (а не только «внешний» hostname),
-            // иначе в UI будут всплывать rDNS вида *.1e100.net, когда SNI отсутствует.
-            if (LooksLikeHostname(key) && NoiseHostFilter.Instance.IsNoiseHost(key))
-            {
-                return;
-            }
-
-            var nowUtc = DateTime.UtcNow;
-
-            var state = _candidates.AddOrUpdate(
-                key,
-                _ => new CandidateState(key, nowUtc, signals),
-                (_, existing) => existing.Merge(nowUtc, signals));
-
-            EnforceLimit();
-            PublishIfNeeded(nowUtc, state);
-        }
-
-        /// <summary>
-        /// Наблюдать результат теста и инспекционные сигналы (v2, без зависимости от legacy BlockageSignals).
+        /// Наблюдать результат теста и инспекционные сигналы (v2, без legacy типов).
         /// </summary>
         public void Observe(HostTested tested, InspectionSignalsSnapshot signals, string? hostname)
         {
@@ -306,48 +250,12 @@ namespace IspAudit.Utils
                 ApplySignals(signals, hasSignificantRetransmissions, hasUdpBlockage, hardFailCount);
             }
 
-            public CandidateState(string key, DateTime firstSeenUtc, BlockageSignals signals)
-            {
-                Key = key;
-                FirstSeenUtc = firstSeenUtc;
-                LastSeenUtc = firstSeenUtc;
-                Hits = 1;
-
-                ApplySignals(signals);
-            }
-
-            public CandidateState Merge(DateTime nowUtc, BlockageSignals signals)
-            {
-                Hits++;
-                LastSeenUtc = nowUtc;
-                ApplySignals(signals);
-                return this;
-            }
-
             public CandidateState Merge(DateTime nowUtc, InspectionSignalsSnapshot signals, bool hasSignificantRetransmissions, bool hasUdpBlockage, int hardFailCount)
             {
                 Hits++;
                 LastSeenUtc = nowUtc;
                 ApplySignals(signals, hasSignificantRetransmissions, hasUdpBlockage, hardFailCount);
                 return this;
-            }
-
-            private void ApplySignals(BlockageSignals signals)
-            {
-                RetransmissionMax = Math.Max(RetransmissionMax, signals.RetransmissionCount);
-                UdpUnansweredMax = Math.Max(UdpUnansweredMax, signals.UdpUnansweredHandshakes);
-                HasHttpRedirectDpi |= signals.HasHttpRedirectDpi;
-                HasSuspiciousRst |= signals.HasSuspiciousRst;
-
-                // Простой скоринг: чем больше "жёстких" сигналов, тем выше.
-                var score = 0;
-                if (signals.HasSignificantRetransmissions) score += 2;
-                if (signals.HasHttpRedirectDpi) score += 3;
-                if (signals.HasSuspiciousRst) score += 2;
-                if (signals.HasUdpBlockage) score += 2;
-                if (signals.HardFailCount > 0) score += 1;
-
-                Score = Math.Max(Score, score);
             }
 
             private void ApplySignals(InspectionSignalsSnapshot signals, bool hasSignificantRetransmissions, bool hasUdpBlockage, int hardFailCount)

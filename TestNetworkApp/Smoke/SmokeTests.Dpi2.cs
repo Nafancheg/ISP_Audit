@@ -536,11 +536,8 @@ namespace TestNetworkApp.Smoke
                 var reNewLegacyClassifier = new Regex(@"\bnew\s+StandardBlockageClassifier\b", RegexOptions.Compiled);
                 var reCallLegacyClassifier = new Regex(@"\bStandardBlockageClassifier\s*\.\s*ClassifyBlockage\s*\(", RegexOptions.Compiled);
 
-                var allowedBlockageSignalsFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    Path.Combine(root, "Core", "IntelligenceV2", "Signals", "InspectionSignalsSnapshot.cs"),
-                    Path.Combine(root, "Core", "IntelligenceV2", "Signals", "SignalsAdapterV2.cs")
-                };
+                // Полное вычищение legacy/bridge: в v2 слое не должно быть ссылок на BlockageSignals вообще.
+                var allowedBlockageSignalsFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                 var offenders = new List<string>();
                 foreach (var file in filesToCheck)
@@ -558,8 +555,7 @@ namespace TestNetworkApp.Smoke
                         continue;
                     }
 
-                    // 2) BlockageSignals как тип допустим только в bridge-слоях (адаптер/снимок).
-                    // В остальном v2 слой не должен зависеть от legacy агрегата.
+                    // 2) BlockageSignals в v2 слое запрещён полностью.
                     var isInV2Layer = file.StartsWith(v2Dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
                     if (isInV2Layer && !allowedBlockageSignalsFiles.Contains(file) && reBlockageSignals.IsMatch(text))
                     {
@@ -590,7 +586,7 @@ namespace TestNetworkApp.Smoke
         }
 
         public static Task<SmokeTestResult> Dpi2_SignalsAdapter_Observe_AdaptsLegacySignals_ToTtlStore(CancellationToken ct)
-            => RunAsync("DPI2-001", "SignalsAdapterV2 адаптирует legacy сигналы и пишет в TTL-store", () =>
+            => RunAsync("DPI2-001", "SignalsAdapterV2 пишет inspection сигналы в TTL-store", () =>
             {
                 var store = new InMemorySignalSequenceStore();
                 var adapter = new SignalsAdapterV2(store);
@@ -599,20 +595,14 @@ namespace TestNetworkApp.Smoke
                     remoteIp: IPAddress.Parse("203.0.113.10"),
                     blockageType: BlockageCode.TcpConnectionReset);
 
-                var legacy = new BlockageSignals(
-                    FailCount: 1,
-                    HardFailCount: 1,
-                    LastFailAt: DateTime.UtcNow,
-                    Window: TimeSpan.FromSeconds(30),
-                    RetransmissionCount: 0,
+                var inspection = new InspectionSignalsSnapshot(
+                    Retransmissions: 0,
                     TotalPackets: 0,
-                    HasHttpRedirectDpi: false,
+                    HasHttpRedirect: false,
                     RedirectToHost: null,
                     HasSuspiciousRst: true,
                     SuspiciousRstDetails: "TTL=5 (expected 50-55)",
                     UdpUnansweredHandshakes: 0);
-
-                var inspection = InspectionSignalsSnapshot.FromLegacy(legacy);
                 adapter.Observe(tested, inspection);
 
                 var hostKey = SignalsAdapterV2.BuildStableHostKey(tested);
@@ -626,11 +616,11 @@ namespace TestNetworkApp.Smoke
 
                 if (!events.Any(e => e.Type == SignalEventType.SuspiciousRstObserved))
                 {
-                    return new SmokeTestResult("DPI2-001", "SignalsAdapterV2 адаптирует legacy сигналы и пишет в TTL-store", SmokeOutcome.Fail, TimeSpan.Zero,
-                        "Ожидали событие SuspiciousRstObserved из legacy сигналов, но его нет");
+                    return new SmokeTestResult("DPI2-001", "SignalsAdapterV2 пишет inspection сигналы в TTL-store", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали событие SuspiciousRstObserved из inspection snapshot, но его нет");
                 }
 
-                return new SmokeTestResult("DPI2-001", "SignalsAdapterV2 адаптирует legacy сигналы и пишет в TTL-store", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-001", "SignalsAdapterV2 пишет inspection сигналы в TTL-store", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: events={events.Count}, hostKey={hostKey}");
             }, ct);
 
@@ -721,20 +711,14 @@ namespace TestNetworkApp.Smoke
                     });
                 }
 
-                var legacy = new BlockageSignals(
-                    FailCount: 2,
-                    HardFailCount: 2,
-                    LastFailAt: DateTime.UtcNow,
-                    Window: TimeSpan.FromSeconds(30),
-                    RetransmissionCount: 3,
+                var inspection = new InspectionSignalsSnapshot(
+                    Retransmissions: 3,
                     TotalPackets: 10,
-                    HasHttpRedirectDpi: false,
+                    HasHttpRedirect: false,
                     RedirectToHost: null,
                     HasSuspiciousRst: false,
                     SuspiciousRstDetails: null,
                     UdpUnansweredHandshakes: 0);
-
-                var inspection = InspectionSignalsSnapshot.FromLegacy(legacy);
                 var snap30 = adapter.BuildSnapshot(tested, inspection, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
                 var snap60 = adapter.BuildSnapshot(tested, inspection, IntelligenceV2ContractDefaults.ExtendedAggregationWindow);
 
@@ -771,20 +755,14 @@ namespace TestNetworkApp.Smoke
                     TcpLatencyMs = 120
                 };
 
-                var legacy = new BlockageSignals(
-                    FailCount: 1,
-                    HardFailCount: 1,
-                    LastFailAt: DateTime.UtcNow,
-                    Window: TimeSpan.FromSeconds(30),
-                    RetransmissionCount: 0,
+                var inspection = new InspectionSignalsSnapshot(
+                    Retransmissions: 0,
                     TotalPackets: 0,
-                    HasHttpRedirectDpi: false,
+                    HasHttpRedirect: false,
                     RedirectToHost: null,
                     HasSuspiciousRst: true,
                     SuspiciousRstDetails: "TTL=64 (обычный=50-55)",
                     UdpUnansweredHandshakes: 0);
-
-                var inspection = InspectionSignalsSnapshot.FromLegacy(legacy);
                 var snap = adapter.BuildSnapshot(tested, inspection, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
 
                 if (!snap.HasTcpReset)
@@ -1127,23 +1105,17 @@ namespace TestNetworkApp.Smoke
 
                 var tested = CreateHostTested(remoteIp: IPAddress.Parse("203.0.113.60"), blockageType: BlockageCode.TcpConnectionReset);
 
-                var legacy = new BlockageSignals(
-                    FailCount: 1,
-                    HardFailCount: 1,
-                    LastFailAt: DateTime.UtcNow,
-                    Window: TimeSpan.FromSeconds(30),
-                    RetransmissionCount: 2,
+                var lines = new List<string>();
+                var progress = new ImmediateProgress(lines);
+
+                var inspection = new InspectionSignalsSnapshot(
+                    Retransmissions: 2,
                     TotalPackets: 10,
-                    HasHttpRedirectDpi: true,
+                    HasHttpRedirect: true,
                     RedirectToHost: "example.org",
                     HasSuspiciousRst: false,
                     SuspiciousRstDetails: null,
                     UdpUnansweredHandshakes: 0);
-
-                var lines = new List<string>();
-                var progress = new ImmediateProgress(lines);
-
-                var inspection = InspectionSignalsSnapshot.FromLegacy(legacy);
                 adapter.Observe(tested, inspection, progress);
 
                 if (!lines.Any(s => s.Contains("[V2][GATE1]", StringComparison.Ordinal)))

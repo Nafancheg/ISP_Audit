@@ -26,12 +26,12 @@
 graph TD
     User[Пользователь] --> UI[WPF UI (MainWindow)]
     UI --> VM[MainViewModelRefactored]
-    
+
     subgraph Orchestration [Orchestration Layer]
         VM --> Orchestrator[DiagnosticOrchestrator]
         Orchestrator --> Pipeline[LiveTestingPipeline]
     end
-    
+
     subgraph Core [Core Logic]
         Pipeline --> ConnectionMonitor[ConnectionMonitorService]
         ConnectionMonitor --> Sniffer[TrafficCollector]
@@ -40,14 +40,14 @@ graph TD
         Tester --> Classifier[SignalsAdapterV2 + StandardDiagnosisEngineV2 + StandardStrategySelectorV2]
         Classifier --> StateStore[InMemoryBlockageStateStore]
     end
-    
+
     subgraph Inspection [Inspection Services]
         StateStore --> RstInspector[RstInspectionService]
         StateStore --> UdpInspector[UdpInspectionService]
         StateStore --> RetransTracker[TcpRetransmissionTracker]
         StateStore --> RedirectDetector[HttpRedirectDetector]
     end
-    
+
     subgraph Network [Network Layer]
         Sniffer --> WinDivert[WinDivert Driver]
         Tester --> NetworkStack[OS Network Stack]
@@ -56,7 +56,7 @@ graph TD
         BypassState --> TlsSvc[TlsBypassService]
         BypassState --> TrafficEngine[TrafficEngine]
     end
-    
+
     TrafficEngine --> WinDivert
 ```
 
@@ -114,7 +114,7 @@ UI-гейт по рекомендациям (v2-only): UI принимает р�
 
 Важно: bypass-панель (и кнопка apply внутри неё) показывается только при запуске приложения с правами администратора.
 
-Guard на legacy в v2 пути: smoke-тест `DPI2-025` проверяет, что в v2 runtime-пути отсутствуют `GetSignals(...)` и `BlockageSignals` (grep/regex по `Core/IntelligenceV2/*` и ключевым runtime-файлам).
+Guard на legacy в v2 пути: smoke-тест `DPI2-025` проверяет, что в v2 runtime-пути отсутствуют `GetSignals(...)`, `legacySignals.*` и любые упоминания `BlockageSignals` (grep/regex по `Core/IntelligenceV2/*` и ключевым runtime-файлам).
 
 Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|infra|pipe|insp|ui|bypass|dpi2|orch|cfg|err|e2e|perf|reg]`, который запускает проверки из плана смоков (без GUI). Для полного покрытия плана smoke runner прогоняет **все** Test ID из `TestNetworkApp/smoke_tests_plan.md`; если тест из плана ещё не реализован, он возвращает `FAIL` с причиной (это сделано намеренно, чтобы было 97/97 выполнено без "SKIP"). По умолчанию часть проверок, завязанных на WinDivert/среду, может падать или помечается как `SKIP` (например, если запуск не от администратора). Для «жёсткого» прогона без `SKIP` используйте `--smoke ... --no-skip` (алиас `--strict`): в этом режиме любые `SKIP` считаются `FAIL`. Для выгрузки результатов добавлен `--json <path>`. Для удобства сопровождения реализации тестов разнесены по файлам `TestNetworkApp/Smoke/SmokeTests.*.cs`, а каркас раннера/плана остаётся в `TestNetworkApp/Smoke/SmokeRunner.cs`.
 
@@ -145,7 +145,7 @@ Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|
     *   Важно: `TrafficCollector` дедупит соединения по `RemoteIp:RemotePort:Protocol`, но в runtime допускает ограниченные «повторные обнаружения» этой же цели с кулдауном/лимитом — иначе ретесты физически не дойдут до pipeline.
     *   Публикует периодический `[PipelineHealth]` лог со счётчиками этапов (enqueue/test/classify/ui), чтобы диагностировать потери данных и «затыки» очередей без привязки к сценариям.
     *   Обеспечивает параллельную обработку множества хостов.
-    *   Опционально принимает `AutoHostlistService`: на этапе Classification добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения). Auto-hostlist питается `InspectionSignalsSnapshot` (без чтения legacy `BlockageSignals`). Дополнительно, если хост стал кандидатом, этот контекст прокидывается в v2 хвост (evidence/notes) как короткая нота `autoHL hits=… score=…`.
+    *   Опционально принимает `AutoHostlistService`: на этапе Classification добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения). Auto-hostlist питается `InspectionSignalsSnapshot` (v2-only). Дополнительно, если хост стал кандидатом, этот контекст прокидывается в v2 хвост (evidence/notes) как короткая нота `autoHL hits=… score=…`.
 
 Smoke-хелперы (для детерминированных проверок без WinDivert/реальной сети):
 * `DnsParserService.TryExtractSniFromTlsClientHelloPayload(...)` — извлечение SNI из TLS payload.
@@ -155,8 +155,7 @@ Smoke-хелперы (для детерминированных проверок
 
 Статус: частично реализовано.
 * Контрактный слой v2: `Core/IntelligenceV2/Contracts`.
-* Step 1 (Signals): в runtime подключён сбор фактов в TTL-store через `SignalsAdapterV2` (в `LiveTestingPipeline`, этап Classification). Для v2-ветки факты инспекции снимаются через `IInspectionSignalsProvider` в виде `InspectionSignalsSnapshot` (без зависимости от legacy `BlockageSignals`).
-    * Legacy-оверлоады `SignalsAdapterV2` с параметром `BlockageSignals` запрещены на уровне компиляции (`[Obsolete(..., error: true)]`).
+* Step 1 (Signals): в runtime подключён сбор фактов в TTL-store через `SignalsAdapterV2` (в `LiveTestingPipeline`, этап Classification). Факты инспекции снимаются через `IInspectionSignalsProvider` в виде `InspectionSignalsSnapshot` (v2-only).
     * Гейтинг тестов по цели: `InMemoryBlockageStateStore.TryBeginHostTest(...)` использует кулдаун и лимит попыток, чтобы не спамить сеть, но при этом дать V2 накопить несколько наблюдений (SignalSequence) по проблемным/заблокированным хостам.
 * Step 2 (Diagnosis): в runtime подключена постановка диагноза через `StandardDiagnosisEngineV2` по агрегированному срезу `BlockageSignalsV2`.
 * Step 3 (Selector/Plan): в runtime подключён `StandardStrategySelectorV2`, который строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI (без auto-apply).
@@ -257,7 +256,7 @@ Smoke-хелперы (для детерминированных проверок
 *   TTL событий: 10 минут (очистка должна выполняться при Append в сторе).
 
 Точки интеграции (на текущий момент):
-* `LiveTestingPipeline.ClassifierWorker`: legacy `BlockageSignals` остаётся для UI/Auto-hostlist, но v2-ветка вызывает `SignalsAdapterV2.Observe(...)` с `InspectionSignalsSnapshot` (из `IInspectionSignalsProvider`, с фолбэком из legacy).
+* `LiveTestingPipeline.ClassifierWorker`: v2-ветка вызывает `SignalsAdapterV2.Observe(...)` с `InspectionSignalsSnapshot` (из `IInspectionSignalsProvider`, с фолбэком `Empty`).
 * Затем строится `BlockageSignalsV2` (агрегация по окну) и вызывается `StandardDiagnosisEngineV2.Diagnose(...)`. Результат используется для формирования компактного «хвоста фактов» в UI-логе.
 * Затем вызывается `StandardStrategySelectorV2.Select(diagnosis, ...)`, а Step 4 формирует компактный пользовательский вывод (1–2 строки на хост, без спама) и список стратегий для панели рекомендаций.
 * Для ручной проверки Gate 1→2 в UI-логе используются строки с префиксом `[V2][GATE1]`.
@@ -297,7 +296,7 @@ Smoke-хелперы (для детерминированных проверок
 *   **`InMemoryBlockageStateStore` (`Core/Modules/InMemoryBlockageStateStore.cs`)**:
     *   Хранит историю проверок за текущую сессию.
     *   Предотвращает повторное тестирование одних и тех же хостов (дедупликация).
-    *   Дополнительно реализует `IInspectionSignalsProvider`, чтобы v2-контур мог снимать инспекционные факты без зависимости от legacy `BlockageSignals`.
+    *   Дополнительно реализует `IInspectionSignalsProvider`, чтобы v2-контур мог снимать инспекционные факты без legacy типов.
 
 ### 3.4 Inspection Services (Глубокий анализ)
 
