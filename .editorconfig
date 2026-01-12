@@ -1,0 +1,61 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# Мы сознательно не включаем форматирование/стайл-правила как ошибки,
+# чтобы не превращать линт в "войну стилей". Фокус — безопасность/стабильность.
+
+[*.cs]
+# По умолчанию делаем analyzers НЕшумными: выдаём suggestions, а не warnings.
+# Важные для стабильности правила поднимаем точечно ниже.
+dotnet_analyzer_diagnostic.severity = suggestion
+
+# Категории: для стабильности/безопасности держим строгими только Security/Reliability.
+dotnet_analyzer_diagnostic.category-Security.severity = warning
+dotnet_analyzer_diagnostic.category-Reliability.severity = warning
+
+# Остальные категории оставляем как подсказки (не должны ломать сборку шумом).
+dotnet_analyzer_diagnostic.category-Performance.severity = suggestion
+dotnet_analyzer_diagnostic.category-Globalization.severity = suggestion
+dotnet_analyzer_diagnostic.category-Design.severity = suggestion
+dotnet_analyzer_diagnostic.category-Style.severity = suggestion
+dotnet_analyzer_diagnostic.category-Maintainability.severity = suggestion
+dotnet_analyzer_diagnostic.category-Usage.severity = suggestion
+
+# Для WPF/ViewModels не усиливаем требования к ConfigureAwait(false).
+dotnet_diagnostic.CA2007.severity = none
+
+# IDisposable-паттерны полезны, но массовое исправление делаем отдельным заходом.
+dotnet_diagnostic.CA1816.severity = suggestion
+
+# Core/Bypass/Utils и тестовые приложения — предупреждаем о пропущенном ConfigureAwait(false)
+[Core/**/*.cs]
+dotnet_diagnostic.CA2000.severity = warning
+dotnet_diagnostic.CA2200.severity = warning
+dotnet_diagnostic.CA2007.severity = suggestion
+
+[Bypass/**/*.cs]
+dotnet_diagnostic.CA2000.severity = warning
+dotnet_diagnostic.CA2200.severity = warning
+dotnet_diagnostic.CA2007.severity = suggestion
+
+[Utils/**/*.cs]
+dotnet_diagnostic.CA2000.severity = warning
+dotnet_diagnostic.CA2200.severity = warning
+dotnet_diagnostic.CA2007.severity = suggestion
+
+[TestNetworkApp/**/*.cs]
+dotnet_diagnostic.CA2000.severity = warning
+dotnet_diagnostic.CA2200.severity = warning
+dotnet_diagnostic.CA2007.severity = suggestion
+
+[SmokeLauncher/**/*.cs]
+dotnet_diagnostic.CA2000.severity = warning
+dotnet_diagnostic.CA2200.severity = warning
+dotnet_diagnostic.CA2007.severity = suggestion

@@ -138,6 +138,12 @@
 2) Усилить UI-обратную связь после apply/rollback (лог + отображение активных флагов).
 3) Параметры стратегий добавлять только если они поддержаны в движке (без "магической" комбинации флагов).
 
+Актуализация (Dev, 12.01.2026): базовые analyzers/линт для стабильности
+- Добавлены `Directory.Build.props` и `.editorconfig`.
+- Включены встроенные .NET analyzers (`EnableNETAnalyzers=true`) без форсирования `AnalysisMode/AnalysisLevel` (оставляем дефолты SDK, чтобы не раздувать шум предупреждений).
+- По умолчанию analyzers выставлены как `suggestion` (минимум шума).
+- Для non-UI слоёв подняты до `warning` ключевые правила стабильности: `CA2000` (dispose) и `CA2200` (rethrow). `CA2007` (ConfigureAwait) оставлено как `suggestion`.
+
 Актуализация (Runtime, 17.12.2025):
 - Добавлен `Core/Diagnostics/BlockageCode.cs` — единая точка нормализации кодов проблем (`BlockageType`) и поддержки legacy алиасов.
 - В местах, где раньше сравнивались строки (`TLS_DPI`, `TCP_TIMEOUT`, `TCP_RST`, `TLS_TIMEOUT` и др.), используется `BlockageCode.Normalize/ContainsCode`, чтобы алиасы не расползались по слоям (UI/legacy/v2).

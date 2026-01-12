@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <!-- Включаем встроенные .NET analyzers для стабильности/безопасности. -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+
+    <!-- Оставляем дефолтные уровни SDK, чтобы не раздувать шум предупреждений. -->
+  </PropertyGroup>
+</Project>
