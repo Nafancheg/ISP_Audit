@@ -20,7 +20,7 @@ Windows-приложение для анализа сетевого трафик
 
 ## Интерфейс
 
-![ISP Audit - Главное окно](docs/screenshot.png)
+![ISP Audit - Главное окно](docs/ssh0t.png)
 
 ## Возможности
 
