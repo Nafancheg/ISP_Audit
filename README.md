@@ -2,7 +2,7 @@
 
 **Диагностика сетевых проблем и восстановление доступа для игр и приложений**
 
-Windows-приложение для анализа сетевого трафика, выявления проблем соединения (DPI, DNS, нестабильные TCP-сессии) и их автоматического устранения. Работает с любым приложением — просто укажите .exe файл.
+Windows-приложение для анализа сетевого трафика, выявления проблем соединения (DPI, DNS, нестабильные TCP-сессии) и выдачи рекомендаций по обходу/восстановлению доступа. Применение обхода выполняется вручную (по кнопке/тумблерам) и требует запуска от администратора.
 
 ![.NET 9](https://img.shields.io/badge/.NET-9.0-purple)
 ![Windows](https://img.shields.io/badge/Windows-10%2F11-blue)
@@ -12,11 +12,11 @@ Windows-приложение для анализа сетевого трафик
 ## Как это работает
 
 1. **Выбираете .exe** игры или приложения
-2. **Запускаете диагностику** — приложение стартует автоматически
+2. **Запускаете диагностику** — целевое приложение стартует автоматически
 3. **Наблюдаете в реальном времени** как тестируются обнаруженные соединения
 4. **Получаете результат** — какие хосты работают нестабильно и почему
 
-Оптимизация соединения включается автоматически при старте диагностики.
+По результатам диагностики формируются рекомендации v2. Обход/оптимизация включается вручную — через тумблеры или кнопкой «Применить рекомендации v2» (доступно только при запуске от администратора).
 
 ## Интерфейс
 
@@ -37,12 +37,16 @@ Windows-приложение для анализа сетевого трафик
 - **Классификация проблем**: `DNS_FILTERED`, `TLS_AUTH_FAILURE` (legacy: `TLS_DPI`), `TCP_CONNECTION_RESET` (legacy: `TCP_RST`), `TCP_CONNECT_TIMEOUT` (legacy: `TCP_TIMEOUT`), `HTTP_REDIRECT_DPI`
 
 ### Оптимизация соединения
-- **TrafficEngine 2.0** — модульная архитектура на базе Chain of Responsibility
-- **Performance Monitoring** — встроенный мониторинг задержек обработки пакетов (<0.5ms)
+- **BypassStateManager** — единый владелец состояния обхода (Apply/Disable, fail-safe, наблюдаемость)
+- **TrafficEngine + BypassFilter** — перехват/модификация пакетов (WinDivert wrapper)
 - **TLS Fragmentation** — разбиение ClientHello для стабильности
 - **TLS Disorder** — отправка фрагментов в обратном порядке (улучшает совместимость)
 - **TLS Fake** — дополнительные пакеты для повышения стабильности
 - **RST Drop** — фильтрация аномальных TCP RST пакетов
+- **QUIC→TCP (Drop UDP/443)** — помогает откату с QUIC/HTTP3 на TCP/HTTPS (для IPv4 селективно по целевым IP)
+- **Allow No SNI** — позволяет применять обход даже когда SNI не распознан/отсутствует
+- **HTTP Host Tricks** — TCP/80: разрез заголовка `Host:` на два TCP сегмента и drop оригинала
+- **Bad Checksum** — фейковые TCP пакеты с испорченным checksum (для обходных техник)
 - **DoH (DNS-over-HTTPS)** — защищённый DNS через Cloudflare/Google/Quad9
 
 ### Отчётность
@@ -112,6 +116,8 @@ dotnet run
 4. Используйте приложение как обычно — ISP Audit анализирует трафик в фоне
 5. Закройте приложение или нажмите **Стоп** — получите результаты
 
+Если диагностика выявила проблемы, откройте панель Bypass и примените рекомендации v2 (или включите нужные тумблеры вручную).
+
 ### Overlay (мини-окно)
 Во время диагностики отображается компактное окно поверх всех окон:
 - Время сессии
@@ -141,68 +147,76 @@ dotnet run
 ```mermaid
 graph TB
     subgraph UI["🖥️ UI Layer"]
-        MainVM[MainViewModel]
+        MainVM[MainViewModelRefactored]
         BypassCtrl[BypassController]
         TestResults[TestResultsManager]
     end
-    
+
     subgraph Orchestration["🎭 Orchestration"]
         Orchestrator[DiagnosticOrchestrator]
         Pipeline[LiveTestingPipeline<br/>Channels]
     end
-    
+
     subgraph Core["⚙️ Core Logic"]
+        ConnMon[ConnectionMonitor<br/>Service]
         Collector[TrafficCollector<br/>Smart Sniffer]
-        Filters[NoiseFilter +<br/>UnifiedFilter]
+        Filters[NoiseHostFilter +<br/>UnifiedTrafficFilter]
         Tester[StandardHostTester<br/>DNS/TCP/TLS]
-        Classifier[Blockage<br/>Classifier]
-        StateStore[BlockageStateStore]
+        Intelligence[SignalsAdapterV2 +<br/>DiagnosisEngineV2 +<br/>StrategySelectorV2]
+        StateStore[InMemoryBlockageStateStore]
     end
-    
+
     subgraph Inspection["🔍 Inspection"]
         Inspectors[RST/UDP/Retrans/<br/>Redirect Detectors]
     end
-    
+
     subgraph Network["🌐 Network"]
         WinDivert[WinDivert Driver]
-        Services[ConnectionMonitor<br/>DnsParser<br/>PidTracker]
-        TrafficEngine[TrafficEngine +<br/>BypassFilter]
+        Services[DnsSniffer<br/>PidTracker]
+        BypassState[BypassStateManager]
+        TlsSvc[TlsBypassService]
+        TrafficEngine[TrafficEngine]
+        BypassFilter[BypassFilter]
     end
-    
+
     %% Main Flow
     MainVM --> Orchestrator
     Orchestrator --> Pipeline
-    Orchestrator --> Collector
-    
+    Orchestrator --> ConnMon
+
+    ConnMon --> Collector
     Pipeline -.->|Queue| Tester
-    Pipeline -.->|Queue| Classifier
-    
+    Pipeline -.->|Queue| Intelligence
+
     Collector --> Filters
     Filters --> Pipeline
-    Tester --> Classifier
-    Classifier --> StateStore
+    Tester --> Intelligence
+    Intelligence --> StateStore
     StateStore --> Inspectors
     StateStore --> TestResults
-    
+
     %% Network Layer
-    Services --> Collector
-    Services --> WinDivert
+    Services --> ConnMon
+    ConnMon --> WinDivert
     Tester -.-> WinDivert
-    
+
     %% Bypass
-    BypassCtrl --> TrafficEngine
-    TrafficEngine --> WinDivert
-    Classifier -.->|Recommendations| BypassCtrl
-    
+    BypassCtrl --> BypassState
+    BypassState --> TlsSvc
+    BypassState --> TrafficEngine
+    TrafficEngine --> BypassFilter
+    BypassFilter --> WinDivert
+    Intelligence -.->|Recommendations v2| BypassCtrl
+
     %% Styling
     classDef ui fill:#1976d2,stroke:#0d47a1,color:#fff
     classDef core fill:#7b1fa2,stroke:#4a148c,color:#fff
     classDef network fill:#388e3c,stroke:#1b5e20,color:#fff
     classDef inspect fill:#f57c00,stroke:#e65100,color:#fff
-    
+
     class MainVM,BypassCtrl,TestResults ui
-    class Collector,Filters,Tester,Classifier,StateStore core
-    class WinDivert,Services,TrafficEngine network
+    class ConnMon,Collector,Filters,Tester,Intelligence,StateStore core
+    class WinDivert,Services,BypassState,TlsSvc,TrafficEngine,BypassFilter network
     class Inspectors inspect
 ```
 
@@ -211,7 +225,7 @@ graph TB
 #### 🖥️ UI Layer
 | Компонент | Файл | Описание |
 |-----------|------|----------|
-| MainViewModel | `ViewModels/MainViewModelRefactored.cs` | Корневая ViewModel, связывает UI и логику |
+| MainViewModelRefactored | `ViewModels/MainViewModelRefactored.cs` | Корневая ViewModel, связывает UI и логику |
 | BypassController | `ViewModels/BypassController.cs` | Управление стратегиями обхода (Bypass) |
 | TestResultsManager | `ViewModels/TestResultsManager.cs` | Управление результатами тестов и рекомендациями |
 
@@ -228,6 +242,7 @@ graph TB
 | UnifiedTrafficFilter | `Utils/UnifiedTrafficFilter.cs` | Фильтрация шума и дедупликация |
 | StandardHostTester | `Core/Modules/StandardHostTester.cs` | Активное тестирование хостов (DNS, TCP, TLS) |
 | BlockageClassifier | `Core/Modules/StandardBlockageClassifier.cs` | Анализ результатов и определение типа блокировки |
+| DPI Intelligence v2 | `Core/IntelligenceV2/` | Селектор рекомендаций v2: signals → диагноз → BypassPlan (manual apply) |
 | BlockageStateStore | `Core/Modules/InMemoryBlockageStateStore.cs` | Хранение состояния блокировок и истории |
 
 #### 🔍 Inspection
@@ -243,6 +258,8 @@ graph TB
 |-----------|------|----------|
 | TrafficEngine | `Core/Traffic/TrafficEngine.cs` | Движок перехвата пакетов (WinDivert wrapper) |
 | BypassFilter | `Core/Traffic/Filters/BypassFilter.cs` | Применение стратегий обхода на уровне пакетов |
+| BypassStateManager | `Bypass/BypassStateManager.cs` | SSoT состояния обхода: безопасный Apply/Disable, fail-safe |
+| TlsBypassService | `Bypass/TlsBypassService.cs` | Конфигурирование bypass-профиля и логика TLS-обхода |
 | ConnectionMonitor | `Utils/ConnectionMonitorService.cs` | Мониторинг сокетов (WinDivert/IP Helper) |
 | DnsParser | `Utils/DnsSnifferService.cs` | Парсинг DNS-пакетов и SNI |
 | PidTracker | `Utils/PidTrackerService.cs` | Отслеживание PID целевого процесса |
@@ -255,24 +272,24 @@ graph TB
 
 ## FAQ
 
-**Q: Почему нужны права администратора?**  
+**Q: Почему нужны права администратора?**
 A: WinDivert — это kernel driver для перехвата пакетов. Без админ-прав он не запустится.
 
-**Q: Влияет ли на другие приложения?**  
+**Q: Влияет ли на другие приложения?**
 A: Нет. Оптимизация применяется только к выбранному приложению (фильтрация по PID).
 
-**Q: Безопасно ли это?**  
+**Q: Безопасно ли это?**
 A: Да. Приложение:
 - Не отправляет данные в интернет
 - Не модифицирует системные файлы
 - Оптимизация отключается при закрытии ISP Audit
 
-**Q: Что делать если "0 соединений"?**  
+**Q: Что делать если "0 соединений"?**
 1. Убедитесь что запустили от администратора
 2. Убедитесь что приложение делает сетевые запросы
 3. Попробуйте `ipconfig /flushdns` перед диагностикой
 
-**Q: Hostname показывает технические имена (1e100.net)?**  
+**Q: Hostname показывает технические имена (1e100.net)?**
 A: Это reverse-DNS от Google CDN. SNI-парсинг показывает реальные домены, если они доступны в TLS ClientHello.
 
 ## Лицензия
