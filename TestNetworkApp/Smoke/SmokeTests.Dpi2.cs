@@ -1334,6 +1334,52 @@ namespace TestNetworkApp.Smoke
                 return new SmokeTestResult("DPI2-009", "Пустой план при confidence < 50", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_StrategySelector_DnsHijack_RecommendsUseDohOnly(CancellationToken ct)
+            => RunAsync("DPI2-034", "DnsHijack → UseDoh (low-risk), без TLS/assist", () =>
+            {
+                var selector = new StandardStrategySelectorV2();
+
+                var diagnosis = new DiagnosisResult
+                {
+                    DiagnosisId = DiagnosisId.DnsHijack,
+                    Confidence = 75,
+                    MatchedRuleName = "smoke",
+                    ExplanationNotes = Array.Empty<string>(),
+                    Evidence = new Dictionary<string, string>(),
+                    InputSignals = new BlockageSignalsV2
+                    {
+                        HostKey = "example.com",
+                        CapturedAtUtc = DateTimeOffset.UtcNow,
+                        AggregationWindow = TimeSpan.FromSeconds(30),
+                        SampleSize = 2,
+                        IsUnreliable = false,
+
+                        // Наличие UDP/443 активности и no-SNI не должно включать assist-флаги без TLS-обхода.
+                        UdpUnansweredHandshakes = 10,
+                        HostTestedCount = 5,
+                        HostTestedNoSniCount = 5
+                    },
+                    DiagnosedAtUtc = DateTimeOffset.UtcNow
+                };
+
+                var plan = selector.Select(diagnosis);
+
+                if (plan.Strategies.Count != 1 || plan.Strategies[0].Id != StrategyId.UseDoh)
+                {
+                    return new SmokeTestResult("DPI2-034", "DnsHijack → UseDoh (low-risk), без TLS/assist", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали ровно одну стратегию UseDoh, получили: [{string.Join(", ", plan.Strategies.Select(s => s.Id))}]");
+                }
+
+                if (plan.DropUdp443 || plan.AllowNoSni)
+                {
+                    return new SmokeTestResult("DPI2-034", "DnsHijack → UseDoh (low-risk), без TLS/assist", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Assist-флаги не должны включаться без TLS-обхода: DropUdp443={plan.DropUdp443}, AllowNoSni={plan.AllowNoSni}");
+                }
+
+                return new SmokeTestResult("DPI2-034", "DnsHijack → UseDoh (low-risk), без TLS/assist", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: plan=UseDoh only");
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_StrategySelector_WarnsAndSkips_UnimplementedStrategies(CancellationToken ct)
             => RunAsync("DPI2-010", "Warning при нереализованных стратегиях (warning + skip)", () =>
             {

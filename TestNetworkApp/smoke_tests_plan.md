@@ -455,6 +455,13 @@
 **Входные данные:** `DiagnosisResult` с `DiagnosisId.ActiveDpiEdge` или `DiagnosisId.StatefulDpi` и `confidence >= 70`  
 **Ожидаемый результат:** В `Reasoning` присутствует суффикс `deferred: ...`
 
+**Test ID:** `DPI2-034`  
+**Что проверяет:** `DnsHijack` маппится в low-risk стратегию `UseDoh`  
+**Для чего:** Единое и предсказуемое поведение v2 при «чисто DNS» проблемах  
+**Критерий успеха:** План содержит ровно одну стратегию `UseDoh` и не включает TLS-обход/assist-флаги  
+**Входные данные:** `DiagnosisResult(DnsHijack, confidence >= 50)`  
+**Ожидаемый результат:** `plan.Strategies=[UseDoh]`, `DropUdp443=false`, `AllowNoSni=false`
+
 ### 5.4 Executor MVP
 **Test ID:** `DPI2-011`  
 **Что проверяет:** Форматирование вывода для UI (1-2 строки)  

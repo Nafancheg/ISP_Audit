@@ -291,10 +291,12 @@ public sealed class StandardStrategySelectorV2
                     })
             ],
 
-            // Вариант C: DoH не рекомендуем при "чисто DNS" диагнозе,
-            // чтобы не повышать риск ложных рекомендаций и не путать UX.
+            // MVP/практика: при "чисто DNS" диагнозе даём низкорисковую рекомендацию DoH.
+            // Это не авто-применение: пользователь включает DoH вручную или через Apply v2.
             DiagnosisId.DnsHijack =>
-                new List<StrategyTemplate>(),
+            [
+                new StrategyTemplate(StrategyId.UseDoh, BasePriority: 80, Risk: RiskLevel.Low, Parameters: new Dictionary<string, object?>()),
+            ],
 
             DiagnosisId.SilentDrop =>
             [
