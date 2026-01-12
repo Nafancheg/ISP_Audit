@@ -109,7 +109,9 @@ namespace IspAudit.ViewModels
             "TLS_FAKE",
             "TLS_FAKE_FRAGMENT",
             "DROP_RST",
-            "DOH"
+            "DOH",
+            "QUIC_TO_TCP",
+            "NO_SNI"
         };
         
         // Настройки
@@ -225,7 +227,7 @@ namespace IspAudit.ViewModels
             }
         }
 
-        public bool HasRecommendations => _lastV2Plan != null && _recommendedStrategies.Count > 0;
+        public bool HasRecommendations => _lastV2Plan != null;
 
         public bool HasAnyRecommendations => _recommendedStrategies.Count > 0
             || _manualRecommendations.Count > 0
@@ -1155,7 +1157,21 @@ namespace IspAudit.ViewModels
 
             if (_testingPipeline != null)
             {
-                _ = _testingPipeline.EnqueueHostAsync(host);
+                // ValueTask нельзя просто "потерять" (CA2012). Конвертируем в Task и логируем ошибки.
+                _ = _testingPipeline.EnqueueHostAsync(host).AsTask().ContinueWith(t =>
+                {
+                    try
+                    {
+                        if (t.Exception != null)
+                        {
+                            Log($"[SNI] Ошибка enqueue в pipeline: {t.Exception.GetBaseException().Message}");
+                        }
+                    }
+                    catch
+                    {
+                        // Игнорируем любые ошибки логирования
+                    }
+                }, TaskContinuationOptions.OnlyOnFaulted);
             }
             else
             {
@@ -1301,6 +1317,10 @@ namespace IspAudit.ViewModels
             _lastV2Plan = plan;
             _lastV2PlanHostKey = hostKey;
 
+            // План сформирован для конкретной цели — «прикалываем» v2-цель к hostKey плана,
+            // чтобы последующие сообщения по другим хостам не ломали Apply (и UX панели рекомендаций).
+            _lastV2DiagnosisHostKey = hostKey;
+
             // Токены нужны только для текста панели. Реальное применение идёт по объектному plan.
             _recommendedStrategies.Clear();
 
@@ -1327,7 +1347,27 @@ namespace IspAudit.ViewModels
                 }
             }
 
-            _lastV2DiagnosisSummary = $"([V2] диагноз={plan.ForDiagnosis} уверенность={plan.PlanConfidence}%: {plan.Reasoning})";
+            if (plan.DropUdp443)
+            {
+                var token = "QUIC_TO_TCP";
+                if (!IsStrategyActive(token, bypassController))
+                {
+                    _recommendedStrategies.Add(token);
+                }
+            }
+
+            if (plan.AllowNoSni)
+            {
+                var token = "NO_SNI";
+                if (!IsStrategyActive(token, bypassController))
+                {
+                    _recommendedStrategies.Add(token);
+                }
+            }
+
+            _lastV2DiagnosisSummary = string.IsNullOrWhiteSpace(hostKey)
+                ? $"([V2] диагноз={plan.ForDiagnosis} уверенность={plan.PlanConfidence}%: {plan.Reasoning})"
+                : $"([V2] диагноз={plan.ForDiagnosis} уверенность={plan.PlanConfidence}%: {plan.Reasoning}) (цель: {hostKey})";
 
             UpdateRecommendationTexts(bypassController);
         }
@@ -1353,24 +1393,35 @@ namespace IspAudit.ViewModels
             try
             {
                 // Ключ цели: предпочитаем SNI (человеко‑понятный), иначе берём IP из "host:port".
+                var candidateHostKey = string.Empty;
                 var sni = TryExtractInlineToken(msg, "SNI");
                 if (!string.IsNullOrWhiteSpace(sni) && sni != "-")
                 {
-                    _lastV2DiagnosisHostKey = sni;
+                    candidateHostKey = sni;
                 }
                 else
                 {
-                    var host = "";
                     var afterPrefix = msg.Substring(2).TrimStart();
                     var firstToken = afterPrefix.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
                     if (!string.IsNullOrWhiteSpace(firstToken))
                     {
-                        host = firstToken.Split(':').FirstOrDefault() ?? "";
+                        candidateHostKey = firstToken.Split(':').FirstOrDefault() ?? "";
                     }
-                    if (!string.IsNullOrWhiteSpace(host))
-                    {
-                        _lastV2DiagnosisHostKey = host;
-                    }
+                }
+
+                // Если план уже построен, не позволяем сообщениям по другим хостам «перетереть» цель,
+                // иначе кнопка Apply может начать вести себя как "ничего не происходит".
+                if (_lastV2Plan != null
+                    && !string.IsNullOrWhiteSpace(_lastV2PlanHostKey)
+                    && !string.IsNullOrWhiteSpace(candidateHostKey)
+                    && !string.Equals(candidateHostKey, _lastV2PlanHostKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(candidateHostKey))
+                {
+                    _lastV2DiagnosisHostKey = candidateHostKey;
                 }
 
                 // Вытаскиваем компактный текст v2 в скобках (он уже пользовательский)
@@ -1411,6 +1462,8 @@ namespace IspAudit.ViewModels
                 "TLS_DISORDER" => "Frag+Rev",
                 "TLS_FAKE" => "TLS Fake",
                 "DROP_RST" => "Drop RST",
+                "QUIC_TO_TCP" => "QUIC→TCP",
+                "NO_SNI" => "No SNI",
                 "DOH" => "🔒 DoH",
                 _ => token
             };
@@ -1429,21 +1482,18 @@ namespace IspAudit.ViewModels
                 "TlsFakeTtl" => "TLS_FAKE",
                 "DropRst" => "DROP_RST",
                 "UseDoh" => "DOH",
+                "DropUdp443" => "QUIC_TO_TCP",
+                "AllowNoSni" => "NO_SNI",
                 _ => t.ToUpperInvariant()
             };
         }
 
+        private static bool PlanHasApplicableActions(BypassPlan plan)
+            => plan.Strategies.Count > 0 || plan.DropUdp443 || plan.AllowNoSni;
+
         public async Task ApplyRecommendationsAsync(BypassController bypassController)
         {
-            if (_lastV2Plan == null || _lastV2Plan.Strategies.Count == 0)
-            {
-                return;
-            }
-
-            if (_recommendedStrategies.Count == 0)
-            {
-                return;
-            }
+            if (_lastV2Plan == null || !PlanHasApplicableActions(_lastV2Plan)) return;
 
             // Защита от «устаревшего» плана: применяем только если план относится
             // к последней цели, для которой был показан v2-диагноз.
@@ -1451,8 +1501,7 @@ namespace IspAudit.ViewModels
                 && !string.IsNullOrWhiteSpace(_lastV2PlanHostKey)
                 && !string.Equals(_lastV2PlanHostKey, _lastV2DiagnosisHostKey, StringComparison.OrdinalIgnoreCase))
             {
-                Log($"[V2][APPLY] SKIP: planHost={_lastV2PlanHostKey}; lastDiagHost={_lastV2DiagnosisHostKey} (план устарел)");
-                return;
+                Log($"[V2][APPLY] WARN: planHost={_lastV2PlanHostKey}; lastDiagHost={_lastV2DiagnosisHostKey} (план/цель разошлись)");
             }
 
             _applyCts?.Dispose();
@@ -1464,8 +1513,18 @@ namespace IspAudit.ViewModels
 
             var ct = linked.Token;
 
-            var hostKey = _lastV2PlanHostKey;
-            var planStrategies = string.Join(", ", _lastV2Plan.Strategies.Select(s => MapStrategyToken(s.Id.ToString())));
+            var hostKey = !string.IsNullOrWhiteSpace(_lastV2PlanHostKey)
+                ? _lastV2PlanHostKey
+                : _lastV2DiagnosisHostKey;
+
+            var planTokens = _lastV2Plan.Strategies
+                .Select(s => MapStrategyToken(s.Id.ToString()))
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .ToList();
+            if (_lastV2Plan.DropUdp443) planTokens.Add("QUIC_TO_TCP");
+            if (_lastV2Plan.AllowNoSni) planTokens.Add("NO_SNI");
+            var planStrategies = planTokens.Count == 0 ? "(none)" : string.Join(", ", planTokens);
+
             var beforeState = BuildBypassStateSummary(bypassController);
 
             try
@@ -1497,7 +1556,7 @@ namespace IspAudit.ViewModels
         private static string BuildBypassStateSummary(BypassController bypassController)
         {
             // Коротко и стабильно: только ключевые флаги.
-            return $"Frag={(bypassController.IsFragmentEnabled ? 1 : 0)},Dis={(bypassController.IsDisorderEnabled ? 1 : 0)},Fake={(bypassController.IsFakeEnabled ? 1 : 0)},DropRst={(bypassController.IsDropRstEnabled ? 1 : 0)},DoH={(bypassController.IsDoHEnabled ? 1 : 0)}";
+            return $"Frag={(bypassController.IsFragmentEnabled ? 1 : 0)},Dis={(bypassController.IsDisorderEnabled ? 1 : 0)},Fake={(bypassController.IsFakeEnabled ? 1 : 0)},DropRst={(bypassController.IsDropRstEnabled ? 1 : 0)},QuicToTcp={(bypassController.IsQuicFallbackEnabled ? 1 : 0)},NoSni={(bypassController.IsAllowNoSniEnabled ? 1 : 0)},DoH={(bypassController.IsDoHEnabled ? 1 : 0)}";
         }
 
         private void ResetRecommendations()
@@ -1585,6 +1644,8 @@ namespace IspAudit.ViewModels
                 "TLS_FAKE" => bypassController.IsFakeEnabled,
                 "TLS_FAKE_FRAGMENT" => bypassController.IsFakeEnabled && bypassController.IsFragmentEnabled,
                 "DROP_RST" => bypassController.IsDropRstEnabled,
+                "QUIC_TO_TCP" => bypassController.IsQuicFallbackEnabled,
+                "NO_SNI" => bypassController.IsAllowNoSniEnabled,
                 "DOH" => bypassController.IsDoHEnabled,
                 _ => false
             };

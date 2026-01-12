@@ -513,7 +513,9 @@ namespace IspAudit.Utils
 
             // Проблема/блокировка: показываем «хвост» из фактов для QA/лога.
             // Если селектор дал план — отображаем краткую рекомендацию.
-            var bypassStrategy = plan.Strategies.Count == 0 ? PipelineContract.BypassNone : BuildBypassStrategyText(plan);
+            var bypassStrategy = (plan.Strategies.Count == 0 && !plan.DropUdp443 && !plan.AllowNoSni)
+                ? PipelineContract.BypassNone
+                : BuildBypassStrategyText(plan);
             return new HostBlocked(tested, bypassStrategy, BuildEvidenceTail(diagnosis));
         }
 

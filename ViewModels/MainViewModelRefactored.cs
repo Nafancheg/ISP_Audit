@@ -881,6 +881,8 @@ namespace IspAudit.ViewModels
                 propertyName != nameof(Bypass.IsDisorderEnabled) &&
                 propertyName != nameof(Bypass.IsFakeEnabled) &&
                 propertyName != nameof(Bypass.IsDropRstEnabled) &&
+                propertyName != nameof(Bypass.IsQuicFallbackEnabled) &&
+                propertyName != nameof(Bypass.IsAllowNoSniEnabled) &&
                 propertyName != nameof(Bypass.IsDoHEnabled))
             {
                 return;
