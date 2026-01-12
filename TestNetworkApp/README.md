@@ -1,191 +1,75 @@
-# Тестовое приложение для калибровки ISP_Audit
+# TestNetworkApp
 
-## TestNetworkApp.exe
+`TestNetworkApp` выполняет две задачи:
 
-**Назначение**: Эталонное приложение для тестирования и калибровки Traffic Analyzer в ISP_Audit.
+1) **Генератор сетевой активности** — небольшой exe, который открывает типичные TCP/HTTPS соединения, чтобы было удобно воспроизводимо проверять захват/разбор трафика в основном приложении.
+2) **Smoke-runner** — консольный запуск набора smoke-тестов репозитория (без GUI), включая проверки пайплайна, парсеров, форматирования, и части низкоуровневых модулей.
 
-### Что делает:
-- Устанавливает HTTP/HTTPS соединения к 7 известным адресам
-- Работает 60 секунд (или до нажатия клавиши)
-- Показывает статус каждого запроса в реальном времени
-- Выводит PID процесса для отладки
+## 1) Генератор сетевой активности (TestNetworkApp.exe)
 
-### Целевые адреса:
-1. **google.com** (443) - HTTPS
-2. **youtube.com** (443) - HTTPS
-3. **discord.com** (443) - HTTPS
-4. **github.com** (443) - HTTPS
-5. **api.ipify.org** (443) - IP check API
-6. **cloudflare.com** (443) - HTTPS
-7. **1.1.1.1** (443) - Cloudflare DNS over HTTPS
+### Что делает
+- Делает серию HTTP/HTTPS запросов к набору известных хостов
+- Работает фиксированное время (по умолчанию ~60 секунд)
+- Печатает статусы запросов и PID процесса
 
----
+### Примеры целей
+- `google.com:443`
+- `youtube.com:443`
+- `discord.com:443`
+- `github.com:443`
+- `api.ipify.org:443`
+- `cloudflare.com:443`
+- `1.1.1.1:443`
 
-## Инструкция по тестированию
-
-### 0. Smoke-тест UI-редьюсера (без запуска GUI)
-
-Назначение: быстрый воспроизводимый прогон типовых строк пайплайна через `TestResultsManager.ParsePipelineMessage`.
-Проверяет ключ карточки по SNI/hostname, миграцию `IP → hostname` и правило “смешанные исходы → Нестабильно”.
-
-Запуск:
-
-```powershell
-dotnet run -c Debug --project TestNetworkApp\TestNetworkApp.csproj -- --ui-reducer-smoke
-```
-
-Ожидаемый результат: в выводе должны появиться итоговые карточки с ключами вида `youtube.com`/`facebook.com`, при `Fail+Pass` в окне — статус “Нестабильно”, а IP сохраняется как `FallbackIp`.
-
-### 1. Сборка
-
+### Сборка
 ```powershell
 cd TestNetworkApp
 dotnet publish -c Release -r win-x64 --self-contained false -o bin/Publish
 ```
 
-Результат: `TestNetworkApp\bin\Publish\TestNetworkApp.exe`
-
-### 2. Ручной тест (проверка работоспособности)
-
+### Ручной запуск
 ```powershell
 .\TestNetworkApp\bin\Publish\TestNetworkApp.exe
 ```
 
-Ожидаемый вывод:
-```
-=== ISP_Audit Test Network Application ===
-PID: 12345
-Запуск тестовых сетевых запросов...
+## 2) Smoke-тесты (TestNetworkApp как runner)
 
-Старт цикла запросов (60 секунд)...
+Smoke-runner запускается параметром `--smoke` и использует план тестов из `TestNetworkApp/smoke_tests_plan.md`.
+Реализации тестов находятся в `TestNetworkApp/Smoke/SmokeTests.*.cs`, а каркас раннера — в `TestNetworkApp/Smoke/SmokeRunner.cs`.
 
-[12:34:56] Google          -> 200 OK
-[12:34:57] YouTube         -> 200 OK
-[12:34:58] Discord         -> 200 OK
-...
-```
+### Быстрый старт
 
-### 3. Тестирование ISP_Audit Stage 1
-
-#### 3.1. Запустите ISP_Audit от администратора
-
+Запуск всех smoke-тестов (нестрогий режим; часть environment-зависимых проверок может быть пропущена):
 ```powershell
-Start-Process "bin\Debug\net9.0-windows\ISP_Audit.exe" -Verb RunAs
+dotnet run -c Debug --project TestNetworkApp\TestNetworkApp.csproj -- --smoke all
 ```
 
-#### 3.2. В ISP_Audit GUI:
-1. **Browse** → выберите `TestNetworkApp\bin\Publish\TestNetworkApp.exe`
-2. **Stage 1: Анализ трафика** → нажмите "Запустить анализ"
-3. Ожидайте 30 секунд (приложение запустится автоматически)
-
-#### 3.3. Ожидаемый результат:
-
-**Stage 1 Status:**
-```
-Завершено: обнаружено 7 целей
+Строгий запуск без пропусков (любые `SKIP` считаются ошибкой):
+```powershell
+dotnet run -c Debug --project TestNetworkApp\TestNetworkApp.csproj -- --smoke all --strict
 ```
 
-**Output окно (логи):**
-```
-[Stage1] Process started: EXE=TestNetworkApp.exe, PID=12345
-[Stage1] WinDivert NETWORK layer активирован
-[Stage1] Захвачено событий: 100
-[Stage1] Захвачено событий: 200
-[Stage1] SUCCESS: 7 unique hosts captured
-[Stage1]   → google.com (web)
-[Stage1]   → youtube.com (web)
-[Stage1]   → discord.com (web)
-[Stage1]   → github.com (web)
-[Stage1]   → api.ipify.org (web)
-[Stage1]   → cloudflare.com (web)
-[Stage1]   → 1.1.1.1 (web)
+Выгрузка отчёта в JSON:
+```powershell
+dotnet run -c Debug --project TestNetworkApp\TestNetworkApp.csproj -- --smoke all --json artifacts\smoke_all.json
 ```
 
----
+### Категории
+Runner поддерживает категории вида `--smoke <category>` (например: `infra`, `pipe`, `insp`, `ui`, `dpi2`, `orch`, `cfg`, `err`, `e2e`, `perf`, `reg`).
 
-## Диагностика проблем
+## 3) Smoke UI-редьюсера (без запуска GUI)
 
-### "Захват завершен: 0 событий"
+Быстрый воспроизводимый прогон типовых строк пайплайна через `TestResultsManager.ParsePipelineMessage`.
 
-**Причины:**
-1. ISP_Audit **НЕ запущен от администратора**
-   - Решение: `Start-Process ISP_Audit.exe -Verb RunAs`
-
-2. WinDivert не установлен или устарел
-   - Проверка: `Get-Item native\WinDivert.dll | Select-Object Length`
-   - Ожидается: **47104 байт** (версия 2.2.0)
-
-3. TestNetworkApp не установил соединения
-   - Проверка: запустите TestNetworkApp.exe вручную, убедитесь что запросы проходят (зеленый текст)
-
-4. GetExtendedTcpTable не видит соединения
-   - Возможно, соединения слишком быстрые
-   - Увеличьте capture timeout до 60 секунд
-
-### "ERROR 87 (ERROR_INVALID_PARAMETER)"
-
-**Причины:**
-1. WinDivert фильтр неверный
-   - Текущий: `"outbound and (tcp or udp)"`
-   - Это стандартный фильтр для NETWORK layer
-
-2. WinDivert версия несовместима
-   - Проверьте: должна быть **2.2.0**
-
-### "ERROR 5 (Access Denied)"
-
-**Решение:** Запустите ISP_Audit от администратора!
-
----
-
-## Расширенное тестирование
-
-### Увеличение времени захвата
-
-Измените в `MainViewModel.cs`:
-
-```csharp
-TimeSpan.FromSeconds(30) → TimeSpan.FromSeconds(60)
+Запуск:
+```powershell
+dotnet run -c Debug --project TestNetworkApp\TestNetworkApp.csproj -- --ui-reducer-smoke
 ```
-
-### Добавление UDP трафика
-
-TestNetworkApp использует только TCP (HTTPS). Для тестирования UDP:
-
-```csharp
-// Добавить в Program.cs
-using var udpClient = new UdpClient();
-udpClient.Send(new byte[] { 0x00 }, 1, "8.8.8.8", 53); // DNS query
-```
-
-### Проверка дочерних процессов
-
-Если TestNetworkApp запускает дочерний процесс:
-
-1. Найдите дочерний PID через Process Explorer
-2. Измените MainViewModel для мониторинга дочерних процессов
-
----
 
 ## Файлы
 
-- `TestNetworkApp\Program.cs` - исходный код
-- `TestNetworkApp\bin\Publish\TestNetworkApp.exe` - готовый exe (147KB)
-- `test_calibration.ps1` - скрипт автоматического тестирования (WIP)
-
----
-
-## Следующие шаги
-
-После успешной калибровки Stage 1:
-
-1. **Stage 2: Классификация проблем**
-   - Проверьте, что ProblemClassifier правильно анализирует захваченный профиль
-
-2. **Stage 3: Применение обхода**
-   - Протестируйте DNS fix
-   - Протестируйте WinDivert bypass rules
-
-3. **End-to-end тест**
-   - Весь workflow от Stage 1 до Stage 3
+- `TestNetworkApp/Program.cs` — генератор сетевой активности
+- `TestNetworkApp/Smoke/SmokeRunner.cs` — каркас smoke-runner
+- `TestNetworkApp/Smoke/SmokeTests.*.cs` — реализации smoke-тестов
+- `TestNetworkApp/smoke_tests_plan.md` — перечень и описание smoke-тестов
 
