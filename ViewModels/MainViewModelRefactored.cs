@@ -262,6 +262,18 @@ namespace IspAudit.ViewModels
         public string ManualRecommendationsText => Orchestrator.ManualRecommendationsText;
         public string RecommendationHintText => Orchestrator.RecommendationHintText;
 
+        private TestResult? _selectedTestResult;
+        public TestResult? SelectedTestResult
+        {
+            get => _selectedTestResult;
+            set
+            {
+                if (ReferenceEquals(_selectedTestResult, value)) return;
+                _selectedTestResult = value;
+                OnPropertyChanged(nameof(SelectedTestResult));
+            }
+        }
+
         private bool _isApplyingRecommendations;
         public bool IsApplyingRecommendations
         {
@@ -737,7 +749,8 @@ namespace IspAudit.ViewModels
             IsApplyingRecommendations = true;
             try
             {
-                await Orchestrator.ApplyRecommendationsAsync(Bypass);
+                var preferredHostKey = GetPreferredHostKey(SelectedTestResult);
+                await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey);
             }
             catch (OperationCanceledException)
             {
@@ -750,6 +763,23 @@ namespace IspAudit.ViewModels
             finally
             {
                 IsApplyingRecommendations = false;
+            }
+        }
+
+        private static string? GetPreferredHostKey(TestResult? test)
+        {
+            try
+            {
+                if (test?.Target == null) return null;
+
+                if (!string.IsNullOrWhiteSpace(test.Target.SniHost)) return test.Target.SniHost.Trim();
+                if (!string.IsNullOrWhiteSpace(test.Target.Host)) return test.Target.Host.Trim();
+                if (!string.IsNullOrWhiteSpace(test.Target.Name)) return test.Target.Name.Trim();
+                return null;
+            }
+            catch
+            {
+                return null;
             }
         }
 

@@ -417,6 +417,7 @@
                 <!-- DataGrid -->
                 <DataGrid Grid.Row="2" x:Name="ResultsGrid"
                           ItemsSource="{Binding TestResults}"
+                          SelectedItem="{Binding SelectedTestResult, Mode=TwoWay}"
                           AutoGenerateColumns="False"
                           CanUserAddRows="False"
                           CanUserDeleteRows="False"

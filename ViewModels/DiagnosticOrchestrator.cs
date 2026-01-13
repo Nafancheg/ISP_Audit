@@ -100,6 +100,11 @@ namespace IspAudit.ViewModels
         // Последний v2 план (объектно, без парсинга строк) для ручного применения.
         private BypassPlan? _lastV2Plan;
         private string _lastV2PlanHostKey = "";
+
+        // Планы v2 храним по целям, чтобы Apply мог работать по выбранному хосту,
+        // а не по «последнему сообщению в логе».
+        private readonly ConcurrentDictionary<string, BypassPlan> _v2PlansByHost =
+            new(StringComparer.OrdinalIgnoreCase);
         private static readonly TimeSpan V2ApplyTimeout = TimeSpan.FromSeconds(8);
 
         private static readonly HashSet<string> ServiceStrategies = new(StringComparer.OrdinalIgnoreCase)
@@ -1361,6 +1366,14 @@ namespace IspAudit.ViewModels
 
         private void StoreV2Plan(string hostKey, BypassPlan plan, BypassController bypassController)
         {
+            if (NoiseHostFilter.Instance.IsNoiseHost(hostKey))
+            {
+                // Шум не должен перетирать «активный» план рекомендаций и засорять Apply.
+                return;
+            }
+
+            _v2PlansByHost[hostKey] = plan;
+
             _lastV2Plan = plan;
             _lastV2PlanHostKey = hostKey;
 
@@ -1545,8 +1558,21 @@ namespace IspAudit.ViewModels
         private static bool PlanHasApplicableActions(BypassPlan plan)
             => plan.Strategies.Count > 0 || plan.DropUdp443 || plan.AllowNoSni;
 
-        public async Task ApplyRecommendationsAsync(BypassController bypassController)
+        public Task ApplyRecommendationsAsync(BypassController bypassController)
+            => ApplyRecommendationsAsync(bypassController, preferredHostKey: null);
+
+        public async Task ApplyRecommendationsAsync(BypassController bypassController, string? preferredHostKey)
         {
+            // 1) Пытаемся применить план для выбранной цели (если UI передал её).
+            if (!string.IsNullOrWhiteSpace(preferredHostKey)
+                && _v2PlansByHost.TryGetValue(preferredHostKey.Trim(), out var preferredPlan)
+                && PlanHasApplicableActions(preferredPlan))
+            {
+                await ApplyPlanInternalAsync(bypassController, preferredHostKey.Trim(), preferredPlan).ConfigureAwait(false);
+                return;
+            }
+
+            // 2) Fallback: старый режим «последний v2 план».
             if (_lastV2Plan == null || !PlanHasApplicableActions(_lastV2Plan)) return;
 
             // Защита от «устаревшего» плана: применяем только если план относится
@@ -1558,6 +1584,21 @@ namespace IspAudit.ViewModels
                 Log($"[V2][APPLY] WARN: planHost={_lastV2PlanHostKey}; lastDiagHost={_lastV2DiagnosisHostKey} (план/цель разошлись)");
             }
 
+            var hostKey = !string.IsNullOrWhiteSpace(_lastV2PlanHostKey)
+                ? _lastV2PlanHostKey
+                : _lastV2DiagnosisHostKey;
+
+            await ApplyPlanInternalAsync(bypassController, hostKey, _lastV2Plan).ConfigureAwait(false);
+        }
+
+        private async Task ApplyPlanInternalAsync(BypassController bypassController, string hostKey, BypassPlan plan)
+        {
+            if (NoiseHostFilter.Instance.IsNoiseHost(hostKey))
+            {
+                Log($"[V2][APPLY] Skip: шумовой хост '{hostKey}'");
+                return;
+            }
+
             _applyCts?.Dispose();
             _applyCts = new CancellationTokenSource();
 
@@ -1567,16 +1608,12 @@ namespace IspAudit.ViewModels
 
             var ct = linked.Token;
 
-            var hostKey = !string.IsNullOrWhiteSpace(_lastV2PlanHostKey)
-                ? _lastV2PlanHostKey
-                : _lastV2DiagnosisHostKey;
-
-            var planTokens = _lastV2Plan.Strategies
+            var planTokens = plan.Strategies
                 .Select(s => MapStrategyToken(s.Id.ToString()))
                 .Where(t => !string.IsNullOrWhiteSpace(t))
                 .ToList();
-            if (_lastV2Plan.DropUdp443) planTokens.Add("DROP_UDP_443");
-            if (_lastV2Plan.AllowNoSni) planTokens.Add("ALLOW_NO_SNI");
+            if (plan.DropUdp443) planTokens.Add("DROP_UDP_443");
+            if (plan.AllowNoSni) planTokens.Add("ALLOW_NO_SNI");
             var planStrategies = planTokens.Count == 0 ? "(none)" : string.Join(", ", planTokens);
 
             var beforeState = BuildBypassStateSummary(bypassController);
@@ -1584,7 +1621,7 @@ namespace IspAudit.ViewModels
             try
             {
                 Log($"[V2][APPLY] host={hostKey}; plan={planStrategies}; before={beforeState}");
-                await bypassController.ApplyV2PlanAsync(_lastV2Plan, hostKey, V2ApplyTimeout, ct).ConfigureAwait(false);
+                await bypassController.ApplyV2PlanAsync(plan, hostKey, V2ApplyTimeout, ct).ConfigureAwait(false);
 
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[V2][APPLY] OK; after={afterState}");

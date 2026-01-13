@@ -121,12 +121,11 @@ namespace IspAudit.ViewModels
         public void UpdateTestResult(string host, TestStatus status, string details, string? fallbackIp = null)
         {
             // КРИТИЧНО: Фильтруем шумные хосты ПЕРЕД созданием карточки.
-            // Но делаем это только для «успехов»/непроблемных результатов.
-            // Ошибки/нестабильность не скрываем, иначе теряем лицевой эффект.
+            // Шумовые домены (фоновые/служебные) не должны засорять UI и влиять на UX применения обхода,
+            // даже если тестер/классификатор ошибочно пометил их как проблемные.
             if (!string.IsNullOrWhiteSpace(host) &&
                 !IPAddress.TryParse(host, out _) &&
-                NoiseHostFilter.Instance.IsNoiseHost(host) &&
-                (status == TestStatus.Pass || status == TestStatus.Running || status == TestStatus.Idle))
+                NoiseHostFilter.Instance.IsNoiseHost(host))
             {
                 // Если карточка уже существует - удаляем её
                 var toRemove = TestResults.FirstOrDefault(t => 
@@ -569,6 +568,11 @@ namespace IspAudit.ViewModels
                 }
                 else if ((msg.Contains("→ Стратегия:") || msg.Contains("💡 Рекомендация:")) && !string.IsNullOrEmpty(_lastUpdatedHost))
                 {
+                    if (NoiseHostFilter.Instance.IsNoiseHost(_lastUpdatedHost))
+                    {
+                        return;
+                    }
+
                     var isV2 = msg.TrimStart().StartsWith("[V2]", StringComparison.OrdinalIgnoreCase);
 
                     // v2 — единственный источник рекомендаций для UI.
