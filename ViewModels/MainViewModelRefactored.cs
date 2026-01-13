@@ -271,6 +271,29 @@ namespace IspAudit.ViewModels
                 if (ReferenceEquals(_selectedTestResult, value)) return;
                 _selectedTestResult = value;
                 OnPropertyChanged(nameof(SelectedTestResult));
+
+                // Важно для QUIC→TCP (селективный режим): если цель не задана, UDP/443 по IPv4 не глушится.
+                // Самый понятный UX: цель берём из выбранной строки результатов (если это не шумовой хост).
+                TryUpdateOutcomeTargetFromSelection(_selectedTestResult);
+            }
+        }
+
+        private void TryUpdateOutcomeTargetFromSelection(TestResult? selected)
+        {
+            try
+            {
+                if (selected == null) return;
+
+                var hostKey = GetPreferredHostKey(selected);
+                if (string.IsNullOrWhiteSpace(hostKey)) return;
+
+                if (NoiseHostFilter.Instance.IsNoiseHost(hostKey)) return;
+
+                Bypass.SetOutcomeTargetHost(hostKey);
+            }
+            catch
+            {
+                // Наблюдаемость/UX не должны ломать UI
             }
         }
 
