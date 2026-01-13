@@ -502,7 +502,7 @@
                                             ToolTip="{Binding BypassStrategy}"
                                             Command="{Binding DataContext.ConnectFromResultCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                             CommandParameter="{Binding}"
-                                            Visibility="{Binding IsBypassStrategyFromV2, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            Visibility="{Binding ShowConnectButton, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>

@@ -1,4 +1,6 @@
+using System;
 using System.ComponentModel;
+using IspAudit.Core.Diagnostics;
 
 namespace IspAudit.Models
 {
@@ -129,6 +131,7 @@ namespace IspAudit.Models
             {
                 _bypassStrategy = value;
                 OnPropertyChanged(nameof(BypassStrategy));
+                OnPropertyChanged(nameof(ShowConnectButton));
             }
         }
 
@@ -144,8 +147,15 @@ namespace IspAudit.Models
             {
                 _isBypassStrategyFromV2 = value;
                 OnPropertyChanged(nameof(IsBypassStrategyFromV2));
+                OnPropertyChanged(nameof(ShowConnectButton));
             }
         }
+
+        public bool ShowConnectButton
+            => IsBypassStrategyFromV2 &&
+               !string.IsNullOrWhiteSpace(BypassStrategy) &&
+               !string.Equals(BypassStrategy, PipelineContract.BypassNone, StringComparison.OrdinalIgnoreCase) &&
+               !string.Equals(BypassStrategy, PipelineContract.BypassUnknown, StringComparison.OrdinalIgnoreCase);
 
         public string StatusText
         {

@@ -23,6 +23,7 @@ namespace IspAudit.ViewModels
         private readonly ConcurrentDictionary<string, Target> _resolvedIpMap = new();
         private readonly ConcurrentDictionary<string, bool> _pendingResolutions = new();
         private string? _lastUpdatedHost;
+        private string? _lastUserFacingHost;
 
         private readonly Queue<(DateTime Time, bool IsSuccess)> _healthHistory = new();
 
@@ -90,6 +91,7 @@ namespace IspAudit.ViewModels
             _resolvedIpMap.Clear();
             _pendingResolutions.Clear();
             _lastUpdatedHost = null;
+            _lastUserFacingHost = null;
         }
 
         /// <summary>
@@ -127,17 +129,22 @@ namespace IspAudit.ViewModels
                 !IPAddress.TryParse(host, out _) &&
                 NoiseHostFilter.Instance.IsNoiseHost(host))
             {
-                // Если карточка уже существует - удаляем её
-                var toRemove = TestResults.FirstOrDefault(t => 
-                    t.Target.Host == host || t.Target.Name == host);
-                if (toRemove != null)
+                // Важно: шум должен скрывать только «OK/успех».
+                // Если по шумовому ключу пришла проблема (Fail/Warn) — НЕ удаляем и НЕ скрываем,
+                // иначе UI выглядит как «мигающий»/хаотичный и теряется контекст диагностики.
+                if (status == TestStatus.Pass || status == TestStatus.Idle || status == TestStatus.Running)
                 {
-                    TestResults.Remove(toRemove);
-                    _testResultMap.TryRemove(host, out _);
-                    Log($"[UI] Удалена шумовая карточка: {host}");
-                    NotifyCountersChanged();
+                    var toRemove = TestResults.FirstOrDefault(t =>
+                        t.Target.Host == host || t.Target.Name == host);
+                    if (toRemove != null)
+                    {
+                        TestResults.Remove(toRemove);
+                        _testResultMap.TryRemove(host, out _);
+                        Log($"[UI] Удалена шумовая карточка (успех): {host}");
+                        NotifyCountersChanged();
+                    }
+                    return; // Не создаём новую карточку для шумового успеха
                 }
-                return; // Не создаём новую карточку для шума
             }
 
             var normalizedHost = NormalizeHost(host);
@@ -349,7 +356,7 @@ namespace IspAudit.ViewModels
                         
                         // Обновляем существующую карточку или создаём новую
                         UpdateTestResult(uiKey, TestStatus.Pass, StripNameTokens(msg), fallbackIp);
-                        _lastUpdatedHost = uiKey;
+                        SetLastUpdatedHost(uiKey);
 
                         ApplyNameTokensFromMessage(uiKey, msg);
                     }
@@ -386,7 +393,7 @@ namespace IspAudit.ViewModels
                             if (existing == null || existing.Status == TestStatus.Idle || existing.Status == TestStatus.Running)
                             {
                                 UpdateTestResult(uiKey, TestStatus.Running, "Обнаружено соединение...", fallbackIp);
-                                _lastUpdatedHost = uiKey;
+                                SetLastUpdatedHost(uiKey);
                             }
 
                             ApplyNameTokensFromMessage(uiKey, msg);
@@ -529,7 +536,7 @@ namespace IspAudit.ViewModels
                             }
                             
                             UpdateTestResult(uiKey, status, StripNameTokens(msg), fallbackIp);
-                            _lastUpdatedHost = uiKey;
+                            SetLastUpdatedHost(uiKey);
 
                             ApplyNameTokensFromMessage(uiKey, msg);
                         }
@@ -553,7 +560,7 @@ namespace IspAudit.ViewModels
                         }
                         
                         UpdateTestResult(host, TestStatus.Pass, newDetails);
-                        _lastUpdatedHost = host;
+                        SetLastUpdatedHost(host);
                     }
                 }
                 else if (msg.StartsWith("✗ ") && !string.IsNullOrEmpty(_lastUpdatedHost))
@@ -568,7 +575,18 @@ namespace IspAudit.ViewModels
                 }
                 else if ((msg.Contains("→ Стратегия:") || msg.Contains("💡 Рекомендация:")) && !string.IsNullOrEmpty(_lastUpdatedHost))
                 {
-                    if (NoiseHostFilter.Instance.IsNoiseHost(_lastUpdatedHost))
+                    var targetHostKey = _lastUpdatedHost;
+                    if (!string.IsNullOrWhiteSpace(targetHostKey) && NoiseHostFilter.Instance.IsNoiseHost(targetHostKey))
+                    {
+                        // Late-resolve/rdns может перекинуть "последний хост" на шумовой паттерн.
+                        // В таких случаях пытаемся привязать рекомендацию к последнему НЕ шумовому ключу.
+                        if (!string.IsNullOrWhiteSpace(_lastUserFacingHost))
+                        {
+                            targetHostKey = _lastUserFacingHost;
+                        }
+                    }
+
+                    if (string.IsNullOrWhiteSpace(targetHostKey) || NoiseHostFilter.Instance.IsNoiseHost(targetHostKey))
                     {
                         return;
                     }
@@ -615,7 +633,7 @@ namespace IspAudit.ViewModels
                     var uiStrategy = string.Join(" + ", tokens);
 
                     var result = TestResults.FirstOrDefault(t =>
-                        t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
+                        t.Target.Host == targetHostKey || t.Target.Name == targetHostKey);
                     if (result != null)
                     {
                         result.BypassStrategy = uiStrategy;
@@ -629,11 +647,11 @@ namespace IspAudit.ViewModels
                             result.Status = TestStatus.Warn;
                             result.Details = result.Details?.Replace("Блокировка", "Информация: Fake IP (VPN/туннель)")
                                 ?? "Fake IP обнаружен";
-                            Log($"[UI] ROUTER_REDIRECT → Status=Warn для {_lastUpdatedHost}");
+                            Log($"[UI] ROUTER_REDIRECT → Status=Warn для {targetHostKey}");
                         }
                         else if (uiStrategy != PipelineContract.BypassNone && uiStrategy != PipelineContract.BypassUnknown)
                         {
-                            Log($"[UI] Bypass strategy for {_lastUpdatedHost}: {uiStrategy}");
+                            Log($"[UI] Bypass strategy for {targetHostKey}: {uiStrategy}");
                         }
                     }
                 }
@@ -701,6 +719,29 @@ namespace IspAudit.ViewModels
                 "ALLOW_NO_SNI" => "No SNI",
                 _ => t
             };
+        }
+
+        private void SetLastUpdatedHost(string hostKey)
+        {
+            _lastUpdatedHost = hostKey;
+
+            if (string.IsNullOrWhiteSpace(hostKey))
+            {
+                return;
+            }
+
+            // Мы хотим стабильно цеплять рекомендации/кнопки к "пользовательскому" ключу.
+            // Поэтому шумовые домены НЕ должны затмевать последнюю «нормальную» цель.
+            if (IPAddress.TryParse(hostKey, out _))
+            {
+                _lastUserFacingHost = hostKey;
+                return;
+            }
+
+            if (!NoiseHostFilter.Instance.IsNoiseHost(hostKey))
+            {
+                _lastUserFacingHost = hostKey;
+            }
         }
 
         private void ApplyNameTokensFromMessage(string hostKey, string msg)
