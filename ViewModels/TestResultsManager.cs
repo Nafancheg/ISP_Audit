@@ -484,22 +484,8 @@ namespace IspAudit.ViewModels
                             var uiKey = SelectUiKey(host, msg);
                             var fallbackIp = IPAddress.TryParse(host, out _) ? host : null;
 
-                            // КРИТИЧНО: Проверяем на шум перед созданием карточки ошибки
-                            if (NoiseHostFilter.Instance.IsNoiseHost(host))
-                            {
-                                // Удаляем существующую карточку (ищем по всем полям)
-                                var toRemove = TestResults.FirstOrDefault(t =>
-                                    t.Target.Host.Equals(host, StringComparison.OrdinalIgnoreCase) ||
-                                    t.Target.Name.Equals(host, StringComparison.OrdinalIgnoreCase) ||
-                                    t.Target.FallbackIp == host);
-                                if (toRemove != null)
-                                {
-                                    TestResults.Remove(toRemove);
-                                    Log($"[UI] Удалена шумовая карточка при ошибке: {host}");
-                                    NotifyCountersChanged();
-                                }
-                                return;
-                            }
+                            // Важно: noise_hosts.json используется для подавления UI-шума, но не должен скрывать Fail/Warn.
+                            // Поэтому в ветке ошибок НЕ удаляем и НЕ блокируем карточки по признаку «noise».
 
                             // Если цель - IP адрес, убираем "DNS:✓" из сообщения
                             if (IPAddress.TryParse(host, out _))
@@ -508,6 +494,17 @@ namespace IspAudit.ViewModels
                             }
 
                             var status = TestStatus.Fail;
+
+                            // UDP blockage: это часто симптом QUIC/HTTP3 (браузер может откатываться на TCP).
+                            // Для UX лучше показывать как Warn, а не как жёсткую блокировку.
+                            var hasUdpBlockage = BlockageCode.ContainsCode(msg, BlockageCode.UdpBlockage)
+                                || msg.Contains("UDP потерь", StringComparison.OrdinalIgnoreCase)
+                                || msg.Contains("UdpBlockage", StringComparison.OrdinalIgnoreCase);
+                            if (hasUdpBlockage)
+                            {
+                                status = TestStatus.Warn;
+                            }
+
                             var hasTlsAuthFailure = BlockageCode.ContainsCode(msg, BlockageCode.TlsAuthFailure);
                             if (hasTlsAuthFailure)
                             {

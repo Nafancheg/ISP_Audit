@@ -539,7 +539,15 @@ namespace IspAudit.Utils
                 if (inspectionSignals.UdpUnansweredHandshakes > 2)
                 {
                     var udpTested = tested with { BlockageType = BlockageCode.UdpBlockage };
-                    return new HostBlocked(udpTested, PipelineContract.BypassNone, BlockageCode.StatusOk);
+                    // Но для практического обхода (QUIC→TCP) это важный симптом: показываем карточку как Warn,
+                    // чтобы пользователь мог применить DropUdp443 точечно.
+                    var strategy = (plan.Strategies.Count == 0 && !plan.DropUdp443 && !plan.AllowNoSni)
+                        ? PipelineContract.BypassNone
+                        : BuildBypassStrategyText(plan);
+
+                    var tail = BuildEvidenceTail(diagnosis);
+                    var action = $"{BlockageCode.UdpBlockage} {tail}";
+                    return new HostBlocked(udpTested, strategy, action);
                 }
 
                 if (diagnosis.DiagnosisId == DiagnosisId.NoBlockage)
