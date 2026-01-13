@@ -89,7 +89,7 @@ namespace IspAudit.Core.Modules
                     {
                         var dnsCheckTask = System.Net.Dns.GetHostEntryAsync(hostname, ct);
                         var timeoutTask = Task.Delay(2000, ct);
-                        
+
                         var completedTask = await Task.WhenAny(dnsCheckTask, timeoutTask).ConfigureAwait(false);
                         if (completedTask != dnsCheckTask)
                         {
@@ -117,7 +117,7 @@ namespace IspAudit.Core.Modules
                     using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                     linkedCts.CancelAfter(3000);
 
-                    try 
+                    try
                     {
                         await tcpClient.ConnectAsync(host.RemoteIp, host.RemotePort, linkedCts.Token).ConfigureAwait(false);
                         tcpOk = true;
@@ -160,9 +160,9 @@ namespace IspAudit.Core.Modules
                         using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                         connectCts.CancelAfter(3000);
                         await tcpClient.ConnectAsync(host.RemoteIp, 443, connectCts.Token).ConfigureAwait(false);
-                        
+
                         using var sslStream = new System.Net.Security.SslStream(tcpClient.GetStream(), false);
-                        
+
                         // Используем опции для поддержки CancellationToken
                         var sslOptions = new System.Net.Security.SslClientAuthenticationOptions
                         {
@@ -173,7 +173,7 @@ namespace IspAudit.Core.Modules
 
                         using var tlsCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                         tlsCts.CancelAfter(3000);
-                        
+
                         await sslStream.AuthenticateAsClientAsync(sslOptions, tlsCts.Token).ConfigureAwait(false);
                         tlsOk = true;
                     }

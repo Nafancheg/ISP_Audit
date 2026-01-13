@@ -44,7 +44,7 @@ namespace IspAudit.Utils
                 }
             }
         }
-        
+
         /// <summary>
         /// Существует ли файл бэкапа (значит DoH скорее всего включен)
         /// </summary>
@@ -82,7 +82,7 @@ namespace IspAudit.Utils
                 {
                     // Проверяем совпадение Primary. Secondary проверяем, только если он есть в пресете и в системе.
                     bool primaryMatch = dns[0] == preset.PrimaryIp;
-                    
+
                     // Если в системе есть второй DNS, он должен совпадать с пресетом
                     bool secondaryMatch = true;
                     if (dns.Count > 1)
@@ -106,7 +106,7 @@ namespace IspAudit.Utils
         {
             try
             {
-                var preset = AvailablePresets.FirstOrDefault(p => p.Name.Equals(presetName, StringComparison.OrdinalIgnoreCase)) 
+                var preset = AvailablePresets.FirstOrDefault(p => p.Name.Equals(presetName, StringComparison.OrdinalIgnoreCase))
                              ?? AvailablePresets[0];
 
                 // 1. Найти активный сетевой адаптер
@@ -122,7 +122,7 @@ namespace IspAudit.Utils
                     // Пытаемся загрузить из файла, если есть
                     if (File.Exists(BackupFilePath))
                     {
-                        try 
+                        try
                         {
                             var json = await File.ReadAllTextAsync(BackupFilePath);
                             var state = JsonSerializer.Deserialize<DnsBackupState>(json);
@@ -262,7 +262,7 @@ namespace IspAudit.Utils
                 }
 
                 await RunCommandAsync("ipconfig", "/flushdns");
-                
+
                 // Очищаем состояние и удаляем файл бэкапа
                 _originalDnsConfig = null;
                 _originalAdapterName = null;
@@ -270,7 +270,7 @@ namespace IspAudit.Utils
                 {
                     try { File.Delete(BackupFilePath); } catch { }
                 }
-                
+
                 return (true, string.Empty);
             }
             catch (Exception ex)
@@ -292,12 +292,12 @@ namespace IspAudit.Utils
                 if (success)
                 {
                     _originalAdapterName = adapterName;
-                    
+
                     // Простой парсинг: если есть "DHCP", то DHCP. Иначе собираем IP.
                     // В русской Windows: "DHCP включен: Да"
                     // В английской: "DHCP enabled: Yes"
                     // Но это для IP. Для DNS netsh показывает "Statically Configured" vs "DHCP".
-                    
+
                     if (output.Contains("DHCP") && !output.Contains("Statically Configured") && !output.Contains("Настроено статически"))
                     {
                         _originalDnsConfig = "DHCP";
@@ -317,21 +317,21 @@ namespace IspAudit.Utils
                                 }
                             }
                         }
-                        
+
                         if (ips.Count > 0)
                             _originalDnsConfig = string.Join(",", ips);
                         else
                             _originalDnsConfig = "DHCP"; // Fallback
                     }
-                    
+
                     Log($"[FixService] Backup DNS: {_originalDnsConfig}");
 
                     // Сохраняем в файл
                     try
                     {
-                        var state = new DnsBackupState 
-                        { 
-                            AdapterName = _originalAdapterName, 
+                        var state = new DnsBackupState
+                        {
+                            AdapterName = _originalAdapterName,
                             Config = _originalDnsConfig,
                             Timestamp = DateTime.Now
                         };
@@ -379,15 +379,15 @@ namespace IspAudit.Utils
                 // Попытка 1: PowerShell (Set-DnsClientServerAddress)
                 string servers = string.Join(",", dnsServers.Select(s => $"'{s}'"));
                 string psCommand = $"Set-DnsClientServerAddress -InterfaceAlias '{adapterName}' -ServerAddresses ({servers})";
-                
+
                 var (psSuccess, psOutput) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"");
-                
-                if (psSuccess) 
+
+                if (psSuccess)
                 {
                     Log($"[FixService] DNS servers set via PowerShell for {adapterName}");
                     return true;
                 }
-                
+
                 Log($"[FixService] PowerShell Set-DNS failed: {psOutput}. Fallback to netsh.");
 
                 // Попытка 2: netsh (fallback)
@@ -424,25 +424,25 @@ namespace IspAudit.Utils
             catch { }
 
             // Попытка 1: PowerShell (предпочтительно для Win11)
-            try 
+            try
             {
                 // Удаляем старое правило и добавляем новое
                 // Исправлено: AllowFallbackToUdp (вместо AllowFallback), убран Force (не поддерживается)
                 string psCommand = $"Remove-DnsClientDohServerAddress -ServerAddress '{dnsIp}' -ErrorAction SilentlyContinue; " +
                                    $"Add-DnsClientDohServerAddress -ServerAddress '{dnsIp}' -DohTemplate '{dohTemplate}' -AllowFallbackToUdp $false -AutoUpgrade $true";
-                
+
                 var (success, output) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"");
-                
+
                 // Проверка результата
                 var (checkSuccess, checkOutput) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"Get-DnsClientDohServerAddress -ServerAddress '{dnsIp}' | Format-List\"");
                 Log($"[FixService] DoH Check for {dnsIp}:\n{checkOutput}");
 
-                if (success) 
+                if (success)
                 {
                     Log($"[FixService] DoH enabled via PowerShell for {dnsIp}");
                     return true;
                 }
-                
+
                 Log($"[FixService] PowerShell failed: {output}. Trying netsh...");
             }
             catch (Exception ex)
@@ -456,7 +456,7 @@ namespace IspAudit.Utils
 
             // 2. Добавляем новое правило (важно: кавычки вокруг шаблона)
             var (netshSuccess, netshOutput) = await RunCommandAsync("netsh", $"dns add encryption server={dnsIp} dohtemplate=\"{dohTemplate}\" autoupgrade=yes udpfallback=no");
-            
+
             if (!netshSuccess)
             {
                 Log($"[FixService] Ошибка включения DoH для {dnsIp} (netsh): {netshOutput}");
@@ -465,7 +465,7 @@ namespace IspAudit.Utils
             {
                 Log($"[FixService] DoH enabled via netsh for {dnsIp}");
             }
-            
+
             return netshSuccess;
         }
 
