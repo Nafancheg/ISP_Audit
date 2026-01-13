@@ -284,18 +284,10 @@ namespace IspAudit.ViewModels
             {
                 if (selected == null) return;
 
-                // Цель для селективного QUIC→TCP ставим только когда выбор осмысленный:
-                // либо это проблема (Warn/Fail), либо строка содержит v2-стратегию.
-                // Это предотвращает «случайную» установку цели по фоновым Pass.
-                if (selected.Status != TestStatus.Fail
-                    && selected.Status != TestStatus.Warn
-                    && !selected.IsBypassStrategyFromV2)
-                {
-                    return;
-                }
-
                 var hostKey = GetPreferredHostKey(selected);
                 if (string.IsNullOrWhiteSpace(hostKey)) return;
+
+                if (NoiseHostFilter.Instance.IsNoiseHost(hostKey)) return;
 
                 Bypass.SetOutcomeTargetHost(hostKey);
             }

@@ -1366,14 +1366,13 @@ namespace IspAudit.ViewModels
 
         private void StoreV2Plan(string hostKey, BypassPlan plan, BypassController bypassController)
         {
-            _v2PlansByHost[hostKey] = plan;
-
             if (NoiseHostFilter.Instance.IsNoiseHost(hostKey))
             {
-                // Важно: шумовые hostKey не должны перетирать «активный» (fallback) план рекомендаций,
-                // но мы всё равно сохраняем plan по ключу — чтобы ручное применение из строки результата работало.
+                // Шум не должен перетирать «активный» план рекомендаций и засорять Apply.
                 return;
             }
+
+            _v2PlansByHost[hostKey] = plan;
 
             _lastV2Plan = plan;
             _lastV2PlanHostKey = hostKey;
@@ -1589,17 +1588,17 @@ namespace IspAudit.ViewModels
                 ? _lastV2PlanHostKey
                 : _lastV2DiagnosisHostKey;
 
-            if (!string.IsNullOrWhiteSpace(hostKey) && NoiseHostFilter.Instance.IsNoiseHost(hostKey))
-            {
-                Log($"[V2][APPLY] Skip fallback: шумовой хост '{hostKey}'");
-                return;
-            }
-
             await ApplyPlanInternalAsync(bypassController, hostKey, _lastV2Plan).ConfigureAwait(false);
         }
 
         private async Task ApplyPlanInternalAsync(BypassController bypassController, string hostKey, BypassPlan plan)
         {
+            if (NoiseHostFilter.Instance.IsNoiseHost(hostKey))
+            {
+                Log($"[V2][APPLY] Skip: шумовой хост '{hostKey}'");
+                return;
+            }
+
             _applyCts?.Dispose();
             _applyCts = new CancellationTokenSource();
 
