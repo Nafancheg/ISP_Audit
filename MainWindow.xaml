@@ -159,6 +159,10 @@
                                                Visibility="{Binding ManualRecommendationsText, Converter={StaticResource StringToVisibilityConverter}}"/>
                                     <Button Content="{Binding ApplyRecommendationsButtonText}" Command="{Binding ApplyRecommendationsCommand}"
                                             Style="{StaticResource PrimaryButtonStyle}" Padding="12,6" FontSize="13" HorizontalAlignment="Left" Height="32"/>
+
+                                        <Button Content="{Binding ApplyDomainButtonText}" Command="{Binding ApplyDomainRecommendationsCommand}"
+                                            Style="{StaticResource SecondaryButtonStyle}" Padding="12,6" FontSize="13" HorizontalAlignment="Left" Height="32" Margin="0,6,0,0"
+                                            Visibility="{Binding HasDomainSuggestion, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 </StackPanel>
                             </Border>
 

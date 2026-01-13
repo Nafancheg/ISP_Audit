@@ -33,6 +33,14 @@ namespace IspAudit.ViewModels
 
         private readonly ConcurrentDictionary<string, string> _ipToUiKey = new();
 
+        // Доменная агрегация (MVP): googlevideo CDN создаёт десятки rr*-sn-*.googlevideo.com.
+        // Для UX это один и тот же сервис, поэтому после пары наблюдений начинаем схлопывать в googlevideo.com.
+        private readonly ConcurrentDictionary<string, byte> _googlevideoSubhosts = new();
+        private volatile bool _preferGooglevideoDomainKey;
+
+        public int GooglevideoSubhostCount => _googlevideoSubhosts.Count;
+        public bool CanSuggestGooglevideoDomain => GooglevideoSubhostCount >= 2;
+
         private readonly record struct OutcomeHistory(DateTime LastPassUtc, DateTime LastProblemUtc);
         private readonly ConcurrentDictionary<string, OutcomeHistory> _outcomeHistoryByKey = new();
 
@@ -92,6 +100,9 @@ namespace IspAudit.ViewModels
             _pendingResolutions.Clear();
             _lastUpdatedHost = null;
             _lastUserFacingHost = null;
+
+            _googlevideoSubhosts.Clear();
+            _preferGooglevideoDomainKey = false;
         }
 
         /// <summary>
@@ -1054,17 +1065,148 @@ namespace IspAudit.ViewModels
             var sni = ExtractToken(msg, "SNI");
             if (!string.IsNullOrWhiteSpace(sni) && sni != "-")
             {
-                return NormalizeHost(sni);
+                var key = NormalizeHost(sni);
+                TrackGooglevideoCandidate(key);
+                return TryApplyGooglevideoAggregation(key);
             }
 
             // 2) Если host из строки — IP, но мы уже знаем сопоставление IP→SNI, используем его.
             if (IPAddress.TryParse(hostFromLine, out _) && _ipToUiKey.TryGetValue(hostFromLine, out var mapped))
             {
-                return NormalizeHost(mapped);
+                var key = NormalizeHost(mapped);
+                TrackGooglevideoCandidate(key);
+                return TryApplyGooglevideoAggregation(key);
             }
 
             // 3) Иначе используем то, что пришло.
-            return NormalizeHost(hostFromLine);
+            var fallback = NormalizeHost(hostFromLine);
+            TrackGooglevideoCandidate(fallback);
+            return TryApplyGooglevideoAggregation(fallback);
+        }
+
+        private void TrackGooglevideoCandidate(string hostKey)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(hostKey)) return;
+
+                var h = hostKey.Trim();
+                if (!h.EndsWith(".googlevideo.com", StringComparison.OrdinalIgnoreCase)) return;
+
+                // Сигнал для "CDN-шардов": rr3---sn-...googlevideo.com
+                if (!h.Contains("-sn-", StringComparison.OrdinalIgnoreCase)) return;
+
+                _googlevideoSubhosts.TryAdd(h, 1);
+
+                if (!_preferGooglevideoDomainKey && _googlevideoSubhosts.Count >= 2)
+                {
+                    _preferGooglevideoDomainKey = true;
+                    OnPropertyChanged(nameof(GooglevideoSubhostCount));
+                    OnPropertyChanged(nameof(CanSuggestGooglevideoDomain));
+                    CollapseGooglevideoCards();
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private string TryApplyGooglevideoAggregation(string hostKey)
+        {
+            if (!_preferGooglevideoDomainKey) return hostKey;
+
+            if (string.IsNullOrWhiteSpace(hostKey)) return hostKey;
+            if (hostKey.EndsWith(".googlevideo.com", StringComparison.OrdinalIgnoreCase))
+            {
+                return "googlevideo.com";
+            }
+
+            return hostKey;
+        }
+
+        private void CollapseGooglevideoCards()
+        {
+            try
+            {
+                // ObservableCollection должен меняться в UI потоке.
+                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    var domainKey = "googlevideo.com";
+
+                    // Находим/создаём доменную карточку.
+                    var domainCard = TestResults.FirstOrDefault(t =>
+                        string.Equals(NormalizeHost(t.Target.Host), domainKey, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(NormalizeHost(t.Target.Name), domainKey, StringComparison.OrdinalIgnoreCase));
+
+                    // Собираем все карточки поддомена, кроме уже доменной.
+                    var toMerge = TestResults
+                        .Where(t =>
+                        {
+                            var key = NormalizeHost(t.Target.Host);
+                            if (string.Equals(key, domainKey, StringComparison.OrdinalIgnoreCase)) return false;
+                            return key.EndsWith(".googlevideo.com", StringComparison.OrdinalIgnoreCase);
+                        })
+                        .ToList();
+
+                    foreach (var src in toMerge)
+                    {
+                        var srcKey = NormalizeHost(src.Target.Host);
+                        MergeOutcomeHistoryKeys(srcKey, domainKey);
+
+                        if (domainCard == null)
+                        {
+                            // Переименовываем первую попавшуюся карточку и делаем её доменной.
+                            var old = src.Target;
+                            src.Target = new Target
+                            {
+                                Name = domainKey,
+                                Host = domainKey,
+                                Service = string.IsNullOrWhiteSpace(old.Service) ? "YouTube" : old.Service,
+                                Critical = old.Critical,
+                                FallbackIp = old.FallbackIp,
+                                SniHost = domainKey,
+                                ReverseDnsHost = old.ReverseDnsHost
+                            };
+                            domainCard = src;
+                            continue;
+                        }
+
+                        // Сливаем статусы/детали/стратегию.
+                        domainCard.Status = MergeStatus(domainCard.Status, src.Status);
+
+                        if (!string.IsNullOrWhiteSpace(src.Error) && string.IsNullOrWhiteSpace(domainCard.Error))
+                        {
+                            domainCard.Error = src.Error;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(src.Details) && (string.IsNullOrWhiteSpace(domainCard.Details) || !domainCard.Details.Contains(src.Details, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            domainCard.Details = string.IsNullOrWhiteSpace(domainCard.Details)
+                                ? src.Details
+                                : domainCard.Details + "\n" + src.Details;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(src.BypassStrategy) && string.IsNullOrWhiteSpace(domainCard.BypassStrategy))
+                        {
+                            domainCard.BypassStrategy = src.BypassStrategy;
+                            domainCard.IsBypassStrategyFromV2 = src.IsBypassStrategyFromV2;
+                        }
+                        else if (src.IsBypassStrategyFromV2)
+                        {
+                            domainCard.IsBypassStrategyFromV2 = true;
+                        }
+
+                        TestResults.Remove(src);
+                    }
+
+                    NotifyCountersChanged();
+                });
+            }
+            catch
+            {
+                // ignore
+            }
         }
 
         private TestStatus ApplyUnstableRule(string normalizedKey, TestStatus incoming)

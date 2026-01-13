@@ -499,9 +499,6 @@ namespace IspAudit.ViewModels
                                 ? resolvedHost!.Trim()
                                 : ipKey;
 
-                            static bool IsIpLiteral(string value)
-                                => !string.IsNullOrWhiteSpace(value) && System.Net.IPAddress.TryParse(value.Trim(), out _);
-
                             // Обновляем цель по последнему UDP blockage.
                             // Важно: иначе цель может «залипнуть» на первом событии (например, facebook),
                             // а последующие QUIC блокировки (например, googlevideo для YouTube) не смогут
@@ -1560,6 +1557,69 @@ namespace IspAudit.ViewModels
 
         public Task ApplyRecommendationsAsync(BypassController bypassController)
             => ApplyRecommendationsAsync(bypassController, preferredHostKey: null);
+
+        public async Task ApplyRecommendationsForDomainAsync(BypassController bypassController, string domainSuffix)
+        {
+            if (bypassController == null) throw new ArgumentNullException(nameof(bypassController));
+            if (string.IsNullOrWhiteSpace(domainSuffix)) return;
+
+            var domain = domainSuffix.Trim().Trim('.');
+            if (string.IsNullOrWhiteSpace(domain)) return;
+
+            // На данном этапе это управляемая "гибридная" логика:
+            // - UI предлагает доменный режим только для известных CDN (googlevideo.com)
+            // - здесь мы берём последний применимый v2 план из поддоменов и применяем его,
+            //   но выставляем OutcomeTargetHost именно на домен.
+            var candidates = _v2PlansByHost
+                .Where(kv =>
+                {
+                    var k = kv.Key;
+                    if (string.IsNullOrWhiteSpace(k)) return false;
+                    if (string.Equals(k, domain, StringComparison.OrdinalIgnoreCase)) return true;
+                    return k.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase);
+                })
+                .Select(kv => (HostKey: kv.Key, Plan: kv.Value))
+                .ToList();
+
+            if (candidates.Count == 0)
+            {
+                Log($"[V2][APPLY] Domain '{domain}': нет сохранённых планов");
+                return;
+            }
+
+            // Предпочитаем план от последнего v2 (если он из этого домена), иначе берём первый применимый.
+            BypassPlan? plan = null;
+            string? sourceHost = null;
+
+            if (!string.IsNullOrWhiteSpace(_lastV2PlanHostKey)
+                && (_lastV2PlanHostKey.Equals(domain, StringComparison.OrdinalIgnoreCase)
+                    || _lastV2PlanHostKey.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase))
+                && _v2PlansByHost.TryGetValue(_lastV2PlanHostKey, out var lastPlan)
+                && PlanHasApplicableActions(lastPlan))
+            {
+                plan = lastPlan;
+                sourceHost = _lastV2PlanHostKey;
+            }
+            else
+            {
+                foreach (var c in candidates)
+                {
+                    if (!PlanHasApplicableActions(c.Plan)) continue;
+                    plan = c.Plan;
+                    sourceHost = c.HostKey;
+                    break;
+                }
+            }
+
+            if (plan == null || !PlanHasApplicableActions(plan))
+            {
+                Log($"[V2][APPLY] Domain '{domain}': нет применимых действий в планах");
+                return;
+            }
+
+            Log($"[V2][APPLY] Domain '{domain}': apply from '{sourceHost}'");
+            await ApplyPlanInternalAsync(bypassController, domain, plan).ConfigureAwait(false);
+        }
 
         public async Task ApplyRecommendationsAsync(BypassController bypassController, string? preferredHostKey)
         {

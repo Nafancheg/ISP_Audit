@@ -262,6 +262,32 @@ namespace IspAudit.ViewModels
         public string ManualRecommendationsText => Orchestrator.ManualRecommendationsText;
         public string RecommendationHintText => Orchestrator.RecommendationHintText;
 
+        public bool HasDomainSuggestion
+        {
+            get
+            {
+                try
+                {
+                    if (SelectedTestResult?.Target == null) return false;
+
+                    // MVP: предлагаем доменный режим только для googlevideo CDN.
+                    var hostKey = GetPreferredHostKey(SelectedTestResult);
+                    if (string.IsNullOrWhiteSpace(hostKey)) return false;
+
+                    var isGooglevideo = hostKey.EndsWith("googlevideo.com", StringComparison.OrdinalIgnoreCase);
+                    return isGooglevideo && Results.CanSuggestGooglevideoDomain;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
+
+        public string ApplyDomainButtonText => IsApplyingRecommendations
+            ? "Применяю…"
+            : "Подключить (домен: googlevideo.com)";
+
         private TestResult? _selectedTestResult;
         public TestResult? SelectedTestResult
         {
@@ -271,6 +297,7 @@ namespace IspAudit.ViewModels
                 if (ReferenceEquals(_selectedTestResult, value)) return;
                 _selectedTestResult = value;
                 OnPropertyChanged(nameof(SelectedTestResult));
+                OnPropertyChanged(nameof(HasDomainSuggestion));
 
                 // Важно для QUIC→TCP (селективный режим): если цель не задана, UDP/443 по IPv4 не глушится.
                 // Самый понятный UX: цель берём из выбранной строки результатов (если это не шумовой хост).
@@ -307,6 +334,7 @@ namespace IspAudit.ViewModels
                 _isApplyingRecommendations = value;
                 OnPropertyChanged(nameof(IsApplyingRecommendations));
                 OnPropertyChanged(nameof(ApplyRecommendationsButtonText));
+                OnPropertyChanged(nameof(ApplyDomainButtonText));
                 CommandManager.InvalidateRequerySuggested();
             }
         }
@@ -391,6 +419,7 @@ namespace IspAudit.ViewModels
         public ICommand ToggleDoHCommand { get; }
         public ICommand DisableAllBypassCommand { get; }
         public ICommand ApplyRecommendationsCommand { get; }
+        public ICommand ApplyDomainRecommendationsCommand { get; }
         public ICommand ConnectFromResultCommand { get; }
 
         // P0.6: Network change staged revalidation
@@ -532,6 +561,7 @@ namespace IspAudit.ViewModels
                 _ => ShowBypassPanel && (IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled || IsDropRstEnabled));
 
             ApplyRecommendationsCommand = new RelayCommand(async _ => await ApplyRecommendationsAsync(), _ => HasRecommendations && !IsApplyingRecommendations);
+            ApplyDomainRecommendationsCommand = new RelayCommand(async _ => await ApplyDomainRecommendationsAsync(), _ => HasDomainSuggestion && !IsApplyingRecommendations);
 
             // Применение стратегии/плана из конкретной строки результата ("карточки").
             // UX: пользователь видит стратегию рядом с целью и нажимает "Подключить" именно для неё.
@@ -801,6 +831,50 @@ namespace IspAudit.ViewModels
             catch (Exception ex)
             {
                 Log($"[V2][APPLY] Ошибка применения рекомендаций: {ex.Message}");
+            }
+            finally
+            {
+                IsApplyingRecommendations = false;
+            }
+        }
+
+        private async Task ApplyDomainRecommendationsAsync()
+        {
+            if (IsApplyingRecommendations)
+            {
+                return;
+            }
+
+            if (!ShowBypassPanel)
+            {
+                Log("[V2][APPLY] Bypass недоступен (нужны права администратора)");
+                return;
+            }
+
+            if (!HasDomainSuggestion)
+            {
+                Log("[V2][APPLY] Доменная подсказка недоступна для текущей цели");
+                return;
+            }
+
+            IsApplyingRecommendations = true;
+            try
+            {
+                const string domain = "googlevideo.com";
+                await Orchestrator.ApplyRecommendationsForDomainAsync(Bypass, domain).ConfigureAwait(false);
+
+                if (Bypass.IsBypassActive && SelectedTestResult != null)
+                {
+                    MarkAppliedBypassTarget(SelectedTestResult);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Log("[V2][APPLY] Отмена применения доменной стратегии");
+            }
+            catch (Exception ex)
+            {
+                Log($"[V2][APPLY] Ошибка применения доменной стратегии: {ex.Message}");
             }
             finally
             {

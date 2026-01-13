@@ -177,6 +177,10 @@ Smoke-хелперы (для детерминированных проверок
 * Step 4 (ExecutorMvp): добавлен `Core/IntelligenceV2/Execution/BypassExecutorMvp.cs` — **только** форматирование/логирование (диагноз + уверенность + короткое объяснение + список стратегий), без вызова `TrafficEngine`/`BypassController` и без авто-применения.
 * Ручное применение v2 плана (без auto-apply): `LiveTestingPipeline` публикует объектный `BypassPlan` через событие `OnV2PlanBuilt`, `DiagnosticOrchestrator` хранит последний план и применяет его только по клику пользователя через `BypassController.ApplyV2PlanAsync(...)` (таймаут/отмена/безопасный откат).
     * Защита от устаревшего плана: `DiagnosticOrchestrator.ApplyRecommendationsAsync(...)` применяет план только если `planHostKey` совпадает с последней v2-целью, извлечённой из UI‑диагноза (иначе — SKIP в лог).
+    * Гибридный доменный режим (MVP, `googlevideo.com`): когда в пайплайне обнаружены несколько shard-хостов вида `rr*-sn-*.googlevideo.com`, `TestResultsManager` может схлопывать UI-ключи в домен и показывать одну карточку вместо множества подхостов.
+        * В панели рекомендаций появляется отдельная кнопка «Подключить (домен: googlevideo.com)».
+        * Команда вызывает `DiagnosticOrchestrator.ApplyRecommendationsForDomainAsync(..., "googlevideo.com")`, который выбирает применимый v2-план из подхостов и применяет его с `OutcomeTargetHost = "googlevideo.com"`.
+        * Это **не** wildcard-мэтчинг в `BypassFilter`: домен используется как UX-цель/цель outcome (и как вход для резолва IP в селективном `DropUdp443`).
     * Отмена: команда `Cancel` отменяет не только диагностику, но и текущий ручной apply (через отдельный CTS).
 * Step 5 (Feedback/Rerank): добавлен слой обратной связи `Core/IntelligenceV2/Feedback/*` (MVP: in-memory + опциональный JSON persist). `StandardStrategySelectorV2` умеет (опционально) ранжировать стратегии по успешности, **поверх** hardcoded `BasePriority`.
 
