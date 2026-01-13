@@ -48,6 +48,15 @@ namespace IspAudit.ViewModels
         private string _bypassMetricsSince = "-";
         private string _bypassVerdictReason = "";
 
+        // Наблюдаемость QUIC→TCP и ретест outcome
+        private string _quicModeText = "QUIC→TCP: выключен";
+        private string _quicRuntimeStatusText = "";
+        private System.Windows.Media.Brush _quicRuntimeStatusBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
+        private long _lastUdp443Dropped;
+        private DateTime _lastUdp443DroppedUtc = DateTime.MinValue;
+        private string _outcomeProbeStatusText = "";
+        private bool _isOutcomeProbeRunning;
+
         // DNS Presets
         private string _selectedDnsPreset = "Hybrid (CF + Yandex)";
         public List<string> AvailableDnsPresets { get; } = new()
@@ -58,9 +67,10 @@ namespace IspAudit.ViewModels
             "Hybrid (CF + Yandex)"
         };
         // QUIC fallback scope
-        public ICommand SetQuicFallbackScopeCommand { get; }
+        public ICommand SetQuicFallbackScopeCommand { get; private set; } = null!;
 
-        public ICommand SetDnsPresetCommand { get; }
+        public ICommand SetDnsPresetCommand { get; private set; } = null!;
+        public ICommand RunOutcomeProbeNowCommand { get; private set; } = null!;
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -185,6 +195,11 @@ namespace IspAudit.ViewModels
                     SelectedDnsPreset = preset;
                 }
             }, _ => true);
+
+            RunOutcomeProbeNowCommand = new RelayCommand(_ =>
+            {
+                _ = RunOutcomeProbeNowUiAsync();
+            }, _ => true);
             SetQuicFallbackScopeCommand = new RelayCommand(param =>
             {
                 // Параметр ожидается: "Selective" или "Global"
@@ -200,6 +215,8 @@ namespace IspAudit.ViewModels
                     IsQuicFallbackGlobal = false;
                 }
             }, _ => true);
+
+            RefreshQuicObservability(null);
         }
 
         public BypassController(TrafficEngine trafficEngine)
@@ -260,6 +277,28 @@ namespace IspAudit.ViewModels
                     SelectedDnsPreset = preset;
                 }
             }, _ => true);
+
+            RunOutcomeProbeNowCommand = new RelayCommand(_ =>
+            {
+                _ = RunOutcomeProbeNowUiAsync();
+            }, _ => true);
+
+            SetQuicFallbackScopeCommand = new RelayCommand(param =>
+            {
+                var scope = (param as string ?? string.Empty).Trim();
+                if (scope.Equals("Global", StringComparison.OrdinalIgnoreCase))
+                {
+                    IsQuicFallbackGlobal = true;
+                    return;
+                }
+
+                if (scope.Equals("Selective", StringComparison.OrdinalIgnoreCase))
+                {
+                    IsQuicFallbackGlobal = false;
+                }
+            }, _ => true);
+
+            RefreshQuicObservability(null);
         }
 
         private void RefreshAutoHostlistText()
@@ -418,6 +457,7 @@ namespace IspAudit.ViewModels
                 PersistAssistSettings();
                 NotifyActiveStatesChanged();
                 CheckCompatibility();
+                RefreshQuicObservability(null);
                 _ = ApplyBypassOptionsAsync();
             }
         }
@@ -432,12 +472,170 @@ namespace IspAudit.ViewModels
                 OnPropertyChanged(nameof(IsQuicFallbackGlobal));
                 PersistAssistSettings();
 
+                RefreshQuicObservability(null);
+
                 // Если QUIC fallback уже включён — нужно пере-применить, чтобы фильтр начал/перестал
                 // глушить UDP/443 глобально без зависимости от цели.
                 if (IsQuicFallbackEnabled)
                 {
                     _ = ApplyBypassOptionsAsync();
                 }
+            }
+        }
+
+        public string QuicModeText
+        {
+            get => _quicModeText;
+            private set
+            {
+                if (_quicModeText == value) return;
+                _quicModeText = value;
+                OnPropertyChanged(nameof(QuicModeText));
+            }
+        }
+
+        public string QuicRuntimeStatusText
+        {
+            get => _quicRuntimeStatusText;
+            private set
+            {
+                if (_quicRuntimeStatusText == value) return;
+                _quicRuntimeStatusText = value;
+                OnPropertyChanged(nameof(QuicRuntimeStatusText));
+            }
+        }
+
+        public System.Windows.Media.Brush QuicRuntimeStatusBrush
+        {
+            get => _quicRuntimeStatusBrush;
+            private set
+            {
+                _quicRuntimeStatusBrush = value;
+                OnPropertyChanged(nameof(QuicRuntimeStatusBrush));
+            }
+        }
+
+        public bool IsOutcomeProbeRunning
+        {
+            get => _isOutcomeProbeRunning;
+            private set
+            {
+                if (_isOutcomeProbeRunning == value) return;
+                _isOutcomeProbeRunning = value;
+                OnPropertyChanged(nameof(IsOutcomeProbeRunning));
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+
+        public string OutcomeProbeStatusText
+        {
+            get => _outcomeProbeStatusText;
+            private set
+            {
+                if (_outcomeProbeStatusText == value) return;
+                _outcomeProbeStatusText = value;
+                OnPropertyChanged(nameof(OutcomeProbeStatusText));
+            }
+        }
+
+        private void RefreshQuicObservability(TlsBypassMetrics? latestMetrics)
+        {
+            try
+            {
+                var host = _stateManager.GetOutcomeTargetHost();
+                var ipCount = _stateManager.GetUdp443DropTargetIpCountSnapshot();
+
+                if (!IsQuicFallbackEnabled)
+                {
+                    QuicModeText = "QUIC→TCP: выключен";
+                    QuicRuntimeStatusText = "UDP/443 не глушится";
+                    QuicRuntimeStatusBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
+                    return;
+                }
+
+                if (IsQuicFallbackGlobal)
+                {
+                    QuicModeText = "QUIC→TCP: ВКЛ (GLOBAL) — глушим весь UDP/443";
+                }
+                else
+                {
+                    var targetText = string.IsNullOrWhiteSpace(host) ? "цель не задана" : host;
+                    QuicModeText = $"QUIC→TCP: ВКЛ (селективно) — цель: {targetText}; IPv4 IPs: {ipCount}";
+                }
+
+                if (latestMetrics == null)
+                {
+                    QuicRuntimeStatusText = "Ожидаю метрики…";
+                    QuicRuntimeStatusBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
+                    return;
+                }
+
+                var nowUtc = DateTime.UtcNow;
+                var totalDropped = latestMetrics.Udp443Dropped;
+                var delta = totalDropped - _lastUdp443Dropped;
+                if (delta < 0) delta = 0;
+
+                if (delta > 0)
+                {
+                    _lastUdp443DroppedUtc = nowUtc;
+                    QuicRuntimeStatusText = $"UDP/443 глушится: +{delta} (всего {totalDropped})";
+                    QuicRuntimeStatusBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 252, 231));
+                }
+                else
+                {
+                    var age = _lastUdp443DroppedUtc == DateTime.MinValue ? TimeSpan.MaxValue : (nowUtc - _lastUdp443DroppedUtc);
+                    if (age <= TimeSpan.FromSeconds(15))
+                    {
+                        QuicRuntimeStatusText = $"UDP/443 глушится (недавно), всего {totalDropped}";
+                        QuicRuntimeStatusBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 252, 231));
+                    }
+                    else
+                    {
+                        var hint = IsQuicFallbackGlobal
+                            ? "нет QUIC трафика или браузер уже на TCP"
+                            : "нет QUIC трафика или не та цель (селективный режим)";
+                        QuicRuntimeStatusText = $"Нет эффекта по UDP/443 (всего {totalDropped}) — {hint}";
+                        QuicRuntimeStatusBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 249, 195));
+                    }
+                }
+
+                _lastUdp443Dropped = totalDropped;
+            }
+            catch
+            {
+                // Наблюдаемость не должна ломать UI
+            }
+        }
+
+        private async Task RunOutcomeProbeNowUiAsync()
+        {
+            if (IsOutcomeProbeRunning) return;
+
+            IsOutcomeProbeRunning = true;
+            try
+            {
+                var host = _stateManager.GetOutcomeTargetHost();
+                if (string.IsNullOrWhiteSpace(host))
+                {
+                    OutcomeProbeStatusText = "OUT: нет цели (OutcomeTargetHost пуст)";
+                    return;
+                }
+
+                OutcomeProbeStatusText = $"OUT: проверяю {host}…";
+
+                var snapshot = await _stateManager.RunOutcomeProbeNowAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
+                Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    OutcomeProbeStatusText = $"OUT: {snapshot.Text} — {snapshot.Details}";
+                });
+            }
+            catch (Exception ex)
+            {
+                OutcomeProbeStatusText = $"OUT: ошибка — {ex.Message}";
+            }
+            finally
+            {
+                IsOutcomeProbeRunning = false;
             }
         }
 
@@ -1434,6 +1632,8 @@ namespace IspAudit.ViewModels
                 var outcome = _stateManager.GetOutcomeStatusSnapshot();
                 BypassMetricsText =
                     $"ACT: {activation.Text}; OUT: {outcome.Text}; TLS: {metrics.TlsHandled}; thr: {metrics.FragmentThreshold}; min: {metrics.MinChunk}; Hello@443: {metrics.ClientHellosObserved}; <thr: {metrics.ClientHellosShort}; !=443: {metrics.ClientHellosNon443}; фрагм.: {metrics.ClientHellosFragmented}; UDP443 drop: {metrics.Udp443Dropped}; RST(443,bypass): {metrics.RstDroppedRelevant}; RST(всего): {metrics.RstDropped}";
+
+                RefreshQuicObservability(metrics);
             });
         }
 
@@ -1478,6 +1678,8 @@ namespace IspAudit.ViewModels
                 OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
                 CheckCompatibility();
                 NotifyActiveStatesChanged();
+
+                RefreshQuicObservability(null);
             });
         }
 

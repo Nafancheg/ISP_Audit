@@ -87,7 +87,7 @@ namespace IspAudit.Core.Modules
                 {
                     try
                     {
-                        var dnsCheckTask = System.Net.Dns.GetHostEntryAsync(hostname);
+                        var dnsCheckTask = System.Net.Dns.GetHostEntryAsync(hostname, ct);
                         var timeoutTask = Task.Delay(2000, ct);
                         
                         var completedTask = await Task.WhenAny(dnsCheckTask, timeoutTask).ConfigureAwait(false);

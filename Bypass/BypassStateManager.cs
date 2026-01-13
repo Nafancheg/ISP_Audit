@@ -418,6 +418,20 @@ namespace IspAudit.Bypass
 
         public string GetOutcomeTargetHost() => _outcomeTargetHost;
 
+        public int GetUdp443DropTargetIpCountSnapshot()
+        {
+            try
+            {
+                using var scope = BypassStateManagerGuard.EnterScope();
+                var list = _tlsService.GetUdp443DropTargetIpsSnapshot();
+                return list?.Length ?? 0;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
         public OutcomeStatusSnapshot GetOutcomeStatusSnapshot()
         {
             var options = _tlsService.GetOptionsSnapshot();
@@ -720,7 +734,7 @@ namespace IspAudit.Bypass
             IPAddress[] resolved;
             try
             {
-                resolved = await Dns.GetHostAddressesAsync(host).WaitAsync(cancellationToken).ConfigureAwait(false);
+                resolved = await Dns.GetHostAddressesAsync(host, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

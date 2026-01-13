@@ -286,6 +286,21 @@
                                                 <TextBlock Text="⚡ Производительность" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,6"/>
                                                 <TextBlock Text="{Binding TrafficEngineLatencyText}" FontSize="12" Margin="0,0,0,4"/>
 
+                                                <TextBlock Text="🧭 QUIC→TCP (наблюдаемость)" FontWeight="SemiBold" FontSize="13" Margin="0,10,0,6"/>
+                                                <TextBlock Text="{Binding Bypass.QuicModeText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,6"/>
+
+                                                <Border Background="{Binding Bypass.QuicRuntimeStatusBrush}" CornerRadius="4" Padding="8" Margin="0,0,0,6">
+                                                    <TextBlock Text="{Binding Bypass.QuicRuntimeStatusText}" FontSize="12" TextWrapping="Wrap"/>
+                                                </Border>
+
+                                                <Button Content="🔁 Outcome-check сейчас" Command="{Binding Bypass.RunOutcomeProbeNowCommand}"
+                                                        IsEnabled="{Binding Bypass.IsOutcomeProbeRunning, Converter={StaticResource InverseBoolConverter}}"
+                                                        Height="32" FontSize="12" HorizontalAlignment="Left"
+                                                        ToolTip="Выполняет активный HTTPS probe к текущей цели outcome (если цель задана)"/>
+                                                <TextBlock Text="{Binding Bypass.OutcomeProbeStatusText}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                           Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                           Visibility="{Binding Bypass.OutcomeProbeStatusText, Converter={StaticResource StringToVisibilityConverter}}"/>
+
                                                 <TextBlock Text="📊 Статистика bypass" FontWeight="SemiBold" FontSize="13" Margin="0,8,0,6"/>
                                                 <TextBlock Text="{Binding BypassMetricsText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,4"/>
                                                 <TextBlock Text="{Binding BypassVerdictText}" FontSize="12" FontWeight="SemiBold" Margin="0,4,0,0"/>
