@@ -51,8 +51,8 @@
                             <materialDesign:PackIcon Kind="ThemeLightDark" Width="20" Height="20"/>
                         </Button>
                     </Grid>
-                    
-                    <TextBox Style="{StaticResource ModernTextBoxStyle}" 
+
+                    <TextBox Style="{StaticResource ModernTextBoxStyle}"
                              Text="{Binding ExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              IsEnabled="{Binding IsBasicTestMode, Converter={StaticResource InverseBoolConverter}}"
                              Margin="0,0,0,8" Height="36"
@@ -64,15 +64,15 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        
-                        <Button Grid.Column="0" Content="Обзор..." 
+
+                        <Button Grid.Column="0" Content="Обзор..."
                                 Style="{StaticResource SecondaryButtonStyle}"
                                 Command="{Binding BrowseExeCommand}"
                                 IsEnabled="{Binding IsBasicTestMode, Converter={StaticResource InverseBoolConverter}}"
                                 Margin="0,0,8,0" Height="36"/>
-                        
+
                         <Button Grid.Column="1"
-                                Content="{Binding StartButtonText}" 
+                                Content="{Binding StartButtonText}"
                                 Style="{StaticResource PrimaryButtonStyle}"
                                 Command="{Binding StartLiveTestingCommand}"
                                 Height="36" MinWidth="100"/>
@@ -101,7 +101,7 @@
                     <Separator Margin="0,0,0,16"/>
 
                     <!-- Bypass Control - Вкладки вместо одной большой панели -->
-                    <Border Background="{DynamicResource MaterialDesignPaper}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="8" 
+                    <Border Background="{DynamicResource MaterialDesignPaper}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="8"
                             Padding="12"
                             Visibility="{Binding ShowBypassPanel, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel>
@@ -111,7 +111,7 @@
                                     <materialDesign:PackIcon Kind="Tune" Width="20" Height="20" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                     <TextBlock Text="Bypass Control" FontWeight="Bold" FontSize="13" VerticalAlignment="Center"/>
                                 </StackPanel>
-                                
+
                                 <!-- Status Badge -->
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                     <Border Background="#DCFCE7" CornerRadius="4" Padding="6,2"
@@ -257,7 +257,7 @@
                                                   Style="{StaticResource ModernComboBoxStyle}"
                                                   Height="36" FontSize="13"/>
                                         <TextBlock Text="{Binding SelectedFragmentPresetLabel}" FontSize="12" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,4,0,0"/>
-                                        
+
                                         <CheckBox Content="Автокоррекция агрессивного пресета" Margin="0,12,0,0" FontSize="13"
                                                   IsChecked="{Binding IsAutoAdjustAggressive}"
                                                   ToolTip="Динамически подстраивает размеры фрагментов"/>
@@ -270,7 +270,7 @@
                                             <StackPanel>
                                                 <TextBlock Text="⚡ Производительность" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,6"/>
                                                 <TextBlock Text="{Binding TrafficEngineLatencyText}" FontSize="12" Margin="0,0,0,4"/>
-                                                
+
                                                 <TextBlock Text="📊 Статистика bypass" FontWeight="SemiBold" FontSize="13" Margin="0,8,0,6"/>
                                                 <TextBlock Text="{Binding BypassMetricsText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,4"/>
                                                 <TextBlock Text="{Binding BypassVerdictText}" FontSize="12" FontWeight="SemiBold" Margin="0,4,0,0"/>
@@ -306,14 +306,14 @@
                     </Border>
 
                     <!-- Running Status - Компактная версия -->
-                    <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="6" 
+                    <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="6"
                             Padding="12,10" Margin="0,16,0,0"
                             Visibility="Collapsed">
                         <StackPanel>
                             <TextBlock Text="⚙️ Диагностика выполняется..." FontWeight="Bold" FontSize="14" Margin="0,0,0,6"/>
                             <TextBlock Text="{Binding CurrentAction}" FontSize="13" Foreground="#4B5563" TextWrapping="Wrap" Margin="0,0,0,6"/>
                             <ProgressBar IsIndeterminate="True" Height="3" BorderThickness="0"/>
-                            
+
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                 <TextBlock Text="{Binding ConnectionsDiscovered, StringFormat='Соединений: {0}'}" FontSize="12" Margin="0,0,12,0"/>
                                 <TextBlock Text="{Binding FlowEventsCount, StringFormat='События: {0}'}" FontSize="12"/>
@@ -357,9 +357,9 @@
                             Visibility="{Binding IsStart, Converter={StaticResource BoolToVisibilityConverter}}"
                             VerticalAlignment="Center" HorizontalAlignment="Center" Margin="16">
                     <materialDesign:PackIcon Kind="ChartBar" Width="48" Height="48" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,16"/>
-                    <TextBlock Text="📊 Готов к диагностике" Style="{StaticResource H2Style}" 
+                    <TextBlock Text="📊 Готов к диагностике" Style="{StaticResource H2Style}"
                                Foreground="{DynamicResource MaterialDesignBodyLight}" TextAlignment="Center"/>
-                    <TextBlock Text="Выберите сценарий и нажмите 'Начать диагностику'" 
+                    <TextBlock Text="Выберите сценарий и нажмите 'Начать диагностику'"
                                Style="{StaticResource BodyStyle}" Foreground="{DynamicResource MaterialDesignBodyLight}"
                                TextAlignment="Center" Margin="0,8,0,0"/>
                 </StackPanel>
@@ -430,7 +430,7 @@
                         <DataGridTextColumn Header="SNI" Binding="{Binding Target.SniHost}" Width="1.4*" FontWeight="SemiBold"/>
                         <DataGridTextColumn Header="IP" Binding="{Binding DisplayIp}" Width="0.9*"/>
                         <DataGridTextColumn Header="rDNS" Binding="{Binding Target.ReverseDnsHost}" Width="1.4*"/>
-                        
+
                         <DataGridTemplateColumn Header="Статус" Width="0.8*">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -441,7 +441,7 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        
+
                         <DataGridTextColumn Header="Детали" Binding="{Binding Details}" Width="2*">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock">
@@ -451,7 +451,7 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        
+
                         <DataGridTextColumn Header="Стратегия" Binding="{Binding BypassStrategy}" Width="1*">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock">

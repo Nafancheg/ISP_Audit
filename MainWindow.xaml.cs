@@ -4,12 +4,14 @@ using System.Windows.Input;
 using IspAudit.Models;
 using IspAudit.ViewModels;
 using System.ComponentModel;
+using System.Windows.Threading;
 
 namespace IspAudit
 {
     public partial class MainWindow : Window
     {
         private bool _shutdownInProgress;
+        private bool _shutdownCompleted;
 
         public MainWindow()
         {
@@ -19,13 +21,21 @@ namespace IspAudit
 
         private async void Window_Closing(object? sender, CancelEventArgs e)
         {
+            // Если shutdown уже завершён, даём окну закрыться штатно.
+            if (_shutdownCompleted)
+            {
+                return;
+            }
+
+            e.Cancel = true;
+
+            // Shutdown уже выполняется — не даём закрыть окно, пока он не завершится.
             if (_shutdownInProgress)
             {
                 return;
             }
 
             _shutdownInProgress = true;
-            e.Cancel = true;
 
             try
             {
@@ -40,9 +50,24 @@ namespace IspAudit
             }
             finally
             {
-                // Закрываем окно повторно: второй проход пропустит shutdown.
-                e.Cancel = false;
-                Close();
+                _shutdownInProgress = false;
+                _shutdownCompleted = true;
+
+                // ВАЖНО: нельзя вызывать Close() из обработчика Closing.
+                // Планируем повторное закрытие через Dispatcher после выхода из текущего стека.
+                _ = Dispatcher.BeginInvoke(
+                    DispatcherPriority.Background,
+                    new Action(() =>
+                    {
+                        try
+                        {
+                            Close();
+                        }
+                        catch
+                        {
+                            // ignore
+                        }
+                    }));
             }
         }
 
