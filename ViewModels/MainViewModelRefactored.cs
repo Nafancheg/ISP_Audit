@@ -850,10 +850,36 @@ namespace IspAudit.ViewModels
             {
                 if (test?.Target == null) return null;
 
-                if (!string.IsNullOrWhiteSpace(test.Target.SniHost)) return test.Target.SniHost.Trim();
-                if (!string.IsNullOrWhiteSpace(test.Target.Host)) return test.Target.Host.Trim();
-                if (!string.IsNullOrWhiteSpace(test.Target.Name)) return test.Target.Name.Trim();
-                return null;
+                // Важно: "шумовые" домены (например, *.1e100.net) часто появляются как late-resolve/rDNS.
+                // Для применения обхода они бесполезны и могут приводить к впечатлению, что кнопка "Подключить" ничего не делает.
+                var candidates = new[]
+                {
+                    test.Target.SniHost,
+                    test.Target.Host,
+                    test.Target.Name,
+                    test.Target.FallbackIp
+                };
+
+                foreach (var c in candidates)
+                {
+                    if (string.IsNullOrWhiteSpace(c)) continue;
+                    var trimmed = c.Trim();
+                    if (string.IsNullOrWhiteSpace(trimmed)) continue;
+
+                    if (System.Net.IPAddress.TryParse(trimmed, out _))
+                    {
+                        return trimmed;
+                    }
+
+                    if (!NoiseHostFilter.Instance.IsNoiseHost(trimmed))
+                    {
+                        return trimmed;
+                    }
+                }
+
+                // Если все кандидаты оказались шумом — возвращаем хотя бы первый непустой,
+                // чтобы UI/лог явно показали, что именно выбрано.
+                return candidates.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s))?.Trim();
             }
             catch
             {
