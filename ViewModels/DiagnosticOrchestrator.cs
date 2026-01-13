@@ -40,7 +40,7 @@ namespace IspAudit.ViewModels
         // Последняя цель (hostKey), извлечённая из v2-диагноза в UI сообщениях.
         // Нужна, чтобы не применять v2-план «не к той цели», когда рекомендации обновились.
         private string _lastV2DiagnosisHostKey = "";
-        
+
         // Мониторинговые сервисы
         private ConnectionMonitorService? _connectionMonitor;
         private readonly TrafficEngine _trafficEngine;
@@ -52,7 +52,7 @@ namespace IspAudit.ViewModels
         private UdpInspectionService? _udpInspectionService;
         private DnsParserService? _dnsParser;
         private PidTrackerService? _pidTracker;
-        
+
         // Новые компоненты (после рефакторинга)
         private TrafficCollector? _trafficCollector;
         private LiveTestingPipeline? _testingPipeline;
@@ -110,10 +110,14 @@ namespace IspAudit.ViewModels
             "TLS_FAKE_FRAGMENT",
             "DROP_RST",
             "DOH",
+            "DROP_UDP_443",
+            "ALLOW_NO_SNI",
+
+            // Back-compat: старые токены (оставляем, чтобы не ломать парсинг старых логов/текста)
             "QUIC_TO_TCP",
             "NO_SNI"
         };
-        
+
         // Настройки
         public int SilenceTimeoutSeconds { get; set; } = 60;
         public bool EnableSilenceTimeout { get; set; } = true;
@@ -140,50 +144,50 @@ namespace IspAudit.ViewModels
         public bool IsDiagnosticRunning
         {
             get => _isDiagnosticRunning;
-            private set 
-            { 
-                _isDiagnosticRunning = value; 
-                OnPropertyChanged(nameof(IsDiagnosticRunning)); 
+            private set
+            {
+                _isDiagnosticRunning = value;
+                OnPropertyChanged(nameof(IsDiagnosticRunning));
             }
         }
 
         public string DiagnosticStatus
         {
             get => _diagnosticStatus;
-            private set 
-            { 
-                _diagnosticStatus = value; 
-                OnPropertyChanged(nameof(DiagnosticStatus)); 
+            private set
+            {
+                _diagnosticStatus = value;
+                OnPropertyChanged(nameof(DiagnosticStatus));
             }
         }
 
         public int FlowEventsCount
         {
             get => _flowEventsCount;
-            private set 
-            { 
-                _flowEventsCount = value; 
-                OnPropertyChanged(nameof(FlowEventsCount)); 
+            private set
+            {
+                _flowEventsCount = value;
+                OnPropertyChanged(nameof(FlowEventsCount));
             }
         }
 
         public int ConnectionsDiscovered
         {
             get => _connectionsDiscovered;
-            private set 
-            { 
-                _connectionsDiscovered = value; 
-                OnPropertyChanged(nameof(ConnectionsDiscovered)); 
+            private set
+            {
+                _connectionsDiscovered = value;
+                OnPropertyChanged(nameof(ConnectionsDiscovered));
             }
         }
 
         public string FlowModeText
         {
             get => _flowModeText;
-            private set 
-            { 
-                _flowModeText = value; 
-                OnPropertyChanged(nameof(FlowModeText)); 
+            private set
+            {
+                _flowModeText = value;
+                OnPropertyChanged(nameof(FlowModeText));
             }
         }
 
@@ -266,7 +270,7 @@ namespace IspAudit.ViewModels
         /// TrafficCollector собирает хосты → LiveTestingPipeline тестирует и применяет bypass
         /// </summary>
         public async Task RunAsync(
-            string targetExePath, 
+            string targetExePath,
             BypassController bypassController,
             TestResultsManager resultsManager,
             bool enableAutoBypass = true,
@@ -285,14 +289,14 @@ namespace IspAudit.ViewModels
                 LastRunWasUserCancelled = false;
 
                 ResetRecommendations();
-                
+
                 if (!OperatingSystem.IsWindows() || !IsAdministrator())
                 {
                     MessageBox.Show(
                         "Для захвата трафика требуются права администратора.\n\n" +
-                        "Запустите приложение от имени администратора", 
-                        "Требуются права администратора", 
-                        MessageBoxButton.OK, 
+                        "Запустите приложение от имени администратора",
+                        "Требуются права администратора",
+                        MessageBoxButton.OK,
                         MessageBoxImage.Warning);
                     return;
                 }
@@ -301,13 +305,13 @@ namespace IspAudit.ViewModels
                 DiagnosticStatus = "Инициализация...";
                 FlowEventsCount = 0;
                 ConnectionsDiscovered = 0;
-                
+
                 _cts = new CancellationTokenSource();
 
                 // Инициализируем фильтр шумных хостов
                 var noiseFilterPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "noise_hosts.json");
                 NoiseHostFilter.Initialize(noiseFilterPath, new Progress<string>(Log));
-                
+
                 // Создаем единый фильтр трафика (для дедупликации и фильтрации)
                 var trafficFilter = new UnifiedTrafficFilter();
 
@@ -324,7 +328,7 @@ namespace IspAudit.ViewModels
                     overlay.StopRequested += Cancel;
                 });
 
-                var progress = new Progress<string>(msg => 
+                var progress = new Progress<string>(msg =>
                 {
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
@@ -342,7 +346,7 @@ namespace IspAudit.ViewModels
 
                 // 2. Запуск целевого процесса или ожидание
                 int pid = 0;
-                
+
                 if (isSteamMode)
                 {
                     var processName = Path.GetFileNameWithoutExtension(targetExePath);
@@ -360,7 +364,7 @@ namespace IspAudit.ViewModels
                         DiagnosticStatus = warning;
                         Log($"[Orchestrator] ⚠ Процесс уже запущен: {processName} (PID={pid}). {warning}");
                     }
-                    
+
                     while (!_cts.Token.IsCancellationRequested)
                     {
                         if (pid != 0) break;
@@ -386,7 +390,7 @@ namespace IspAudit.ViewModels
                             UseShellExecute = true
                         }
                     };
-                    
+
                     if (!process.Start())
                     {
                         throw new Exception("Не удалось запустить процесс");
@@ -394,7 +398,7 @@ namespace IspAudit.ViewModels
                     pid = process.Id;
                     Log($"[Orchestrator] Процесс запущен: PID={pid}");
                 }
-                
+
                 // 3. PID Tracker
                 _pidTracker = new PidTrackerService(pid, progress);
                 await _pidTracker.StartAsync(_cts.Token).ConfigureAwait(false);
@@ -402,10 +406,10 @@ namespace IspAudit.ViewModels
                 // Если SNI пришёл до того, как PID-tracker успел подняться (Steam/attach),
                 // пытаемся добрать из буфера по уже известным remote endpoint -> pid.
                 FlushPendingSniForTrackedPids();
-                
+
                 // 4. Pre-resolve целей (параллельно)
                 _ = resultsManager.PreResolveTargetsAsync();
-                
+
                 DiagnosticStatus = "Анализ трафика...";
 
                 // 5. Преимптивный bypass (через сервис, с телеметрией в UI)
@@ -427,7 +431,7 @@ namespace IspAudit.ViewModels
                     _dnsParser!,
                     progress,
                     trafficFilter);
-                
+
                 // 7. Создание LiveTestingPipeline (тестирование + bypass)
                 var pipelineConfig = new PipelineConfig
                 {
@@ -438,9 +442,9 @@ namespace IspAudit.ViewModels
                 };
 
                 _testingPipeline = new LiveTestingPipeline(
-                    pipelineConfig, 
-                    progress, 
-                    _trafficEngine, 
+                    pipelineConfig,
+                    progress,
+                    _trafficEngine,
                     _dnsParser,
                     trafficFilter,
                     _tcpRetransmissionTracker != null
@@ -468,7 +472,7 @@ namespace IspAudit.ViewModels
                 // Подписываемся на события UDP блокировок для ретеста
                 if (_udpInspectionService != null)
                 {
-                    _udpInspectionService.OnBlockageDetected += (ip) => 
+                    _udpInspectionService.OnBlockageDetected += (ip) =>
                     {
                         // UDP/QUIC блокировки часто не означают, что HTTPS по TCP не работает.
                         // Авто-ретест по каждому событию приводит к лавине перетестов и ухудшает UX.
@@ -480,7 +484,7 @@ namespace IspAudit.ViewModels
                 var collectorTask = RunCollectorWithPipelineAsync(overlay, progress!);
                 var silenceMonitorTask = RunSilenceMonitorAsync(overlay);
                 var processMonitorTask = RunProcessMonitorAsync();
-                
+
                 // Ждём завершения (любой таск может завершить диагностику)
                 try
                 {
@@ -490,7 +494,7 @@ namespace IspAudit.ViewModels
                 {
                     // Игнорируем здесь, обработка ниже
                 }
-                
+
                 // 9. Закрываем оверлей
                 Application.Current?.Dispatcher.Invoke(() => overlay?.Close());
 
@@ -504,16 +508,16 @@ namespace IspAudit.ViewModels
                 {
                     // ProcessExited, SilenceTimeout или другое
                     Log($"[Orchestrator] Завершение диагностики ({_stopReason ?? "Unknown"})...");
-                    
+
                     // Ждём завершения всех тестов в pipeline (до 30 секунд)
                     if (_testingPipeline != null)
                     {
                         Log("[Orchestrator] Ожидание завершения тестов в pipeline...");
                         await _testingPipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
                     }
-                    
+
                     Log($"[Orchestrator] Завершено. Соединений: {_trafficCollector?.ConnectionsCount ?? 0}");
-                    
+
                     // Генерация и сохранение профиля (используем CancellationToken.None, чтобы сохранить даже при отмене)
                     if (_trafficCollector != null && _trafficCollector.ConnectionsCount > 0)
                     {
@@ -522,7 +526,7 @@ namespace IspAudit.ViewModels
                             CancellationToken.None);
                         await SaveProfileAsync(targetExePath, profile);
                     }
-                    
+
                     DiagnosticStatus = "Диагностика завершена";
                 }
             }
@@ -535,7 +539,7 @@ namespace IspAudit.ViewModels
             catch (Exception ex)
             {
                 Log($"[Orchestrator] Ошибка: {ex.Message}");
-                MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка диагностики", 
+                MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка диагностики",
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 DiagnosticStatus = $"Ошибка: {ex.Message}";
             }
@@ -574,7 +578,7 @@ namespace IspAudit.ViewModels
                 DetachAutoBypassTelemetry();
                 ResetAutoBypassUi(false);
 
-                var progress = new Progress<string>(msg => 
+                var progress = new Progress<string>(msg =>
                 {
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
@@ -597,9 +601,9 @@ namespace IspAudit.ViewModels
 
                 // Используем существующий bypass manager из контроллера
                 _testingPipeline = new LiveTestingPipeline(
-                    pipelineConfig, 
-                    progress, 
-                    _trafficEngine, 
+                    pipelineConfig,
+                    progress,
+                    _trafficEngine,
                     _dnsParser, // Нужен для кеша SNI/DNS имён (стабильнее подписи в UI и авто-hostlist)
                     new UnifiedTrafficFilter(),
                     null, // State store новый
@@ -632,7 +636,7 @@ namespace IspAudit.ViewModels
                     else
                     {
                         // Если Host - это доменное имя, нужно его разрешить
-                        try 
+                        try
                         {
                             var ips = await System.Net.Dns.GetHostAddressesAsync(target.Host);
                             if (ips.Length > 0)
@@ -652,7 +656,7 @@ namespace IspAudit.ViewModels
 
                 // Ждем завершения
                 await _testingPipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(15)).ConfigureAwait(false);
-                
+
                 Log("[Orchestrator] Ретест завершен");
                 DiagnosticStatus = "Ретест завершен";
             }
@@ -677,7 +681,7 @@ namespace IspAudit.ViewModels
         private async Task RunCollectorWithPipelineAsync(OverlayWindow? overlay, IProgress<string> progress)
         {
             if (_trafficCollector == null || _testingPipeline == null || _cts == null) return;
-            
+
             try
             {
                 // Если включен таймаут тишины, то ставим и глобальный лимит 10 минут.
@@ -685,16 +689,16 @@ namespace IspAudit.ViewModels
                 var captureTimeout = EnableSilenceTimeout ? TimeSpan.FromMinutes(10) : (TimeSpan?)null;
 
                 await foreach (var host in _trafficCollector.CollectAsync(
-                    captureTimeout, 
+                    captureTimeout,
                     _cts.Token).ConfigureAwait(false))
                 {
                     // Обновляем UI счётчик
-                    Application.Current?.Dispatcher.Invoke(() => 
+                    Application.Current?.Dispatcher.Invoke(() =>
                     {
                         ConnectionsDiscovered = _trafficCollector.ConnectionsCount;
                         overlay?.UpdateStats(ConnectionsDiscovered, FlowEventsCount);
                     });
-                    
+
                     // Отправляем в pipeline на тестирование
                     await _testingPipeline.EnqueueHostAsync(host).ConfigureAwait(false);
                 }
@@ -711,34 +715,34 @@ namespace IspAudit.ViewModels
         private async Task RunSilenceMonitorAsync(OverlayWindow? overlay)
         {
             if (_trafficCollector == null || _connectionMonitor == null || _cts == null) return;
-            
+
             bool silenceWarningShown = false;
-            
+
             try
             {
                 while (!_cts.Token.IsCancellationRequested)
                 {
                     await Task.Delay(1000, _cts.Token).ConfigureAwait(false);
-                    
+
                     // Проверяем время с момента запуска мониторинга (warmup)
-                    var totalElapsed = _connectionMonitor.MonitorStartedUtc.HasValue 
-                        ? (DateTime.UtcNow - _connectionMonitor.MonitorStartedUtc.Value).TotalSeconds 
+                    var totalElapsed = _connectionMonitor.MonitorStartedUtc.HasValue
+                        ? (DateTime.UtcNow - _connectionMonitor.MonitorStartedUtc.Value).TotalSeconds
                         : 0;
 
                     if (totalElapsed < WarmupSeconds || silenceWarningShown)
                         continue;
 
                     var silenceDuration = (DateTime.UtcNow - _trafficCollector.LastNewConnectionTime).TotalSeconds;
-                    
+
                     if (EnableSilenceTimeout && silenceDuration > SilenceTimeoutSeconds && overlay != null)
                     {
                         silenceWarningShown = true;
                         Log($"[Silence] Нет новых соединений более {SilenceTimeoutSeconds}с");
-                        
+
                         // Показываем запрос пользователю
-                        var extend = await Application.Current!.Dispatcher.Invoke(async () => 
+                        var extend = await Application.Current!.Dispatcher.Invoke(async () =>
                             await overlay.ShowSilencePromptAsync(SilenceTimeoutSeconds));
-                        
+
                         if (extend)
                         {
                             Log("[Silence] Пользователь продлил диагностику");
@@ -768,13 +772,13 @@ namespace IspAudit.ViewModels
         private async Task RunProcessMonitorAsync()
         {
             if (_pidTracker == null || _cts == null) return;
-            
+
             try
             {
                 while (!_cts.Token.IsCancellationRequested)
                 {
                     await Task.Delay(2000, _cts.Token).ConfigureAwait(false);
-                    
+
                     bool anyAlive = false;
                     foreach (var pid in _pidTracker.TrackedPids.ToArray())
                     {
@@ -789,16 +793,16 @@ namespace IspAudit.ViewModels
                         }
                         catch { }
                     }
-                    
+
                     if (!anyAlive && _pidTracker.TrackedPids.Count > 0)
                     {
                         Log("[Orchestrator] Все отслеживаемые процессы завершились");
                         _stopReason = "ProcessExited";
-                        
+
                         // Закрываем входящий поток данных (это разблокирует collectorTask)
                         // DrainAndCompleteAsync будет вызван в основном потоке после WhenAny
                         _trafficCollector?.StopCollecting();
-                        
+
                         // НЕ отменяем и НЕ ждём здесь — основной поток сам вызовет DrainAndCompleteAsync
                         break;
                     }
@@ -945,7 +949,7 @@ namespace IspAudit.ViewModels
         private async Task StartMonitoringServicesAsync(IProgress<string> progress, OverlayWindow? overlay)
         {
             Log("[Services] Запуск мониторинговых сервисов...");
-            
+
             // Connection Monitor
             _connectionMonitor = new ConnectionMonitorService(progress)
             {
@@ -953,8 +957,8 @@ namespace IspAudit.ViewModels
                 // чтобы видеть попытки соединения даже без успешного Socket Layer.
                 UsePollingMode = true
             };
-            
-            _connectionMonitor.OnConnectionEvent += (count, pid, proto, remoteIp, remotePort, localPort) => 
+
+            _connectionMonitor.OnConnectionEvent += (count, pid, proto, remoteIp, remotePort, localPort) =>
             {
                 // Обновляем сопоставление remote endpoint -> pid, чтобы потом гейтить SNI-триггеры
                 TrackRemoteEndpoint(pid, proto, remoteIp, remotePort);
@@ -964,7 +968,7 @@ namespace IspAudit.ViewModels
 
                 if (count % 10 == 0)
                 {
-                    Application.Current?.Dispatcher.Invoke(() => 
+                    Application.Current?.Dispatcher.Invoke(() =>
                     {
                         FlowEventsCount = count;
                         overlay?.UpdateStats(ConnectionsDiscovered, FlowEventsCount);
@@ -973,13 +977,13 @@ namespace IspAudit.ViewModels
             };
             FlowModeText = _connectionMonitor.UsePollingMode ? "IP Helper (polling)" : "Socket Layer";
             Log($"[Services] ConnectionMonitor: {( _connectionMonitor.UsePollingMode ? "Polling (IP Helper)" : "Socket Layer" )} активен");
-            
+
             await _connectionMonitor.StartAsync(_cts!.Token).ConfigureAwait(false);
-            
+
             // Traffic Engine (замена NetworkMonitorService)
             _trafficMonitorFilter = new TrafficMonitorFilter();
             _stateManager.RegisterEngineFilter(_trafficMonitorFilter);
-            
+
             await _stateManager.StartEngineAsync(_cts.Token).ConfigureAwait(false);
 
             // TCP Retransmission Tracker — подписываем на TrafficMonitorFilter
@@ -997,12 +1001,12 @@ namespace IspAudit.ViewModels
             // UDP Inspection Service — анализ DTLS/QUIC блокировок
             _udpInspectionService = new UdpInspectionService();
             _udpInspectionService.Attach(_trafficMonitorFilter);
-            
+
             // DNS Parser (теперь умеет и SNI)
             _dnsParser = new DnsParserService(_trafficMonitorFilter, progress);
-            _dnsParser.OnDnsLookupFailed += (hostname, error) => 
+            _dnsParser.OnDnsLookupFailed += (hostname, error) =>
             {
-                Application.Current?.Dispatcher.Invoke(() => 
+                Application.Current?.Dispatcher.Invoke(() =>
                 {
                     OnPipelineMessage?.Invoke($"DNS сбой: {hostname} - {error}");
                 });
@@ -1012,7 +1016,7 @@ namespace IspAudit.ViewModels
 
             // Очистка буфера SNI (на случай, если PID так и не появился)
             _pendingSniCleanupTask = Task.Run(() => CleanupPendingSniLoop(_cts!.Token), _cts.Token);
-            
+
             Log("[Services] ✓ Все сервисы запущены");
         }
 
@@ -1186,7 +1190,7 @@ namespace IspAudit.ViewModels
                 Log("[Services] Остановка сервисов...");
                 if (_pidTracker != null) await _pidTracker.StopAsync().ConfigureAwait(false);
                 if (_dnsParser != null) await _dnsParser.StopAsync().ConfigureAwait(false);
-                
+
                 // Don't stop TrafficEngine, just remove filter
                 if (_trafficMonitorFilter != null)
                 {
@@ -1194,7 +1198,7 @@ namespace IspAudit.ViewModels
                 }
 
                 if (_connectionMonitor != null) await _connectionMonitor.StopAsync().ConfigureAwait(false);
-                
+
                 _pidTracker?.Dispose();
                 if (_dnsParser != null)
                 {
@@ -1203,7 +1207,7 @@ namespace IspAudit.ViewModels
                 }
                 // _trafficEngine is shared, do not dispose
                 _connectionMonitor?.Dispose();
-                
+
                 _pidTracker = null;
                 _dnsParser = null;
                 // _trafficEngine = null; // Cannot assign to readonly
@@ -1221,7 +1225,7 @@ namespace IspAudit.ViewModels
         private void UpdateOverlayStatus(OverlayWindow? overlay, string msg)
         {
             if (overlay == null) return;
-            
+
             if (msg.Contains("Захват активен"))
                 overlay.UpdateStatus("Мониторинг активности...");
             else if (msg.Contains("Обнаружено соединение") || msg.Contains("Новое соединение"))
@@ -1349,7 +1353,7 @@ namespace IspAudit.ViewModels
 
             if (plan.DropUdp443)
             {
-                var token = "QUIC_TO_TCP";
+                var token = "DROP_UDP_443";
                 if (!IsStrategyActive(token, bypassController))
                 {
                     _recommendedStrategies.Add(token);
@@ -1358,7 +1362,7 @@ namespace IspAudit.ViewModels
 
             if (plan.AllowNoSni)
             {
-                var token = "NO_SNI";
+                var token = "ALLOW_NO_SNI";
                 if (!IsStrategyActive(token, bypassController))
                 {
                     _recommendedStrategies.Add(token);
@@ -1462,6 +1466,9 @@ namespace IspAudit.ViewModels
                 "TLS_DISORDER" => "Frag+Rev",
                 "TLS_FAKE" => "TLS Fake",
                 "DROP_RST" => "Drop RST",
+                "DROP_UDP_443" => "QUIC→TCP",
+                "ALLOW_NO_SNI" => "No SNI",
+                // Back-compat
                 "QUIC_TO_TCP" => "QUIC→TCP",
                 "NO_SNI" => "No SNI",
                 "DOH" => "🔒 DoH",
@@ -1482,8 +1489,12 @@ namespace IspAudit.ViewModels
                 "TlsFakeTtl" => "TLS_FAKE",
                 "DropRst" => "DROP_RST",
                 "UseDoh" => "DOH",
-                "DropUdp443" => "QUIC_TO_TCP",
-                "AllowNoSni" => "NO_SNI",
+                "DropUdp443" => "DROP_UDP_443",
+                "AllowNoSni" => "ALLOW_NO_SNI",
+
+                // Back-compat
+                "QUIC_TO_TCP" => "DROP_UDP_443",
+                "NO_SNI" => "ALLOW_NO_SNI",
                 _ => t.ToUpperInvariant()
             };
         }
@@ -1521,8 +1532,8 @@ namespace IspAudit.ViewModels
                 .Select(s => MapStrategyToken(s.Id.ToString()))
                 .Where(t => !string.IsNullOrWhiteSpace(t))
                 .ToList();
-            if (_lastV2Plan.DropUdp443) planTokens.Add("QUIC_TO_TCP");
-            if (_lastV2Plan.AllowNoSni) planTokens.Add("NO_SNI");
+            if (_lastV2Plan.DropUdp443) planTokens.Add("DROP_UDP_443");
+            if (_lastV2Plan.AllowNoSni) planTokens.Add("ALLOW_NO_SNI");
             var planStrategies = planTokens.Count == 0 ? "(none)" : string.Join(", ", planTokens);
 
             var beforeState = BuildBypassStateSummary(bypassController);
@@ -1644,6 +1655,9 @@ namespace IspAudit.ViewModels
                 "TLS_FAKE" => bypassController.IsFakeEnabled,
                 "TLS_FAKE_FRAGMENT" => bypassController.IsFakeEnabled && bypassController.IsFragmentEnabled,
                 "DROP_RST" => bypassController.IsDropRstEnabled,
+                "DROP_UDP_443" => bypassController.IsQuicFallbackEnabled,
+                "ALLOW_NO_SNI" => bypassController.IsAllowNoSniEnabled,
+                // Back-compat
                 "QUIC_TO_TCP" => bypassController.IsQuicFallbackEnabled,
                 "NO_SNI" => bypassController.IsAllowNoSniEnabled,
                 "DOH" => bypassController.IsDoHEnabled,
@@ -1655,24 +1669,24 @@ namespace IspAudit.ViewModels
 
         private async Task SaveProfileAsync(string targetExePath, DiagnosticProfile profile)
         {
-            try 
+            try
             {
                 var profilesDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Profiles");
                 Directory.CreateDirectory(profilesDir);
-                
+
                 var exeName = Path.GetFileNameWithoutExtension(targetExePath);
                 var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 var profilePath = Path.Combine(profilesDir, $"{exeName}_{timestamp}.json");
-                
+
                 profile.ExePath = targetExePath;
                 profile.Name = $"{exeName} (Captured {DateTime.Now:g})";
-                
+
                 var jsonOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
                 var json = System.Text.Json.JsonSerializer.Serialize(profile, jsonOptions);
-                
+
                 await File.WriteAllTextAsync(profilePath, json);
                 Log($"[Orchestrator] Профиль сохранен: {profilePath}");
-                
+
                 Application.Current?.Dispatcher.Invoke(() =>
                 {
                     DiagnosticStatus = $"Профиль сохранен: {Path.GetFileName(profilePath)}";
@@ -1732,7 +1746,7 @@ namespace IspAudit.ViewModels
             }
         }
 
-        [SupportedOSPlatform("windows")] 
+        [SupportedOSPlatform("windows")]
         private static bool IsAdministrator()
         {
             try

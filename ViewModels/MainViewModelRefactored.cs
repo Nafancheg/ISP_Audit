@@ -22,7 +22,7 @@ namespace IspAudit.ViewModels
 {
     /// <summary>
     /// Главная ViewModel.
-    /// После рефакторинга: тонкий координатор между BypassController, 
+    /// После рефакторинга: тонкий координатор между BypassController,
     /// DiagnosticOrchestrator и TestResultsManager.
     /// ~400 строк вместо 2100+
     /// </summary>
@@ -58,7 +58,7 @@ namespace IspAudit.ViewModels
                 return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "isp_audit_vm_fallback.log");
             }
         }
-        
+
         private static void Log(string message)
         {
             try
@@ -77,12 +77,12 @@ namespace IspAudit.ViewModels
         /// Контроллер bypass-стратегий
         /// </summary>
         public BypassController Bypass { get; }
-        
+
         /// <summary>
         /// Оркестратор диагностики
         /// </summary>
         public DiagnosticOrchestrator Orchestrator { get; }
-        
+
         /// <summary>
         /// Менеджер результатов тестирования
         /// </summary>
@@ -130,9 +130,9 @@ namespace IspAudit.ViewModels
                 OnPropertyChanged(nameof(ShowReport));
                 OnPropertyChanged(nameof(RunningStatusText));
                 OnPropertyChanged(nameof(StartButtonText));
-                
+
                 Log($"✓ ScreenState: '{oldState}' → '{value}'");
-                
+
                 if (value == "start")
                 {
                     Results.ResetStatuses();
@@ -313,17 +313,17 @@ namespace IspAudit.ViewModels
         public double TrafficEngineLatency
         {
             get => _trafficEngineLatency;
-            set 
-            { 
-                _trafficEngineLatency = value; 
-                OnPropertyChanged(nameof(TrafficEngineLatency)); 
-                OnPropertyChanged(nameof(TrafficEngineLatencyText)); 
+            set
+            {
+                _trafficEngineLatency = value;
+                OnPropertyChanged(nameof(TrafficEngineLatency));
+                OnPropertyChanged(nameof(TrafficEngineLatencyText));
                 OnPropertyChanged(nameof(TrafficEngineLatencyColor));
             }
         }
 
         public string TrafficEngineLatencyText => $"{TrafficEngineLatency:F3} ms";
-        
+
         public System.Windows.Media.Brush TrafficEngineLatencyColor
         {
             get
@@ -346,7 +346,7 @@ namespace IspAudit.ViewModels
         public ICommand DetailsCommand { get; }
         public ICommand BrowseExeCommand { get; }
         public ICommand ToggleThemeCommand { get; }
-        
+
         // Bypass Toggle Commands
         public ICommand ToggleFragmentCommand { get; }
         public ICommand ToggleDisorderCommand { get; }
@@ -383,8 +383,8 @@ namespace IspAudit.ViewModels
             // Create TrafficEngine
             var progress = new Progress<string>(msg => Log(msg));
             _trafficEngine = new IspAudit.Core.Traffic.TrafficEngine(progress);
-            
-            _trafficEngine.OnPerformanceUpdate += ms => 
+
+            _trafficEngine.OnPerformanceUpdate += ms =>
             {
                 Application.Current?.Dispatcher.Invoke(() => TrafficEngineLatency = ms);
             };
@@ -399,15 +399,15 @@ namespace IspAudit.ViewModels
 
             // Подписываемся на события
             Bypass.OnLog += Log;
-            Bypass.PropertyChanged += (s, e) => 
+            Bypass.PropertyChanged += (s, e) =>
             {
                 OnPropertyChanged(e.PropertyName ?? "");
                 CheckAndRetestFailedTargets(e.PropertyName);
                 if (e.PropertyName == nameof(Bypass.IsBypassActive)) CheckTrafficEngineState();
             };
-            
+
             Orchestrator.OnLog += Log;
-            Orchestrator.OnPipelineMessage += msg => 
+            Orchestrator.OnPipelineMessage += msg =>
             {
                 CurrentAction = msg;
                 Results.ParsePipelineMessage(msg);
@@ -438,7 +438,7 @@ namespace IspAudit.ViewModels
                     ShowNetworkChangePrompt();
                 }
             };
-            Orchestrator.PropertyChanged += (s, e) => 
+            Orchestrator.PropertyChanged += (s, e) =>
             {
                 OnPropertyChanged(e.PropertyName ?? "");
                 if (e.PropertyName == nameof(Orchestrator.IsDiagnosticRunning))
@@ -454,7 +454,7 @@ namespace IspAudit.ViewModels
             };
 
             Results.OnLog += Log;
-            Results.PropertyChanged += (s, e) => 
+            Results.PropertyChanged += (s, e) =>
             {
                 OnPropertyChanged(e.PropertyName ?? "");
                 OnPropertyChanged(nameof(RunningStatusText));
@@ -479,11 +479,11 @@ namespace IspAudit.ViewModels
             ToggleFakeCommand = new RelayCommand(_ => Bypass.IsFakeEnabled = !Bypass.IsFakeEnabled, _ => ShowBypassPanel);
             ToggleDropRstCommand = new RelayCommand(_ => Bypass.IsDropRstEnabled = !Bypass.IsDropRstEnabled, _ => ShowBypassPanel);
             ToggleDoHCommand = new RelayCommand(_ => Bypass.IsDoHEnabled = !Bypass.IsDoHEnabled, _ => ShowBypassPanel);
-            DisableAllBypassCommand = new RelayCommand(async _ => 
+            DisableAllBypassCommand = new RelayCommand(async _ =>
             {
                 await Bypass.DisableAllAsync();
                 EnableAutoBypass = false; // Также отключаем авто-включение при следующем старте
-            }, 
+            },
                 _ => ShowBypassPanel && (IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled || IsDropRstEnabled));
 
             ApplyRecommendationsCommand = new RelayCommand(async _ => await ApplyRecommendationsAsync(), _ => HasRecommendations && !IsApplyingRecommendations);
@@ -714,13 +714,13 @@ namespace IspAudit.ViewModels
         private async Task StartDiagnosticAsync()
         {
             string targetExePath;
-            
+
             if (IsBasicTestMode)
             {
                 targetExePath = GetTestNetworkAppPath() ?? "";
                 if (string.IsNullOrEmpty(targetExePath))
                 {
-                    MessageBox.Show("Не удалось найти TestNetworkApp.exe", "Ошибка", 
+                    MessageBox.Show("Не удалось найти TestNetworkApp.exe", "Ошибка",
                         MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
@@ -730,7 +730,7 @@ namespace IspAudit.ViewModels
             {
                 if (string.IsNullOrEmpty(ExePath) || !File.Exists(ExePath))
                 {
-                    MessageBox.Show("Файл не найден.", "Ошибка", 
+                    MessageBox.Show("Файл не найден.", "Ошибка",
                         MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
@@ -740,7 +740,7 @@ namespace IspAudit.ViewModels
 
             ScreenState = "running";
             Results.Clear();
-            
+
             Orchestrator.EnableSilenceTimeout = !IsUnlimitedTime;
             await Orchestrator.RunAsync(targetExePath, Bypass, Results, EnableAutoBypass, IsSteamMode);
         }
@@ -784,7 +784,7 @@ namespace IspAudit.ViewModels
                         Details = t.Details,
                         Error = t.Error,
                         BypassStrategy = t.BypassStrategy,
-                        Flags = new 
+                        Flags = new
                         {
                             t.IsRstInjection,
                             t.IsHttpRedirect,
@@ -794,20 +794,20 @@ namespace IspAudit.ViewModels
                     }).ToList()
                 };
 
-                var json = System.Text.Json.JsonSerializer.Serialize(report, 
+                var json = System.Text.Json.JsonSerializer.Serialize(report,
                     new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
                 var filename = $"isp_audit_report_{DateTime.Now:yyyyMMdd_HHmmss}.json";
                 var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, filename);
-                
+
                 File.WriteAllText(path, json);
                 Log($"[Report] Saved: {path}");
-                
+
                 System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\"");
             }
             catch (Exception ex)
             {
                 Log($"[Report] Error: {ex.Message}");
-                MessageBox.Show($"Ошибка создания отчета: {ex.Message}", "Ошибка", 
+                MessageBox.Show($"Ошибка создания отчета: {ex.Message}", "Ошибка",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -815,7 +815,7 @@ namespace IspAudit.ViewModels
         private void ShowDetailsDialog(TestResult? result)
         {
             if (result == null) return;
-            
+
             try
             {
                 var window = new IspAudit.Windows.TestDetailsWindow(result)
@@ -837,10 +837,10 @@ namespace IspAudit.ViewModels
         private string? GetTestNetworkAppPath()
         {
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            
+
             var path = Path.Combine(baseDir, "TestNetworkApp.exe");
             if (File.Exists(path)) return path;
-            
+
             path = Path.Combine(baseDir, "TestNetworkApp", "bin", "Publish", "TestNetworkApp.exe");
             if (File.Exists(path)) return path;
 
@@ -850,7 +850,7 @@ namespace IspAudit.ViewModels
         private void UpdateUserMessage(string msg)
         {
             var cleanMsg = msg;
-            
+
             if (cleanMsg.StartsWith("["))
             {
                 var closeBracket = cleanMsg.IndexOf(']');
@@ -863,7 +863,7 @@ namespace IspAudit.ViewModels
             if (cleanMsg.Contains("ConnectionMonitor")) cleanMsg = "Анализ сетевых соединений...";
             if (cleanMsg.Contains("WinDivert")) cleanMsg = "Инициализация драйвера перехвата...";
             if (cleanMsg.Contains("DNS")) cleanMsg = "Проверка DNS запросов...";
-            
+
             if (System.Text.RegularExpressions.Regex.IsMatch(cleanMsg, @"\d+\.\d+\.\d+\.\d+:\d+"))
             {
                 cleanMsg = "Обнаружено соединение с сервером...";
@@ -910,7 +910,7 @@ namespace IspAudit.ViewModels
             if (failedTargets.Count == 0) return;
 
             Log($"[AutoRetest] Bypass option changed ({propertyName}). Retesting {failedTargets.Count} failed targets...");
-            
+
             // Запускаем ретест
             await Orchestrator.RetestTargetsAsync(failedTargets, Bypass);
         }

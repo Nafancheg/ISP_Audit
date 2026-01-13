@@ -382,15 +382,50 @@ namespace IspAudit.Utils
                     // Доставляем план наружу (UI/оркестратор). Не применяется автоматически.
                     try
                     {
-                        // Для UX важно привязывать план к «человеческому» ключу (SNI/hostname),
-                        // иначе кнопка применения/сопоставление с диагнозом может расходиться.
-                        var planHostKey =
-                            tested.SniHostname ??
-                            tested.Hostname ??
-                            tested.ReverseDnsHostname ??
-                            tested.Host.RemoteIp?.ToString() ??
-                            tested.Host.Key;
-                        OnV2PlanBuilt?.Invoke(planHostKey, plan);
+                        var hasPlanActions = plan.Strategies.Count > 0 || plan.DropUdp443 || plan.AllowNoSni;
+
+                        // План нужен только когда есть что применять и есть сигнал проблемы.
+                        // Иначе мы перетираем "последний план" шумом/успешными хостами, и кнопка Apply применяет не то.
+                        var isProblem = !(tested.DnsOk && tested.TcpOk && tested.TlsOk)
+                            || diagnosis.DiagnosisId != DiagnosisId.NoBlockage
+                            || inspection.UdpUnansweredHandshakes > 2;
+
+                        if (hasPlanActions && isProblem)
+                        {
+                            // Для UX важно привязывать план к SNI, а не к rDNS:
+                            // rDNS может быть "служебным" именем и не подходит как цель для TLS-обхода.
+                            var planHostKey = string.Empty;
+                            if (!string.IsNullOrWhiteSpace(tested.SniHostname))
+                            {
+                                planHostKey = tested.SniHostname;
+                            }
+                            else
+                            {
+                                // Если Hostname совпадает с ReverseDnsHostname, это, скорее всего, fallback из rDNS.
+                                // Не используем его как ключ цели для Apply.
+                                var candidateHostname = tested.Hostname;
+                                if (!string.IsNullOrWhiteSpace(candidateHostname)
+                                    && !string.IsNullOrWhiteSpace(tested.ReverseDnsHostname)
+                                    && string.Equals(candidateHostname, tested.ReverseDnsHostname, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    candidateHostname = null;
+                                }
+
+                                planHostKey = !string.IsNullOrWhiteSpace(candidateHostname)
+                                    ? candidateHostname
+                                    : tested.Host.RemoteIp?.ToString() ?? tested.Host.Key;
+                            }
+
+                            // Доп. UX: если это явный шумовой хост и тесты OK, план наружу не отдаём.
+                            // (Шум фильтруется позднее, но OnV2PlanBuilt влияет на кнопку Apply.)
+                            if (!(NoiseHostFilter.Instance.IsNoiseHost(planHostKey)
+                                  && tested.DnsOk && tested.TcpOk && tested.TlsOk
+                                  && diagnosis.DiagnosisId == DiagnosisId.NoBlockage
+                                  && inspection.UdpUnansweredHandshakes <= 2))
+                            {
+                                OnV2PlanBuilt?.Invoke(planHostKey, plan);
+                            }
+                        }
                     }
                     catch
                     {
