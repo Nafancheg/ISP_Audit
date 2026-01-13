@@ -147,13 +147,15 @@ namespace IspAudit.ViewModels
                 });
             };
 
-            // По умолчанию при старте всё выключено (в т.ч. DROP RST)
+            // По умолчанию при старте всё выключено (в т.ч. assist-флаги QUIC→TCP / No SNI)
             _currentOptions = _currentOptions with
             {
                 FragmentEnabled = false,
                 DisorderEnabled = false,
                 FakeEnabled = false,
-                DropRstEnabled = false
+                DropRstEnabled = false,
+                DropUdp443 = false,
+                AllowNoSni = false
             };
 
             FragmentPresets = _stateManager.FragmentPresets.ToList();
@@ -205,13 +207,15 @@ namespace IspAudit.ViewModels
                 });
             };
 
-            // По умолчанию при старте всё выключено (в т.ч. DROP RST)
+            // По умолчанию при старте всё выключено (в т.ч. assist-флаги QUIC→TCP / No SNI)
             _currentOptions = _currentOptions with
             {
                 FragmentEnabled = false,
                 DisorderEnabled = false,
                 FakeEnabled = false,
-                DropRstEnabled = false
+                DropRstEnabled = false,
+                DropUdp443 = false,
+                AllowNoSni = false
             };
 
             FragmentPresets = _stateManager.FragmentPresets.ToList();
