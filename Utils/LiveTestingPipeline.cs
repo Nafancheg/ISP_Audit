@@ -379,13 +379,13 @@ namespace IspAudit.Utils
                     // Важно: не применять автоматически (только показать в UI/логах).
                     var plan = _strategySelectorV2.Select(diagnosis, msg => _progress?.Report(msg));
 
-                    // Доставляем план наружу (UI/оркестратор). Не применяется автоматически.
+                    // Готовим v2-план для UI/оркестратора, но публикуем ТОЛЬКО если хост реально попал в UI как проблема.
+                    // Иначе "последний план" будет перетираться шумом/успешными хостами, и Apply применит не то.
+                    var publishV2Plan = false;
+                    var planHostKeyForPublish = string.Empty;
                     try
                     {
                         var hasPlanActions = plan.Strategies.Count > 0 || plan.DropUdp443 || plan.AllowNoSni;
-
-                        // План нужен только когда есть что применять и есть сигнал проблемы.
-                        // Иначе мы перетираем "последний план" шумом/успешными хостами, и кнопка Apply применяет не то.
                         var isProblem = !(tested.DnsOk && tested.TcpOk && tested.TlsOk)
                             || diagnosis.DiagnosisId != DiagnosisId.NoBlockage
                             || inspection.UdpUnansweredHandshakes > 2;
@@ -394,10 +394,9 @@ namespace IspAudit.Utils
                         {
                             // Для UX важно привязывать план к SNI, а не к rDNS:
                             // rDNS может быть "служебным" именем и не подходит как цель для TLS-обхода.
-                            var planHostKey = string.Empty;
                             if (!string.IsNullOrWhiteSpace(tested.SniHostname))
                             {
-                                planHostKey = tested.SniHostname;
+                                planHostKeyForPublish = tested.SniHostname;
                             }
                             else
                             {
@@ -411,25 +410,18 @@ namespace IspAudit.Utils
                                     candidateHostname = null;
                                 }
 
-                                planHostKey = !string.IsNullOrWhiteSpace(candidateHostname)
+                                planHostKeyForPublish = !string.IsNullOrWhiteSpace(candidateHostname)
                                     ? candidateHostname
                                     : tested.Host.RemoteIp?.ToString() ?? tested.Host.Key;
                             }
 
-                            // Доп. UX: если это явный шумовой хост и тесты OK, план наружу не отдаём.
-                            // (Шум фильтруется позднее, но OnV2PlanBuilt влияет на кнопку Apply.)
-                            if (!(NoiseHostFilter.Instance.IsNoiseHost(planHostKey)
-                                  && tested.DnsOk && tested.TcpOk && tested.TlsOk
-                                  && diagnosis.DiagnosisId == DiagnosisId.NoBlockage
-                                  && inspection.UdpUnansweredHandshakes <= 2))
-                            {
-                                OnV2PlanBuilt?.Invoke(planHostKey, plan);
-                            }
+                            publishV2Plan = true;
                         }
                     }
                     catch
                     {
-                        // Игнорируем ошибки подписчиков: пайплайн должен быть устойчив.
+                        publishV2Plan = false;
+                        planHostKeyForPublish = string.Empty;
                     }
 
                     var remoteIp = tested.Host.RemoteIp;
@@ -495,6 +487,19 @@ namespace IspAudit.Utils
 
                     if (decision.Action == FilterAction.Process)
                     {
+                        // Важно: публикуем v2-план только для тех хостов, которые реально попали в UI как проблема.
+                        if (publishV2Plan && !string.IsNullOrWhiteSpace(planHostKeyForPublish))
+                        {
+                            try
+                            {
+                                OnV2PlanBuilt?.Invoke(planHostKeyForPublish, plan);
+                            }
+                            catch
+                            {
+                                // Игнорируем ошибки подписчиков: пайплайн должен быть устойчив.
+                            }
+                        }
+
                         // Это блокировка или проблема - отправляем в UI
                         await _bypassQueue.Writer.WriteAsync(blocked, ct).ConfigureAwait(false);
                         Interlocked.Increment(ref _statUiIssuesEnqueued);

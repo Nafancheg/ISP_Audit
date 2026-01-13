@@ -1,6 +1,6 @@
 # ISP_Audit — Архитектура (v3.0 Extended)
 
-**Дата обновления:** 26.12.2025
+**Дата обновления:** 13.01.2026
 **Версия:** 3.0 (Comprehensive)
 **Технологии:** .NET 9, WPF, WinDivert 2.2.0
 
@@ -138,6 +138,7 @@ Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|
     *   Важное правило: события SNI из `DnsParserService` **гейтятся по PID**. Так как WinDivert Network Layer не предоставляет PID, оркестратор сопоставляет SNI с событиями соединений `ConnectionMonitorService` (remote endpoint → PID) и пропускает в пайплайн только то, что относится к `PidTrackerService.TrackedPids`.
         *   Для Steam/attach поддерживается короткий буфер (несколько секунд), чтобы не терять ранний SNI до появления PID.
     *   Важно: SNI не фильтруется по `NoiseHostFilter` на входе (это исходные данные). Фильтрация «шума» применяется только на этапе отображения успешных результатов.
+    *   Практика для QUIC→TCP: при детекте UDP/QUIC блокировки (`UdpInspectionService.OnBlockageDetected`) оркестратор может установить цель outcome (по SNI/DNS кешу, с fallback на IP), чтобы селективный `DropUdp443` не оставался «включён, но без цели».
 *   **`LiveTestingPipeline`**: Асинхронный конвейер на базе `System.Threading.Channels`.
     *   Связывает этапы: Sniffing → Testing → Classification → Reporting.
     *   Использует `UnifiedTrafficFilter` для минимальной валидации (loopback) и правил отображения (не засорять UI «успешными» целями).
@@ -146,6 +147,7 @@ Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|
     *   Публикует периодический `[PipelineHealth]` лог со счётчиками этапов (enqueue/test/classify/ui), чтобы диагностировать потери данных и «затыки» очередей без привязки к сценариям.
     *   Обеспечивает параллельную обработку множества хостов.
     *   Опционально принимает `AutoHostlistService`: на этапе Classification добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения). Auto-hostlist питается `InspectionSignalsSnapshot` (v2-only). Дополнительно, если хост стал кандидатом, этот контекст прокидывается в v2 хвост (evidence/notes) как короткая нота `autoHL hits=… score=…`.
+    *   v2 UX-гейт: событие `OnV2PlanBuilt` публикуется только для хостов, которые реально прошли фильтр отображения как проблема (`FilterAction.Process`), чтобы кнопка apply не применяла план, сформированный по шумовому/успешному хосту.
 
 Smoke-хелперы (для детерминированных проверок без WinDivert/реальной сети):
 * `DnsParserService.TryExtractSniFromTlsClientHelloPayload(...)` — извлечение SNI из TLS payload.

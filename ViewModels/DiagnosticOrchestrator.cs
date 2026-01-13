@@ -477,6 +477,51 @@ namespace IspAudit.ViewModels
                         // UDP/QUIC блокировки часто не означают, что HTTPS по TCP не работает.
                         // Авто-ретест по каждому событию приводит к лавине перетестов и ухудшает UX.
                         Log($"[Orchestrator] UDP Blockage detected for {ip}. (no auto-retest)");
+
+                        try
+                        {
+                            // Важно для QUIC→TCP (DROP UDP/443): режим селективный и требует цели.
+                            // Если цель не задана, то опция может быть включена, но фактически не будет глушить UDP/443.
+                            var existingTarget = bypassController.GetOutcomeTargetHost();
+
+                            // Пытаемся восстановить имя по SNI/DNS кешу.
+                            var ipKey = ip.ToString();
+                            string? resolvedHost = null;
+                            if (_dnsParser != null)
+                            {
+                                _dnsParser.SniCache.TryGetValue(ipKey, out resolvedHost);
+                                if (string.IsNullOrWhiteSpace(resolvedHost))
+                                {
+                                    _dnsParser.DnsCache.TryGetValue(ipKey, out resolvedHost);
+                                }
+                            }
+
+                            var candidateTarget = !string.IsNullOrWhiteSpace(resolvedHost)
+                                ? resolvedHost!.Trim()
+                                : ipKey;
+
+                            static bool IsIpLiteral(string value)
+                                => !string.IsNullOrWhiteSpace(value) && System.Net.IPAddress.TryParse(value.Trim(), out _);
+
+                            var shouldUpdateTarget = string.IsNullOrWhiteSpace(existingTarget)
+                                || (!IsIpLiteral(candidateTarget) && IsIpLiteral(existingTarget) && !string.Equals(existingTarget, candidateTarget, StringComparison.OrdinalIgnoreCase));
+
+                            if (shouldUpdateTarget)
+                            {
+                                bypassController.SetOutcomeTargetHost(candidateTarget);
+                                Log($"[Orchestrator] Outcome target host set from UDP blockage: {ipKey} -> {candidateTarget}");
+
+                                // Если QUIC→TCP уже включён, нужно пере-применить опции, чтобы селективный UDP/443 получил цели.
+                                if (bypassController.IsQuicFallbackEnabled)
+                                {
+                                    _ = bypassController.ApplyBypassOptionsAsync();
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // Не даём вспомогательной логике ломать диагностику.
+                        }
                     };
                 }
 

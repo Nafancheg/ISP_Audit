@@ -1122,6 +1122,10 @@ namespace IspAudit.ViewModels
             return ApplyV2PlanAsync(plan, timeout, cancellationToken);
         }
 
+        public string GetOutcomeTargetHost() => _stateManager.GetOutcomeTargetHost();
+
+        public void SetOutcomeTargetHost(string? host) => _stateManager.SetOutcomeTargetHost(host);
+
         private TlsFragmentPreset? ResolvePresetByNameOrAlias(string presetName)
         {
             if (string.IsNullOrWhiteSpace(presetName))
