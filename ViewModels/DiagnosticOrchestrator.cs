@@ -497,8 +497,12 @@ namespace IspAudit.ViewModels
                             static bool IsIpLiteral(string value)
                                 => !string.IsNullOrWhiteSpace(value) && System.Net.IPAddress.TryParse(value.Trim(), out _);
 
+                            // Обновляем цель по последнему UDP blockage.
+                            // Важно: иначе цель может «залипнуть» на первом событии (например, facebook),
+                            // а последующие QUIC блокировки (например, googlevideo для YouTube) не смогут
+                            // корректно активировать селективный DROP UDP/443 при ручном включении тумблера.
                             var shouldUpdateTarget = string.IsNullOrWhiteSpace(existingTarget)
-                                || (!IsIpLiteral(candidateTarget) && IsIpLiteral(existingTarget) && !string.Equals(existingTarget, candidateTarget, StringComparison.OrdinalIgnoreCase));
+                                || !string.Equals(existingTarget, candidateTarget, StringComparison.OrdinalIgnoreCase);
 
                             if (shouldUpdateTarget)
                             {

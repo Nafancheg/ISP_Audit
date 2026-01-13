@@ -641,19 +641,20 @@ namespace IspAudit.ViewModels
 
                 if (activePreset != null)
                 {
-                    _selectedDnsPreset = activePreset;
-                    OnPropertyChanged(nameof(SelectedDnsPreset));
-
-                    // Включаем галочку DoH только если есть файл бэкапа (индикатор того, что это мы настроили)
-                    // Просто наличие 8.8.8.8 не гарантирует включенный DoH/HTTPS
+                    // Меняем выбранный пресет ТОЛЬКО если есть backup (то есть это состояние выставляло приложение).
+                    // Если backup нет, совпадение DNS может быть «чужим» или результатом старой/нечистой сессии,
+                    // и мы не должны автоматически переключать выбор пользователя на Cloudflare/Google и т.п.
                     if (FixService.HasBackupFile)
                     {
+                        _selectedDnsPreset = activePreset;
+                        OnPropertyChanged(nameof(SelectedDnsPreset));
                         _isDoHEnabled = true;
+                        OnPropertyChanged(nameof(IsDoHEnabled));
                         Log($"[Bypass] Detected active DoH preset (restorable): {activePreset}");
                     }
                     else
                     {
-                        // Если бэкапа нет, но DNS совпадает — не включаем DoH автоматически
+                        // Если бэкапа нет — просто логируем факт, но не меняем preset и не включаем DoH.
                         if (_isDoHEnabled)
                         {
                             _isDoHEnabled = false;
