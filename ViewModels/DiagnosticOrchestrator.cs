@@ -319,14 +319,8 @@ namespace IspAudit.ViewModels
                 Log("[Orchestrator] Сброс DNS кеша...");
                 await RunFlushDnsAsync();
 
-                // Создаём оверлей
+                // Оверлей отключён (UX: не показываем отдельное сервисное окно)
                 OverlayWindow? overlay = null;
-                Application.Current?.Dispatcher.Invoke(() =>
-                {
-                    overlay = new OverlayWindow();
-                    overlay.Show();
-                    overlay.StopRequested += Cancel;
-                });
 
                 var progress = new Progress<string>(msg =>
                 {

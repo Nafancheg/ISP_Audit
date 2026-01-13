@@ -3,14 +3,47 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using IspAudit.Models;
 using IspAudit.ViewModels;
+using System.ComponentModel;
 
 namespace IspAudit
 {
     public partial class MainWindow : Window
     {
+        private bool _shutdownInProgress;
+
         public MainWindow()
         {
             InitializeComponent();
+            Closing += Window_Closing;
+        }
+
+        private async void Window_Closing(object? sender, CancelEventArgs e)
+        {
+            if (_shutdownInProgress)
+            {
+                return;
+            }
+
+            _shutdownInProgress = true;
+            e.Cancel = true;
+
+            try
+            {
+                if (DataContext is MainViewModelRefactored viewModel)
+                {
+                    await viewModel.ShutdownAsync();
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+            finally
+            {
+                // Закрываем окно повторно: второй проход пропустит shutdown.
+                e.Cancel = false;
+                Close();
+            }
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)

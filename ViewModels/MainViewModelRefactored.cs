@@ -520,6 +520,60 @@ namespace IspAudit.ViewModels
             await Bypass.InitializeOnStartupAsync();
         }
 
+        public async Task ShutdownAsync()
+        {
+            // 1) Останавливаем диагностику/применение рекомендаций, если они идут.
+            try
+            {
+                Orchestrator.Cancel();
+            }
+            catch
+            {
+                // ignore
+            }
+
+            // 2) Отключаем bypass (WinDivert/фильтры) и восстанавливаем DNS, если мы его меняли.
+            try
+            {
+                if (ShowBypassPanel)
+                {
+                    await Bypass.DisableAllAsync().ConfigureAwait(false);
+
+                    // Критично: если DoH/DNS фикс включался через FixService, после выхода нужно вернуть исходные DNS.
+                    // Иначе пользователь может остаться на DNS провайдера, который у него не работает.
+                    if (IspAudit.Utils.FixService.HasBackupFile)
+                    {
+                        await Bypass.RestoreDoHAsync().ConfigureAwait(false);
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            // 3) Отмечаем корректное завершение сессии bypass.
+            try
+            {
+                _bypassState.MarkCleanShutdown();
+                Log("[Bypass][Watchdog] Clean shutdown отмечен");
+            }
+            catch
+            {
+                // ignore
+            }
+
+            // 4) Чистим монитор смены сети.
+            try
+            {
+                _networkChangeMonitor?.Dispose();
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
         public void OnAppExit()
         {
             try

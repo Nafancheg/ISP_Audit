@@ -105,6 +105,8 @@
 - Добавлена Activation Detection (по метрикам): статус `ENGINE_DEAD/NOT_ACTIVATED/ACTIVATED/NO_TRAFFIC/UNKNOWN` для наблюдаемости.
 - Добавлен Outcome Check для HTTPS: `SUCCESS/FAILED/UNKNOWN` через tagged outcome-probe (активная TCP+TLS+HTTP проверка цели), probe исключается из пользовательских метрик (smoke gate: `DPI2-029`).
 - P0.6 Смена сети: при системном событии смены сети UI показывает уведомление «Проверить/Отключить/Игнорировать». «Проверить» запускает staged revalidation (Activation → Outcome) и затем предлагает запустить полную диагностику (без auto-apply; smoke gate: `UI-013`).
+- Важное UX/безопасность: при закрытии приложения выполняется shutdown без «хвостов»: диагностика отменяется, bypass выключается, а DNS/DoH восстанавливаются (если были включены через `FixService` и существует backup `dns_backup.json`). Это предотвращает сценарий «после работы приложения пропал интернет из-за нерабочего DNS пресета».
+- UX: отдельное overlay-окно диагностики отключено (не показываем сервисное окно поверх рабочего стола).
 - `BypassController` и `DiagnosticOrchestrator` используют один экземпляр менеджера, чтобы исключить гонки Apply/Disable и рассинхронизацию фильтров/engine.
 - Добавлен guard: прямые вызовы методов `TrafficEngine`/`TlsBypassService` вне manager-scope логируются (и могут быть зафиксированы smoke-гейтами).
 
