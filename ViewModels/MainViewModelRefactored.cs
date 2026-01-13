@@ -440,7 +440,14 @@ namespace IspAudit.ViewModels
             {
                 OnPropertyChanged(e.PropertyName ?? "");
                 CheckAndRetestFailedTargets(e.PropertyName);
-                if (e.PropertyName == nameof(Bypass.IsBypassActive)) CheckTrafficEngineState();
+                if (e.PropertyName == nameof(Bypass.IsBypassActive))
+                {
+                    CheckTrafficEngineState();
+                    if (!Bypass.IsBypassActive)
+                    {
+                        ClearAppliedBypassMarkers();
+                    }
+                }
             };
 
             Orchestrator.OnLog += Log;
@@ -520,6 +527,7 @@ namespace IspAudit.ViewModels
             {
                 await Bypass.DisableAllAsync();
                 EnableAutoBypass = false; // Также отключаем авто-включение при следующем старте
+                ClearAppliedBypassMarkers();
             },
                 _ => ShowBypassPanel && (IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled || IsDropRstEnabled));
 
@@ -780,6 +788,11 @@ namespace IspAudit.ViewModels
             {
                 var preferredHostKey = GetPreferredHostKey(SelectedTestResult);
                 await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey);
+
+                if (Bypass.IsBypassActive && SelectedTestResult != null)
+                {
+                    MarkAppliedBypassTarget(SelectedTestResult);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -829,6 +842,11 @@ namespace IspAudit.ViewModels
                 // Если для этой цели есть v2 план — применяем его.
                 // Если плана нет, ApplyRecommendationsAsync просто ничего не сделает (и это лучше, чем включать тумблеры вслепую).
                 await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey);
+
+                if (Bypass.IsBypassActive)
+                {
+                    MarkAppliedBypassTarget(test);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -885,6 +903,57 @@ namespace IspAudit.ViewModels
             {
                 return null;
             }
+        }
+
+        private static void UiBeginInvoke(Action action)
+        {
+            try
+            {
+                var dispatcher = Application.Current?.Dispatcher;
+                if (dispatcher == null)
+                {
+                    action();
+                    return;
+                }
+
+                if (dispatcher.CheckAccess())
+                {
+                    action();
+                }
+                else
+                {
+                    dispatcher.BeginInvoke(action);
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void ClearAppliedBypassMarkers()
+        {
+            UiBeginInvoke(() =>
+            {
+                foreach (var r in Results.TestResults)
+                {
+                    if (r.IsAppliedBypassTarget)
+                    {
+                        r.IsAppliedBypassTarget = false;
+                    }
+                }
+            });
+        }
+
+        private void MarkAppliedBypassTarget(TestResult applied)
+        {
+            UiBeginInvoke(() =>
+            {
+                foreach (var r in Results.TestResults)
+                {
+                    r.IsAppliedBypassTarget = ReferenceEquals(r, applied);
+                }
+            });
         }
 
         private async Task StartOrCancelAsync()

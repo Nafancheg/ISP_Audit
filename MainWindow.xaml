@@ -495,14 +495,44 @@
                         <DataGridTemplateColumn Header="Действие" Width="0.9*">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Button Content="Подключить"
-                                            Style="{StaticResource PrimaryButtonStyle}"
+                                    <Button Style="{StaticResource PrimaryButtonStyle}"
                                             Padding="10,4"
                                             FontSize="12"
                                             ToolTip="{Binding BypassStrategy}"
+                                            IsEnabled="{Binding IsAppliedBypassTarget, Converter={StaticResource InverseBoolConverter}}"
                                             Command="{Binding DataContext.ConnectFromResultCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                             CommandParameter="{Binding}"
-                                            Visibility="{Binding ShowConnectButton, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            Visibility="{Binding ShowConnectButton, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <Button.Content>
+                                            <StackPanel Orientation="Horizontal">
+                                                <materialDesign:PackIcon Width="16" Height="16" Margin="0,0,6,0">
+                                                    <materialDesign:PackIcon.Style>
+                                                        <Style TargetType="materialDesign:PackIcon">
+                                                            <Setter Property="Kind" Value="LanConnect"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsAppliedBypassTarget}" Value="True">
+                                                                    <Setter Property="Kind" Value="CheckCircle"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </materialDesign:PackIcon.Style>
+                                                </materialDesign:PackIcon>
+
+                                                <TextBlock>
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Подключить"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsAppliedBypassTarget}" Value="True">
+                                                                    <Setter Property="Text" Value="Подключено"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Button.Content>
+                                    </Button>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>

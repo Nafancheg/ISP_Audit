@@ -151,6 +151,17 @@ namespace IspAudit.Models
             }
         }
 
+        private bool _isAppliedBypassTarget;
+        public bool IsAppliedBypassTarget
+        {
+            get => _isAppliedBypassTarget;
+            set
+            {
+                _isAppliedBypassTarget = value;
+                OnPropertyChanged(nameof(IsAppliedBypassTarget));
+            }
+        }
+
         public bool ShowConnectButton
             => IsBypassStrategyFromV2 &&
                !string.IsNullOrWhiteSpace(BypassStrategy) &&
