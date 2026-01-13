@@ -391,6 +391,7 @@ namespace IspAudit.ViewModels
         public ICommand ToggleDoHCommand { get; }
         public ICommand DisableAllBypassCommand { get; }
         public ICommand ApplyRecommendationsCommand { get; }
+        public ICommand ConnectFromResultCommand { get; }
 
         // P0.6: Network change staged revalidation
         public ICommand NetworkRevalidateCommand { get; }
@@ -523,6 +524,11 @@ namespace IspAudit.ViewModels
                 _ => ShowBypassPanel && (IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled || IsDropRstEnabled));
 
             ApplyRecommendationsCommand = new RelayCommand(async _ => await ApplyRecommendationsAsync(), _ => HasRecommendations && !IsApplyingRecommendations);
+
+            // Применение стратегии/плана из конкретной строки результата ("карточки").
+            // UX: пользователь видит стратегию рядом с целью и нажимает "Подключить" именно для неё.
+            ConnectFromResultCommand = new RelayCommand(async param => await ConnectFromResultAsync(param as TestResult),
+                param => ShowBypassPanel && !IsApplyingRecommendations);
 
             NetworkRevalidateCommand = new RelayCommand(async _ => await RunNetworkRevalidationAsync(), _ => ShowBypassPanel && IsNetworkChangePromptVisible);
             NetworkDisableBypassCommand = new RelayCommand(async _ => await DisableBypassFromNetworkPromptAsync(), _ => ShowBypassPanel && IsNetworkChangePromptVisible);
@@ -782,6 +788,55 @@ namespace IspAudit.ViewModels
             catch (Exception ex)
             {
                 Log($"[V2][APPLY] Ошибка применения рекомендаций: {ex.Message}");
+            }
+            finally
+            {
+                IsApplyingRecommendations = false;
+            }
+        }
+
+        private async Task ConnectFromResultAsync(TestResult? test)
+        {
+            if (IsApplyingRecommendations)
+            {
+                return;
+            }
+
+            if (!ShowBypassPanel)
+            {
+                Log("[V2][APPLY] Bypass недоступен (нужны права администратора)");
+                return;
+            }
+
+            if (test == null)
+            {
+                return;
+            }
+
+            IsApplyingRecommendations = true;
+            try
+            {
+                // Подсветим выбранную цель + выставим OutcomeTargetHost (селективный QUIC→TCP зависит от этого).
+                SelectedTestResult = test;
+
+                var preferredHostKey = GetPreferredHostKey(test);
+                if (string.IsNullOrWhiteSpace(preferredHostKey))
+                {
+                    Log("[V2][APPLY] Нет hostKey для выбранной строки (SNI/Host/Name пуст)");
+                    return;
+                }
+
+                // Если для этой цели есть v2 план — применяем его.
+                // Если плана нет, ApplyRecommendationsAsync просто ничего не сделает (и это лучше, чем включать тумблеры вслепую).
+                await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey);
+            }
+            catch (OperationCanceledException)
+            {
+                Log("[V2][APPLY] Отмена применения стратегии из карточки");
+            }
+            catch (Exception ex)
+            {
+                Log($"[V2][APPLY] Ошибка применения стратегии из карточки: {ex.Message}");
             }
             finally
             {

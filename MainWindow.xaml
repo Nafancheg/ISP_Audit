@@ -491,6 +491,21 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
+
+                        <DataGridTemplateColumn Header="Действие" Width="0.9*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="Подключить"
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            Padding="10,4"
+                                            FontSize="12"
+                                            ToolTip="{Binding BypassStrategy}"
+                                            Command="{Binding DataContext.ConnectFromResultCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"
+                                            Visibility="{Binding IsBypassStrategyFromV2, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
 
