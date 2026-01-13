@@ -357,6 +357,7 @@ namespace IspAudit.Bypass
                 AutoTtl = options.AutoTtlEnabled,
                 AllowNoSni = options.AllowNoSni,
                 DropUdp443 = options.DropUdp443,
+                DropUdp443Global = options.DropUdp443 && options.DropUdp443Global,
                 HttpHostTricks = options.HttpHostTricksEnabled,
                 BadChecksum = options.BadChecksumEnabled,
                 RedirectRules = _baseProfile.RedirectRules
@@ -529,6 +530,12 @@ namespace IspAudit.Bypass
         public bool DropUdp443 { get; init; }
 
         /// <summary>
+        /// Глобальный режим QUIC fallback: глушить ВЕСЬ UDP/443 (без привязки к цели).
+        /// Используется как расширение к DropUdp443.
+        /// </summary>
+        public bool DropUdp443Global { get; init; }
+
+        /// <summary>
         /// HTTP Host tricks (MVP): разрезать Host заголовок по границе TCP-сегментов.
         /// </summary>
         public bool HttpHostTricksEnabled { get; init; }
@@ -558,6 +565,7 @@ namespace IspAudit.Bypass
                 DropRstEnabled = baseProfile.DropTcpRst,
                 AllowNoSni = baseProfile.AllowNoSni,
                 DropUdp443 = baseProfile.DropUdp443,
+                DropUdp443Global = baseProfile.DropUdp443Global,
                 HttpHostTricksEnabled = baseProfile.HttpHostTricks,
                 BadChecksumEnabled = baseProfile.BadChecksum,
                 FragmentSizes = fragments,
@@ -609,7 +617,7 @@ namespace IspAudit.Bypass
             if (DisorderEnabled) parts.Add("Disorder");
             if (FakeEnabled) parts.Add("Fake");
             if (DropRstEnabled) parts.Add("DROP RST");
-            if (DropUdp443) parts.Add("DROP UDP/443");
+            if (DropUdp443) parts.Add(DropUdp443Global ? "DROP UDP/443 (GLOBAL)" : "DROP UDP/443");
             if (AllowNoSni) parts.Add("AllowNoSNI");
             if (TtlTrickEnabled) parts.Add(AutoTtlEnabled ? $"AutoTTL({TtlTrickValue})" : $"TTL({TtlTrickValue})");
             if (HttpHostTricksEnabled) parts.Add("HTTP Host tricks");

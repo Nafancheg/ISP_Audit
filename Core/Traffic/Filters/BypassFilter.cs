@@ -107,6 +107,9 @@ namespace IspAudit.Core.Traffic.Filters
             if (!info.IsUdp || info.DstPort != 443) return false;
             if (!_profile.DropUdp443) return false;
 
+            // Глобальный режим: глушим весь UDP/443, без привязки к observed IP цели.
+            if (_profile.DropUdp443Global) return true;
+
             // IPv6: адресов для селективности нет, сохраняем прежнее поведение.
             if (info.IsIpv6) return true;
 

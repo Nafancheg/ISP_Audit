@@ -595,23 +595,32 @@ namespace IspAudit.Bypass
             {
                 var normalized = options.Normalize();
 
-                // Селективный DROP UDP/443: перед Apply подготавливаем observed IP цели.
+                // DROP UDP/443:
+                // - global: глушим весь UDP/443 (цель не нужна)
+                // - selective: перед Apply подготавливаем observed IP цели
                 // Важно: вычисляем вне manager-scope (нет доступа к TrafficEngine), чтобы не держать guard дольше.
                 uint[] udp443Targets = Array.Empty<uint>();
                 if (normalized.DropUdp443)
                 {
-                    var host = _outcomeTargetHost;
-                    if (!string.IsNullOrWhiteSpace(host))
+                    if (normalized.DropUdp443Global)
                     {
-                        udp443Targets = await GetOrSeedUdp443DropTargetsAsync(host, cancellationToken).ConfigureAwait(false);
-                        if (udp443Targets.Length == 0)
-                        {
-                            _log?.Invoke("[Bypass] DROP UDP/443 включён, но IP цели не определены — UDP/443 не будет глушиться (селективный режим)");
-                        }
+                        _log?.Invoke("[Bypass] DROP UDP/443 включён (GLOBAL) — глушим весь UDP/443");
                     }
                     else
                     {
-                        _log?.Invoke("[Bypass] DROP UDP/443 включён, но цель (host) не задана — UDP/443 не будет глушиться (селективный режим)");
+                        var host = _outcomeTargetHost;
+                        if (!string.IsNullOrWhiteSpace(host))
+                        {
+                            udp443Targets = await GetOrSeedUdp443DropTargetsAsync(host, cancellationToken).ConfigureAwait(false);
+                            if (udp443Targets.Length == 0)
+                            {
+                                _log?.Invoke("[Bypass] DROP UDP/443 включён, но IP цели не определены — UDP/443 не будет глушиться (селективный режим)");
+                            }
+                        }
+                        else
+                        {
+                            _log?.Invoke("[Bypass] DROP UDP/443 включён, но цель (host) не задана — UDP/443 не будет глушиться (селективный режим)");
+                        }
                     }
                 }
 

@@ -93,6 +93,12 @@ namespace IspAudit.Bypass
         public bool DropUdp443 { get; init; }
 
         /// <summary>
+        /// Глобальный режим QUIC fallback: глушить ВЕСЬ UDP/443, без привязки к цели.
+        /// Важно: это более агрессивно и может влиять на приложения, использующие QUIC/HTTP3.
+        /// </summary>
+        public bool DropUdp443Global { get; init; }
+
+        /// <summary>
         /// HTTP Host tricks (MVP): попытка усложнить L7 разбор, разрезая Host заголовок по границе TCP-сегментов.
         /// Важно: применяется только к исходящему TCP/80 и только один раз на соединение.
         /// </summary>
@@ -131,6 +137,7 @@ namespace IspAudit.Bypass
                     AutoTtl = profile.AutoTtl,
                     AllowNoSni = profile.AllowNoSni,
                     DropUdp443 = profile.DropUdp443,
+                    DropUdp443Global = profile.DropUdp443Global,
                     RedirectRules = profile.RedirectRules?
                         .Select(r => new BypassRedirectRuleDocument
                         {
@@ -211,7 +218,7 @@ namespace IspAudit.Bypass
         /// <summary>
         /// Обновляет только вспомогательные флаги bypass (QUIC fallback / Allow-no-SNI) в файле профиля.
         /// </summary>
-        public static bool TryUpdateAssistSettings(bool allowNoSni, bool dropUdp443)
+        public static bool TryUpdateAssistSettings(bool allowNoSni, bool dropUdp443, bool dropUdp443Global)
         {
             try
             {
@@ -237,6 +244,7 @@ namespace IspAudit.Bypass
 
                 doc.AllowNoSni = allowNoSni;
                 doc.DropUdp443 = dropUdp443;
+                doc.DropUdp443Global = dropUdp443Global;
 
                 var optionsWrite = new JsonSerializerOptions
                 {
@@ -341,6 +349,7 @@ namespace IspAudit.Bypass
                     AutoTtl = doc.AutoTtl,
                     AllowNoSni = doc.AllowNoSni,
                     DropUdp443 = doc.DropUdp443,
+                    DropUdp443Global = doc.DropUdp443Global,
                     RedirectRules = doc.RedirectRules?
                         .Select(r => r.ToRule())
                         .Where(r => r != null)!
@@ -404,6 +413,7 @@ namespace IspAudit.Bypass
                 AutoAdjustAggressive = false,
                 AllowNoSni = false,
                 DropUdp443 = false,
+                DropUdp443Global = false,
                 RedirectRules = new[] { defaultRule, defaultTcpRule }
             };
         }
@@ -452,6 +462,7 @@ namespace IspAudit.Bypass
             public bool AutoTtl { get; set; }
             public bool AllowNoSni { get; set; }
             public bool DropUdp443 { get; set; }
+            public bool DropUdp443Global { get; set; }
             public string? FragmentPresetName { get; set; }
             public bool AutoAdjustAggressive { get; set; }
             public List<BypassRedirectRuleDocument>? RedirectRules { get; set; }

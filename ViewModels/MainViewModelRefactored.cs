@@ -288,6 +288,7 @@ namespace IspAudit.ViewModels
         public bool IsFakeEnabled { get => Bypass.IsFakeEnabled; set => Bypass.IsFakeEnabled = value; }
         public bool IsDropRstEnabled { get => Bypass.IsDropRstEnabled; set => Bypass.IsDropRstEnabled = value; }
         public bool IsQuicFallbackEnabled { get => Bypass.IsQuicFallbackEnabled; set => Bypass.IsQuicFallbackEnabled = value; }
+        public bool IsQuicFallbackGlobal { get => Bypass.IsQuicFallbackGlobal; set => Bypass.IsQuicFallbackGlobal = value; }
         public bool IsAllowNoSniEnabled { get => Bypass.IsAllowNoSniEnabled; set => Bypass.IsAllowNoSniEnabled = value; }
         public bool IsDoHEnabled { get => Bypass.IsDoHEnabled; set => Bypass.IsDoHEnabled = value; }
         public bool IsVpnDetected => Bypass.IsVpnDetected;

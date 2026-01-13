@@ -57,6 +57,8 @@ namespace IspAudit.ViewModels
             "Yandex",
             "Hybrid (CF + Yandex)"
         };
+        // QUIC fallback scope
+        public ICommand SetQuicFallbackScopeCommand { get; }
 
         public ICommand SetDnsPresetCommand { get; }
 
@@ -181,6 +183,21 @@ namespace IspAudit.ViewModels
                 if (param is string preset)
                 {
                     SelectedDnsPreset = preset;
+                }
+            }, _ => true);
+            SetQuicFallbackScopeCommand = new RelayCommand(param =>
+            {
+                // Параметр ожидается: "Selective" или "Global"
+                var scope = (param as string ?? string.Empty).Trim();
+                if (scope.Equals("Global", StringComparison.OrdinalIgnoreCase))
+                {
+                    IsQuicFallbackGlobal = true;
+                    return;
+                }
+
+                if (scope.Equals("Selective", StringComparison.OrdinalIgnoreCase))
+                {
+                    IsQuicFallbackGlobal = false;
                 }
             }, _ => true);
         }
@@ -402,6 +419,25 @@ namespace IspAudit.ViewModels
                 NotifyActiveStatesChanged();
                 CheckCompatibility();
                 _ = ApplyBypassOptionsAsync();
+            }
+        }
+
+        public bool IsQuicFallbackGlobal
+        {
+            get => _currentOptions.DropUdp443Global;
+            set
+            {
+                if (_currentOptions.DropUdp443Global == value) return;
+                _currentOptions = _currentOptions with { DropUdp443Global = value };
+                OnPropertyChanged(nameof(IsQuicFallbackGlobal));
+                PersistAssistSettings();
+
+                // Если QUIC fallback уже включён — нужно пере-применить, чтобы фильтр начал/перестал
+                // глушить UDP/443 глобально без зависимости от цели.
+                if (IsQuicFallbackEnabled)
+                {
+                    _ = ApplyBypassOptionsAsync();
+                }
             }
         }
 
@@ -1436,6 +1472,7 @@ namespace IspAudit.ViewModels
                 if (oldOptions.FakeEnabled != _currentOptions.FakeEnabled) OnPropertyChanged(nameof(IsFakeEnabled));
                 if (oldOptions.DropRstEnabled != _currentOptions.DropRstEnabled) OnPropertyChanged(nameof(IsDropRstEnabled));
                 if (oldOptions.DropUdp443 != _currentOptions.DropUdp443) OnPropertyChanged(nameof(IsQuicFallbackEnabled));
+                if (oldOptions.DropUdp443Global != _currentOptions.DropUdp443Global) OnPropertyChanged(nameof(IsQuicFallbackGlobal));
                 if (oldOptions.AllowNoSni != _currentOptions.AllowNoSni) OnPropertyChanged(nameof(IsAllowNoSniEnabled));
 
                 OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
@@ -1458,7 +1495,8 @@ namespace IspAudit.ViewModels
         {
             BypassProfile.TryUpdateAssistSettings(
                 _currentOptions.AllowNoSni,
-                _currentOptions.DropUdp443);
+                _currentOptions.DropUdp443,
+                _currentOptions.DropUdp443Global);
         }
 
         private void Log(string message)

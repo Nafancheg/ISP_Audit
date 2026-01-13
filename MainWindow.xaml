@@ -196,7 +196,22 @@
                                                           Content="QUIC→TCP"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="QUIC fallback: глушить UDP/443, чтобы клиент откатился на TCP/HTTPS"
-                                                          Margin="0,0,4,4"/>
+                                                          Margin="0,0,4,4">
+                                                <ToggleButton.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Header="Селективно (по цели)"
+                                                                  IsCheckable="True"
+                                                                  IsChecked="{Binding IsQuicFallbackGlobal, Converter={StaticResource InverseBoolConverter}}"
+                                                                  Command="{Binding DataContext.Bypass.SetQuicFallbackScopeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                                  CommandParameter="Selective"/>
+                                                        <MenuItem Header="Глобально (весь UDP/443)"
+                                                                  IsCheckable="True"
+                                                                  IsChecked="{Binding IsQuicFallbackGlobal}"
+                                                                  Command="{Binding DataContext.Bypass.SetQuicFallbackScopeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                                  CommandParameter="Global"/>
+                                                    </ContextMenu>
+                                                </ToggleButton.ContextMenu>
+                                            </ToggleButton>
 
                                             <ToggleButton IsChecked="{Binding IsAllowNoSniEnabled, Mode=TwoWay}"
                                                           Content="No SNI"
