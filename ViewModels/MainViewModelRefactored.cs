@@ -270,12 +270,17 @@ namespace IspAudit.ViewModels
                 {
                     if (SelectedTestResult?.Target == null) return false;
 
-                    // MVP: предлагаем доменный режим только для googlevideo CDN.
+                    if (!Results.CanSuggestDomainAggregation) return false;
+
+                    var suffix = Results.SuggestedDomainSuffix;
+                    if (string.IsNullOrWhiteSpace(suffix)) return false;
+
+                    // Показываем кнопку только если выбранная цель действительно относится к этому домену.
                     var hostKey = GetPreferredHostKey(SelectedTestResult);
                     if (string.IsNullOrWhiteSpace(hostKey)) return false;
 
-                    var isGooglevideo = hostKey.EndsWith("googlevideo.com", StringComparison.OrdinalIgnoreCase);
-                    return isGooglevideo && Results.CanSuggestGooglevideoDomain;
+                    return hostKey.Equals(suffix, StringComparison.OrdinalIgnoreCase) ||
+                           hostKey.EndsWith("." + suffix, StringComparison.OrdinalIgnoreCase);
                 }
                 catch
                 {
@@ -286,7 +291,21 @@ namespace IspAudit.ViewModels
 
         public string ApplyDomainButtonText => IsApplyingRecommendations
             ? "Применяю…"
-            : "Подключить (домен: googlevideo.com)";
+            : $"Подключить (домен: {Results.SuggestedDomainSuffix ?? "…"})";
+
+        public string DomainSuggestionHintText
+        {
+            get
+            {
+                var suffix = Results.SuggestedDomainSuffix;
+                if (string.IsNullOrWhiteSpace(suffix)) return "";
+
+                var n = Results.SuggestedDomainSubhostCount;
+                return $"Авто-обнаружение CDN/шардов: замечено {n} подхостов для *.{suffix}.\n" +
+                       "Кнопка применяет v2-план к домену (OutcomeTargetHost=домен).\n" +
+                       $"Справочник/кэш: {IspAudit.Utils.DomainFamilyCatalog.CatalogFilePath}";
+            }
+        }
 
         private TestResult? _selectedTestResult;
         public TestResult? SelectedTestResult
@@ -531,6 +550,16 @@ namespace IspAudit.ViewModels
             {
                 OnPropertyChanged(e.PropertyName ?? "");
                 OnPropertyChanged(nameof(RunningStatusText));
+
+                if (e.PropertyName == nameof(TestResultsManager.SuggestedDomainSuffix) ||
+                    e.PropertyName == nameof(TestResultsManager.SuggestedDomainSubhostCount) ||
+                    e.PropertyName == nameof(TestResultsManager.CanSuggestDomainAggregation))
+                {
+                    OnPropertyChanged(nameof(HasDomainSuggestion));
+                    OnPropertyChanged(nameof(ApplyDomainButtonText));
+                    OnPropertyChanged(nameof(DomainSuggestionHintText));
+                    CommandManager.InvalidateRequerySuggested();
+                }
             };
 
             // Инициализация результатов
@@ -860,7 +889,13 @@ namespace IspAudit.ViewModels
             IsApplyingRecommendations = true;
             try
             {
-                const string domain = "googlevideo.com";
+                var domain = Results.SuggestedDomainSuffix;
+                if (string.IsNullOrWhiteSpace(domain))
+                {
+                    Log("[V2][APPLY] Доменная цель не определена");
+                    return;
+                }
+
                 await Orchestrator.ApplyRecommendationsForDomainAsync(Bypass, domain).ConfigureAwait(false);
 
                 if (Bypass.IsBypassActive && SelectedTestResult != null)

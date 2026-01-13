@@ -162,6 +162,7 @@
 
                                         <Button Content="{Binding ApplyDomainButtonText}" Command="{Binding ApplyDomainRecommendationsCommand}"
                                             Style="{StaticResource SecondaryButtonStyle}" Padding="12,6" FontSize="13" HorizontalAlignment="Left" Height="32" Margin="0,6,0,0"
+                                            ToolTip="{Binding DomainSuggestionHintText}"
                                             Visibility="{Binding HasDomainSuggestion, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 </StackPanel>
                             </Border>

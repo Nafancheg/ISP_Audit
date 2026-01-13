@@ -500,9 +500,9 @@ namespace IspAudit.ViewModels
                                 : ipKey;
 
                             // Обновляем цель по последнему UDP blockage.
-                            // Важно: иначе цель может «залипнуть» на первом событии (например, facebook),
-                            // а последующие QUIC блокировки (например, googlevideo для YouTube) не смогут
-                            // корректно активировать селективный DROP UDP/443 при ручном включении тумблера.
+                            // Важно: иначе цель может «залипнуть» на первом событии,
+                            // а последующие QUIC блокировки (часто CDN/шарды) не смогут корректно активировать
+                            // селективный DROP UDP/443 при ручном включении тумблера.
                             var shouldUpdateTarget = string.IsNullOrWhiteSpace(existingTarget)
                                 || !string.Equals(existingTarget, candidateTarget, StringComparison.OrdinalIgnoreCase);
 
@@ -1567,7 +1567,7 @@ namespace IspAudit.ViewModels
             if (string.IsNullOrWhiteSpace(domain)) return;
 
             // На данном этапе это управляемая "гибридная" логика:
-            // - UI предлагает доменный режим только для известных CDN (googlevideo.com)
+            // - UI может предложить доменный режим (по анализу доменных семейств в UI-слое)
             // - здесь мы берём последний применимый v2 план из поддоменов и применяем его,
             //   но выставляем OutcomeTargetHost именно на домен.
             var candidates = _v2PlansByHost

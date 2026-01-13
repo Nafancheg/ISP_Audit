@@ -33,13 +33,14 @@ namespace IspAudit.ViewModels
 
         private readonly ConcurrentDictionary<string, string> _ipToUiKey = new();
 
-        // Доменная агрегация (MVP): googlevideo CDN создаёт десятки rr*-sn-*.googlevideo.com.
-        // Для UX это один и тот же сервис, поэтому после пары наблюдений начинаем схлопывать в googlevideo.com.
-        private readonly ConcurrentDictionary<string, byte> _googlevideoSubhosts = new();
-        private volatile bool _preferGooglevideoDomainKey;
+        // Доменная агрегация (общая): автоматически ищем «семейства» доменов, где появляется много вариативных подхостов.
+        // Список семейств хранится во внешнем JSON (LocalAppData\ISP_Audit\domain_families.json).
+        private DomainFamilyCatalogState _domainCatalog = new();
+        private DomainFamilyAnalyzer _domainFamilies = new(new DomainFamilyCatalogState());
 
-        public int GooglevideoSubhostCount => _googlevideoSubhosts.Count;
-        public bool CanSuggestGooglevideoDomain => GooglevideoSubhostCount >= 2;
+        public string? SuggestedDomainSuffix => _domainFamilies.CurrentSuggestion?.DomainSuffix;
+        public int SuggestedDomainSubhostCount => _domainFamilies.CurrentSuggestion?.UniqueSubhosts ?? 0;
+        public bool CanSuggestDomainAggregation => _domainFamilies.CurrentSuggestion != null;
 
         private readonly record struct OutcomeHistory(DateTime LastPassUtc, DateTime LastProblemUtc);
         private readonly ConcurrentDictionary<string, OutcomeHistory> _outcomeHistoryByKey = new();
@@ -101,8 +102,11 @@ namespace IspAudit.ViewModels
             _lastUpdatedHost = null;
             _lastUserFacingHost = null;
 
-            _googlevideoSubhosts.Clear();
-            _preferGooglevideoDomainKey = false;
+            _domainCatalog = DomainFamilyCatalog.LoadOrDefault(Log);
+            _domainFamilies = new DomainFamilyAnalyzer(_domainCatalog, Log);
+            OnPropertyChanged(nameof(SuggestedDomainSuffix));
+            OnPropertyChanged(nameof(SuggestedDomainSubhostCount));
+            OnPropertyChanged(nameof(CanSuggestDomainAggregation));
         }
 
         /// <summary>
@@ -1066,44 +1070,44 @@ namespace IspAudit.ViewModels
             if (!string.IsNullOrWhiteSpace(sni) && sni != "-")
             {
                 var key = NormalizeHost(sni);
-                TrackGooglevideoCandidate(key);
-                return TryApplyGooglevideoAggregation(key);
+                TrackDomainCandidate(key);
+                return TryApplyDomainAggregation(key);
             }
 
             // 2) Если host из строки — IP, но мы уже знаем сопоставление IP→SNI, используем его.
             if (IPAddress.TryParse(hostFromLine, out _) && _ipToUiKey.TryGetValue(hostFromLine, out var mapped))
             {
                 var key = NormalizeHost(mapped);
-                TrackGooglevideoCandidate(key);
-                return TryApplyGooglevideoAggregation(key);
+                TrackDomainCandidate(key);
+                return TryApplyDomainAggregation(key);
             }
 
             // 3) Иначе используем то, что пришло.
             var fallback = NormalizeHost(hostFromLine);
-            TrackGooglevideoCandidate(fallback);
-            return TryApplyGooglevideoAggregation(fallback);
+            TrackDomainCandidate(fallback);
+            return TryApplyDomainAggregation(fallback);
         }
 
-        private void TrackGooglevideoCandidate(string hostKey)
+        private void TrackDomainCandidate(string hostKey)
         {
             try
             {
                 if (string.IsNullOrWhiteSpace(hostKey)) return;
 
-                var h = hostKey.Trim();
-                if (!h.EndsWith(".googlevideo.com", StringComparison.OrdinalIgnoreCase)) return;
+                var before = _domainFamilies.CurrentSuggestion?.DomainSuffix;
+                var changed = _domainFamilies.ObserveHost(hostKey);
+                var after = _domainFamilies.CurrentSuggestion?.DomainSuffix;
 
-                // Сигнал для "CDN-шардов": rr3---sn-...googlevideo.com
-                if (!h.Contains("-sn-", StringComparison.OrdinalIgnoreCase)) return;
+                if (!changed) return;
 
-                _googlevideoSubhosts.TryAdd(h, 1);
+                OnPropertyChanged(nameof(SuggestedDomainSuffix));
+                OnPropertyChanged(nameof(SuggestedDomainSubhostCount));
+                OnPropertyChanged(nameof(CanSuggestDomainAggregation));
 
-                if (!_preferGooglevideoDomainKey && _googlevideoSubhosts.Count >= 2)
+                // Если появилась новая подсказка (или сменилась) — схлопнем карточки для домена.
+                if (!string.IsNullOrWhiteSpace(after) && !string.Equals(before, after, StringComparison.OrdinalIgnoreCase))
                 {
-                    _preferGooglevideoDomainKey = true;
-                    OnPropertyChanged(nameof(GooglevideoSubhostCount));
-                    OnPropertyChanged(nameof(CanSuggestGooglevideoDomain));
-                    CollapseGooglevideoCards();
+                    CollapseDomainCards(after);
                 }
             }
             catch
@@ -1112,27 +1116,39 @@ namespace IspAudit.ViewModels
             }
         }
 
-        private string TryApplyGooglevideoAggregation(string hostKey)
-        {
-            if (!_preferGooglevideoDomainKey) return hostKey;
-
-            if (string.IsNullOrWhiteSpace(hostKey)) return hostKey;
-            if (hostKey.EndsWith(".googlevideo.com", StringComparison.OrdinalIgnoreCase))
-            {
-                return "googlevideo.com";
-            }
-
-            return hostKey;
-        }
-
-        private void CollapseGooglevideoCards()
+        private string TryApplyDomainAggregation(string hostKey)
         {
             try
             {
+                var suffix = _domainFamilies.CurrentSuggestion?.DomainSuffix;
+                if (string.IsNullOrWhiteSpace(suffix)) return hostKey;
+                if (string.IsNullOrWhiteSpace(hostKey)) return hostKey;
+
+                if (hostKey.Equals(suffix, StringComparison.OrdinalIgnoreCase)) return suffix;
+
+                if (hostKey.EndsWith("." + suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return suffix;
+                }
+
+                return hostKey;
+            }
+            catch
+            {
+                return hostKey;
+            }
+        }
+
+        private void CollapseDomainCards(string domainSuffix)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(domainSuffix)) return;
+
                 // ObservableCollection должен меняться в UI потоке.
                 System.Windows.Application.Current?.Dispatcher.Invoke(() =>
                 {
-                    var domainKey = "googlevideo.com";
+                    var domainKey = NormalizeHost(domainSuffix);
 
                     // Находим/создаём доменную карточку.
                     var domainCard = TestResults.FirstOrDefault(t =>
@@ -1145,7 +1161,7 @@ namespace IspAudit.ViewModels
                         {
                             var key = NormalizeHost(t.Target.Host);
                             if (string.Equals(key, domainKey, StringComparison.OrdinalIgnoreCase)) return false;
-                            return key.EndsWith(".googlevideo.com", StringComparison.OrdinalIgnoreCase);
+                            return key.EndsWith("." + domainKey, StringComparison.OrdinalIgnoreCase);
                         })
                         .ToList();
 
@@ -1162,7 +1178,7 @@ namespace IspAudit.ViewModels
                             {
                                 Name = domainKey,
                                 Host = domainKey,
-                                Service = string.IsNullOrWhiteSpace(old.Service) ? "YouTube" : old.Service,
+                                Service = old.Service,
                                 Critical = old.Critical,
                                 FallbackIp = old.FallbackIp,
                                 SniHost = domainKey,
