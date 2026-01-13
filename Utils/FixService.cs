@@ -26,11 +26,29 @@ namespace IspAudit.Utils
         };
 
         private const string BackupFileName = "dns_backup.json";
+
+        private static string BackupFilePath
+        {
+            get
+            {
+                try
+                {
+                    var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ISP_Audit");
+                    Directory.CreateDirectory(dir);
+                    return Path.Combine(dir, BackupFileName);
+                }
+                catch
+                {
+                    // Fallback: текущая директория процесса (хуже, но лучше чем падать)
+                    return BackupFileName;
+                }
+            }
+        }
         
         /// <summary>
         /// Существует ли файл бэкапа (значит DoH скорее всего включен)
         /// </summary>
-        public static bool HasBackupFile => File.Exists(BackupFileName);
+        public static bool HasBackupFile => File.Exists(BackupFilePath);
 
         private static string? _originalDnsConfig = null; // "DHCP" or "Static IP1,IP2"
         private static string? _originalAdapterName = null;
@@ -102,11 +120,11 @@ namespace IspAudit.Utils
                 if (_originalDnsConfig == null)
                 {
                     // Пытаемся загрузить из файла, если есть
-                    if (File.Exists(BackupFileName))
+                    if (File.Exists(BackupFilePath))
                     {
                         try 
                         {
-                            var json = await File.ReadAllTextAsync(BackupFileName);
+                            var json = await File.ReadAllTextAsync(BackupFilePath);
                             var state = JsonSerializer.Deserialize<DnsBackupState>(json);
                             if (state != null && state.AdapterName == adapter.Name)
                             {
@@ -122,6 +140,12 @@ namespace IspAudit.Utils
                     if (_originalDnsConfig == null)
                     {
                         await BackupDnsSettingsAsync(adapter.Name);
+                    }
+
+                    // Критично: не меняем системный DNS, если не можем гарантировать восстановление.
+                    if (_originalDnsConfig == null || _originalAdapterName == null)
+                    {
+                        return (false, "Не удалось создать бэкап DNS (нет прав/нет доступа к файлу). Применение отменено.");
                     }
                 }
 
@@ -159,11 +183,11 @@ namespace IspAudit.Utils
         public static async Task<(bool success, string error)> RestoreDnsAsync()
         {
             // Если в памяти пусто, пробуем загрузить с диска
-            if (_originalDnsConfig == null && File.Exists(BackupFileName))
+            if (_originalDnsConfig == null && File.Exists(BackupFilePath))
             {
                 try
                 {
-                    var json = await File.ReadAllTextAsync(BackupFileName);
+                    var json = await File.ReadAllTextAsync(BackupFilePath);
                     var state = JsonSerializer.Deserialize<DnsBackupState>(json);
                     if (state != null)
                     {
@@ -178,7 +202,39 @@ namespace IspAudit.Utils
             }
 
             if (_originalDnsConfig == null || _originalAdapterName == null)
+            {
+                // Fail-safe: если бэкапа нет/не прочитался, но активный DNS совпадает с одним из наших пресетов,
+                // пытаемся вернуть DNS в автоматический режим, чтобы не оставлять систему «залипшей» на 1.1.1.1 и т.п.
+                try
+                {
+                    var adapter = GetActiveNetworkInterface();
+                    if (adapter != null)
+                    {
+                        var preset = DetectActivePreset();
+                        if (preset != null)
+                        {
+                            Log($"[FixService] No backup found, but preset '{preset}' is active. Fallback restore to automatic DNS.");
+                            var psCommand = $"Set-DnsClientServerAddress -InterfaceAlias '{adapter.Name}' -ResetServerAddresses";
+                            var (psSuccess, psOutput) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"");
+                            if (!psSuccess)
+                            {
+                                Log($"[FixService] PowerShell fallback reset failed: {psOutput}. Trying netsh dhcp.");
+                                var (success, _) = await RunCommandAsync("netsh", $"interface ipv4 set dns name=\"{adapter.Name}\" source=dhcp");
+                                if (!success) return (false, "Нет сохраненных настроек DNS (и fallback восстановление не удалось)");
+                            }
+
+                            await RunCommandAsync("ipconfig", "/flushdns");
+                            return (true, "Восстановлено до автоматических DNS (fallback: бэкап не найден)");
+                        }
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+
                 return (false, "Нет сохраненных настроек DNS");
+            }
 
             try
             {
@@ -186,8 +242,15 @@ namespace IspAudit.Utils
 
                 if (_originalDnsConfig == "DHCP")
                 {
-                    var (success, _) = await RunCommandAsync("netsh", $"interface ipv4 set dns name=\"{_originalAdapterName}\" source=dhcp");
-                    if (!success) return (false, "Не удалось восстановить DHCP");
+                    // Предпочтительно: ResetServerAddresses (возврат к автоматическим DNS)
+                    var psCommand = $"Set-DnsClientServerAddress -InterfaceAlias '{_originalAdapterName}' -ResetServerAddresses";
+                    var (psSuccess, psOutput) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"");
+                    if (!psSuccess)
+                    {
+                        Log($"[FixService] PowerShell reset DNS failed: {psOutput}. Fallback to netsh.");
+                        var (success, _) = await RunCommandAsync("netsh", $"interface ipv4 set dns name=\"{_originalAdapterName}\" source=dhcp");
+                        if (!success) return (false, "Не удалось восстановить DHCP");
+                    }
                 }
                 else
                 {
@@ -203,9 +266,9 @@ namespace IspAudit.Utils
                 // Очищаем состояние и удаляем файл бэкапа
                 _originalDnsConfig = null;
                 _originalAdapterName = null;
-                if (File.Exists(BackupFileName))
+                if (File.Exists(BackupFilePath))
                 {
-                    try { File.Delete(BackupFileName); } catch { }
+                    try { File.Delete(BackupFilePath); } catch { }
                 }
                 
                 return (true, string.Empty);
@@ -273,7 +336,8 @@ namespace IspAudit.Utils
                             Timestamp = DateTime.Now
                         };
                         var json = JsonSerializer.Serialize(state);
-                        await File.WriteAllTextAsync(BackupFileName, json);
+                        await File.WriteAllTextAsync(BackupFilePath, json);
+                        Log($"[FixService] Backup file written: {BackupFilePath}");
                     }
                     catch (Exception ex)
                     {
