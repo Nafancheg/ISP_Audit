@@ -848,6 +848,29 @@ namespace IspAudit.ViewModels
                 Log($"[Bypass][Watchdog] Init failed: {ex.Message}");
             }
 
+            // Crash-recovery (P0): если предыдущая сессия меняла DNS/DoH и не успела откатиться,
+            // пытаемся восстановить настройки сразу при старте.
+            try
+            {
+                if (FixService.HasBackupFile)
+                {
+                    if (TrafficEngine.HasAdministratorRights)
+                    {
+                        Log("[DoH] Detected leftover DNS backup from previous session. Restoring...");
+                        var (success, error) = await FixService.RestoreDnsAsync().ConfigureAwait(false);
+                        Log(success ? "[DoH] DNS restored on startup (crash recovery)." : $"[DoH] Startup restore failed: {error}");
+                    }
+                    else
+                    {
+                        Log("[DoH] Detected leftover DNS backup, but no admin rights to restore.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[DoH] Startup restore exception: {ex.Message}");
+            }
+
             if (!TrafficEngine.HasAdministratorRights)
             {
                 Log("[Bypass] No admin rights - bypass not available");
@@ -863,12 +886,8 @@ namespace IspAudit.ViewModels
                 // _isFragmentEnabled = false;
                 // _isDropRstEnabled = true;
 
-                // Предварительная установка DoH по наличию бэкапа (чтобы UI не прыгал)
-                if (FixService.HasBackupFile)
-                {
-                    _isDoHEnabled = true;
-                    OnPropertyChanged(nameof(IsDoHEnabled));
-                }
+                // Не включаем DoH автоматически по наличию backup.
+                // Backup может означать незавершённую прошлую сессию (мы уже попытались восстановить выше).
 
                 // Проверяем текущее состояние DNS (в фоновом потоке, чтобы не фризить UI)
                 var activePreset = await Task.Run(() => FixService.DetectActivePreset());
@@ -987,10 +1006,7 @@ namespace IspAudit.ViewModels
                 _currentOptions = normalized;
                 await _stateManager.ApplyTlsOptionsAsync(normalized, cancellationToken).ConfigureAwait(false);
 
-                Application.Current?.Dispatcher.Invoke(() =>
-                {
-                    NotifyActiveStatesChanged();
-                });
+                SafeUiInvoke(NotifyActiveStatesChanged);
             }
             catch (OperationCanceledException)
             {
@@ -1014,7 +1030,7 @@ namespace IspAudit.ViewModels
 
                 var (success, error) = await FixService.ApplyDnsFixAsync(presetName).ConfigureAwait(false);
 
-                Application.Current?.Dispatcher.Invoke(() =>
+                SafeUiInvoke(() =>
                 {
                     if (success)
                     {
@@ -1045,7 +1061,7 @@ namespace IspAudit.ViewModels
                 Log($"[DoH] Restoring original DNS settings...");
                 var (success, error) = await FixService.RestoreDnsAsync().ConfigureAwait(false);
 
-                Application.Current?.Dispatcher.Invoke(() =>
+                SafeUiInvoke(() =>
                 {
                     if (success)
                     {
@@ -1061,6 +1077,32 @@ namespace IspAudit.ViewModels
             catch (Exception ex)
             {
                 Log($"[DoH] Error restoring DNS: {ex.Message}");
+            }
+        }
+
+        private static void SafeUiInvoke(Action action)
+        {
+            try
+            {
+                var dispatcher = Application.Current?.Dispatcher;
+                if (dispatcher == null || dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished)
+                {
+                    action();
+                    return;
+                }
+
+                if (dispatcher.CheckAccess())
+                {
+                    action();
+                }
+                else
+                {
+                    dispatcher.BeginInvoke(action);
+                }
+            }
+            catch
+            {
+                // ignore
             }
         }
 

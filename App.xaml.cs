@@ -38,7 +38,9 @@ public partial class App : System.Windows.Application
         {
             if (this.MainWindow?.DataContext is IspAudit.ViewModels.MainViewModelRefactored vm)
             {
-                vm.OnAppExit();
+                // Критично: DNS/DoH должен откатываться при выходе из приложения.
+                // OnExit не async, поэтому выполняем синхронное ожидание завершения.
+                vm.ShutdownAsync().GetAwaiter().GetResult();
             }
         }
         catch
