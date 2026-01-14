@@ -431,18 +431,20 @@
                         Height="32" Width="32"
                         Margin="16,16,0,0"
                         HorizontalAlignment="Left" VerticalAlignment="Top">
-                    <materialDesign:PackIcon Width="20" Height="20">
-                        <materialDesign:PackIcon.Style>
-                            <Style TargetType="materialDesign:PackIcon">
-                                <Setter Property="Kind" Value="ChevronRight"/>
+                    <TextBlock FontSize="16" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <!-- Зеленая стрелка вправо: панель свернута -->
+                                <Setter Property="Text" Value="🟢➡️"/>
                                 <Style.Triggers>
+                                    <!-- Зеленая стрелка влево: панель развернута -->
                                     <DataTrigger Binding="{Binding IsLeftPanelOpen}" Value="True">
-                                        <Setter Property="Kind" Value="ChevronLeft"/>
+                                        <Setter Property="Text" Value="⬅️🟢"/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
-                        </materialDesign:PackIcon.Style>
-                    </materialDesign:PackIcon>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </Button>
 
                 <!-- VPN Warning Banner -->
