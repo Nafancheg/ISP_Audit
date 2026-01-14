@@ -136,6 +136,15 @@ namespace IspAudit.ViewModels
                 if (value == "start")
                 {
                     Results.ResetStatuses();
+                    IsLeftPanelOpen = true;
+                }
+
+                if (value == "running")
+                {
+                    if (!IsLeftPanelPinned)
+                    {
+                        IsLeftPanelOpen = false;
+                    }
                 }
             }
         }
@@ -145,6 +154,36 @@ namespace IspAudit.ViewModels
         public bool IsDone => ScreenState == "done";
         public bool ShowSummary => IsDone;
         public bool ShowReport => IsDone;
+
+        private bool _isLeftPanelPinned;
+        public bool IsLeftPanelPinned
+        {
+            get => _isLeftPanelPinned;
+            set
+            {
+                if (_isLeftPanelPinned == value) return;
+                _isLeftPanelPinned = value;
+                OnPropertyChanged(nameof(IsLeftPanelPinned));
+
+                // Если пользователь закрепил панель — сразу показываем.
+                if (_isLeftPanelPinned)
+                {
+                    IsLeftPanelOpen = true;
+                }
+            }
+        }
+
+        private bool _isLeftPanelOpen = true;
+        public bool IsLeftPanelOpen
+        {
+            get => _isLeftPanelOpen;
+            set
+            {
+                if (_isLeftPanelOpen == value) return;
+                _isLeftPanelOpen = value;
+                OnPropertyChanged(nameof(IsLeftPanelOpen));
+            }
+        }
 
         public string ExePath
         {
@@ -235,6 +274,8 @@ namespace IspAudit.ViewModels
 
         public string RunningStatusText => $"Диагностика: {Results.CurrentTest} из {Results.TotalTargets}";
         public string StartButtonText => IsRunning ? "Остановить диагностику" : "Начать диагностику";
+
+        public ICommand ToggleLeftPanelCommand { get; }
 
         // Прокси-свойства для счётчиков (для совместимости с существующим XAML)
         public ObservableCollection<TestResult> TestResults => Results.TestResults;
@@ -538,6 +579,19 @@ namespace IspAudit.ViewModels
                     OnPropertyChanged(nameof(IsRunning));
                     OnPropertyChanged(nameof(StartButtonText));
                     CheckTrafficEngineState();
+
+                    if (Orchestrator.IsDiagnosticRunning)
+                    {
+                        if (!IsLeftPanelPinned)
+                        {
+                            IsLeftPanelOpen = false;
+                        }
+                    }
+                    else
+                    {
+                        // После остановки возвращаем панель, чтобы пользователь мог сразу настроить новый запуск.
+                        IsLeftPanelOpen = true;
+                    }
                 }
                 if (e.PropertyName == nameof(Orchestrator.HasRecommendations))
                 {
@@ -574,6 +628,8 @@ namespace IspAudit.ViewModels
             DetailsCommand = new RelayCommand(param => ShowDetailsDialog(param as TestResult), _ => true);
             BrowseExeCommand = new RelayCommand(_ => BrowseExe(), _ => !IsRunning);
             ToggleThemeCommand = new RelayCommand(_ => IsDarkTheme = !IsDarkTheme);
+
+            ToggleLeftPanelCommand = new RelayCommand(_ => IsLeftPanelOpen = !IsLeftPanelOpen, _ => true);
 
             // Bypass Commands
             ToggleFragmentCommand = new RelayCommand(_ => Bypass.IsFragmentEnabled = !Bypass.IsFragmentEnabled, _ => ShowBypassPanel);

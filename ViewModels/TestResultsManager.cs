@@ -46,7 +46,7 @@ namespace IspAudit.ViewModels
         private readonly ConcurrentDictionary<string, OutcomeHistory> _outcomeHistoryByKey = new();
 
         private static readonly TimeSpan UnstableWindow = TimeSpan.FromSeconds(60);
-        
+
         private double _healthScore = 100;
         public double HealthScore
         {
@@ -76,14 +76,14 @@ namespace IspAudit.ViewModels
 
         public int TotalTargets => TestResults.Count;
         public int ProgressBarMax => TotalTargets == 0 ? 1 : TotalTargets;
-        public int CurrentTest => TestResults.Count(t => 
-            t.Status == TestStatus.Running || 
-            t.Status == TestStatus.Pass || 
-            t.Status == TestStatus.Fail || 
+        public int CurrentTest => TestResults.Count(t =>
+            t.Status == TestStatus.Running ||
+            t.Status == TestStatus.Pass ||
+            t.Status == TestStatus.Fail ||
             t.Status == TestStatus.Warn);
-        public int CompletedTests => TestResults.Count(t => 
-            t.Status == TestStatus.Pass || 
-            t.Status == TestStatus.Fail || 
+        public int CompletedTests => TestResults.Count(t =>
+            t.Status == TestStatus.Pass ||
+            t.Status == TestStatus.Fail ||
             t.Status == TestStatus.Warn);
         public int PassCount => TestResults.Count(t => t.Status == TestStatus.Pass);
         public int FailCount => TestResults.Count(t => t.Status == TestStatus.Fail);
@@ -170,11 +170,11 @@ namespace IspAudit.ViewModels
             // (Fail/Warn), то показываем Warn.
             status = ApplyUnstableRule(normalizedHost, status);
 
-            var existing = TestResults.FirstOrDefault(t => 
-                NormalizeHost(t.Target.Host).Equals(normalizedHost, StringComparison.OrdinalIgnoreCase) || 
+            var existing = TestResults.FirstOrDefault(t =>
+                NormalizeHost(t.Target.Host).Equals(normalizedHost, StringComparison.OrdinalIgnoreCase) ||
                 NormalizeHost(t.Target.Name).Equals(normalizedHost, StringComparison.OrdinalIgnoreCase) ||
                 t.Target.FallbackIp == host);
-            
+
             if (existing != null)
             {
                 existing.Status = status;
@@ -200,7 +200,7 @@ namespace IspAudit.ViewModels
                         };
                     }
                 }
-                
+
                 // Parse flags from details
                 existing.IsRstInjection = BlockageCode.ContainsCode(details, BlockageCode.TcpRstInjection) || details.Contains("RST-инжект");
                 existing.IsHttpRedirect = BlockageCode.ContainsCode(details, BlockageCode.HttpRedirectDpi) || details.Contains("HTTP-редирект");
@@ -226,7 +226,7 @@ namespace IspAudit.ViewModels
                 };
 
                 existing = new TestResult { Target = target, Status = status, Details = details };
-                
+
                 // Parse flags from details
                 existing.IsRstInjection = BlockageCode.ContainsCode(details, BlockageCode.TcpRstInjection) || details.Contains("RST-инжект");
                 existing.IsHttpRedirect = BlockageCode.ContainsCode(details, BlockageCode.HttpRedirectDpi) || details.Contains("HTTP-редирект");
@@ -248,7 +248,7 @@ namespace IspAudit.ViewModels
                 lock (_healthHistory)
                 {
                     _healthHistory.Enqueue((DateTime.UtcNow, status == TestStatus.Pass));
-                    
+
                     // Prune older than 60s
                     var cutoff = DateTime.UtcNow.AddSeconds(-60);
                     while (_healthHistory.Count > 0 && _healthHistory.Peek().Time < cutoff)
@@ -268,7 +268,7 @@ namespace IspAudit.ViewModels
                     }
                 }
             }
-            
+
             NotifyCountersChanged();
         }
 
@@ -277,7 +277,7 @@ namespace IspAudit.ViewModels
         /// </summary>
         public void ParsePipelineMessage(string msg)
         {
-            try 
+            try
             {
                 // SNI-событие (даёт пользователю понятный ключ сервиса)
                 // Формат: "[SNI] Detected: 64.233.164.91 -> youtube.com"
@@ -306,7 +306,7 @@ namespace IspAudit.ViewModels
                     // "[Collector] Шум обнаружен: IP → hostname"
                     string? host = null;
                     string? ip = null;
-                    
+
                     if (msg.Contains("Отфильтрован"))
                     {
                         host = msg.Split(':').LastOrDefault()?.Trim();
@@ -320,10 +320,10 @@ namespace IspAudit.ViewModels
                             host = parts[1].Trim();
                         }
                     }
-                    
+
                     if (!string.IsNullOrEmpty(host) || !string.IsNullOrEmpty(ip))
                     {
-                        var toRemove = TestResults.FirstOrDefault(t => 
+                        var toRemove = TestResults.FirstOrDefault(t =>
                             (!string.IsNullOrEmpty(host) && (t.Target.Host.Equals(host, StringComparison.OrdinalIgnoreCase) || t.Target.Name.Equals(host, StringComparison.OrdinalIgnoreCase))) ||
                             (!string.IsNullOrEmpty(ip) && (t.Target.Host == ip || t.Target.FallbackIp == ip)));
                         if (toRemove != null)
@@ -351,13 +351,13 @@ namespace IspAudit.ViewModels
                         var host = hostPort[0];
                         var uiKey = SelectUiKey(host, msg);
                         var fallbackIp = IPAddress.TryParse(host, out _) ? host : null;
-                        
+
                         // КРИТИЧНО: Проверяем на шум - не создаём карточку для успешных шумовых хостов
                         if (NoiseHostFilter.Instance.IsNoiseHost(host))
                         {
                             // Удаляем карточку, если она была создана ранее (ищем по всем полям)
-                            var toRemove = TestResults.FirstOrDefault(t => 
-                                t.Target.Host.Equals(host, StringComparison.OrdinalIgnoreCase) || 
+                            var toRemove = TestResults.FirstOrDefault(t =>
+                                t.Target.Host.Equals(host, StringComparison.OrdinalIgnoreCase) ||
                                 t.Target.Name.Equals(host, StringComparison.OrdinalIgnoreCase) ||
                                 t.Target.FallbackIp == host);
                             if (toRemove != null)
@@ -368,7 +368,7 @@ namespace IspAudit.ViewModels
                             }
                             return;
                         }
-                        
+
                         // Обновляем существующую карточку или создаём новую
                         UpdateTestResult(uiKey, TestStatus.Pass, StripNameTokens(msg), fallbackIp);
                         SetLastUpdatedHost(uiKey);
@@ -392,13 +392,13 @@ namespace IspAudit.ViewModels
                             // Если по IP уже известен SNI/hostname, используем его как ключ карточки.
                             var uiKey = SelectUiKey(host, msg);
                             var fallbackIp = IPAddress.TryParse(host, out _) ? host : null;
-                            
+
                             // Фильтр уже применён в TrafficCollector, но проверим ещё раз
                             if (NoiseHostFilter.Instance.IsNoiseHost(host))
                             {
                                 return;
                             }
-                            
+
                             // ВАЖНО: событие "Новое соединение" может прийти позже итогового результата теста.
                             // Не перетираем Pass/Fail/Warn обратно в Running, иначе UI выглядит "зависшим".
                             var existing = TestResults.FirstOrDefault(t =>
@@ -423,7 +423,7 @@ namespace IspAudit.ViewModels
                     {
                         var ipPart = parts[0].Split(new[] { ": " }, StringSplitOptions.RemoveEmptyEntries).Last();
                         var newHostname = parts[1].Trim();
-                        
+
                         // КРИТИЧНО: Проверяем, не является ли новый hostname шумовым
                         if (NoiseHostFilter.Instance.IsNoiseHost(newHostname))
                         {
@@ -456,7 +456,7 @@ namespace IspAudit.ViewModels
                             }
                             return;
                         }
-                        
+
                         // Если это не шумовой hostname, используем его как человеко‑понятный ключ.
                         // IP остаётся как технический якорь (FallbackIp) для корреляции.
                         var existingByIp = TestResults.FirstOrDefault(t => t.Target.Host == ipPart || t.Target.FallbackIp == ipPart);
@@ -500,13 +500,13 @@ namespace IspAudit.ViewModels
                             var host = hostPort[0];
                             var uiKey = SelectUiKey(host, msg);
                             var fallbackIp = IPAddress.TryParse(host, out _) ? host : null;
-                            
+
                             // КРИТИЧНО: Проверяем на шум перед созданием карточки ошибки
                             if (NoiseHostFilter.Instance.IsNoiseHost(host))
                             {
                                 // Удаляем существующую карточку (ищем по всем полям)
-                                var toRemove = TestResults.FirstOrDefault(t => 
-                                    t.Target.Host.Equals(host, StringComparison.OrdinalIgnoreCase) || 
+                                var toRemove = TestResults.FirstOrDefault(t =>
+                                    t.Target.Host.Equals(host, StringComparison.OrdinalIgnoreCase) ||
                                     t.Target.Name.Equals(host, StringComparison.OrdinalIgnoreCase) ||
                                     t.Target.FallbackIp == host);
                                 if (toRemove != null)
@@ -517,7 +517,7 @@ namespace IspAudit.ViewModels
                                 }
                                 return;
                             }
-                            
+
                             // Если цель - IP адрес, убираем "DNS:✓" из сообщения
                             if (IPAddress.TryParse(host, out _))
                             {
@@ -529,7 +529,7 @@ namespace IspAudit.ViewModels
                             if (hasTlsAuthFailure)
                             {
                                 msg += "\nℹ️ TLS рукопожатие завершилось ошибкой аутентификации (auth failure). Это факт, но не доказательство DPI.";
-                                
+
                                 var heuristic = AnalyzeHeuristicSeverity(host);
                                 if (heuristic.status == TestStatus.Warn)
                                 {
@@ -538,8 +538,8 @@ namespace IspAudit.ViewModels
                                 }
                                 else
                                 {
-                                    bool isRelatedToPassing = TestResults.Any(t => 
-                                        t.Status == TestStatus.Pass && 
+                                    bool isRelatedToPassing = TestResults.Any(t =>
+                                        t.Status == TestStatus.Pass &&
                                         AreHostsRelated(t.Target, host));
 
                                     if (isRelatedToPassing)
@@ -549,7 +549,7 @@ namespace IspAudit.ViewModels
                                     }
                                 }
                             }
-                            
+
                             UpdateTestResult(uiKey, status, StripNameTokens(msg), fallbackIp);
                             SetLastUpdatedHost(uiKey);
 
@@ -565,15 +565,15 @@ namespace IspAudit.ViewModels
                     {
                         var hostPort = match.Groups[1].Value.Trim();
                         var host = hostPort.Split(':')[0];
-                        
-                        var existing = TestResults.FirstOrDefault(t => 
+
+                        var existing = TestResults.FirstOrDefault(t =>
                             t.Target.Host == host || t.Target.Name == host);
                         var newDetails = msg;
                         if (existing != null && !string.IsNullOrEmpty(existing.Details))
                         {
                             newDetails = existing.Details + "\n" + msg;
                         }
-                        
+
                         UpdateTestResult(host, TestStatus.Pass, newDetails);
                         SetLastUpdatedHost(host);
                     }
@@ -581,7 +581,7 @@ namespace IspAudit.ViewModels
                 else if (msg.StartsWith("✗ ") && !string.IsNullOrEmpty(_lastUpdatedHost))
                 {
                     // Неудачный bypass
-                    var existing = TestResults.FirstOrDefault(t => 
+                    var existing = TestResults.FirstOrDefault(t =>
                         t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
                     if (existing != null)
                     {
@@ -670,10 +670,10 @@ namespace IspAudit.ViewModels
                         }
                     }
                 }
-                else if ((msg.StartsWith("[BYPASS]") || msg.StartsWith("ℹ") || msg.StartsWith("⚠")) 
+                else if ((msg.StartsWith("[BYPASS]") || msg.StartsWith("ℹ") || msg.StartsWith("⚠"))
                     && !string.IsNullOrEmpty(_lastUpdatedHost))
                 {
-                    var result = TestResults.FirstOrDefault(t => 
+                    var result = TestResults.FirstOrDefault(t =>
                         t.Target.Host == _lastUpdatedHost || t.Target.Name == _lastUpdatedHost);
                     if (result != null && (result.Details == null || !result.Details.Contains(msg)))
                     {
@@ -901,29 +901,29 @@ namespace IspAudit.ViewModels
         private async System.Threading.Tasks.Task ResolveUnknownHostAsync(string ip)
         {
             if (_resolvedIpMap.ContainsKey(ip) || _pendingResolutions.ContainsKey(ip)) return;
-            
+
             _pendingResolutions.TryAdd(ip, true);
 
-            try 
+            try
             {
                 var dnsResult = await IspAudit.Utils.NetUtils.ResolveWithFallbackAsync(ip);
                 if (dnsResult.Addresses.Count > 0)
                 {
                     string hostName = ip;
-                    try 
+                    try
                     {
                         var entry = await System.Net.Dns.GetHostEntryAsync(ip);
                         if (!string.IsNullOrEmpty(entry.HostName)) hostName = entry.HostName;
                     }
                     catch {}
 
-                    var newTarget = new Target 
-                    { 
-                        Name = hostName, 
-                        Host = ip, 
-                        Service = "Resolved" 
+                    var newTarget = new Target
+                    {
+                        Name = hostName,
+                        Host = ip,
+                        Service = "Resolved"
                     };
-                    
+
                     _resolvedIpMap[ip] = newTarget;
 
                     System.Windows.Application.Current?.Dispatcher.Invoke(() =>
@@ -932,7 +932,7 @@ namespace IspAudit.ViewModels
                         if (result != null)
                         {
                             result.Target = newTarget;
-                            
+
                             if (dnsResult.SystemDnsFailed)
                             {
                                 result.Details += "\n⚠️ Имя хоста разрешено через DoH (системный DNS недоступен/фильтруется)";
@@ -958,9 +958,9 @@ namespace IspAudit.ViewModels
             host = host.ToLowerInvariant();
 
             // Microsoft / Windows Infrastructure
-            if (host.EndsWith(".ax-msedge.net") || 
-                host.EndsWith(".windows.net") || 
-                host.EndsWith(".microsoft.com") || 
+            if (host.EndsWith(".ax-msedge.net") ||
+                host.EndsWith(".windows.net") ||
+                host.EndsWith(".microsoft.com") ||
                 host.EndsWith(".live.com") ||
                 host.EndsWith(".msn.com") ||
                 host.EndsWith(".bing.com") ||
@@ -970,8 +970,8 @@ namespace IspAudit.ViewModels
             }
 
             // Analytics / Ads / Trackers
-            if (host.Contains("google-analytics") || 
-                host.Contains("doubleclick") || 
+            if (host.Contains("google-analytics") ||
+                host.Contains("doubleclick") ||
                 host.Contains("googlesyndication") ||
                 host.Contains("scorecardresearch") ||
                 host.Contains("usercentrics") ||
@@ -982,7 +982,7 @@ namespace IspAudit.ViewModels
             }
 
             // Azure Cloud Load Balancers
-            if (host.Contains(".cloudapp.azure.com") || 
+            if (host.Contains(".cloudapp.azure.com") ||
                 host.EndsWith(".trafficmanager.net") ||
                 host.EndsWith(".azurewebsites.net"))
             {
@@ -996,8 +996,8 @@ namespace IspAudit.ViewModels
         {
             // Проверка по имени сервиса
             string? failingService = TestResults.FirstOrDefault(t => t.Target.Host == failingHost)?.Target.Service;
-            
-            if (!string.IsNullOrEmpty(failingService) && 
+
+            if (!string.IsNullOrEmpty(failingService) &&
                 !string.IsNullOrEmpty(passingTarget.Service) &&
                 failingService.Equals(passingTarget.Service, StringComparison.OrdinalIgnoreCase))
             {
@@ -1012,7 +1012,7 @@ namespace IspAudit.ViewModels
             if (parts.Length >= 2)
             {
                 var coreName = parts.Length > 2 ? parts[parts.Length - 2] : parts[0];
-                
+
                 if (coreName.Length > 3 && failingHost.Contains(coreName, StringComparison.OrdinalIgnoreCase))
                 {
                     return true;

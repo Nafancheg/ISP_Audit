@@ -26,6 +26,7 @@
             <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
             <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
             <converters:EqualityConverter x:Key="EqualityConverter"/>
+            <converters:StringToPackIconKindConverter x:Key="StringToPackIconKindConverter"/>
 
             <!-- Статусные цвета (фиксированные) -->
             <SolidColorBrush x:Key="PassBrush" Color="#4CAF50"/>

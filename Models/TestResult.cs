@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Linq;
 using IspAudit.Core.Diagnostics;
 
 namespace IspAudit.Models
@@ -29,6 +30,7 @@ namespace IspAudit.Models
                 _target = value;
                 OnPropertyChanged(nameof(Target));
                 OnPropertyChanged(nameof(DisplayIp));
+                OnPropertyChanged(nameof(DisplayHost));
             }
         }
 
@@ -41,6 +43,20 @@ namespace IspAudit.Models
 
                 // На старом контракте Host мог быть IP. На новом Host часто становится человеко‑понятным ключом.
                 return Target?.Host ?? string.Empty;
+            }
+        }
+
+        public string DisplayHost
+        {
+            get
+            {
+                var sni = Target?.SniHost;
+                if (!string.IsNullOrWhiteSpace(sni)) return sni;
+
+                var host = Target?.Host;
+                if (!string.IsNullOrWhiteSpace(host)) return host;
+
+                return Target?.Name ?? string.Empty;
             }
         }
 
@@ -132,6 +148,8 @@ namespace IspAudit.Models
                 _bypassStrategy = value;
                 OnPropertyChanged(nameof(BypassStrategy));
                 OnPropertyChanged(nameof(ShowConnectButton));
+                OnPropertyChanged(nameof(StrategyIconNames));
+                OnPropertyChanged(nameof(StrategyIconHint));
             }
         }
 
@@ -148,6 +166,8 @@ namespace IspAudit.Models
                 _isBypassStrategyFromV2 = value;
                 OnPropertyChanged(nameof(IsBypassStrategyFromV2));
                 OnPropertyChanged(nameof(ShowConnectButton));
+                OnPropertyChanged(nameof(StrategyIconNames));
+                OnPropertyChanged(nameof(StrategyIconHint));
             }
         }
 
@@ -167,6 +187,68 @@ namespace IspAudit.Models
                !string.IsNullOrWhiteSpace(BypassStrategy) &&
                !string.Equals(BypassStrategy, PipelineContract.BypassNone, StringComparison.OrdinalIgnoreCase) &&
                !string.Equals(BypassStrategy, PipelineContract.BypassUnknown, StringComparison.OrdinalIgnoreCase);
+
+        public string StrategyIconHint
+            => ShowConnectButton ? (BypassStrategy ?? string.Empty) : string.Empty;
+
+        public string[] StrategyIconNames
+        {
+            get
+            {
+                if (!ShowConnectButton) return Array.Empty<string>();
+
+                var text = BypassStrategy ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(text)) return Array.Empty<string>();
+
+                // Иконки делаем консистентными для таблицы и кнопок слева.
+                // Используем безопасные иконки, которые уже применяются в проекте.
+                var icons = new System.Collections.Generic.List<string>();
+
+                bool Contains(string s) => text.Contains(s, StringComparison.OrdinalIgnoreCase);
+
+                // Frag / Frag+Rev
+                if (Contains("Frag+Rev") || Contains("Disorder") || Contains("Rev"))
+                {
+                    icons.Add("ThemeLightDark");
+                }
+                else if (Contains("Frag"))
+                {
+                    icons.Add("Tune");
+                }
+
+                // TLS Fake
+                if (Contains("Fake"))
+                {
+                    icons.Add("Alert");
+                }
+
+                // Drop RST
+                if (Contains("RST"))
+                {
+                    icons.Add("InformationOutline");
+                }
+
+                // QUIC→TCP
+                if (Contains("QUIC") || Contains("UDP/443"))
+                {
+                    icons.Add("LanConnect");
+                }
+
+                // No SNI
+                if (Contains("No SNI") || Contains("ALLOW_NO_SNI"))
+                {
+                    icons.Add("ChartBar");
+                }
+
+                // DoH
+                if (Contains("DoH") || Contains("DNS-over-HTTPS"))
+                {
+                    icons.Add("LightbulbOutline");
+                }
+
+                return icons.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            }
+        }
 
         public string StatusText
         {

@@ -6,7 +6,7 @@ public partial class App : System.Windows.Application
     {
         // Загрузить ресурсы из XAML
         InitializeComponent();
-        
+
         this.DispatcherUnhandledException += App_DispatcherUnhandledException;
     }
 
