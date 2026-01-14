@@ -422,6 +422,19 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
+                <!-- Кнопка возврата левой панели (видна, когда панель скрыта) -->
+                <Button Grid.Row="1"
+                        Panel.ZIndex="10"
+                        Style="{StaticResource ThemeToggleButtonStyle}"
+                        Command="{Binding ToggleLeftPanelCommand}"
+                        ToolTip="Показать левую панель"
+                        Height="32" Width="32"
+                        Margin="16,16,0,0"
+                        HorizontalAlignment="Left" VerticalAlignment="Top"
+                        Visibility="{Binding IsLeftPanelOpen, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                    <materialDesign:PackIcon Kind="Menu" Width="20" Height="20"/>
+                </Button>
+
                 <!-- VPN Warning Banner -->
                 <Border Grid.Row="0" Background="#FEF3C7" BorderBrush="#FCD34D" BorderThickness="0,0,0,1"
                         Padding="16,10"
