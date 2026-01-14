@@ -422,17 +422,27 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Кнопка возврата левой панели (видна, когда панель скрыта) -->
+                <!-- Кнопка управления левой панелью (стрелки) -->
                 <Button Grid.Row="1"
                         Panel.ZIndex="10"
                         Style="{StaticResource ThemeToggleButtonStyle}"
                         Command="{Binding ToggleLeftPanelCommand}"
-                        ToolTip="Показать левую панель"
+                        ToolTip="Свернуть/развернуть левую панель"
                         Height="32" Width="32"
                         Margin="16,16,0,0"
-                        HorizontalAlignment="Left" VerticalAlignment="Top"
-                        Visibility="{Binding IsLeftPanelOpen, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                    <materialDesign:PackIcon Kind="Menu" Width="20" Height="20"/>
+                        HorizontalAlignment="Left" VerticalAlignment="Top">
+                    <materialDesign:PackIcon Width="20" Height="20">
+                        <materialDesign:PackIcon.Style>
+                            <Style TargetType="materialDesign:PackIcon">
+                                <Setter Property="Kind" Value="ChevronRight"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsLeftPanelOpen}" Value="True">
+                                        <Setter Property="Kind" Value="ChevronLeft"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </materialDesign:PackIcon.Style>
+                    </materialDesign:PackIcon>
                 </Button>
 
                 <!-- VPN Warning Banner -->
@@ -461,13 +471,6 @@
                 <Grid Grid.Row="1" Margin="16,16,16,8"
                       Visibility="{Binding IsStart, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                     <StackPanel Orientation="Horizontal">
-                    <Button Style="{StaticResource ThemeToggleButtonStyle}"
-                        Command="{Binding ToggleLeftPanelCommand}"
-                        ToolTip="Показать/скрыть левую панель"
-                        Height="28" Width="28" Margin="0,0,8,0">
-                        <materialDesign:PackIcon Kind="Tune" Width="18" Height="18"/>
-                    </Button>
-
                     <TextBlock Text="📋 Результаты тестирования" Style="{StaticResource H2Style}"/>
                     <Border Background="#DCFCE7" CornerRadius="4" Padding="6,2" Margin="12,0,0,0" VerticalAlignment="Center"
                         Visibility="{Binding IsBypassActive, Converter={StaticResource BoolToVisibilityConverter}}">
