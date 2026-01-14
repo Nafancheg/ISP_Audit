@@ -136,15 +136,6 @@ namespace IspAudit.ViewModels
                 if (value == "start")
                 {
                     Results.ResetStatuses();
-                    IsLeftPanelOpen = true;
-                }
-
-                if (value == "running")
-                {
-                    if (!IsLeftPanelPinned)
-                    {
-                        IsLeftPanelOpen = false;
-                    }
                 }
             }
         }
@@ -589,8 +580,12 @@ namespace IspAudit.ViewModels
                     }
                     else
                     {
-                        // После остановки возвращаем панель, чтобы пользователь мог сразу настроить новый запуск.
-                        IsLeftPanelOpen = true;
+                        // После остановки НЕ открываем панель автоматически.
+                        // Состоянием панели управляет только пользователь (и флаг закрепления).
+                        if (IsLeftPanelPinned)
+                        {
+                            IsLeftPanelOpen = true;
+                        }
                     }
                 }
                 if (e.PropertyName == nameof(Orchestrator.HasRecommendations))
