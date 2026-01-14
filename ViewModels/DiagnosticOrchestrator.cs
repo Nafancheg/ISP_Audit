@@ -18,6 +18,7 @@ using IspAudit.Core.Traffic.Filters;
 using IspAudit.Windows;
 using IspAudit;
 using System.Windows.Media;
+using System.Net;
 
 // Явно указываем WPF вместо WinForms
 using Application = System.Windows.Application;
@@ -89,6 +90,12 @@ namespace IspAudit.ViewModels
         private readonly HashSet<string> _manualRecommendations = new(StringComparer.OrdinalIgnoreCase);
         private string _recommendedStrategiesText = "Нет рекомендаций";
         private string _manualRecommendationsText = "";
+
+        // Пост-Apply ретест (практический UX): после применения обхода
+        // сразу запускаем короткий ретест по цели, чтобы пользователь видел эффект.
+        private bool _isPostApplyRetestRunning;
+        private string _postApplyRetestStatus = "";
+        private CancellationTokenSource? _postApplyRetestCts;
 
         // Legacy (справочно): не влияет на основную рекомендацию v2
         private readonly HashSet<string> _legacyRecommendedStrategies = new(StringComparer.OrdinalIgnoreCase);
@@ -265,6 +272,26 @@ namespace IspAudit.ViewModels
 
         public string RecommendationHintText =>
             "TLS обход применяет только ClientHello с hostname (SNI) на порту 443; для IP без имени сначала откройте сайт/игру, чтобы появился SNI.";
+
+        public bool IsPostApplyRetestRunning
+        {
+            get => _isPostApplyRetestRunning;
+            private set
+            {
+                _isPostApplyRetestRunning = value;
+                OnPropertyChanged(nameof(IsPostApplyRetestRunning));
+            }
+        }
+
+        public string PostApplyRetestStatus
+        {
+            get => _postApplyRetestStatus;
+            private set
+            {
+                _postApplyRetestStatus = value;
+                OnPropertyChanged(nameof(PostApplyRetestStatus));
+            }
+        }
 
         #endregion
 
@@ -1698,6 +1725,302 @@ namespace IspAudit.ViewModels
                 _applyCts?.Dispose();
                 _applyCts = null;
             }
+        }
+
+        /// <summary>
+        /// Автоматический ретест сразу после Apply (короткий прогон, чтобы увидеть практический эффект обхода).
+        /// </summary>
+        public Task StartPostApplyRetestAsync(BypassController bypassController, string? preferredHostKey)
+        {
+            if (bypassController == null) throw new ArgumentNullException(nameof(bypassController));
+
+            // Не мешаем активной диагностике: там pipeline уже работает и сам обновляет результаты.
+            if (IsDiagnosticRunning)
+            {
+                PostApplyRetestStatus = "Ретест после Apply: пропущен (идёт диагностика)";
+                return Task.CompletedTask;
+            }
+
+            var hostKey = ResolveBestHostKeyForApply(preferredHostKey);
+            if (string.IsNullOrWhiteSpace(hostKey))
+            {
+                PostApplyRetestStatus = "Ретест после Apply: нет цели";
+                return Task.CompletedTask;
+            }
+
+            try
+            {
+                _postApplyRetestCts?.Cancel();
+            }
+            catch
+            {
+            }
+
+            _postApplyRetestCts = new CancellationTokenSource();
+            var ct = _postApplyRetestCts.Token;
+
+            IsPostApplyRetestRunning = true;
+            PostApplyRetestStatus = $"Ретест после Apply: запуск ({hostKey})";
+
+            return Task.Run(async () =>
+            {
+                try
+                {
+                    var effectiveTestTimeout = bypassController.IsVpnDetected
+                        ? TimeSpan.FromSeconds(8)
+                        : TimeSpan.FromSeconds(3);
+
+                    var pipelineConfig = new PipelineConfig
+                    {
+                        EnableLiveTesting = true,
+                        EnableAutoBypass = false,
+                        MaxConcurrentTests = 5,
+                        TestTimeout = effectiveTestTimeout
+                    };
+
+                    // Собираем IP-адреса цели: DNS + локальные кеши.
+                    var hosts = await BuildPostApplyRetestHostsAsync(hostKey, port: 443, ct).ConfigureAwait(false);
+                    if (hosts.Count == 0)
+                    {
+                        PostApplyRetestStatus = $"Ретест после Apply: не удалось определить IP ({hostKey})";
+                        return;
+                    }
+
+                    PostApplyRetestStatus = $"Ретест после Apply: проверяем {hosts.Count} IP…";
+
+                    var progress = new Progress<string>(msg =>
+                    {
+                        try
+                        {
+                            Application.Current?.Dispatcher.Invoke(() =>
+                            {
+                                // Важно: обновляем рекомендации/диагнозы так же, как при обычной диагностике.
+                                TrackV2DiagnosisSummary(msg);
+                                TrackRecommendation(msg, bypassController);
+                                Log($"[PostApplyRetest] {msg}");
+                                OnPipelineMessage?.Invoke(msg);
+                            });
+                        }
+                        catch
+                        {
+                        }
+                    });
+
+                    using var pipeline = new LiveTestingPipeline(
+                        pipelineConfig,
+                        progress,
+                        _trafficEngine,
+                        _dnsParser,
+                        new UnifiedTrafficFilter(),
+                        null,
+                        bypassController.AutoHostlist);
+
+                    pipeline.OnV2PlanBuilt += (k, p) =>
+                    {
+                        try
+                        {
+                            Application.Current?.Dispatcher.Invoke(() => StoreV2Plan(k, p, bypassController));
+                        }
+                        catch
+                        {
+                        }
+                    };
+
+                    foreach (var h in hosts)
+                    {
+                        await pipeline.EnqueueHostAsync(h).ConfigureAwait(false);
+                    }
+
+                    await pipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(15)).ConfigureAwait(false);
+                    PostApplyRetestStatus = "Ретест после Apply: завершён";
+                }
+                catch (OperationCanceledException)
+                {
+                    PostApplyRetestStatus = "Ретест после Apply: отменён";
+                }
+                catch (Exception ex)
+                {
+                    PostApplyRetestStatus = $"Ретест после Apply: ошибка ({ex.Message})";
+                }
+                finally
+                {
+                    IsPostApplyRetestRunning = false;
+                }
+            }, ct);
+        }
+
+        /// <summary>
+        /// «Рестарт коннекта» (мягкий nudge): на короткое время дропаем трафик к целевым IP:443,
+        /// чтобы приложение инициировало новое соединение уже под применённым bypass.
+        /// </summary>
+        public async Task NudgeReconnectAsync(BypassController bypassController, string? preferredHostKey)
+        {
+            if (bypassController == null) throw new ArgumentNullException(nameof(bypassController));
+
+            var hostKey = ResolveBestHostKeyForApply(preferredHostKey);
+            if (string.IsNullOrWhiteSpace(hostKey))
+            {
+                PostApplyRetestStatus = "Рестарт коннекта: нет цели";
+                return;
+            }
+
+            // Достаём IP-адреса (IPv4) и делаем короткий drop.
+            var ips = await ResolveCandidateIpsAsync(hostKey, ct: CancellationToken.None).ConfigureAwait(false);
+            if (ips.Count == 0)
+            {
+                PostApplyRetestStatus = $"Рестарт коннекта: IP не определены ({hostKey})";
+                return;
+            }
+
+            if (!_trafficEngine.IsRunning)
+            {
+                try
+                {
+                    await _stateManager.StartEngineAsync().ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Если движок не стартует (нет прав/драйвера) — просто выходим без падения.
+                    PostApplyRetestStatus = "Рестарт коннекта: движок не запущен (нужны права администратора)";
+                    return;
+                }
+            }
+
+            var ttl = TimeSpan.FromSeconds(2);
+            var filterName = $"TempReconnectNudge:{DateTime.UtcNow:HHmmss}";
+            var filter = new IspAudit.Core.Traffic.Filters.TemporaryEndpointBlockFilter(
+                filterName,
+                ips,
+                ttl,
+                port: 443,
+                blockTcp: true,
+                blockUdp: true);
+
+            PostApplyRetestStatus = $"Рестарт коннекта: блокирую {ips.Count} IP на {ttl.TotalSeconds:0}с…";
+            _stateManager.RegisterEngineFilter(filter);
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(ttl + TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+                    _stateManager.RemoveEngineFilter(filterName);
+                }
+                catch
+                {
+                }
+            });
+
+            // После nudging — запускаем быстрый ретест, чтобы увидеть эффект.
+            _ = StartPostApplyRetestAsync(bypassController, hostKey);
+        }
+
+        private string ResolveBestHostKeyForApply(string? preferredHostKey)
+        {
+            if (!string.IsNullOrWhiteSpace(preferredHostKey)) return preferredHostKey.Trim();
+            if (!string.IsNullOrWhiteSpace(_lastV2PlanHostKey)) return _lastV2PlanHostKey.Trim();
+            if (!string.IsNullOrWhiteSpace(_lastV2DiagnosisHostKey)) return _lastV2DiagnosisHostKey.Trim();
+            return string.Empty;
+        }
+
+        private async Task<System.Collections.Generic.List<HostDiscovered>> BuildPostApplyRetestHostsAsync(
+            string hostKey,
+            int port,
+            CancellationToken ct)
+        {
+            var list = new System.Collections.Generic.List<HostDiscovered>();
+            var ips = await ResolveCandidateIpsAsync(hostKey, ct).ConfigureAwait(false);
+            foreach (var ip in ips)
+            {
+                var key = $"{ip}:{port}:TCP";
+                // Для домена передаём Hostname/SNI, чтобы TLS проверялся именно с SNI.
+                var host = !IPAddress.TryParse(hostKey, out _)
+                    ? new HostDiscovered(key, ip, port, IspAudit.Bypass.TransportProtocol.Tcp, DateTime.UtcNow)
+                    {
+                        Hostname = hostKey,
+                        SniHostname = hostKey
+                    }
+                    : new HostDiscovered(key, ip, port, IspAudit.Bypass.TransportProtocol.Tcp, DateTime.UtcNow);
+
+                list.Add(host);
+            }
+
+            return list;
+        }
+
+        private async Task<System.Collections.Generic.List<IPAddress>> ResolveCandidateIpsAsync(string hostKey, CancellationToken ct)
+        {
+            var result = new System.Collections.Generic.List<IPAddress>();
+            var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            hostKey = (hostKey ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(hostKey)) return result;
+
+            if (IPAddress.TryParse(hostKey, out var directIp))
+            {
+                result.Add(directIp);
+                return result;
+            }
+
+            // 1) Локальные кеши DNS/SNI (если сервисы ещё живы)
+            try
+            {
+                if (_dnsParser != null)
+                {
+                    foreach (var kv in _dnsParser.DnsCache)
+                    {
+                        if (!IsHostKeyMatch(kv.Value, hostKey)) continue;
+                        if (IPAddress.TryParse(kv.Key, out var ip) && seen.Add(ip.ToString()))
+                        {
+                            result.Add(ip);
+                        }
+                    }
+
+                    foreach (var kv in _dnsParser.SniCache)
+                    {
+                        if (!IsHostKeyMatch(kv.Value, hostKey)) continue;
+                        if (IPAddress.TryParse(kv.Key, out var ip) && seen.Add(ip.ToString()))
+                        {
+                            result.Add(ip);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            // 2) DNS resolve (может вернуть несколько IP)
+            try
+            {
+                var dnsTask = System.Net.Dns.GetHostAddressesAsync(hostKey, ct);
+                var timeoutTask = Task.Delay(TimeSpan.FromSeconds(4), ct);
+                var completed = await Task.WhenAny(dnsTask, timeoutTask).ConfigureAwait(false);
+                if (completed == dnsTask)
+                {
+                    var ips = await dnsTask.ConfigureAwait(false);
+                    foreach (var ip in ips)
+                    {
+                        if (ip == null) continue;
+                        if (seen.Add(ip.ToString())) result.Add(ip);
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return result;
+        }
+
+        private static bool IsHostKeyMatch(string candidate, string hostKey)
+        {
+            if (string.IsNullOrWhiteSpace(candidate) || string.IsNullOrWhiteSpace(hostKey)) return false;
+            candidate = candidate.Trim();
+            hostKey = hostKey.Trim();
+
+            if (candidate.Equals(hostKey, StringComparison.OrdinalIgnoreCase)) return true;
+            return candidate.EndsWith("." + hostKey, StringComparison.OrdinalIgnoreCase);
         }
 
         private static string BuildBypassStateSummary(BypassController bypassController)

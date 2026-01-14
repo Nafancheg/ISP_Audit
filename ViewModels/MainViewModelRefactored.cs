@@ -294,6 +294,9 @@ namespace IspAudit.ViewModels
         public string ManualRecommendationsText => Orchestrator.ManualRecommendationsText;
         public string RecommendationHintText => Orchestrator.RecommendationHintText;
 
+        public bool IsPostApplyRetestRunning => Orchestrator.IsPostApplyRetestRunning;
+        public string PostApplyRetestStatus => Orchestrator.PostApplyRetestStatus;
+
         public bool HasDomainSuggestion
         {
             get
@@ -471,6 +474,7 @@ namespace IspAudit.ViewModels
         public ICommand DisableAllBypassCommand { get; }
         public ICommand ApplyRecommendationsCommand { get; }
         public ICommand ApplyDomainRecommendationsCommand { get; }
+        public ICommand RestartConnectionCommand { get; }
         public ICommand ConnectFromResultCommand { get; }
 
         // P0.6: Network change staged revalidation
@@ -592,6 +596,12 @@ namespace IspAudit.ViewModels
                 {
                     CommandManager.InvalidateRequerySuggested();
                 }
+
+                if (e.PropertyName == nameof(Orchestrator.IsPostApplyRetestRunning) || e.PropertyName == nameof(Orchestrator.PostApplyRetestStatus))
+                {
+                    OnPropertyChanged(nameof(IsPostApplyRetestRunning));
+                    OnPropertyChanged(nameof(PostApplyRetestStatus));
+                }
             };
 
             Results.OnLog += Log;
@@ -642,6 +652,8 @@ namespace IspAudit.ViewModels
 
             ApplyRecommendationsCommand = new RelayCommand(async _ => await ApplyRecommendationsAsync(), _ => HasRecommendations && !IsApplyingRecommendations);
             ApplyDomainRecommendationsCommand = new RelayCommand(async _ => await ApplyDomainRecommendationsAsync(), _ => HasDomainSuggestion && !IsApplyingRecommendations);
+
+            RestartConnectionCommand = new RelayCommand(async _ => await RestartConnectionAsync(), _ => ShowBypassPanel && !IsApplyingRecommendations);
 
             // Применение стратегии/плана из конкретной строки результата ("карточки").
             // UX: пользователь видит стратегию рядом с целью и нажимает "Подключить" именно для неё.
@@ -899,6 +911,9 @@ namespace IspAudit.ViewModels
                 var preferredHostKey = GetPreferredHostKey(SelectedTestResult);
                 await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey);
 
+                // Практический UX: сразу запускаем короткий пост-Apply ретест по цели.
+                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, preferredHostKey);
+
                 if (Bypass.IsBypassActive && SelectedTestResult != null)
                 {
                     MarkAppliedBypassTarget(SelectedTestResult);
@@ -948,6 +963,9 @@ namespace IspAudit.ViewModels
                 }
 
                 await Orchestrator.ApplyRecommendationsForDomainAsync(Bypass, domain).ConfigureAwait(false);
+
+                // Практический UX: ретестим доменную цель.
+                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, domain);
 
                 if (Bypass.IsBypassActive && SelectedTestResult != null)
                 {
@@ -1002,6 +1020,9 @@ namespace IspAudit.ViewModels
                 // Если для этой цели есть v2 план — применяем его.
                 // Если плана нет, ApplyRecommendationsAsync просто ничего не сделает (и это лучше, чем включать тумблеры вслепую).
                 await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey);
+
+                // Практический UX: ретестим именно выбранную цель.
+                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, preferredHostKey);
 
                 if (Bypass.IsBypassActive)
                 {
@@ -1062,6 +1083,30 @@ namespace IspAudit.ViewModels
             catch
             {
                 return null;
+            }
+        }
+
+        private async Task RestartConnectionAsync()
+        {
+            if (IsApplyingRecommendations)
+            {
+                return;
+            }
+
+            if (!ShowBypassPanel)
+            {
+                Log("[V2][APPLY] Bypass недоступен (нужны права администратора)");
+                return;
+            }
+
+            var preferredHostKey = GetPreferredHostKey(SelectedTestResult);
+            try
+            {
+                await Orchestrator.NudgeReconnectAsync(Bypass, preferredHostKey).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Log($"[V2][APPLY] Ошибка рестарта коннекта: {ex.Message}");
             }
         }
 

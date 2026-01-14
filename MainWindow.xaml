@@ -164,8 +164,18 @@
                                     <TextBlock Text="{Binding RecommendedStrategiesText}" FontSize="12" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,0,0,4"/>
                                     <TextBlock Text="{Binding ManualRecommendationsText}" FontSize="12" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,0,0,4"
                                                Visibility="{Binding ManualRecommendationsText, Converter={StaticResource StringToVisibilityConverter}}"/>
+
+                                        <ProgressBar Height="3" IsIndeterminate="True" Margin="0,2,0,6"
+                                             Visibility="{Binding IsPostApplyRetestRunning, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                        <TextBlock Text="{Binding PostApplyRetestStatus}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6" Foreground="#1E40AF"
+                                               Visibility="{Binding PostApplyRetestStatus, Converter={StaticResource StringToVisibilityConverter}}"/>
+
                                     <Button Content="{Binding ApplyRecommendationsButtonText}" Command="{Binding ApplyRecommendationsCommand}"
                                             Style="{StaticResource PrimaryButtonStyle}" Padding="10,5" FontSize="12" HorizontalAlignment="Left" Height="30"/>
+
+                                        <Button Content="Рестарт коннекта" Command="{Binding RestartConnectionCommand}"
+                                            Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" FontSize="12" HorizontalAlignment="Left" Height="30" Margin="0,6,0,0"
+                                            ToolTip="Коротко дропает трафик к целевым IP:443, чтобы приложение переподключилось уже под применённым обходом."/>
 
                                         <Button Content="{Binding ApplyDomainButtonText}" Command="{Binding ApplyDomainRecommendationsCommand}"
                                             Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" FontSize="12" HorizontalAlignment="Left" Height="30" Margin="0,6,0,0"
