@@ -424,26 +424,18 @@ namespace IspAudit.ViewModels
                         var ipPart = parts[0].Split(new[] { ": " }, StringSplitOptions.RemoveEmptyEntries).Last();
                         var newHostname = parts[1].Trim();
 
+                        // Находим карточку по IP-якорю (Host=IP или FallbackIp=IP)
+                        var existingByIp = TestResults.FirstOrDefault(t => t.Target.Host == ipPart || t.Target.FallbackIp == ipPart);
+
                         // КРИТИЧНО: Проверяем, не является ли новый hostname шумовым
                         if (NoiseHostFilter.Instance.IsNoiseHost(newHostname))
                         {
-                            // Удаляем карточку, если она была создана для IP
-                            var toRemove = TestResults.FirstOrDefault(t => t.Target.Host == ipPart || t.Target.FallbackIp == ipPart);
-                            if (toRemove != null)
+                            // Шумовое reverse/DNS имя (например *.1e100.net) НЕ должно удалять карточку.
+                            // Это вызывает «скачки»/подмену карточек и ломает UX.
+                            if (existingByIp != null)
                             {
-                                // Важно: не удаляем карточки с проблемами только потому,
-                                // что reverse/DNS имя попало под noise-паттерн (например *.1e100.net).
-                                if (toRemove.Status == TestStatus.Pass || toRemove.Status == TestStatus.Idle || toRemove.Status == TestStatus.Running)
-                                {
-                                    TestResults.Remove(toRemove);
-                                    Log($"[UI] Удалена шумовая карточка после резолва: {ipPart} → {newHostname}");
-                                    NotifyCountersChanged();
-                                    return;
-                                }
-
-                                // Карточка с проблемой остаётся; при желании можно сохранить имя как rDNS.
-                                var old = toRemove.Target;
-                                toRemove.Target = new Target
+                                var old = existingByIp.Target;
+                                existingByIp.Target = new Target
                                 {
                                     Name = old.Name,
                                     Host = old.Host,
@@ -459,14 +451,28 @@ namespace IspAudit.ViewModels
 
                         // Если это не шумовой hostname, используем его как человеко‑понятный ключ.
                         // IP остаётся как технический якорь (FallbackIp) для корреляции.
-                        var existingByIp = TestResults.FirstOrDefault(t => t.Target.Host == ipPart || t.Target.FallbackIp == ipPart);
                         if (existingByIp != null)
                         {
+                            // ВАЖНО: если карточка уже привязана к человеко-понятному ключу (например SNI youtube.com),
+                            // не перетираем её на DNS/hostname обновления (youtube-ui.l.google.com и т.п.).
+                            // Иначе пользователь видит «подмену» карточки.
+                            var hostLooksLikeIp = IPAddress.TryParse(existingByIp.Target.Host, out _);
+                            var nameLooksLikeIp = IPAddress.TryParse(existingByIp.Target.Name, out _);
+
                             var normalizedHostname = NormalizeHost(newHostname);
                             if (!string.IsNullOrWhiteSpace(normalizedHostname) && normalizedHostname != "-" && !IPAddress.TryParse(normalizedHostname, out _))
                             {
-                                _ipToUiKey[ipPart] = normalizedHostname;
-                                TryMigrateIpCardToNameKey(ipPart, normalizedHostname);
+                                // Мигрируем только пока карточка реально IP-ориентированная.
+                                // Если она уже переименована по SNI — сохраняем hostname только как rDNS.
+                                if (hostLooksLikeIp || nameLooksLikeIp)
+                                {
+                                    // Не затираем уже установленное сопоставление IP→SNI.
+                                    if (!_ipToUiKey.ContainsKey(ipPart))
+                                    {
+                                        _ipToUiKey[ipPart] = normalizedHostname;
+                                    }
+                                    TryMigrateIpCardToNameKey(ipPart, normalizedHostname);
+                                }
                             }
 
                             if (string.IsNullOrWhiteSpace(existingByIp.Target.SniHost))
@@ -482,6 +488,22 @@ namespace IspAudit.ViewModels
                                     FallbackIp = old.FallbackIp,
                                     SniHost = newHostname,
                                     ReverseDnsHost = old.ReverseDnsHost
+                                };
+                            }
+
+                            // Всегда сохраняем последнее hostname как rDNS для диагностики.
+                            if (string.IsNullOrWhiteSpace(existingByIp.Target.ReverseDnsHost))
+                            {
+                                var old2 = existingByIp.Target;
+                                existingByIp.Target = new Target
+                                {
+                                    Name = old2.Name,
+                                    Host = old2.Host,
+                                    Service = old2.Service,
+                                    Critical = old2.Critical,
+                                    FallbackIp = old2.FallbackIp,
+                                    SniHost = old2.SniHost,
+                                    ReverseDnsHost = newHostname
                                 };
                             }
                         }
