@@ -290,8 +290,48 @@ namespace IspAudit.ViewModels
                         var host = NormalizeHost(m.Groups["host"].Value.Trim());
                         if (!string.IsNullOrWhiteSpace(ip) && !string.IsNullOrWhiteSpace(host) && host != "-")
                         {
-                            _ipToUiKey[ip] = host;
-                            TryMigrateIpCardToNameKey(ip, host);
+                            // ВАЖНО: SNI может меняться в рамках одного прогона (youtube.com → youtube-ui.l.google.com).
+                            // Это НЕ должно «переименовывать» уже показанную пользователю карточку.
+                            // Правило:
+                            // - если у IP ещё нет маппинга → сохраняем
+                            // - мигрируем карточку только пока она IP-ориентированная (Host/Name = IP)
+                            // - поздние SNI-события не затирают существующий маппинг и не вызывают миграцию
+
+                            if (!_ipToUiKey.TryGetValue(ip, out var existingKey) || string.IsNullOrWhiteSpace(existingKey) || IPAddress.TryParse(existingKey, out _))
+                            {
+                                _ipToUiKey[ip] = host;
+                            }
+
+                            var ipCard = TestResults.FirstOrDefault(t => t.Target.Host == ip || t.Target.FallbackIp == ip);
+                            if (ipCard != null)
+                            {
+                                var hostLooksLikeIp = IPAddress.TryParse(ipCard.Target.Host, out _);
+                                var nameLooksLikeIp = IPAddress.TryParse(ipCard.Target.Name, out _);
+
+                                if (hostLooksLikeIp || nameLooksLikeIp)
+                                {
+                                    // Миграция только из IP в первый человеко‑понятный ключ
+                                    TryMigrateIpCardToNameKey(ip, _ipToUiKey[ip]);
+                                }
+                                else
+                                {
+                                    // Карточка уже человеко‑понятная: просто обновим SniHost для диагностики (без смены ключа)
+                                    var old = ipCard.Target;
+                                    if (string.IsNullOrWhiteSpace(old.SniHost) || old.SniHost == "-")
+                                    {
+                                        ipCard.Target = new Target
+                                        {
+                                            Name = old.Name,
+                                            Host = old.Host,
+                                            Service = old.Service,
+                                            Critical = old.Critical,
+                                            FallbackIp = old.FallbackIp,
+                                            SniHost = host,
+                                            ReverseDnsHost = old.ReverseDnsHost
+                                        };
+                                    }
+                                }
+                            }
                         }
                     }
                     return;
