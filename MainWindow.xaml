@@ -35,7 +35,7 @@
         <materialDesign:DrawerHost.LeftDrawerContent>
             <!-- LEFT PANEL: Controls (Drawer) -->
             <Border Style="{StaticResource CardStyle}" Padding="16" Width="480" MinWidth="450">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel>
                     <!-- Scenario Selector - Компактная версия -->
                     <Grid Margin="0,0,0,12">
@@ -153,22 +153,22 @@
 
                             <!-- Recommendations -->
                             <Border Background="#EBF5FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="4"
-                                    Padding="10" Margin="0,0,0,8"
+                                    Padding="8" Margin="0,0,0,8"
                                     ToolTip="{Binding RecommendationHintText}"
                                     Visibility="{Binding HasAnyRecommendations, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                                         <materialDesign:PackIcon Kind="LightbulbOutline" Width="16" Height="16" Margin="0,0,6,0" Foreground="#1E40AF"/>
-                                        <TextBlock Text="Рекомендации" FontWeight="SemiBold" FontSize="14" Foreground="#1E40AF"/>
+                                        <TextBlock Text="Рекомендации" FontWeight="SemiBold" FontSize="13" Foreground="#1E40AF"/>
                                     </StackPanel>
-                                    <TextBlock Text="{Binding RecommendedStrategiesText}" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,6"/>
-                                    <TextBlock Text="{Binding ManualRecommendationsText}" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,6"
+                                    <TextBlock Text="{Binding RecommendedStrategiesText}" FontSize="12" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding ManualRecommendationsText}" FontSize="12" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,0,0,4"
                                                Visibility="{Binding ManualRecommendationsText, Converter={StaticResource StringToVisibilityConverter}}"/>
                                     <Button Content="{Binding ApplyRecommendationsButtonText}" Command="{Binding ApplyRecommendationsCommand}"
-                                            Style="{StaticResource PrimaryButtonStyle}" Padding="12,6" FontSize="13" HorizontalAlignment="Left" Height="32"/>
+                                            Style="{StaticResource PrimaryButtonStyle}" Padding="10,5" FontSize="12" HorizontalAlignment="Left" Height="30"/>
 
                                         <Button Content="{Binding ApplyDomainButtonText}" Command="{Binding ApplyDomainRecommendationsCommand}"
-                                            Style="{StaticResource SecondaryButtonStyle}" Padding="12,6" FontSize="13" HorizontalAlignment="Left" Height="32" Margin="0,6,0,0"
+                                            Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" FontSize="12" HorizontalAlignment="Left" Height="30" Margin="0,6,0,0"
                                             ToolTip="{Binding DomainSuggestionHintText}"
                                             Visibility="{Binding HasDomainSuggestion, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 </StackPanel>
