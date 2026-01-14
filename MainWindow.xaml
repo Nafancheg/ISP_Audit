@@ -431,15 +431,15 @@
                         Height="32" Width="32"
                         Margin="16,16,0,0"
                         HorizontalAlignment="Left" VerticalAlignment="Top">
-                    <TextBlock FontSize="16" FontFamily="Segoe UI Emoji" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock FontSize="18" FontFamily="Segoe UI Symbol" Foreground="#22C55E" VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
-                                <!-- Зеленая стрелка вправо: панель свернута -->
-                                <Setter Property="Text" Value="🟢➡️"/>
+                                <!-- Панель свернута: зелёная стрелка вправо -->
+                                <Setter Property="Text" Value="▶"/>
                                 <Style.Triggers>
-                                    <!-- Зеленая стрелка влево: панель развернута -->
+                                    <!-- Панель развернута: зелёная стрелка влево -->
                                     <DataTrigger Binding="{Binding IsLeftPanelOpen}" Value="True">
-                                        <Setter Property="Text" Value="⬅️🟢"/>
+                                        <Setter Property="Text" Value="◀"/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
