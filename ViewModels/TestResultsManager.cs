@@ -1248,8 +1248,15 @@ namespace IspAudit.ViewModels
             var hasRecentPass = lastPass != DateTime.MinValue && now - lastPass <= UnstableWindow;
             var hasRecentProblem = lastProblem != DateTime.MinValue && now - lastProblem <= UnstableWindow;
 
-            // Если в окне есть и успех и проблема — показываем «Нестабильно».
-            if (hasRecentPass && hasRecentProblem)
+            // Важно: "Нестабильно" не должно перетирать реальный успех.
+            // Если текущая проверка успешна — показываем Pass, даже если недавно были ошибки.
+            if (incoming == TestStatus.Pass)
+            {
+                return TestStatus.Pass;
+            }
+
+            // Если сейчас пришла проблема, но в недавнем окне был успех — это плавающая/частичная проблема.
+            if ((incoming == TestStatus.Fail || incoming == TestStatus.Warn) && hasRecentPass)
             {
                 return TestStatus.Warn;
             }
@@ -1369,16 +1376,18 @@ namespace IspAudit.ViewModels
 
         private static TestStatus MergeStatus(TestStatus a, TestStatus b)
         {
-            static int Rank(TestStatus s) => s switch
+            // Доменные семейства часто дают смесь успехов и ошибок по подхостам.
+            // Pass+Fail трактуем как Warn, чтобы не показывать "полную недоступность" при частичном успехе.
+            if ((a == TestStatus.Fail && b == TestStatus.Pass) || (a == TestStatus.Pass && b == TestStatus.Fail))
             {
-                TestStatus.Fail => 4,
-                TestStatus.Warn => 3,
-                TestStatus.Running => 2,
-                TestStatus.Pass => 1,
-                _ => 0
-            };
+                return TestStatus.Warn;
+            }
 
-            return Rank(a) >= Rank(b) ? a : b;
+            if (a == TestStatus.Fail || b == TestStatus.Fail) return TestStatus.Fail;
+            if (a == TestStatus.Warn || b == TestStatus.Warn) return TestStatus.Warn;
+            if (a == TestStatus.Running || b == TestStatus.Running) return TestStatus.Running;
+            if (a == TestStatus.Pass || b == TestStatus.Pass) return TestStatus.Pass;
+            return TestStatus.Idle;
         }
 
         private void NotifyCountersChanged()

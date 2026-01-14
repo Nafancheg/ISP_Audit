@@ -6,13 +6,20 @@
         Width="600"
         Height="750"
         WindowStartupLocation="CenterOwner"
-        Background="{DynamicResource BgBrush}"
+    Background="{DynamicResource MaterialDesignPaper}"
         ResizeMode="CanResize">
 
     <Window.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+
+        <!-- Полупрозрачные фоны статусов (смотрятся нормально и в светлой, и в тёмной теме) -->
+        <SolidColorBrush x:Key="UnknownBgBrush" Color="#9CA3AF" Opacity="0.25"/>
+        <SolidColorBrush x:Key="PassBgBrush" Color="#10B981" Opacity="0.18"/>
+        <SolidColorBrush x:Key="WarnBgBrush" Color="#F59E0B" Opacity="0.22"/>
+        <SolidColorBrush x:Key="FailBgBrush" Color="#EF4444" Opacity="0.18"/>
+
         <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBody}"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
     </Window.Resources>
@@ -27,16 +34,16 @@
 
         <!-- Заголовок -->
         <StackPanel Grid.Row="0" Margin="0,0,0,20">
-            <TextBlock Text="{Binding TargetName}" 
-                       FontSize="24" 
+            <TextBlock Text="{Binding TargetName}"
+                       FontSize="24"
                        FontWeight="Bold"
-                       Foreground="{DynamicResource PrimaryBrush}"/>
+                       Foreground="{DynamicResource PrimaryHueMidBrush}"/>
         </StackPanel>
 
         <!-- Статус -->
-        <Border Grid.Row="1" 
-                Background="{DynamicResource PanelBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
+        <Border Grid.Row="1"
+            Background="{DynamicResource MaterialDesignCardBackground}"
+            BorderBrush="{DynamicResource MaterialDesignDivider}"
                 BorderThickness="1"
                 CornerRadius="8"
                 Padding="16"
@@ -48,24 +55,24 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Large Status Icon -->
-                <Border Grid.Column="0" 
-                        Width="48" Height="48" 
+                <Border Grid.Column="0"
+                        Width="48" Height="48"
                         CornerRadius="24"
                         Margin="0,0,16,0"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Center">
                     <Border.Style>
                         <Style TargetType="Border">
-                            <Setter Property="Background" Value="#F3F4F6"/> <!-- Default Gray -->
+                            <Setter Property="Background" Value="{StaticResource UnknownBgBrush}"/>
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding Status}" Value="Pass">
-                                    <Setter Property="Background" Value="#DEF7EC"/> <!-- Green -->
+                                    <Setter Property="Background" Value="{StaticResource PassBgBrush}"/>
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Status}" Value="Fail">
-                                    <Setter Property="Background" Value="#FDE8E8"/> <!-- Red -->
+                                    <Setter Property="Background" Value="{StaticResource FailBgBrush}"/>
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Status}" Value="Warn">
-                                    <Setter Property="Background" Value="#FEF3C7"/> <!-- Yellow -->
+                                    <Setter Property="Background" Value="{StaticResource WarnBgBrush}"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -94,21 +101,21 @@
                 </Border>
 
                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Diagnosis}" 
-                               FontSize="16" 
+                    <TextBlock Text="{Binding Diagnosis}"
+                               FontSize="16"
                                FontWeight="SemiBold"
                                TextWrapping="Wrap"
                                Visibility="{Binding HasDiagnosis, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                    
-                    <TextBlock Text="{Binding Recommendation}" 
-                               Foreground="{DynamicResource MutedBrush}"
+
+                    <TextBlock Text="{Binding Recommendation}"
+                               Foreground="{DynamicResource MaterialDesignBodyLight}"
                                Margin="0,4,0,0"
                                TextWrapping="Wrap"
                                Visibility="{Binding HasDiagnosis, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                               
+
                     <!-- Fallback if no diagnosis parsed -->
-                    <TextBlock Text="{Binding StatusText}" 
-                               FontSize="16" 
+                    <TextBlock Text="{Binding StatusText}"
+                               FontSize="16"
                                FontWeight="SemiBold"
                                Visibility="{Binding HasDiagnosis, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
                 </StackPanel>
@@ -116,17 +123,22 @@
         </Border>
 
         <!-- Информация -->
-        <ScrollViewer Grid.Row="2" 
+        <ScrollViewer Grid.Row="2"
                       VerticalScrollBarVisibility="Auto">
             <StackPanel>
-                
+
                 <!-- Visual Checks Grid -->
-                <TextBlock Text="Результаты проверок" 
-                           FontSize="16" 
+                <TextBlock Text="Результаты проверок"
+                           FontSize="16"
                            FontWeight="SemiBold"
                            Margin="0,0,0,12"/>
-                           
-                <Border Background="#F9FAFB" CornerRadius="8" Padding="16" Margin="0,0,0,20">
+
+                <Border Background="{DynamicResource MaterialDesignCardBackground}"
+                    BorderBrush="{DynamicResource MaterialDesignDivider}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16"
+                    Margin="0,0,0,20">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -135,20 +147,20 @@
                             <ColumnDefinition Width="Auto"/> <!-- Separator -->
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        
+
                         <!-- DNS -->
                         <StackPanel Grid.Column="0" HorizontalAlignment="Center">
-                            <TextBlock Text="DNS" FontWeight="Bold" Foreground="#6B7280" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                            <TextBlock Text="DNS" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}" HorizontalAlignment="Center" Margin="0,0,0,8"/>
                             <Border Width="32" Height="32" CornerRadius="16" HorizontalAlignment="Center">
                                 <Border.Style>
                                     <Style TargetType="Border">
-                                        <Setter Property="Background" Value="#E5E7EB"/>
+                                        <Setter Property="Background" Value="{StaticResource UnknownBgBrush}"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsDnsOk}" Value="True">
-                                                <Setter Property="Background" Value="#DEF7EC"/>
+                                                <Setter Property="Background" Value="{StaticResource PassBgBrush}"/>
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding IsDnsFail}" Value="True">
-                                                <Setter Property="Background" Value="#FDE8E8"/>
+                                                <Setter Property="Background" Value="{StaticResource FailBgBrush}"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -157,7 +169,7 @@
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="Text" Value="?"/>
-                                            <Setter Property="Foreground" Value="#6B7280"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBodyLight}"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsDnsOk}" Value="True">
                                                     <Setter Property="Text" Value="✓"/>
@@ -172,24 +184,24 @@
                                     </TextBlock.Style>
                                 </TextBlock>
                             </Border>
-                            <TextBlock Text="{Binding DnsStatus}" FontSize="12" Margin="0,4,0,0" HorizontalAlignment="Center" Foreground="#374151"/>
+                            <TextBlock Text="{Binding DnsStatus}" FontSize="12" Margin="0,4,0,0" HorizontalAlignment="Center" Foreground="{DynamicResource MaterialDesignBody}"/>
                         </StackPanel>
-                        
-                        <Rectangle Grid.Column="1" Width="1" Fill="#E5E7EB" Margin="0,4"/>
-                        
+
+                        <Rectangle Grid.Column="1" Width="1" Fill="{DynamicResource MaterialDesignDivider}" Margin="0,4"/>
+
                         <!-- TCP -->
                         <StackPanel Grid.Column="2" HorizontalAlignment="Center">
-                            <TextBlock Text="TCP" FontWeight="Bold" Foreground="#6B7280" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                            <TextBlock Text="TCP" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}" HorizontalAlignment="Center" Margin="0,0,0,8"/>
                             <Border Width="32" Height="32" CornerRadius="16" HorizontalAlignment="Center">
                                 <Border.Style>
                                     <Style TargetType="Border">
-                                        <Setter Property="Background" Value="#E5E7EB"/>
+                                        <Setter Property="Background" Value="{StaticResource UnknownBgBrush}"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsTcpOk}" Value="True">
-                                                <Setter Property="Background" Value="#DEF7EC"/>
+                                                <Setter Property="Background" Value="{StaticResource PassBgBrush}"/>
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding IsTcpFail}" Value="True">
-                                                <Setter Property="Background" Value="#FDE8E8"/>
+                                                <Setter Property="Background" Value="{StaticResource FailBgBrush}"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -198,7 +210,7 @@
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="Text" Value="?"/>
-                                            <Setter Property="Foreground" Value="#6B7280"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBodyLight}"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsTcpOk}" Value="True">
                                                     <Setter Property="Text" Value="✓"/>
@@ -213,24 +225,24 @@
                                     </TextBlock.Style>
                                 </TextBlock>
                             </Border>
-                            <TextBlock Text="{Binding TcpStatus}" FontSize="12" Margin="0,4,0,0" HorizontalAlignment="Center" Foreground="#374151"/>
+                            <TextBlock Text="{Binding TcpStatus}" FontSize="12" Margin="0,4,0,0" HorizontalAlignment="Center" Foreground="{DynamicResource MaterialDesignBody}"/>
                         </StackPanel>
-                        
-                        <Rectangle Grid.Column="3" Width="1" Fill="#E5E7EB" Margin="0,4"/>
-                        
+
+                        <Rectangle Grid.Column="3" Width="1" Fill="{DynamicResource MaterialDesignDivider}" Margin="0,4"/>
+
                         <!-- TLS -->
                         <StackPanel Grid.Column="4" HorizontalAlignment="Center">
-                            <TextBlock Text="TLS" FontWeight="Bold" Foreground="#6B7280" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                            <TextBlock Text="TLS" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}" HorizontalAlignment="Center" Margin="0,0,0,8"/>
                             <Border Width="32" Height="32" CornerRadius="16" HorizontalAlignment="Center">
                                 <Border.Style>
                                     <Style TargetType="Border">
-                                        <Setter Property="Background" Value="#E5E7EB"/>
+                                        <Setter Property="Background" Value="{StaticResource UnknownBgBrush}"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsTlsOk}" Value="True">
-                                                <Setter Property="Background" Value="#DEF7EC"/>
+                                                <Setter Property="Background" Value="{StaticResource PassBgBrush}"/>
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding IsTlsFail}" Value="True">
-                                                <Setter Property="Background" Value="#FDE8E8"/>
+                                                <Setter Property="Background" Value="{StaticResource FailBgBrush}"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -239,7 +251,7 @@
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="Text" Value="?"/>
-                                            <Setter Property="Foreground" Value="#6B7280"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBodyLight}"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsTlsOk}" Value="True">
                                                     <Setter Property="Text" Value="✓"/>
@@ -254,14 +266,14 @@
                                     </TextBlock.Style>
                                 </TextBlock>
                             </Border>
-                            <TextBlock Text="{Binding TlsStatus}" FontSize="12" Margin="0,4,0,0" HorizontalAlignment="Center" Foreground="#374151"/>
+                            <TextBlock Text="{Binding TlsStatus}" FontSize="12" Margin="0,4,0,0" HorizontalAlignment="Center" Foreground="{DynamicResource MaterialDesignBody}"/>
                         </StackPanel>
                     </Grid>
                 </Border>
-            
+
                 <!-- Основная информация -->
-                <TextBlock Text="Параметры соединения" 
-                           FontSize="16" 
+                <TextBlock Text="Параметры соединения"
+                           FontSize="16"
                            FontWeight="SemiBold"
                            Margin="0,0,0,12"/>
 
@@ -277,35 +289,35 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Хост:" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"/>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Хост:" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,8"/>
                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Host}" Margin="0,0,0,8"/>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Задержка (Ping):" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Задержка (Ping):" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,8"/>
                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Latency}" Margin="0,0,0,8"/>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Fallback IP:" Foreground="{DynamicResource MutedBrush}"
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Fallback IP:" Foreground="{DynamicResource MaterialDesignBodyLight}"
                                Visibility="{Binding HasFallbackIp, Converter={StaticResource BoolToVisibilityConverter}}"/>
                     <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding FallbackIp}"
                                Visibility="{Binding HasFallbackIp, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </Grid>
 
                 <!-- Детали теста -->
-                <TextBlock Text="Технические подробности" 
-                           FontSize="16" 
+                <TextBlock Text="Технические подробности"
+                           FontSize="16"
                            FontWeight="SemiBold"
                            Margin="0,8,0,12"
                            Visibility="{Binding HasDetails, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
-                <Border Background="#F3F4F6" 
-                        BorderBrush="#E5E7EB" 
-                        BorderThickness="1" 
-                        CornerRadius="6" 
+                <Border Background="{DynamicResource MaterialDesignCardBackground}"
+                    BorderBrush="{DynamicResource MaterialDesignDivider}"
+                        BorderThickness="1"
+                        CornerRadius="6"
                         Padding="12"
                         Visibility="{Binding HasDetails, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <TextBlock Text="{Binding Details}" 
+                    <TextBlock Text="{Binding Details}"
                                FontFamily="Consolas"
                                FontSize="13"
-                               Foreground="#1F2937"/>
+                           Foreground="{DynamicResource MaterialDesignBody}"/>
                 </Border>
             </StackPanel>
         </ScrollViewer>

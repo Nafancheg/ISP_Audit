@@ -181,34 +181,63 @@
                                         <!-- Кнопки в две колонки -->
                                         <UniformGrid Columns="2" Rows="4" HorizontalAlignment="Stretch">
                                             <ToggleButton IsChecked="{Binding IsFragmentEnabled, Mode=TwoWay}"
-                                                          Content="Frag"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="Фрагментация TLS ClientHello (сегменты отправляются по порядку)"
-                                                          Margin="0,0,4,4"/>
+                                                          Margin="0,0,4,4">
+                                                <ToggleButton.Content>
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                        <materialDesign:PackIcon Kind="Tune" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="Frag"/>
+                                                    </StackPanel>
+                                                </ToggleButton.Content>
+                                            </ToggleButton>
 
                                             <ToggleButton IsChecked="{Binding IsDisorderEnabled, Mode=TwoWay}"
-                                                          Content="Frag+Rev"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="Фрагментация TLS ClientHello + отправка фрагментов в обратном порядке"
-                                                          Margin="4,0,0,4"/>
+                                                          Margin="4,0,0,4">
+                                                <ToggleButton.Content>
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                        <materialDesign:PackIcon Kind="ThemeLightDark" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="Frag+Rev"/>
+                                                    </StackPanel>
+                                                </ToggleButton.Content>
+                                            </ToggleButton>
 
                                             <ToggleButton IsChecked="{Binding IsFakeEnabled, Mode=TwoWay}"
-                                                          Content="TLS Fake"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="Fake TTL пакет"
-                                                          Margin="0,0,4,4"/>
+                                                          Margin="0,0,4,4">
+                                                <ToggleButton.Content>
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                        <materialDesign:PackIcon Kind="Alert" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="TLS Fake"/>
+                                                    </StackPanel>
+                                                </ToggleButton.Content>
+                                            </ToggleButton>
 
                                             <ToggleButton IsChecked="{Binding IsDropRstEnabled, Mode=TwoWay}"
-                                                          Content="Drop RST"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="Блокировка TCP RST пакетов"
-                                                          Margin="4,0,0,4"/>
+                                                          Margin="4,0,0,4">
+                                                <ToggleButton.Content>
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                        <materialDesign:PackIcon Kind="InformationOutline" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="Drop RST"/>
+                                                    </StackPanel>
+                                                </ToggleButton.Content>
+                                            </ToggleButton>
 
                                             <ToggleButton IsChecked="{Binding IsQuicFallbackEnabled, Mode=TwoWay}"
-                                                          Content="QUIC→TCP"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="QUIC fallback: глушить UDP/443, чтобы клиент откатился на TCP/HTTPS"
                                                           Margin="0,0,4,4">
+                                                <ToggleButton.Content>
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                        <materialDesign:PackIcon Kind="LanConnect" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="QUIC→TCP"/>
+                                                    </StackPanel>
+                                                </ToggleButton.Content>
                                                 <ToggleButton.ContextMenu>
                                                     <ContextMenu>
                                                         <MenuItem Header="Селективно (по цели)"
@@ -226,16 +255,27 @@
                                             </ToggleButton>
 
                                             <ToggleButton IsChecked="{Binding IsAllowNoSniEnabled, Mode=TwoWay}"
-                                                          Content="No SNI"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="Разрешить обход даже когда SNI не распознан/отсутствует (ECH/ESNI/сегментация)"
-                                                          Margin="4,0,0,4"/>
+                                                          Margin="4,0,0,4">
+                                                <ToggleButton.Content>
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                        <materialDesign:PackIcon Kind="ChartBar" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="No SNI"/>
+                                                    </StackPanel>
+                                                </ToggleButton.Content>
+                                            </ToggleButton>
 
                                             <ToggleButton IsChecked="{Binding IsDoHEnabled, Mode=TwoWay}"
-                                                          Content="🔒 DoH"
                                                           Style="{StaticResource BypassToggleButtonStyle}"
                                                           ToolTip="DNS-over-HTTPS (ПКМ для выбора провайдера)"
                                                           Margin="0,0,4,0">
+                                                <ToggleButton.Content>
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                        <materialDesign:PackIcon Kind="LightbulbOutline" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="DoH"/>
+                                                    </StackPanel>
+                                                </ToggleButton.Content>
                                                 <ToggleButton.ContextMenu>
                                                     <ContextMenu ItemsSource="{Binding Bypass.AvailableDnsPresets}">
                                                         <ContextMenu.ItemContainerStyle>

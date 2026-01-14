@@ -8,7 +8,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <!-- Material Design Theme (переключается программно) -->
                 <materialDesign:BundledTheme BaseTheme="Light" PrimaryColor="Blue" SecondaryColor="Cyan" />
-                
+
                 <!-- Material Design 3 Defaults -->
                 <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesign3.Defaults.xaml" />
                 <!-- Базовые стили контролов, чтобы гарантированно были ключи MaterialDesign* -->
@@ -35,7 +35,7 @@
             <SolidColorBrush x:Key="IdleBrush" Color="#9E9E9E"/>
             <SolidColorBrush x:Key="RunningBrush" Color="#2196F3"/>
 
-            <!-- 
+            <!--
                  Алиасы для совместимости со старым кодом.
                  ВАЖНО: MaterialDesignPaper, MaterialDesignBody и т.д. — это BRUSH-ы, а не Color!
                  Поэтому используем их напрямую через DynamicResource, без SolidColorBrush-обёртки.
@@ -45,7 +45,7 @@
             <!-- MutedBrush — приглушённый текст -->
             <!-- BorderBrush — разделители -->
             <!-- PrimaryBrush — основной акцент -->
-            
+
             <!-- Фиксированный светло-голубой для hover состояния -->
             <SolidColorBrush x:Key="Primary200" Color="#BBDEFB"/>
 
@@ -99,7 +99,7 @@
                 <Setter Property="MinHeight" Value="42"/>
             </Style>
 
-            <!-- 
+            <!--
                  Стиль Outlined ToggleButton для панели обхода блокировок
                  Аналог MaterialDesignOutlinedButton, но для ToggleButton
             -->

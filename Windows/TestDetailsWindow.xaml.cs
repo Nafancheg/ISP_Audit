@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Windows;
 using IspAudit.Core.Diagnostics;
 using IspAudit.Models;
@@ -28,9 +29,17 @@ namespace IspAudit.Windows
             StatusText = testResult.StatusText;
             Error = testResult.Error ?? "";
             FallbackIp = testResult.Target?.FallbackIp ?? "";
-            
-            // Парсим детали
+
+            // Парсим детали (в т.ч. форматы без разделителей '|')
             ParseDetails(testResult.Details);
+
+            // Fallback: если по деталям ничего не распарсилось, не показываем "UNKNOWN" при успешном статусе карточки.
+            if (Status == TestStatus.Pass)
+            {
+                if (DnsStatus == BlockageCode.StatusUnknown) DnsStatus = BlockageCode.StatusOk;
+                if (TcpStatus == BlockageCode.StatusUnknown) TcpStatus = BlockageCode.StatusOk;
+                if (TlsStatus == BlockageCode.StatusUnknown) TlsStatus = BlockageCode.StatusOk;
+            }
         }
 
         private void ParseDetails(string? rawDetails)
@@ -49,6 +58,8 @@ namespace IspAudit.Windows
             try
             {
                 var parts = rawDetails.Split('|');
+
+                // Вариант 1: канонический формат с '|'
                 if (parts.Length >= 3)
                 {
                     // Part 1: Host info
@@ -93,8 +104,24 @@ namespace IspAudit.Windows
                 }
                 else
                 {
-                    // Fallback parsing logic if format is different
-                    Diagnosis = "Не удалось определить точную причину.";
+                    // Вариант 2: формат без '|', но с маркерами DNS/TCP/TLS
+                    if (rawDetails.Contains("DNS:") || rawDetails.Contains("TCP:") || rawDetails.Contains("TLS:"))
+                    {
+                        DnsStatus = ParseCheckStatus(rawDetails, "DNS");
+                        TcpStatus = ParseCheckStatus(rawDetails, "TCP");
+                        TlsStatus = ParseCheckStatus(rawDetails, "TLS");
+
+                        // Попробуем вытащить код блокировки (последний токен ALL_CAPS / с подчёркиваниями)
+                        var lastToken = rawDetails.Trim().Split(' ').LastOrDefault() ?? string.Empty;
+                        var normalized = BlockageCode.Normalize(lastToken) ?? lastToken;
+                        Diagnosis = GetDiagnosisText(normalized);
+                        Recommendation = GetRecommendationText(normalized);
+                    }
+                    else
+                    {
+                        // Совсем другой формат: оставляем статусы UNKNOWN, но даём понятный диагноз.
+                        Diagnosis = "Не удалось определить точную причину.";
+                    }
                 }
             }
             catch
