@@ -432,12 +432,16 @@ namespace IspAudit.ViewModels
                     trafficFilter);
 
                 // 7. Создание LiveTestingPipeline (тестирование + bypass)
+                var effectiveTestTimeout = bypassController.IsVpnDetected
+                    ? TimeSpan.FromSeconds(8)
+                    : TimeSpan.FromSeconds(3);
+
                 var pipelineConfig = new PipelineConfig
                 {
                     EnableLiveTesting = true,
                     EnableAutoBypass = enableAutoBypass,
                     MaxConcurrentTests = 5,
-                    TestTimeout = TimeSpan.FromSeconds(3)
+                    TestTimeout = effectiveTestTimeout
                 };
 
                 _testingPipeline = new LiveTestingPipeline(
@@ -636,12 +640,16 @@ namespace IspAudit.ViewModels
                 });
 
                 // Создаем pipeline только для тестирования (без сниффера)
+                var effectiveTestTimeout = bypassController.IsVpnDetected
+                    ? TimeSpan.FromSeconds(8)
+                    : TimeSpan.FromSeconds(3);
+
                 var pipelineConfig = new PipelineConfig
                 {
                     EnableLiveTesting = true,
                     EnableAutoBypass = false, // Bypass уже настроен контроллером
                     MaxConcurrentTests = 5,
-                    TestTimeout = TimeSpan.FromSeconds(3)
+                    TestTimeout = effectiveTestTimeout
                 };
 
                 // Используем существующий bypass manager из контроллера

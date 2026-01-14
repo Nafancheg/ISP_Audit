@@ -19,10 +19,10 @@ namespace IspAudit.Utils
         private readonly ConcurrentDictionary<string, string> _dnsCache;
         private readonly ConcurrentDictionary<string, string> _sniCache;
         private static readonly bool VerboseDnsLogging = false;
-        
+
         // Хранение активных запросов: TransactionID -> (Hostname, Timestamp)
         private readonly ConcurrentDictionary<ushort, (string Hostname, DateTime Timestamp)> _pendingRequests = new();
-        
+
         // Хранение обнаруженных сбоев: Hostname -> Info
         private readonly ConcurrentDictionary<string, DnsFailureInfo> _failedRequests = new();
 
@@ -34,7 +34,7 @@ namespace IspAudit.Utils
         public int ParsedCount { get; private set; }
 
         private readonly CancellationTokenSource _cts = new();
-        
+
         /// <summary>
         /// Кеш DNS: IP → hostname
         /// </summary>
@@ -137,7 +137,7 @@ namespace IspAudit.Utils
             {
                 // Парсим исходящий запрос DNS
                 TryParseDnsRequest(packet.Buffer, packet.Length);
-                
+
                 // Парсим TLS SNI (для определения хоста без DNS)
                 TryParseTlsSni(packet.Buffer, packet.Length);
             }
@@ -193,12 +193,12 @@ namespace IspAudit.Utils
                 // 2. Parse TCP Header to find Payload
                 int tcpOffset = ipHeaderLen;
                 if (tcpOffset + 20 > length) return;
-                
+
                 int tcpHeaderLen = ((buffer[tcpOffset + 12] >> 4) & 0x0F) * 4;
                 int srcPort = (buffer[tcpOffset + 0] << 8) | buffer[tcpOffset + 1];
                 int destPort = (buffer[tcpOffset + 2] << 8) | buffer[tcpOffset + 3];
                 int payloadOffset = tcpOffset + tcpHeaderLen;
-                
+
                 if (payloadOffset >= length) return; // No payload
 
                 var payloadLen = length - payloadOffset;
@@ -247,20 +247,49 @@ namespace IspAudit.Utils
             if (string.IsNullOrWhiteSpace(hostname)) return;
 
             var lowerName = hostname.ToLowerInvariant();
-            var isNew = true;
-            if (_sniCache.TryGetValue(destIp, out var existingName) && existingName == lowerName)
+
+            // ВАЖНО: SNI-кеш по IP нужен только как fallback/подсказка.
+            // Если мы будем перетирать SNI на каждый новый ClientHello (youtube.com -> youtube-ui.l.google.com -> ...),
+            // результаты тестов станут «плавать» между прогонами из-за гонок по времени.
+            // Политика:
+            // - если IP ещё не встречался — сохраняем и репортим
+            // - если имя совпало — игнорируем
+            // - если имя отличается — НЕ перетираем (first-wins), кроме случая когда текущее имя шумовое, а новое — нет
+            if (_sniCache.TryGetValue(destIp, out var existingName))
             {
-                isNew = false;
+                if (string.Equals(existingName, lowerName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                try
+                {
+                    var existingIsNoise = NoiseHostFilter.Instance.IsNoiseHost(existingName);
+                    var newIsNoise = NoiseHostFilter.Instance.IsNoiseHost(lowerName);
+
+                    if (existingIsNoise && !newIsNoise)
+                    {
+                        _sniCache[destIp] = lowerName;
+                        _progress?.Report($"[SNI] Detected: {destIp} -> {lowerName}");
+                        if (destAddress != null)
+                        {
+                            OnSniDetected?.Invoke(destAddress, destPort, lowerName);
+                        }
+                    }
+                }
+                catch
+                {
+                    // Не даём стабилизации SNI ломать пайплайн
+                }
+
+                return;
             }
 
-            if (isNew)
+            _sniCache[destIp] = lowerName;
+            _progress?.Report($"[SNI] Detected: {destIp} -> {lowerName}");
+            if (destAddress != null)
             {
-                _sniCache[destIp] = lowerName;
-                _progress?.Report($"[SNI] Detected: {destIp} -> {lowerName}");
-                if (destAddress != null)
-                {
-                    OnSniDetected?.Invoke(destAddress, destPort, lowerName);
-                }
+                OnSniDetected?.Invoke(destAddress, destPort, lowerName);
             }
         }
 
@@ -409,25 +438,25 @@ namespace IspAudit.Utils
             try
             {
                 if (length < 28) return; // Минимум: IP (20) + UDP (8)
-                
+
                 // Проверяем протокол — должен быть UDP (17)
                 int protocol = buffer[9];
                 if (protocol != 17) return; // Не UDP — не DNS
-                
+
                 int ipHeaderLen = (buffer[0] & 0x0F) * 4;
-                
+
                 // Проверяем порт назначения — должен быть 53 (DNS)
                 int destPort = (buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1];
                 if (destPort != 53) return; // Не DNS порт
-                
+
                 int udpHeaderLen = 8;
                 int dnsOffset = ipHeaderLen + udpHeaderLen;
-                
+
                 if (dnsOffset + 12 > length) return;
 
                 // Transaction ID
                 ushort txId = (ushort)((buffer[dnsOffset] << 8) | buffer[dnsOffset + 1]);
-                
+
                 // Flags
                 int flags = (buffer[dnsOffset + 2] << 8) | buffer[dnsOffset + 3];
                 bool isResponse = (flags & 0x8000) != 0;
@@ -436,7 +465,7 @@ namespace IspAudit.Utils
                 // Парсим имя вопроса
                 int pos = dnsOffset + 12;
                 string? qname = ReadDnsName(buffer, pos, dnsOffset);
-                
+
                 if (!string.IsNullOrEmpty(qname))
                 {
                     var lower = qname.ToLowerInvariant();
@@ -456,22 +485,22 @@ namespace IspAudit.Utils
             try
             {
                 if (length < 28) return false; // Минимум: IP (20) + UDP (8)
-                
+
                 // Проверяем протокол — должен быть UDP (17)
                 int protocol = buffer[9];
                 if (protocol != 17) return false; // Не UDP — не DNS
-                
+
                 int ipHeaderLen = (buffer[0] & 0x0F) * 4;
-                
+
                 // Проверяем порт источника — должен быть 53 (DNS ответ)
                 int srcPort = (buffer[ipHeaderLen] << 8) | buffer[ipHeaderLen + 1];
                 if (srcPort != 53) return false; // Не DNS порт
-                
+
                 int udpHeaderLen = 8;
                 int dnsOffset = ipHeaderLen + udpHeaderLen;
-                
+
                 if (dnsOffset + 12 > length) return false;
-                
+
                 // Transaction ID
                 ushort txId = (ushort)((buffer[dnsOffset] << 8) | buffer[dnsOffset + 1]);
 
@@ -479,10 +508,10 @@ namespace IspAudit.Utils
                 int flags = (buffer[dnsOffset + 2] << 8) | buffer[dnsOffset + 3];
                 bool isResponse = (flags & 0x8000) != 0;
                 if (!isResponse) return false;
-                
+
                 // RCODE (нижние 4 бита флагов)
                 int rcode = flags & 0x0F;
-                
+
                 // Проверяем, был ли такой запрос
                 if (_pendingRequests.TryRemove(txId, out var requestInfo))
                 {
@@ -508,9 +537,9 @@ namespace IspAudit.Utils
 
                 int answerCount = (buffer[dnsOffset + 6] << 8) | buffer[dnsOffset + 7];
                 if (answerCount == 0) return false;
-                
+
                 int pos = dnsOffset + 12;
-                
+
                 // Пропускаем секцию вопросов
                 int questionCount = (buffer[dnsOffset + 4] << 8) | buffer[dnsOffset + 5];
                 for (int q = 0; q < questionCount; q++)
@@ -527,18 +556,18 @@ namespace IspAudit.Utils
                     pos += 5; // null terminator + type + class
                     if (pos >= length) return false;
                 }
-                
+
                 // Парсим секцию ответов (A-записи)
                 for (int a = 0; a < answerCount && pos + 12 < length; a++)
                 {
                     string? name = null;
-                    
+
                     // Читаем имя (с обработкой сжатия)
                     // ВАЖНО: В DNS ответе имя в секции Answer часто является указателем на имя в секции Question.
-                    // Но иногда это CNAME. Нам нужно имя, к которому был запрос (Question Name), 
+                    // Но иногда это CNAME. Нам нужно имя, к которому был запрос (Question Name),
                     // но здесь мы парсим Answer.
                     // Если это A-запись, то 'name' - это имя хоста.
-                    
+
                     if ((buffer[pos] & 0xC0) == 0xC0)
                     {
                         int pointer = ((buffer[pos] & 0x3F) << 8) | buffer[pos + 1];
@@ -554,13 +583,13 @@ namespace IspAudit.Utils
                         }
                         pos++;
                     }
-                    
+
                     if (pos + 10 > length) break;
-                    
+
                     int type = (buffer[pos] << 8) | buffer[pos + 1];
                     int dataLen = (buffer[pos + 8] << 8) | buffer[pos + 9];
                     pos += 10;
-                    
+
                     // Тип A (IPv4)
                     if (type == 1 && dataLen == 4 && pos + 4 <= length)
                     {
@@ -573,7 +602,7 @@ namespace IspAudit.Utils
                             {
                                 if (existingName == lowerName) isNew = false;
                             }
-                            
+
                             if (isNew)
                             {
                                 _dnsCache[ip] = lowerName;
@@ -599,7 +628,7 @@ namespace IspAudit.Utils
                             {
                                 if (existingName == lowerName) isNew = false;
                             }
-                            
+
                             if (isNew)
                             {
                                 _dnsCache[ip] = lowerName;
@@ -612,10 +641,10 @@ namespace IspAudit.Utils
                         }
                     }
                     // Тип CNAME (5) - можно было бы отслеживать цепочки, но пока просто пропускаем
-                    
+
                     pos += dataLen;
                 }
-                
+
                 return true;
             }
             catch
@@ -662,7 +691,7 @@ namespace IspAudit.Utils
         {
             var parts = new System.Collections.Generic.List<string>();
             int maxIterations = 50;
-            
+
             while (pos < buffer.Length && buffer[pos] != 0 && maxIterations-- > 0)
             {
                 if ((buffer[pos] & 0xC0) == 0xC0)
@@ -672,15 +701,15 @@ namespace IspAudit.Utils
                     pos = dnsOffset + pointer;
                     continue;
                 }
-                
+
                 int len = buffer[pos];
                 if (len == 0 || pos + len + 1 > buffer.Length) break;
-                
+
                 var label = System.Text.Encoding.ASCII.GetString(buffer, pos + 1, len);
                 parts.Add(label);
                 pos += len + 1;
             }
-            
+
             return parts.Count > 0 ? string.Join(".", parts) : null;
         }
 
@@ -706,7 +735,7 @@ namespace IspAudit.Utils
         }
 
         public event Action<string, string>? OnDnsLookupFailed;
-        
+
         /// <summary>
         /// Событие при обновлении/добавлении hostname для IP (IP, Hostname)
         /// </summary>

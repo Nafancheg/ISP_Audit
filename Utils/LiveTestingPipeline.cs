@@ -114,7 +114,7 @@ namespace IspAudit.Utils
 
             _autoHostlist = autoHostlist;
 
-            _tester = tester ?? new StandardHostTester(progress, dnsParser?.DnsCache);
+            _tester = tester ?? new StandardHostTester(progress, dnsParser?.DnsCache, config.TestTimeout);
 
             // v2 store/adapter (без диагнозов/стратегий на этом шаге)
             _signalsAdapterV2 = new SignalsAdapterV2(new InMemorySignalSequenceStore());

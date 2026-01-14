@@ -12,11 +12,18 @@ namespace IspAudit.Core.Modules
     {
         private readonly IProgress<string>? _progress;
         private readonly System.Collections.Generic.IReadOnlyDictionary<string, string>? _dnsCache;
+        private readonly TimeSpan _testTimeout;
 
-        public StandardHostTester(IProgress<string>? progress, System.Collections.Generic.IReadOnlyDictionary<string, string>? dnsCache = null)
+        public StandardHostTester(
+            IProgress<string>? progress,
+            System.Collections.Generic.IReadOnlyDictionary<string, string>? dnsCache = null,
+            TimeSpan? testTimeout = null)
         {
             _progress = progress;
             _dnsCache = dnsCache;
+            _testTimeout = testTimeout.HasValue && testTimeout.Value > TimeSpan.Zero
+                ? testTimeout.Value
+                : TimeSpan.FromSeconds(3);
         }
 
         public async Task<HostTested> TestHostAsync(HostDiscovered host, CancellationToken ct)
@@ -88,7 +95,8 @@ namespace IspAudit.Core.Modules
                     try
                     {
                         var dnsCheckTask = System.Net.Dns.GetHostEntryAsync(hostname, ct);
-                        var timeoutTask = Task.Delay(2000, ct);
+                        var dnsTimeoutMs = (int)Math.Clamp(_testTimeout.TotalMilliseconds, 2000, 4000);
+                        var timeoutTask = Task.Delay(dnsTimeoutMs, ct);
 
                         var completedTask = await Task.WhenAny(dnsCheckTask, timeoutTask).ConfigureAwait(false);
                         if (completedTask != dnsCheckTask)
@@ -115,7 +123,7 @@ namespace IspAudit.Core.Modules
                     using var tcpClient = new System.Net.Sockets.TcpClient();
                     // Используем CancellationToken для корректной отмены
                     using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    linkedCts.CancelAfter(3000);
+                    linkedCts.CancelAfter(_testTimeout);
 
                     try
                     {
@@ -158,7 +166,7 @@ namespace IspAudit.Core.Modules
                         using var tcpClient = new System.Net.Sockets.TcpClient();
                         // Используем CancellationToken
                         using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                        connectCts.CancelAfter(3000);
+                        connectCts.CancelAfter(_testTimeout);
                         await tcpClient.ConnectAsync(host.RemoteIp, 443, connectCts.Token).ConfigureAwait(false);
 
                         using var sslStream = new System.Net.Security.SslStream(tcpClient.GetStream(), false);
@@ -172,7 +180,7 @@ namespace IspAudit.Core.Modules
                         };
 
                         using var tlsCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                        tlsCts.CancelAfter(3000);
+                        tlsCts.CancelAfter(_testTimeout);
 
                         await sslStream.AuthenticateAsClientAsync(sslOptions, tlsCts.Token).ConfigureAwait(false);
                         tlsOk = true;
@@ -197,7 +205,8 @@ namespace IspAudit.Core.Modules
                 }
                 else if (host.RemotePort == 443)
                 {
-                    // Не можем проверить TLS без hostname
+                    // Не можем проверить TLS без hostname.
+                    // Фикс недетерминированности делаем не через «псевдо-ошибку», а через стабилизацию SNI-кеша и таймаутов.
                     tlsOk = tcpOk;
                 }
                 else
