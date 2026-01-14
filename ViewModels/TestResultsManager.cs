@@ -729,7 +729,7 @@ namespace IspAudit.ViewModels
                 "TLS_DISORDER" => "Frag+Rev",
                 "TLS_FAKE" => "TLS Fake",
                 "DROP_RST" => "Drop RST",
-                "DOH" => "🔒 DoH",
+                "DOH" => "DoH",
                 "DROP_UDP_443" => "QUIC→TCP",
                 "ALLOW_NO_SNI" => "No SNI",
                 _ => t
