@@ -201,49 +201,49 @@ namespace IspAudit.Models
                 if (string.IsNullOrWhiteSpace(text)) return Array.Empty<string>();
 
                 // Иконки делаем консистентными для таблицы и кнопок слева.
-                // Используем безопасные иконки, которые уже применяются в проекте.
+                // Используем emoji-глифы по ТЗ (визуально понятные и не зависят от PackIcon).
                 var icons = new System.Collections.Generic.List<string>();
 
                 bool Contains(string s) => text.Contains(s, StringComparison.OrdinalIgnoreCase);
 
-                // Frag / Frag+Rev
+                // ✂️ Frag / 🔀 Frag+Rev
                 if (Contains("Frag+Rev") || Contains("Disorder") || Contains("Rev"))
                 {
-                    icons.Add("ThemeLightDark");
+                    icons.Add("🔀");
                 }
                 else if (Contains("Frag"))
                 {
-                    icons.Add("Tune");
+                    icons.Add("✂️");
                 }
 
-                // TLS Fake
-                if (Contains("Fake"))
+                // 🎭 TLS Fake
+                if (Contains("TLS Fake") || Contains("Fake"))
                 {
-                    icons.Add("Alert");
+                    icons.Add("🎭");
                 }
 
-                // Drop RST
-                if (Contains("RST"))
+                // 🛡️ Drop RST
+                if (Contains("Drop RST") || Contains("RST"))
                 {
-                    icons.Add("InformationOutline");
+                    icons.Add("🛡️");
                 }
 
-                // QUIC→TCP
-                if (Contains("QUIC") || Contains("UDP/443"))
+                // ⬇️ QUIC→TCP
+                if (Contains("QUIC→TCP") || Contains("QUIC") || Contains("UDP/443"))
                 {
-                    icons.Add("LanConnect");
+                    icons.Add("⬇️");
                 }
 
-                // No SNI
+                // 🕶️ No SNI
                 if (Contains("No SNI") || Contains("ALLOW_NO_SNI"))
                 {
-                    icons.Add("ChartBar");
+                    icons.Add("🕶️");
                 }
 
-                // DoH
+                // 🔒 DoH
                 if (Contains("DoH") || Contains("DNS-over-HTTPS"))
                 {
-                    icons.Add("LightbulbOutline");
+                    icons.Add("🔒");
                 }
 
                 return icons.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();

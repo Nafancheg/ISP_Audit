@@ -186,7 +186,7 @@
                                                           Margin="0,0,4,4">
                                                 <ToggleButton.Content>
                                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                                        <materialDesign:PackIcon Kind="Tune" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="✂️" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                                         <TextBlock Text="Frag"/>
                                                     </StackPanel>
                                                 </ToggleButton.Content>
@@ -198,7 +198,7 @@
                                                           Margin="4,0,0,4">
                                                 <ToggleButton.Content>
                                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                                        <materialDesign:PackIcon Kind="ThemeLightDark" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="🔀" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                                         <TextBlock Text="Frag+Rev"/>
                                                     </StackPanel>
                                                 </ToggleButton.Content>
@@ -210,7 +210,7 @@
                                                           Margin="0,0,4,4">
                                                 <ToggleButton.Content>
                                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                                        <materialDesign:PackIcon Kind="Alert" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="🎭" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                                         <TextBlock Text="TLS Fake"/>
                                                     </StackPanel>
                                                 </ToggleButton.Content>
@@ -222,7 +222,7 @@
                                                           Margin="4,0,0,4">
                                                 <ToggleButton.Content>
                                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                                        <materialDesign:PackIcon Kind="InformationOutline" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="🛡️" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                                         <TextBlock Text="Drop RST"/>
                                                     </StackPanel>
                                                 </ToggleButton.Content>
@@ -234,7 +234,7 @@
                                                           Margin="0,0,4,4">
                                                 <ToggleButton.Content>
                                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                                        <materialDesign:PackIcon Kind="LanConnect" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="⬇️" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                                         <TextBlock Text="QUIC→TCP"/>
                                                     </StackPanel>
                                                 </ToggleButton.Content>
@@ -260,7 +260,7 @@
                                                           Margin="4,0,0,4">
                                                 <ToggleButton.Content>
                                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                                        <materialDesign:PackIcon Kind="ChartBar" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="🕶️" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                                         <TextBlock Text="No SNI"/>
                                                     </StackPanel>
                                                 </ToggleButton.Content>
@@ -272,7 +272,7 @@
                                                           Margin="0,0,4,0">
                                                 <ToggleButton.Content>
                                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                                        <materialDesign:PackIcon Kind="LightbulbOutline" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="🔒" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                                         <TextBlock Text="DoH"/>
                                                     </StackPanel>
                                                 </ToggleButton.Content>
@@ -561,8 +561,7 @@
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <materialDesign:PackIcon Width="18" Height="18" Margin="0,0,6,0"
-                                                                        Kind="{Binding ., Converter={StaticResource StringToPackIconKindConverter}}"/>
+                                                <TextBlock Text="{Binding .}" FontSize="16" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
