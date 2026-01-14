@@ -1214,21 +1214,9 @@ namespace IspAudit.ViewModels
 
             if (_testingPipeline != null)
             {
-                // ValueTask нельзя просто "потерять" (CA2012). Конвертируем в Task и логируем ошибки.
-                _ = _testingPipeline.EnqueueHostAsync(host).AsTask().ContinueWith(t =>
-                {
-                    try
-                    {
-                        if (t.Exception != null)
-                        {
-                            Log($"[SNI] Ошибка enqueue в pipeline: {t.Exception.GetBaseException().Message}");
-                        }
-                    }
-                    catch
-                    {
-                        // Игнорируем любые ошибки логирования
-                    }
-                }, TaskContinuationOptions.OnlyOnFaulted);
+                // ValueTask нельзя просто "потерять" (CA2012). Конвертируем в Task и отпускаем.
+                // Поздние SNI-события после остановки пайплайна считаем нормой: LiveTestingPipeline enqueue безопасен.
+                _ = _testingPipeline.EnqueueHostAsync(host).AsTask();
             }
             else
             {

@@ -38,6 +38,7 @@ namespace IspAudit.Utils
 
         // Health/observability: счётчики для понимания, где теряются данные.
         private long _statHostsEnqueued;
+        private long _statSnifferDropped;
         private long _statTesterDequeued;
         private long _statTesterDropped;
         private long _statTesterCompleted;
@@ -149,17 +150,47 @@ namespace IspAudit.Utils
         /// <summary>
         /// Добавляет обнаруженный хост в очередь на тестирование
         /// </summary>
-        public async ValueTask EnqueueHostAsync(HostDiscovered host)
+        public ValueTask EnqueueHostAsync(HostDiscovered host)
         {
             Interlocked.Increment(ref _statHostsEnqueued);
             Interlocked.Increment(ref _pendingInSniffer);
-            await _snifferQueue.Writer.WriteAsync(host).ConfigureAwait(false);
+
+            // ВАЖНО: события могут прийти поздно (например, SNI после остановки пайплайна).
+            // Для таких случаев enqueue должен быть безопасным и не создавать «ложные ошибки».
+            var enqueued = false;
+            try
+            {
+                // С DropOldest TryWrite обычно успешен даже при заполненной очереди; false чаще означает, что writer уже завершён.
+                if (_snifferQueue.Writer.TryWrite(host))
+                {
+                    enqueued = true;
+                    return ValueTask.CompletedTask;
+                }
+
+                Interlocked.Increment(ref _statSnifferDropped);
+            }
+            catch (ChannelClosedException)
+            {
+                Interlocked.Increment(ref _statSnifferDropped);
+            }
+            finally
+            {
+                // Если enqueue не состоялся, pending не будет уменьшен воркером.
+                // При успешном enqueue pending уменьшается в TesterWorker.
+                if (!enqueued)
+                {
+                    Interlocked.Decrement(ref _pendingInSniffer);
+                }
+            }
+
+            return ValueTask.CompletedTask;
         }
 
         private async Task HealthLoop(CancellationToken ct)
         {
             // Держим локальные снапшоты, чтобы писать только дельты.
             long prevEnq = 0;
+            long prevSnifferDrop = 0;
             long prevTesterDeq = 0;
             long prevTesterDrop = 0;
             long prevTesterOk = 0;
@@ -176,6 +207,7 @@ namespace IspAudit.Utils
                     await Task.Delay(TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
 
                     var enq = Interlocked.Read(ref _statHostsEnqueued);
+                    var snifferDrop = Interlocked.Read(ref _statSnifferDropped);
                     var testerDeq = Interlocked.Read(ref _statTesterDequeued);
                     var testerDrop = Interlocked.Read(ref _statTesterDropped);
                     var testerOk = Interlocked.Read(ref _statTesterCompleted);
@@ -199,12 +231,14 @@ namespace IspAudit.Utils
                     {
                         _progress?.Report(
                             $"[PipelineHealth] pending={pending} | enq={enq}(+{enq - prevEnq}) " +
+                            $"snifferDrop={snifferDrop}(+{snifferDrop - prevSnifferDrop}) " +
                             $"tester=deq:{testerDeq}(+{testerDeq - prevTesterDeq}) drop:{testerDrop}(+{testerDrop - prevTesterDrop}) ok:{testerOk}(+{testerOk - prevTesterOk}) err:{testerErr}(+{testerErr - prevTesterErr}) " +
                             $"classifier=deq:{classifierDeq}(+{classifierDeq - prevClassifierDeq}) " +
                             $"ui=issues:{uiIssues}(+{uiIssues - prevUiIssues}) logOnly:{uiLogOnly}(+{uiLogOnly - prevUiLogOnly}) drop:{uiDropped}(+{uiDropped - prevUiDropped})");
                     }
 
                     prevEnq = enq;
+                    prevSnifferDrop = snifferDrop;
                     prevTesterDeq = testerDeq;
                     prevTesterDrop = testerDrop;
                     prevTesterOk = testerOk;
