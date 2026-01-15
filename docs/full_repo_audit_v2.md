@@ -178,8 +178,8 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 3) Параметры стратегий добавлять только если они поддержаны в движке (без "магической" комбинации флагов).
 
 Актуализация (Design, 15.01.2026): Policy‑Driven Execution Plane
-- Зафиксирован архитектурный proposal: `docs/new_age.md`.
-- План внедрения инкрементальный (без переписывания WinDivert/TrafficEngine): UDP/443 политики → TTL‑block политики → TCP/80 → TCP/443 policy‑выбор стратегии → Semantic Groups как пакет политик.
+- Зафиксировано целевое направление в `ARCHITECTURE_CURRENT.md` (раздел про policy-driven).
+- План внедрения инкрементальный (без переписывания WinDivert/TrafficEngine): см. P0.2 в `docs/TODO.md`.
 
 Актуализация (Dev, 12.01.2026): базовые analyzers/линт для стабильности
 - Добавлены `Directory.Build.props` и `.editorconfig`.
