@@ -24,7 +24,7 @@
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                     UI LAYER (WPF)                              │
-│  App.xaml → MainWindow.xaml → MainViewModelRefactored           │
+│  App.xaml → MainWindow.xaml → MainViewModel                     │
 │                              ↓                                  │
 │  ├── BypassController (прокси к BypassStateManager)            │
 │  ├── DiagnosticOrchestrator (запуск диагностики)               │
@@ -298,7 +298,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 
 | Компонент | Входящих | Исходящих | Роль |
 |-----------|----------|-----------|------|
-| `MainViewModelRefactored` | 1 (MainWindow) | 3 (Bypass, Orchestrator, Results) | **Координатор UI** |
+| `MainViewModel` | 1 (MainWindow) | 3 (Bypass, Orchestrator, Results) | **Координатор UI** |
 | `DiagnosticOrchestrator` | 1 | 12+ | **Центральный оркестратор** |
 | `TrafficEngine` | 4 | 3 | **WinDivert менеджер** |
 | `LiveTestingPipeline` | 1 | 6 | **Pipeline обработки** |
@@ -641,7 +641,7 @@ Program.cs
     └── DiagnosticProfile (Profiles/Default.json)
 └── App.xaml
     └── MainWindow.xaml
-        └── MainViewModelRefactored
+        └── MainViewModel
             ├── BypassController
             │   ├── TlsBypassService
             │   │   ├── TrafficEngine
@@ -758,7 +758,7 @@ Program.cs
     - Обновлена краткая архитектура.
     - Удалены устаревшие разделы.
 - [x] Верификация архитектуры:
-    - Проверено соответствие диаграммы коду (`MainViewModelRefactored`, `DiagnosticOrchestrator`, `LiveTestingPipeline`).
+- Проверено соответствие диаграммы коду (`MainViewModel`, `DiagnosticOrchestrator`, `LiveTestingPipeline`).
 - [x] Унификация пространств имен (Namespaces):
     - Приведено к единому стилю (выбран `IspAudit`).
 

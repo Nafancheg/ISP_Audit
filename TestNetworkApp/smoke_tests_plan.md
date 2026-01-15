@@ -617,7 +617,7 @@
 
 ## 6. UI Layer (WPF)
 
-### 6.1 MainViewModelRefactored
+### 6.1 MainViewModel
 **Test ID:** `UI-001`
 **Что проверяет:** Инициализация DiagnosticOrchestrator
 **Для чего:** Проверка создания всех зависимостей

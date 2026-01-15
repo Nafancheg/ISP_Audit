@@ -27,7 +27,7 @@
 ```mermaid
 graph TD
     User[Пользователь] --> UI[WPF UI (MainWindow)]
-    UI --> VM[MainViewModelRefactored]
+    UI --> VM[MainViewModel]
 
     subgraph Orchestration [Orchestration Layer]
         VM --> Orchestrator[DiagnosticOrchestrator]
@@ -71,7 +71,7 @@ graph TD
 *   **`MainWindow.xaml`**: Главное окно приложения. Использует библиотеку `MaterialDesignInXaml` для визуализации карточек с проблемами.
     *   Левая панель управления работает как drawer (`DrawerHost`) с возможностью закрепления (PIN) и автосворачиванием во время диагностики.
     *   Таблица результатов упрощена до 4 колонок (статус-иконка / SNI-домен / иконки стратегии / действие). Детали доступны по double-click по строке.
-*   **`MainViewModelRefactored`**: Центральная ViewModel.
+*   **`MainViewModel`**: Центральная ViewModel.
     *   Управляет состоянием UI (загрузка, ошибки, результаты).
     *   Инициализирует `DiagnosticOrchestrator`.
     *   Обрабатывает команды пользователя (Start/Stop, Open Report).
@@ -507,7 +507,7 @@ ISP_Audit/
 │       └── Filters/            # Логика модификации пакетов
 │
 ├── ViewModels/                 # MVVM (UI Logic)
-│   ├── MainViewModelRefactored.cs
+│   ├── MainViewModel.*.cs              # MainViewModel (partial): Constructor/Commands/State/Handlers/etc.
 │   ├── DiagnosticOrchestrator.*.cs
 │   ├── BypassController.*.cs
 │   └── TestResultsManager*.cs
@@ -550,7 +550,7 @@ ISP_Audit/
     *   Использование статических свойств `Config.ActiveProfile` и `Program.Targets` делает код хрупким и сложным для тестирования.
     *   Singleton `NoiseHostFilter.Instance` создает скрытые зависимости между модулями.
 2.  **Отсутствие DI**:
-    *   Граф объектов создаётся вручную внутри `MainViewModelRefactored` (DataContext создаётся в XAML). Это усложняет замену компонентов (например, для мок-тестирования).
+    *   Граф объектов создаётся вручную внутри `MainViewModel` (DataContext создаётся в XAML). Это усложняет замену компонентов (например, для мок-тестирования).
 3.  **Жесткие пути**:
     *   Пути к логам и профилям иногда формируются конкатенацией строк, что может вызвать проблемы на нестандартных конфигурациях ОС.
 4.  **Обработка ошибок**:

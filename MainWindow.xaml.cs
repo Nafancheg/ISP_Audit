@@ -39,7 +39,7 @@ namespace IspAudit
 
             try
             {
-                if (DataContext is MainViewModelRefactored viewModel)
+                if (DataContext is MainViewModel viewModel)
                 {
                     await viewModel.ShutdownAsync();
                 }
@@ -78,7 +78,7 @@ namespace IspAudit
             this.Left = workArea.Left + 50; // Отступ 50px от левого края
             this.Top = workArea.Top + (workArea.Height - this.Height) / 2;
 
-            if (DataContext is MainViewModelRefactored viewModel)
+            if (DataContext is MainViewModel viewModel)
             {
                 await viewModel.InitializeAsync();
             }
@@ -88,7 +88,7 @@ namespace IspAudit
         {
             if (sender is DataGridRow row && row.DataContext is TestResult result)
             {
-                if (DataContext is MainViewModelRefactored viewModel && viewModel.DetailsCommand.CanExecute(result))
+                if (DataContext is MainViewModel viewModel && viewModel.DetailsCommand.CanExecute(result))
                 {
                     viewModel.DetailsCommand.Execute(result);
                 }

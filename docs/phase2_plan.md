@@ -48,7 +48,7 @@
 
 ## ✅ Итоговый план доработок v2 (исполнение/безопасность/наблюдаемость)
 
-Этот раздел фиксирует **реальный план** улучшений, сверенный с текущей архитектурой: `MainViewModelRefactored → DiagnosticOrchestrator → LiveTestingPipeline → (v2 Plan) → BypassController/TlsBypassService → TrafficEngine/WinDivert`.
+Этот раздел фиксирует **реальный план** улучшений, сверенный с текущей архитектурой: `MainViewModel → DiagnosticOrchestrator → LiveTestingPipeline → (v2 Plan) → BypassController/TlsBypassService → TrafficEngine/WinDivert`.
 
 ### Ключевые принципы (без двусмысленностей)
 

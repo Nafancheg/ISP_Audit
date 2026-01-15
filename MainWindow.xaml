@@ -18,7 +18,7 @@
         TextOptions.TextRenderingMode="Auto">
 
     <Window.DataContext>
-        <vm:MainViewModelRefactored/>
+        <vm:MainViewModel/>
     </Window.DataContext>
 
     <Window.Resources>

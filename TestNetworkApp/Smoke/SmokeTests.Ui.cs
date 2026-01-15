@@ -14,35 +14,35 @@ namespace TestNetworkApp.Smoke
     internal static partial class SmokeTests
     {
         public static Task<SmokeTestResult> Ui_OrchestratorInitialized_InViewModel(CancellationToken ct)
-            => RunAsync("UI-001", "MainViewModelRefactored: Orchestrator создаётся без исключений", () =>
+            => RunAsync("UI-001", "MainViewModel: Orchestrator создаётся без исключений", () =>
             {
-                var vm = new MainViewModelRefactored();
+                var vm = new MainViewModel();
                 if (vm.Orchestrator == null)
                 {
-                    return new SmokeTestResult("UI-001", "MainViewModelRefactored: Orchestrator создаётся без исключений", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("UI-001", "MainViewModel: Orchestrator создаётся без исключений", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Orchestrator == null");
                 }
 
                 if (vm.Bypass == null)
                 {
-                    return new SmokeTestResult("UI-001", "MainViewModelRefactored: Orchestrator создаётся без исключений", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("UI-001", "MainViewModel: Orchestrator создаётся без исключений", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Bypass == null");
                 }
 
                 if (vm.Results == null)
                 {
-                    return new SmokeTestResult("UI-001", "MainViewModelRefactored: Orchestrator создаётся без исключений", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("UI-001", "MainViewModel: Orchestrator создаётся без исключений", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Results == null");
                 }
 
-                return new SmokeTestResult("UI-001", "MainViewModelRefactored: Orchestrator создаётся без исключений", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("UI-001", "MainViewModel: Orchestrator создаётся без исключений", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK");
             }, ct);
 
         public static Task<SmokeTestResult> Ui_StartStopCommand_CallsCancelBranch_NoGui(CancellationToken ct)
             => RunAsync("UI-002", "Start/Stop: Cancel-ветка отрабатывает без GUI", () =>
             {
-                var vm = new MainViewModelRefactored();
+                var vm = new MainViewModel();
 
                 // Эмулируем режим "уже запущено": выставляем orchestrator как running + _cts,
                 // чтобы StartOrCancelAsync ушёл в Cancel-ветку и не показывал MessageBox.
@@ -220,7 +220,7 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Ui_NetworkChangePrompt_ShowsAndHides_NoGui(CancellationToken ct)
             => RunAsync("UI-013", "P0.6: Network change prompt показывается/скрывается без GUI", () =>
             {
-                var vm = new MainViewModelRefactored();
+                var vm = new MainViewModel();
 
                 // Вызываем приватный ShowNetworkChangePrompt через reflection:
                 // в smoke-окружении мы не подписываемся на реальные NetworkChange события.

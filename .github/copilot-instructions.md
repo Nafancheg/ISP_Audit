@@ -22,7 +22,7 @@ Windows-native .NET 9 WPF приложение для диагностики б�
 ```
 Program.cs → [GUI: App.xaml + MainWindow]
                            ↓
-              MainViewModelRefactored ──┬──→ BypassController (TrafficEngine)
+              MainViewModel ───────────┬──→ BypassController (TrafficEngine)
                                         ↓
                            DiagnosticOrchestrator
                                         ↓
@@ -43,7 +43,7 @@ Program.cs → [GUI: App.xaml + MainWindow]
 - **Tester**: `StandardHostTester` проверяет DNS, TCP, TLS.
 - **Classifier**: `StandardBlockageClassifier` определяет тип блокировки (DPI, RST, DNS).
 
-**GUI**: Паттерн MVVM (`ViewModels/MainViewModelRefactored.cs`), карточки Material Design показываются ТОЛЬКО при обнаружении проблем.
+**GUI**: Паттерн MVVM (`ViewModels/MainViewModel.*.cs`), карточки Material Design показываются ТОЛЬКО при обнаружении проблем.
 
 ## Критические паттерны кода
 

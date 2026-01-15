@@ -207,7 +207,7 @@
     | `DiagnosticOrchestrator.cs` | 2235 | 🔴 P1 | План в Задаче 4.3 |
     | `BypassController.cs` | 1758 | 🔴 P1 | Новый план ниже |
     | `TestResultsManager.cs` | 1478 | 🟡 P2 | Частично в 4.4 |
-    | `MainViewModelRefactored.cs` | 1440 | 🔴 P1 | Новый план ниже |
+    | `MainViewModel.*.cs` | ~1440 (суммарно) | 🔴 P1 | Разбит на partial |
     | `BypassStateManager.cs` | 928 | 🟡 P2 | Новый план ниже |
     | `TlsBypassService.cs` | 874 | 🟡 P2 | Новый план ниже |
     | `BypassFilter.cs` | 829 | 🟡 P2 | Новый план ниже |
@@ -224,14 +224,18 @@
     - Далее (после partial): выделить `IBypassMetricsCollector`, `INetworkChangeHandler` как отдельные сервисы
     - Gate: GOD-001 — функциональность не изменилась; smoke bypass проходит
 
-  - [ ] **P0.3.2: MainViewModelRefactored.cs** (1440 строк → цель <400 на файл)
-    - Текущее состояние: god-ViewModel со всей логикой UI, командами, состоянием диагностики/bypass.
-    - План декомпозиции:
-      - `MainViewModel.Commands.cs` (partial) — все ICommand (StartDiagnostic, StopDiagnostic, ApplyBypass, etc.)
-      - `MainViewModel.DiagnosticState.cs` (partial) — состояние диагностики, progress, результаты
-      - `MainViewModel.BypassState.cs` (partial) — состояние bypass, метрики, UI-обновления
-      - `MainViewModel.Navigation.cs` (partial) — табы, модальные окна, панели
-    - Далее: выделить `IDiagnosticStateService`, `IBypassUiState` как отдельные классы
+  - [x] **P0.3.2: MainViewModel.*.cs (partial)** (~1440 строк суммарно → цель <400 на файл)
+    - Текущее состояние: ViewModel разнесена по `partial` файлам.
+    - Файлы (текущее разбиение):
+      - `MainViewModel.cs` — базовый partial
+      - `MainViewModel.Constructor.cs` — конструктор + wiring
+      - `MainViewModel.Commands.cs` — объявления ICommand
+      - `MainViewModel.CommandHandlers.cs` — обработчики команд
+      - `MainViewModel.State.cs` — UI state
+      - `MainViewModel.Helpers.cs` — helper-методы
+      - `MainViewModel.Logging.cs` — логирование
+      - `MainViewModel.Notify.cs` — INotifyPropertyChanged
+    - Далее (опционально): выделить UI-state сервисы (например `IDiagnosticUiStateService`) и вынести доменную логику из ViewModel
     - Gate: GOD-002 — UI работает без изменений; smoke ui проходит
 
   - [ ] **P0.3.3: TestResultsManager.cs** (1478 строк → цель <400 на файл)
