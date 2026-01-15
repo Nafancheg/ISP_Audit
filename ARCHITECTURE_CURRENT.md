@@ -207,6 +207,8 @@ Dev-проверка (smoke): для воспроизводимой провер
 
 Статус (P0.3): `BypassController` декомпозирован через partial-файлы (без изменения поведения): [ViewModels/BypassController.Internal.cs](ViewModels/BypassController.Internal.cs), [ViewModels/BypassController.Metrics.cs](ViewModels/BypassController.Metrics.cs), [ViewModels/BypassController.Startup.cs](ViewModels/BypassController.Startup.cs), [ViewModels/BypassController.Core.cs](ViewModels/BypassController.Core.cs), [ViewModels/BypassController.DnsDoh.cs](ViewModels/BypassController.DnsDoh.cs), [ViewModels/BypassController.Observability.cs](ViewModels/BypassController.Observability.cs), [ViewModels/BypassController.V2.cs](ViewModels/BypassController.V2.cs).
 
+Статус (P0.3): `DiagnosticOrchestrator` декомпозирован через partial-файлы (без изменения поведения): [ViewModels/DiagnosticOrchestrator.cs](ViewModels/DiagnosticOrchestrator.cs), [ViewModels/DiagnosticOrchestrator.Core.cs](ViewModels/DiagnosticOrchestrator.Core.cs), [ViewModels/DiagnosticOrchestrator.Private.cs](ViewModels/DiagnosticOrchestrator.Private.cs).
+
 UI-гейт по рекомендациям (v2-only): UI принимает рекомендации/стратегии обхода только из строк с префиксом `[V2]`. Любые legacy строки могут присутствовать в логе, но не обновляют `BypassStrategy` карточек и не попадают в панель рекомендаций.
 
 Примечание (UX рекомендаций): блок «Рекомендации» в bypass-панели отображается при `HasAnyRecommendations` (есть v2-рекомендации **или** зафиксированы «ручные действия»), а кнопка apply фактически доступна только при `HasRecommendations` (есть объектный `BypassPlan` и есть что применять). Если стратегия уже включена пользователем вручную, она отображается как «ручное действие», чтобы рекомендации не «пропадали».
@@ -502,8 +504,8 @@ ISP_Audit/
 │
 ├── ViewModels/                 # MVVM (UI Logic)
 │   ├── MainViewModelRefactored.cs
-│   ├── DiagnosticOrchestrator.cs
-│   ├── BypassController.cs
+│   ├── DiagnosticOrchestrator.*.cs
+│   ├── BypassController.*.cs
 │   └── TestResultsManager.cs
 │
 ├── Utils/                      # Вспомогательные классы
