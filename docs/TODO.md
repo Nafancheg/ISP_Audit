@@ -208,7 +208,7 @@
     | `BypassController.cs` | 1758 | 🔴 P1 | Разбит на partial |
     | `TestResultsManager.cs` | 1478 | 🟡 P2 | Разбит на partial |
     | `MainViewModel.*.cs` | ~1440 (суммарно) | 🔴 P1 | Разбит на partial |
-    | `BypassStateManager.cs` | 928 | 🟡 P2 | Новый план ниже |
+    | `BypassStateManager.cs` | 928 | 🟡 P2 | Разбит на partial |
     | `TlsBypassService.cs` | 874 | 🟡 P2 | Новый план ниже |
     | `BypassFilter.cs` | 829 | 🟡 P2 | Разбит на partial |
     | `LiveTestingPipeline.cs` | 788 | 🟢 P3 | Новый план ниже |
@@ -259,13 +259,15 @@
     - Далее (опционально): выделить `ICardFactory` и продолжить распаковку парсинга/эвристик из `TestResultsManager.*`
     - Gate: GOD-003 — карточки отображаются корректно; smoke pipe проходит
 
-  - [ ] **P0.3.4: BypassStateManager.cs** (928 строк → цель <500 на файл)
-    - Текущее состояние: SSoT для bypass, но также включает observed IP cache, журнал сессий, watchdog.
-    - План декомпозиции:
-      - `BypassStateManager.Core.cs` (partial) — основной SSoT: Apply/Disable, текущее состояние
-      - `BypassStateManager.ObservedIpCache.cs` (partial) — кеш observed IP с TTL
-      - `BypassStateManager.SessionJournal.cs` (partial) — журнал сессий, crash recovery
-      - Watchdog уже вынесен или минимален
+  - [x] **P0.3.4: BypassStateManager.*.cs (partial)** (928 строк суммарно → цель <500 на файл)
+    - Текущее состояние: SSoT для bypass/TrafficEngine разнесён по `partial` файлам без изменения логики.
+    - Файлы (текущее разбиение):
+      - `Bypass/BypassStateManager.cs` — базовый partial (core API, Apply/Disable, прокси к TrafficEngine/TlsBypassService)
+      - `Bypass/BypassStateManager.ObservedIpCache.cs` — observed IP cache (селективный DROP UDP/443, TTL/cap, cold-start DNS)
+      - `Bypass/BypassStateManager.SessionJournal.cs` — журнал сессий + crash recovery
+      - `Bypass/BypassStateManager.Watchdog.cs` — watchdog fail-safe (auto-Disable)
+      - `Bypass/BypassStateManager.Activation.cs` — activation snapshot (по метрикам)
+      - `Bypass/BypassStateManager.Outcome.cs` — outcome probe (HTTPS) + планирование/отмена
     - Gate: GOD-004 — bypass SSoT работает; smoke dpi2 проходит
 
   - [ ] **P0.3.5: TlsBypassService.cs** (874 строк → цель <500 на файл)

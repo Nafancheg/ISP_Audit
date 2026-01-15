@@ -1,6 +1,6 @@
 # Полный аудит репозитория ISP_Audit v2
 
-**Дата**: 09.12.2025 (обновлено 10.12.2025, 17.12.2025)
+**Дата**: 09.12.2025 (обновлено 10.12.2025, 17.12.2025, 15.01.2026)
 **Версия проекта**: .NET 9, WPF
 **Режим**: GUI-only (WinExe)
 
@@ -120,6 +120,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 
 Актуализация (Runtime, 29.12.2025): Bypass State Manager (2.V2.12)
 - Введён `BypassStateManager` как single source of truth для управления `TrafficEngine` и `TlsBypassService`.
+- P0.3.4 (15.01.2026): `BypassStateManager` декомпозирован на partial-файлы без изменения поведения: `Bypass/BypassStateManager.*.cs`.
 - Добавлен fail-safe слой (Lite Watchdog + crash recovery): журнал сессии bypass + авто-Disable при некорректном завершении/пропаже heartbeat.
 - Добавлена Activation Detection (по метрикам): статус `ENGINE_DEAD/NOT_ACTIVATED/ACTIVATED/NO_TRAFFIC/UNKNOWN` для наблюдаемости.
 - Добавлен Outcome Check для HTTPS: `SUCCESS/FAILED/UNKNOWN` через tagged outcome-probe (активная TCP+TLS+HTTP проверка цели), probe исключается из пользовательских метрик (smoke gate: `DPI2-029`).
