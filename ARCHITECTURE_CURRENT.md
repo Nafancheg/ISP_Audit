@@ -205,7 +205,7 @@ Dev-проверка (smoke): для воспроизводимой провер
 * Не смешиваем слои: `ViewModels/` не должен накапливать бизнес-логику bypass/диагностики, а `Core/` не должен зависеть от WPF.
 * Любое вынесение должно сохранять семантику и не менять поведение (рефакторинг без функциональных правок).
 
-Статус (P0.3): начата декомпозиция `BypassController` через partial-файлы: [ViewModels/BypassController.Metrics.cs](ViewModels/BypassController.Metrics.cs) и [ViewModels/BypassController.Internal.cs](ViewModels/BypassController.Internal.cs).
+Статус (P0.3): `BypassController` декомпозирован через partial-файлы (без изменения поведения): [ViewModels/BypassController.Internal.cs](ViewModels/BypassController.Internal.cs), [ViewModels/BypassController.Metrics.cs](ViewModels/BypassController.Metrics.cs), [ViewModels/BypassController.Startup.cs](ViewModels/BypassController.Startup.cs), [ViewModels/BypassController.Core.cs](ViewModels/BypassController.Core.cs), [ViewModels/BypassController.DnsDoh.cs](ViewModels/BypassController.DnsDoh.cs), [ViewModels/BypassController.Observability.cs](ViewModels/BypassController.Observability.cs), [ViewModels/BypassController.V2.cs](ViewModels/BypassController.V2.cs).
 
 UI-гейт по рекомендациям (v2-only): UI принимает рекомендации/стратегии обхода только из строк с префиксом `[V2]`. Любые legacy строки могут присутствовать в логе, но не обновляют `BypassStrategy` карточек и не попадают в панель рекомендаций.
 
