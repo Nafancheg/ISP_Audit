@@ -177,6 +177,10 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 2) Усилить UI-обратную связь после apply/rollback (лог + отображение активных флагов).
 3) Параметры стратегий добавлять только если они поддержаны в движке (без "магической" комбинации флагов).
 
+Актуализация (Design, 15.01.2026): Policy‑Driven Execution Plane
+- Зафиксирован архитектурный proposal: `docs/new_age.md`.
+- План внедрения инкрементальный (без переписывания WinDivert/TrafficEngine): UDP/443 политики → TTL‑block политики → TCP/80 → TCP/443 policy‑выбор стратегии → Semantic Groups как пакет политик.
+
 Актуализация (Dev, 12.01.2026): базовые analyzers/линт для стабильности
 - Добавлены `Directory.Build.props` и `.editorconfig`.
 - Включены встроенные .NET analyzers (`EnableNETAnalyzers=true`) без форсирования `AnalysisMode/AnalysisLevel` (оставляем дефолты SDK, чтобы не раздувать шум предупреждений).
