@@ -187,7 +187,7 @@ graph TD
 - В карточке: краткое резюме «в группе <GroupKey>», статус последней транзакции группы, и “EffectiveGroupConfig” (в 1 строку: стратегия + флаги + endpoints=N).
 - В деталях (панель/expander): полный снимок последней транзакции и кнопка «Скопировать» (для репорта).
 - В логе: компактная строка на транзакцию (TransactionId + GroupKey + initiatorHostKey + strategy + flags + endpoint-count) и возможность разворота деталей.
-*   **`TestResultsManager`**: Управляет коллекцией результатов (`ObservableCollection<TestResult>`). Отвечает за обновление UI в потоке диспетчера.
+*   **`TestResultsManager`**: Управляет коллекцией результатов (`ObservableCollection<TestResult>`). Отвечает за обновление UI в потоке диспетчера. После P0.3 декомпозирован на partial-файлы по зонам ответственности (счётчики/инициализация/обновление/парсинг пайплайна/DNS/эвристики/приватные утилиты).
 
 Dev-проверка (smoke): для воспроизводимой проверки детерминизма UI без запуска GUI есть режим `--ui-reducer-smoke` в `TestNetworkApp` (прогон типовых строк пайплайна через `TestResultsManager.ParsePipelineMessage`).
 
@@ -208,6 +208,8 @@ Dev-проверка (smoke): для воспроизводимой провер
 Статус (P0.3): `BypassController` декомпозирован через partial-файлы (без изменения поведения): [ViewModels/BypassController.Internal.cs](ViewModels/BypassController.Internal.cs), [ViewModels/BypassController.Metrics.cs](ViewModels/BypassController.Metrics.cs), [ViewModels/BypassController.Startup.cs](ViewModels/BypassController.Startup.cs), [ViewModels/BypassController.Core.cs](ViewModels/BypassController.Core.cs), [ViewModels/BypassController.DnsDoh.cs](ViewModels/BypassController.DnsDoh.cs), [ViewModels/BypassController.Observability.cs](ViewModels/BypassController.Observability.cs), [ViewModels/BypassController.V2.cs](ViewModels/BypassController.V2.cs).
 
 Статус (P0.3): `DiagnosticOrchestrator` декомпозирован через partial-файлы (без изменения поведения): [ViewModels/DiagnosticOrchestrator.cs](ViewModels/DiagnosticOrchestrator.cs), [ViewModels/DiagnosticOrchestrator.Core.cs](ViewModels/DiagnosticOrchestrator.Core.cs), [ViewModels/DiagnosticOrchestrator.Monitoring.cs](ViewModels/DiagnosticOrchestrator.Monitoring.cs), [ViewModels/DiagnosticOrchestrator.Recommendations.cs](ViewModels/DiagnosticOrchestrator.Recommendations.cs), [ViewModels/DiagnosticOrchestrator.Recommendations.Apply.cs](ViewModels/DiagnosticOrchestrator.Recommendations.Apply.cs), [ViewModels/DiagnosticOrchestrator.System.cs](ViewModels/DiagnosticOrchestrator.System.cs), [ViewModels/DiagnosticOrchestrator.Private.cs](ViewModels/DiagnosticOrchestrator.Private.cs).
+
+Статус (P0.3): `TestResultsManager` декомпозирован через partial-файлы (без изменения поведения): [ViewModels/TestResultsManager.cs](ViewModels/TestResultsManager.cs) (63), [ViewModels/TestResultsManager.Counters.cs](ViewModels/TestResultsManager.Counters.cs) (35), [ViewModels/TestResultsManager.Initialization.cs](ViewModels/TestResultsManager.Initialization.cs) (46), [ViewModels/TestResultsManager.Update.cs](ViewModels/TestResultsManager.Update.cs) (136), [ViewModels/TestResultsManager.PipelineParsing.cs](ViewModels/TestResultsManager.PipelineParsing.cs) (606), [ViewModels/TestResultsManager.DnsResolution.cs](ViewModels/TestResultsManager.DnsResolution.cs) (89), [ViewModels/TestResultsManager.Heuristics.cs](ViewModels/TestResultsManager.Heuristics.cs) (71), [ViewModels/TestResultsManager.Private.cs](ViewModels/TestResultsManager.Private.cs) (327).
 
 UI-гейт по рекомендациям (v2-only): UI принимает рекомендации/стратегии обхода только из строк с префиксом `[V2]`. Любые legacy строки могут присутствовать в логе, но не обновляют `BypassStrategy` карточек и не попадают в панель рекомендаций.
 
@@ -506,7 +508,7 @@ ISP_Audit/
 │   ├── MainViewModelRefactored.cs
 │   ├── DiagnosticOrchestrator.*.cs
 │   ├── BypassController.*.cs
-│   └── TestResultsManager.cs
+│   └── TestResultsManager*.cs
 │
 ├── Utils/                      # Вспомогательные классы
 │   ├── LiveTestingPipeline.cs  # Конвейер обработки
