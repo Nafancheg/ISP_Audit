@@ -205,8 +205,8 @@
     | Файл | Строки | Приоритет | Статус |
     |------|--------|-----------|--------|
     | `DiagnosticOrchestrator.cs` | 2235 | 🔴 P1 | План в Задаче 4.3 |
-    | `BypassController.cs` | 1758 | 🔴 P1 | Новый план ниже |
-    | `TestResultsManager.cs` | 1478 | 🟡 P2 | Частично в 4.4 |
+    | `BypassController.cs` | 1758 | 🔴 P1 | Разбит на partial |
+    | `TestResultsManager.cs` | 1478 | 🟡 P2 | Разбит на partial |
     | `MainViewModel.*.cs` | ~1440 (суммарно) | 🔴 P1 | Разбит на partial |
     | `BypassStateManager.cs` | 928 | 🟡 P2 | Новый план ниже |
     | `TlsBypassService.cs` | 874 | 🟡 P2 | Новый план ниже |
@@ -214,14 +214,18 @@
     | `LiveTestingPipeline.cs` | 788 | 🟢 P3 | Новый план ниже |
     | `DnsSnifferService.cs` | 756 | 🟢 P3 | Можно оставить |
 
-  - [ ] **P0.3.1: BypassController.cs** (1758 строк → цель <400 на файл)
-    - Текущее состояние: смешивает UI-биндинги, bypass lifecycle, метрики, события смены сети.
-    - План декомпозиции:
-      - `BypassController.Core.cs` (partial) — публичный API: Enable/Disable/Apply, свойства для биндинга
-      - `BypassController.Metrics.cs` (partial) — сбор и форматирование метрик, UI-обновления счётчиков
-      - `BypassController.NetworkEvents.cs` (partial) — обработка смены сети, revalidation flow
-      - `BypassController.Presets.cs` (partial) — логика пресетов фрагментации, assist-флаги
-    - Далее (после partial): выделить `IBypassMetricsCollector`, `INetworkChangeHandler` как отдельные сервисы
+  - [x] **P0.3.1: BypassController.*.cs (partial)** (1758 строк суммарно → цель <400 на файл)
+    - Текущее состояние: контроллер разнесён по `partial` файлам.
+    - Файлы (текущее разбиение):
+      - `BypassController.cs` — базовый partial
+      - `BypassController.Core.cs`
+      - `BypassController.Internal.cs`
+      - `BypassController.Metrics.cs`
+      - `BypassController.Observability.cs`
+      - `BypassController.Startup.cs`
+      - `BypassController.DnsDoh.cs`
+      - `BypassController.V2.cs`
+    - Далее (опционально): выделить сервисы для метрик/событий сети (например `IBypassMetricsCollector`, `INetworkChangeHandler`)
     - Gate: GOD-001 — функциональность не изменилась; smoke bypass проходит
 
   - [x] **P0.3.2: MainViewModel.*.cs (partial)** (~1440 строк суммарно → цель <400 на файл)
@@ -238,14 +242,21 @@
     - Далее (опционально): выделить UI-state сервисы (например `IDiagnosticUiStateService`) и вынести доменную логику из ViewModel
     - Gate: GOD-002 — UI работает без изменений; smoke ui проходит
 
-  - [ ] **P0.3.3: TestResultsManager.cs** (1478 строк → цель <400 на файл)
-    - Текущее состояние: парсинг сообщений, управление карточками, состояние результатов, v2 recommendations.
-    - План декомпозиции:
-      - `TestResultsManager.Parsing.cs` (partial) — парсинг pipeline messages, извлечение статусов
-      - `TestResultsManager.Cards.cs` (partial) — создание/обновление карточек, группировка
-      - `TestResultsManager.V2Recommendations.cs` (partial) — трекинг v2 рекомендаций, маппинг в UI
-      - `TestResultsManager.State.cs` (partial) — in-memory состояние результатов
-    - Далее: выделить `IPipelineMessageParser`, `ICardFactory` как отдельные сервисы
+  - [x] **P0.3.3: TestResultsManager.*.cs (partial)** (1478 строк суммарно → цель <400 на файл)
+    - Текущее состояние: менеджер результатов разнесён по `partial` файлам; строковый парсер сообщений вынесен в отдельный сервис.
+    - Файлы (текущее разбиение):
+      - `TestResultsManager.cs` — базовый partial
+      - `TestResultsManager.Counters.cs`
+      - `TestResultsManager.DnsResolution.cs`
+      - `TestResultsManager.Heuristics.cs`
+      - `TestResultsManager.Initialization.cs`
+      - `TestResultsManager.PipelineMessageParser.cs`
+      - `TestResultsManager.PipelineParsing.cs`
+      - `TestResultsManager.Private.cs`
+      - `TestResultsManager.Tokens.cs`
+      - `TestResultsManager.Update.cs`
+      - `PipelineMessageParser.cs` — top-level сервис парсинга pipeline messages
+    - Далее (опционально): выделить `ICardFactory` и продолжить распаковку парсинга/эвристик из `TestResultsManager.*`
     - Gate: GOD-003 — карточки отображаются корректно; smoke pipe проходит
 
   - [ ] **P0.3.4: BypassStateManager.cs** (928 строк → цель <500 на файл)
