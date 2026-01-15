@@ -446,7 +446,7 @@ Smoke-хелперы (для детерминированных проверок
     *   Вычисляет вердикты: нет TLS 443 в трафике, TLS идёт не на 443, ClientHello короче порога (совет снизить threshold/взять агрессивный пресет), обход активен но не применён, мало данных, ratio RST/фрагм >4 (красный) или >1.5 (жёлтый), иначе зелёный; публикует `MetricsUpdated/VerdictChanged/StateChanged` для UI/оркестратора.
     *   Автокоррекция работает только для пресета «Агрессивный» с флагом `AutoAdjustAggressive`: при раннем всплеске RST ужимает минимальный чанк до 4, при стабильном зелёном >30с слегка уменьшает минимальный чанк (не ниже 4) и переприменяет опции.
     *   TTL Trick управляется runtime-опциями (`TtlTrickEnabled/TtlTrickValue`); при включенном `AutoTtlEnabled` сервис выполняет короткий подбор TTL (малый набор значений) по метрикам bypass и сохраняет лучший TTL обратно в `bypass_profile.json`.
-*   **`BypassFilter` (`Core/Traffic/Filters/BypassFilter.cs`)**:
+*   **`BypassFilter` (`Core/Traffic/Filters/BypassFilter.*.cs`)**:
     *   Реализует конкретные алгоритмы обхода:
         *   **Fragmentation**: Разбиение ClientHello на 2+ TCP-сегмента по списку размеров из `TlsFragmentSizes`.
         *   **Disorder**: Отправка сегментов в обратном порядке при сохранении корректных seq/len, чтобы сбить DPI.
