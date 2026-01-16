@@ -247,7 +247,7 @@ Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|
     *   Важно: SNI не фильтруется по `NoiseHostFilter` на входе (это исходные данные). Фильтрация «шума» применяется только на этапе отображения успешных результатов.
     *   Практика для QUIC→TCP: при детекте UDP/QUIC блокировки (`UdpInspectionService.OnBlockageDetected`) оркестратор может установить цель outcome (по SNI/DNS кешу, с fallback на IP), чтобы селективный `DropUdp443` не оставался «включён, но без цели».
     *   UX: отдельное оверлей-окно диагностики отключено (не показываем сервисное окно поверх рабочего стола).
-*   **`LiveTestingPipeline`**: Асинхронный конвейер на базе `System.Threading.Channels`.
+*   **`LiveTestingPipeline`** (`Utils/LiveTestingPipeline.*.cs`): Асинхронный конвейер на базе `System.Threading.Channels`.
     *   Связывает этапы: Sniffing → Testing → Classification → Reporting.
     *   Использует `UnifiedTrafficFilter` для минимальной валидации (loopback) и правил отображения (не засорять UI «успешными» целями).
     *   Выполняет гейтинг повторных тестов через `IBlockageStateStore.TryBeginHostTest(...)` (кулдаун + лимит попыток), чтобы не спамить сеть, но при этом дать V2 накопить несколько наблюдений (SignalSequence) по проблемным/заблокированным хостам.
@@ -520,7 +520,7 @@ ISP_Audit/
 │   └── TestResultsManager*.cs
 │
 ├── Utils/                      # Вспомогательные классы
-│   ├── LiveTestingPipeline.cs  # Конвейер обработки
+│   ├── LiveTestingPipeline.*.cs  # Конвейер обработки (partial)
 │   ├── TrafficCollector.cs     # Сниффер
 │   ├── ConnectionMonitorService.cs
 │   ├── DnsSnifferService.cs    # содержит DnsParserService (DNS + SNI)

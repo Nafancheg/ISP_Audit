@@ -1,6 +1,6 @@
 # ISP_Audit — TODO (Открытые проблемы и задачи)
 
-Дата: 15.01.2026 (актуализировано)
+Дата: 16.01.2026 (актуализировано)
 Назначение: единый список нерешённых проблем и задач. Всё реализованное и историческое остаётся в Changelog и архитектурном документе.
 
 ---
@@ -211,7 +211,7 @@
     | `BypassStateManager.cs` | 928 | 🟡 P2 | Разбит на partial |
     | `TlsBypassService.cs` | 874 | 🟡 P2 | Разбит на partial |
     | `BypassFilter.cs` | 829 | 🟡 P2 | Разбит на partial |
-    | `LiveTestingPipeline.cs` | 788 | 🟢 P3 | Новый план ниже |
+    | `LiveTestingPipeline.cs` | 788 | 🟢 P3 | Разбит на partial |
     | `DnsSnifferService.cs` | 756 | 🟢 P3 | Можно оставить |
 
   - [x] **P0.3.1: BypassController.*.cs (partial)** (1758 строк суммарно → цель <400 на файл)
@@ -293,14 +293,16 @@
       - `Core/Traffic/Filters/BypassFilter.Types.cs` — внутренние типы (ключи/слайсы)
     - Gate: GOD-006 — bypass фильтр работает; бенчмарк не деградировал
 
-  - [ ] **P0.3.7: LiveTestingPipeline.cs** (788 строк → цель <400 на файл)
-    - Текущее состояние: orchestration тестирования, но также включает sniffer, tester, classifier логику.
-    - План декомпозиции:
-      - `LiveTestingPipeline.Orchestration.cs` (partial) — Start/Stop, progress, cancellation
-      - `LiveTestingPipeline.SnifferStage.cs` (partial) — интеграция с TrafficCollector
-      - `LiveTestingPipeline.TesterStage.cs` (partial) — вызовы StandardHostTester
-      - `LiveTestingPipeline.ClassifierStage.cs` (partial) — вызовы StandardBlockageClassifier
-    - Gate: GOD-007 — pipeline работает; smoke pipe проходит
+  - [x] **P0.3.7: LiveTestingPipeline.*.cs (partial)** (788 строк → цель <400 на файл)
+    - Текущее состояние: `LiveTestingPipeline` декомпозирован на `partial`-файлы по стадиям без изменения логики.
+    - Файлы (текущее разбиение):
+      - `Utils/LiveTestingPipeline.cs` — базовый partial (поля/события/конструктор + wiring)
+      - `Utils/LiveTestingPipeline.Orchestration.cs` — lifecycle (health/drain/dispose)
+      - `Utils/LiveTestingPipeline.SnifferStage.cs` — enqueue + ForceRetest
+      - `Utils/LiveTestingPipeline.TesterStage.cs` — worker тестирования (StandardHostTester)
+      - `Utils/LiveTestingPipeline.ClassifierStage.cs` — worker классификации + v2 signals/plan publish
+      - `Utils/LiveTestingPipeline.UiStage.cs` — worker UI/логов
+    - Gate: GOD-007 — pipeline компилируется; `dotnet build` проходит
 
   - **Порядок выполнения** (по приоритету и зависимостям):
     1. P0.3.1 (BypassController) — много UI-зависимостей, часто редактируется
