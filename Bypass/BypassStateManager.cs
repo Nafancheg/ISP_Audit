@@ -337,57 +337,83 @@ namespace IspAudit.Bypass
                     }
                 }
 
-                // Policy-driven execution plane (P0.2 Stage 1): компилируем snapshot только при включённом gate.
-                // При gate=off не меняем runtime-поведение: filter использует legacy ветку.
+                // Policy-driven execution plane (P0.2): компилируем snapshot только при включённых gate.
+                // При gate=off не меняем runtime-поведение: фильтр использует legacy ветки.
                 DecisionGraphSnapshot? decisionSnapshot = null;
-                if (PolicyDrivenExecutionGates.PolicyDrivenUdp443Enabled() && normalized.DropUdp443)
+
+                var shouldCompileSnapshot =
+                    (PolicyDrivenExecutionGates.PolicyDrivenUdp443Enabled() && normalized.DropUdp443)
+                    || (PolicyDrivenExecutionGates.PolicyDrivenTcp80HostTricksEnabled() && normalized.HttpHostTricksEnabled);
+
+                if (shouldCompileSnapshot)
                 {
                     try
                     {
                         var policies = new List<FlowPolicy>();
 
-                        if (normalized.DropUdp443Global)
+                        // P0.2 Stage 1: UDP/443 (QUIC fallback)
+                        if (PolicyDrivenExecutionGates.PolicyDrivenUdp443Enabled() && normalized.DropUdp443)
                         {
-                            policies.Add(new FlowPolicy
-                            {
-                                Id = "udp443_quic_fallback_global",
-                                Priority = 100,
-                                Match = new MatchCondition
-                                {
-                                    Proto = FlowTransportProtocol.Udp,
-                                    Port = 443
-                                },
-                                Action = PolicyAction.DropUdp443,
-                                Scope = PolicyScope.Global
-                            });
-                        }
-                        else
-                        {
-                            // Селективный режим: если targets пусты — не создаём политику (IPv4 не дропаем).
-                            if (udp443Targets.Length > 0)
+                            if (normalized.DropUdp443Global)
                             {
                                 policies.Add(new FlowPolicy
                                 {
-                                    Id = "udp443_quic_fallback_selective",
+                                    Id = "udp443_quic_fallback_global",
                                     Priority = 100,
                                     Match = new MatchCondition
                                     {
                                         Proto = FlowTransportProtocol.Udp,
-                                        Port = 443,
-                                        DstIpv4Set = udp443Targets.ToImmutableHashSet()
+                                        Port = 443
                                     },
                                     Action = PolicyAction.DropUdp443,
-                                    Scope = PolicyScope.Local
+                                    Scope = PolicyScope.Global
                                 });
+                            }
+                            else
+                            {
+                                // Селективный режим: если targets пусты — не создаём политику (IPv4 не дропаем).
+                                if (udp443Targets.Length > 0)
+                                {
+                                    policies.Add(new FlowPolicy
+                                    {
+                                        Id = "udp443_quic_fallback_selective",
+                                        Priority = 100,
+                                        Match = new MatchCondition
+                                        {
+                                            Proto = FlowTransportProtocol.Udp,
+                                            Port = 443,
+                                            DstIpv4Set = udp443Targets.ToImmutableHashSet()
+                                        },
+                                        Action = PolicyAction.DropUdp443,
+                                        Scope = PolicyScope.Local
+                                    });
+                                }
                             }
                         }
 
-                        decisionSnapshot = PolicySetCompiler.CompileOrThrow(policies);
+                        // P0.2 Stage 3: TCP/80 HTTP Host tricks
+                        if (PolicyDrivenExecutionGates.PolicyDrivenTcp80HostTricksEnabled() && normalized.HttpHostTricksEnabled)
+                        {
+                            policies.Add(new FlowPolicy
+                            {
+                                Id = "tcp80_http_host_tricks",
+                                Priority = 100,
+                                Match = new MatchCondition
+                                {
+                                    Proto = FlowTransportProtocol.Tcp,
+                                    Port = 80
+                                },
+                                Action = PolicyAction.HttpHostTricks,
+                                Scope = PolicyScope.Global
+                            });
+                        }
+
+                        decisionSnapshot = policies.Count == 0 ? null : PolicySetCompiler.CompileOrThrow(policies);
                     }
                     catch (Exception ex)
                     {
                         // Gate включён, но компиляция не удалась — откатываемся на legacy путь.
-                        _log?.Invoke($"[Bypass] Policy-driven UDP/443: ошибка компиляции snapshot, fallback на legacy. {ex.Message}");
+                        _log?.Invoke($"[Bypass] Policy-driven snapshot: ошибка компиляции, fallback на legacy. {ex.Message}");
                         decisionSnapshot = null;
                     }
                 }

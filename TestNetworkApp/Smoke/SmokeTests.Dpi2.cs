@@ -7,6 +7,7 @@ using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -677,6 +678,89 @@ namespace TestNetworkApp.Smoke
                 finally
                 {
                     Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TTLBLOCK", prevGate);
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> Dpi2_PolicyDrivenTcp80_HttpHostTricks_ViaDecisionGraph(CancellationToken ct)
+            => RunAsync("DPI2-043", "TCP/80 HTTP Host tricks: policy-driven через DecisionGraphSnapshot", () =>
+            {
+                var prevGate = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP80");
+                try
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP80", "1");
+
+                    // Важно: в этом smoke намеренно выключаем legacy-флаг профиля,
+                    // чтобы проверить, что действие включается именно политикой.
+                    var profile = new BypassProfile
+                    {
+                        DropTcpRst = false,
+                        FragmentTlsClientHello = false,
+                        TlsStrategy = TlsBypassStrategy.None,
+                        TlsFragmentThreshold = 100,
+                        HttpHostTricks = false,
+                        RedirectRules = Array.Empty<BypassRedirectRule>()
+                    };
+
+                    var filter = new IspAudit.Core.Traffic.Filters.BypassFilter(profile, logAction: null, presetName: "smoke");
+
+                    var policyId = "tcp80_http_host_tricks_smoke";
+                    var snapshot = IspAudit.Core.Bypass.PolicySetCompiler.CompileOrThrow(new[]
+                    {
+                        new FlowPolicy
+                        {
+                            Id = policyId,
+                            Priority = 100,
+                            Match = new MatchCondition
+                            {
+                                Proto = FlowTransportProtocol.Tcp,
+                                Port = 80
+                            },
+                            Action = PolicyAction.HttpHostTricks,
+                            Scope = PolicyScope.Global
+                        }
+                    });
+
+                    filter.SetDecisionGraphSnapshot(snapshot);
+
+                    var sender = new CapturePacketSender();
+                    var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+
+                    var clientIp = IPAddress.Parse("10.10.0.2");
+                    var serverIp = IPAddress.Parse("93.184.216.34");
+                    var srcPort = (ushort)50110;
+                    var seqBase = 123450u;
+
+                    var http = "GET / HTTP/1.1\r\nHost: example.com\r\nUser-Agent: smoke\r\n\r\n";
+                    var payload = Encoding.ASCII.GetBytes(http);
+                    var pkt = BuildIpv4TcpPacket(clientIp, serverIp, srcPort, 80, ttl: 64, ipId: 210, seq: seqBase, tcpFlags: 0x18, payload: payload);
+
+                    var forwarded = filter.Process(new InterceptedPacket(pkt, pkt.Length), ctx, sender);
+                    if (forwarded)
+                    {
+                        return new SmokeTestResult("DPI2-043", "TCP/80 HTTP Host tricks: policy-driven через DecisionGraphSnapshot", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали drop оригинального пакета (Process вернёт false)");
+                    }
+
+                    if (sender.Sent.Count != 2)
+                    {
+                        return new SmokeTestResult("DPI2-043", "TCP/80 HTTP Host tricks: policy-driven через DecisionGraphSnapshot", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали 2 отправки (2 сегмента), получили: {sender.Sent.Count}");
+                    }
+
+                    var perPolicy = filter.GetPolicyAppliedCountsSnapshot();
+                    if (!perPolicy.TryGetValue(policyId, out var cnt) || cnt != 1)
+                    {
+                        var observed = string.Join(", ", perPolicy.Select(kv => kv.Key + "=" + kv.Value));
+                        return new SmokeTestResult("DPI2-043", "TCP/80 HTTP Host tricks: policy-driven через DecisionGraphSnapshot", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали per-policy счётчик {policyId}=1, получили: {observed}");
+                    }
+
+                    return new SmokeTestResult("DPI2-043", "TCP/80 HTTP Host tricks: policy-driven через DecisionGraphSnapshot", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: HTTP Host tricks применились через decision graph, метрика по policy-id инкрементнулась");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP80", prevGate);
                 }
             }, ct);
 

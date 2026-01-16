@@ -48,5 +48,28 @@ namespace IspAudit.Core.Bypass
                 return false;
             }
         }
+
+        /// <summary>
+        /// Фича-гейт: включить policy-driven runtime-путь для TCP/80 HTTP Host tricks.
+        /// Управляется env var `ISP_AUDIT_POLICY_DRIVEN_TCP80`.
+        /// По умолчанию выключен.
+        /// </summary>
+        public static bool PolicyDrivenTcp80HostTricksEnabled()
+        {
+            try
+            {
+                var raw = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP80");
+                if (string.IsNullOrWhiteSpace(raw)) return false;
+
+                return string.Equals(raw, "1", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(raw, "yes", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(raw, "on", StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
 }

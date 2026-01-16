@@ -2,6 +2,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using IspAudit.Core.Bypass;
+using IspAudit.Core.Models;
 using IspAudit.Core.Traffic;
 
 namespace IspAudit.Core.Traffic.Filters
@@ -10,6 +12,34 @@ namespace IspAudit.Core.Traffic.Filters
     {
         // HTTP Host tricks: применяем один раз на соединение (src/dst/ports).
         private readonly ConcurrentDictionary<ConnectionKey, byte> _httpHostTricksApplied = new();
+
+        private bool TryApplyHttpHostTricksPolicyDriven(InterceptedPacket packet, PacketContext context, IPacketSender sender)
+        {
+            // P0.2 Stage 3: TCP/80 Host tricks как политика.
+            // Важно: при выключенном gate не меняем поведение (legacy ветка управляется профилем).
+            var snapshot = _decisionGraphSnapshot;
+            if (snapshot == null) return false;
+            if (!PolicyDrivenExecutionGates.PolicyDrivenTcp80HostTricksEnabled()) return false;
+
+            foreach (var policy in snapshot.GetCandidates(FlowTransportProtocol.Tcp, 80, tlsStage: null))
+            {
+                if (policy.Action.Kind != PolicyActionKind.Strategy) continue;
+                if (!string.Equals(policy.Action.StrategyId, PolicyAction.StrategyIdHttpHostTricks, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (TryApplyHttpHostTricks(packet, context, sender))
+                {
+                    RecordPolicyApplied(policy.Id);
+                    return true;
+                }
+
+                return false;
+            }
+
+            return false;
+        }
 
         private bool TryApplyHttpHostTricks(InterceptedPacket packet, PacketContext context, IPacketSender sender)
         {

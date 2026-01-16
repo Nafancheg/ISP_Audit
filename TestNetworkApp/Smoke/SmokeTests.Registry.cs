@@ -117,6 +117,7 @@ namespace TestNetworkApp.Smoke
                 ["DPI2-040"] = Dpi2_PolicySetCompiler_DetectsHardConflicts,
                 ["DPI2-041"] = Dpi2_PolicyDrivenUdp443_DropUdp443_ViaDecisionGraph,
                 ["DPI2-042"] = Dpi2_PolicyDrivenTtlEndpointBlock_Expires_AndHasHigherPriority,
+                ["DPI2-043"] = Dpi2_PolicyDrivenTcp80_HttpHostTricks_ViaDecisionGraph,
                 ["DPI2-019"] = Dpi2_ExecutorV2_ManualApply_MapsPlanToBypassOptions,
                 ["DPI2-020"] = Dpi2_ExecutorV2_Cancel_RollbacksToPreviousState,
                 ["DPI2-021"] = Dpi2_Pipeline_DoesNotAutoApply_BypassControllerOrTlsBypassService,

@@ -587,6 +587,16 @@
 **Входные данные:** `TemporaryEndpointBlockFilter` + синтетические IPv4 TCP пакеты на порт 443 + `ISP_AUDIT_POLICY_DRIVEN_TTLBLOCK=1`
 **Ожидаемый результат:** Тест PASS
 
+### 5.4.4 Policy-Driven Execution Plane (Stage 3)
+**Test ID:** `DPI2-043`
+**Что проверяет:** TCP/80 HTTP Host tricks управляются политикой через `DecisionGraphSnapshot`
+**Для чего:** Перевести HTTP Host tricks (разрез Host заголовка) на policy-driven модель без регрессий
+**Критерий успеха:**
+- При включённом gate и наличии политики: оригинальный пакет дропается, отправляются 2 сегмента.
+- Per-policy счётчик (по policy-id) увеличивается на 1.
+**Входные данные:** `BypassFilter` + синтетические IPv4 TCP пакеты на порт 80 с HTTP `Host:` + snapshot с `PolicyAction.HttpHostTricks` + `ISP_AUDIT_POLICY_DRIVEN_TCP80=1`
+**Ожидаемый результат:** Тест PASS
+
 ### 5.5 Feedback & Rerank
 **Test ID:** `DPI2-014`
 **Что проверяет:** Ранжирование стратегий по feedback поверх basePriority

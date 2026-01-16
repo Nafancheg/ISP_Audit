@@ -164,6 +164,7 @@
       - Подзадачи:
         - 3.1: Рефакторинг HTTP Host tricks → FlowPolicy Action
         - 3.2: Интеграция с Decision Graph
+        - 3.3: Feature gate: `ISP_AUDIT_POLICY_DRIVEN_TCP80` (выключен по умолчанию, включается для smoke)
       - Gate: DPI2-043 — HTTP Host tricks работают через политику; нет регрессий
     - [ ] **Этап 4**: TCP/443 TLS ClientHello policy‑выбор стратегии (per-domain/per-endpoint), fallback на текущую логику
       - Подзадачи:

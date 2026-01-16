@@ -44,15 +44,21 @@ namespace IspAudit.Core.Traffic.Filters
                 return false;
             }
 
-            // HTTP Host tricks (MVP): разрезать Host заголовок по границе TCP сегментов.
-            // Реализовано через отправку 2 сегментов с корректным SEQ/len и drop оригинального.
-            if (_profile.HttpHostTricks
-                && context.IsOutbound
+            // HTTP Host tricks (MVP/Stage 3): разрезать Host заголовок по границе TCP сегментов.
+            // 1) Policy-driven ветка (при включённом gate) — управляется через DecisionGraphSnapshot.
+            // 2) Legacy ветка — управляется флагом профиля.
+            if (context.IsOutbound
                 && packet.Info.IsTcp
                 && packet.Info.DstPort == 80
                 && packet.Info.PayloadLength >= 16)
             {
-                if (TryApplyHttpHostTricks(packet, context, sender))
+                if (TryApplyHttpHostTricksPolicyDriven(packet, context, sender))
+                {
+                    return false;
+                }
+
+                // Legacy: оставляем прежнее поведение при выключенном gate/отсутствии policy.
+                if (_profile.HttpHostTricks && TryApplyHttpHostTricks(packet, context, sender))
                 {
                     return false;
                 }

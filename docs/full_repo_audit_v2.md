@@ -194,6 +194,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Реализован P0.2 Этап 0 (zero runtime impact): добавлены базовые типы FlowPolicy/DecisionGraphSnapshot, компилятор hard-конфликтов и smoke-гейт `DPI2-040`.
 - Реализован P0.2 Этап 1 (gated runtime): UDP/443 (QUIC→TCP) работает через `DecisionGraphSnapshot` под feature-gate `ISP_AUDIT_POLICY_DRIVEN_UDP443=1`, добавлена минимальная per-policy наблюдаемость и smoke-гейт `DPI2-041`.
 - Реализован P0.2 Этап 2 (gated runtime): TTL endpoint block (reconnect-nudge) работает как TTL-политика с максимальным приоритетом под feature-gate `ISP_AUDIT_POLICY_DRIVEN_TTLBLOCK=1`; добавлен UI индикатор `EndpointBlockStatus` и smoke-гейт `DPI2-042`.
+- Реализован P0.2 Этап 3 (gated runtime): TCP/80 HTTP Host tricks работает через `DecisionGraphSnapshot` под feature-gate `ISP_AUDIT_POLICY_DRIVEN_TCP80=1` (по умолчанию выключено). Действие описано как strategy (`PolicyAction.HttpHostTricks`, `StrategyId=http_host_tricks`), `BypassFilter` применяет сегментацию `Host:` и drop оригинального пакета по решению графа; smoke-гейт `DPI2-043`.
 
 Актуализация (Dev, 12.01.2026): базовые analyzers/линт для стабильности
 - Добавлены `Directory.Build.props` и `.editorconfig`.
