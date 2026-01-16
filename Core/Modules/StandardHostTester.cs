@@ -70,7 +70,7 @@ namespace IspAudit.Core.Modules
                 // ВАЖНО: reverse DNS не используем как "достоверное" имя для TLS/SNI.
                 try
                 {
-                    var rdnsTask = System.Net.Dns.GetHostEntryAsync(ipString);
+                    var rdnsTask = System.Net.Dns.GetHostEntryAsync(ipString, ct);
                     var timeoutTask = Task.Delay(1500, ct);
                     var completedTask = await Task.WhenAny(rdnsTask, timeoutTask).ConfigureAwait(false);
                     if (completedTask == rdnsTask)

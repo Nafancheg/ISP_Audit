@@ -45,7 +45,7 @@ namespace IspAudit.Bypass
                 ct.ThrowIfCancellationRequested();
 
                 // Предпочитаем IPv4, чтобы корректно работать в текущем WinDivert/фильтре.
-                var addresses = await Dns.GetHostAddressesAsync(host).ConfigureAwait(false);
+                var addresses = await Dns.GetHostAddressesAsync(host, ct).ConfigureAwait(false);
                 var ip = addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
                 if (ip == null)
                 {
@@ -86,7 +86,7 @@ namespace IspAudit.Bypass
                 await ssl.FlushAsync(ct).ConfigureAwait(false);
 
                 using var reader = new StreamReader(ssl, Encoding.ASCII, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
-                var line = await reader.ReadLineAsync().WaitAsync(ct).ConfigureAwait(false);
+                var line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
 
                 if (string.IsNullOrWhiteSpace(line))
                 {
