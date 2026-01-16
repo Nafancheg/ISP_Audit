@@ -446,8 +446,9 @@ Smoke-хелперы (для детерминированных проверок
     *   Single source of truth (SSoT) для управления `TrafficEngine` и `TlsBypassService`.
     *   Держит watchdog/crash recovery, observed IP cache для селективного `DropUdp443`, а также activation/outcome snapshots.
     *   Сериализует `Apply/Disable` и включает guard на прямые вызовы `TrafficEngine`/`TlsBypassService` вне manager-scope.
-*   **`TlsBypassService` (`Bypass/TlsBypassService.cs`)**:
+*   **`TlsBypassService` (`Bypass/TlsBypassService.*.cs`)**:
     *   Единственный источник правды для TLS обхода: применяет опции, держит пресеты и автокоррекцию, сам регистрирует/удаляет `BypassFilter` в `TrafficEngine`.
+    *   Декомпозирован на partial-файлы (refactor-only): `TlsBypassService.Engine.cs` (Apply/Disable), `TlsBypassService.Metrics.cs` (метрики/вердикт), `TlsBypassService.Udp443.cs` (селективный UDP/443 + probe flows), `TlsBypassService.Models.cs` (DTO), `TlsBypassService.AutoAdjust.cs` (AutoAdjust/AutoTTL).
     *   Каждые 2 секунды собирает метрики фильтра: сколько ClientHello увидено/коротких/не 443, сколько фрагментировано, релевантные RST, план фрагментации, активный пресет, порог/минимальный чанк, время начала сбора.
     *   Вычисляет вердикты: нет TLS 443 в трафике, TLS идёт не на 443, ClientHello короче порога (совет снизить threshold/взять агрессивный пресет), обход активен но не применён, мало данных, ratio RST/фрагм >4 (красный) или >1.5 (жёлтый), иначе зелёный; публикует `MetricsUpdated/VerdictChanged/StateChanged` для UI/оркестратора.
     *   Автокоррекция работает только для пресета «Агрессивный» с флагом `AutoAdjustAggressive`: при раннем всплеске RST ужимает минимальный чанк до 4, при стабильном зелёном >30с слегка уменьшает минимальный чанк (не ниже 4) и переприменяет опции.

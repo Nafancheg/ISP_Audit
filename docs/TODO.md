@@ -209,7 +209,7 @@
     | `TestResultsManager.cs` | 1478 | 🟡 P2 | Разбит на partial |
     | `MainViewModel.*.cs` | ~1440 (суммарно) | 🔴 P1 | Разбит на partial |
     | `BypassStateManager.cs` | 928 | 🟡 P2 | Разбит на partial |
-    | `TlsBypassService.cs` | 874 | 🟡 P2 | Новый план ниже |
+    | `TlsBypassService.cs` | 874 | 🟡 P2 | Разбит на partial |
     | `BypassFilter.cs` | 829 | 🟡 P2 | Разбит на partial |
     | `LiveTestingPipeline.cs` | 788 | 🟢 P3 | Новый план ниже |
     | `DnsSnifferService.cs` | 756 | 🟢 P3 | Можно оставить |
@@ -270,12 +270,15 @@
       - `Bypass/BypassStateManager.Outcome.cs` — outcome probe (HTTPS) + планирование/отмена
     - Gate: GOD-004 — bypass SSoT работает; smoke dpi2 проходит
 
-  - [ ] **P0.3.5: TlsBypassService.cs** (874 строк → цель <500 на файл)
-    - Текущее состояние: управление TrafficEngine, регистрация фильтров, TLS parsing, стратегии.
-    - План декомпозиции:
-      - `TlsBypassService.Engine.cs` (partial) — lifecycle TrafficEngine, Start/Stop
-      - `TlsBypassService.Filters.cs` (partial) — регистрация/дерегистрация фильтров
-      - `TlsBypassService.TlsParsing.cs` (partial) — парсинг ClientHello, SNI extraction (→ потом в Rust)
+  - [x] **P0.3.5: TlsBypassService.*.cs (partial)** (874 строк → цель <500 на файл)
+    - Текущее состояние: сервис управления TLS bypass разнесён по `partial` файлам без изменения логики.
+    - Файлы (текущее разбиение):
+      - `Bypass/TlsBypassService.cs` — базовый partial (поля/события/конструкторы/Dispose)
+      - `Bypass/TlsBypassService.Engine.cs` — Apply/Disable + сборка профиля
+      - `Bypass/TlsBypassService.Metrics.cs` — PullMetrics + verdict + smoke auto-adjust hook
+      - `Bypass/TlsBypassService.Udp443.cs` — селективный UDP/443 target set + outcome-probe flow registration
+      - `Bypass/TlsBypassService.Models.cs` — DTO/record-ы (Options/Metrics/Verdict/State)
+      - `Bypass/TlsBypassService.AutoAdjust.cs` — AutoAdjustAggressive/AutoTTL
     - Gate: GOD-005 — TLS bypass работает; smoke bypass проходит
 
   - [x] **P0.3.6: BypassFilter.*.cs (partial)** (829 строк суммарно → цель <400 на файл)
