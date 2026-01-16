@@ -160,13 +160,13 @@
         - 2.3: UI индикатор «endpoint заблокирован до HH:MM:SS»
         - 2.4: Feature gate: `ISP_AUDIT_POLICY_DRIVEN_TTLBLOCK` (выключен по умолчанию, включается для smoke)
       - Gate: DPI2-042 — TTL-политика корректно истекает; приоритет выше любых других политик
-    - [ ] **Этап 3**: TCP/80 Host tricks как политика (включает существующую реализацию)
+    - [x] **Этап 3**: TCP/80 Host tricks как политика (включает существующую реализацию)
       - Подзадачи:
         - 3.1: Рефакторинг HTTP Host tricks → FlowPolicy Action
         - 3.2: Интеграция с Decision Graph
         - 3.3: Feature gate: `ISP_AUDIT_POLICY_DRIVEN_TCP80` (выключен по умолчанию, включается для smoke)
       - Gate: DPI2-043 — HTTP Host tricks работают через политику; нет регрессий
-    - [ ] **Этап 4**: TCP/443 TLS ClientHello policy‑выбор стратегии (per-domain/per-endpoint), fallback на текущую логику
+    - [x] **Этап 4**: TCP/443 TLS ClientHello policy‑выбор стратегии (per-domain/per-endpoint), fallback на текущую логику
       - Подзадачи:
         - 4.1: Рефакторинг ветки `BypassFilter.Process(...)` для TCP/443 ClientHello (isClientHello + dstPort==443) — lookup в DecisionGraph
         - 4.2: Per-domain стратегии: разные `TlsStrategy` для разных endpoint-ов одновременно

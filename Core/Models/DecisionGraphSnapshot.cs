@@ -81,6 +81,45 @@ namespace IspAudit.Core.Models
             return null;
         }
 
+        /// <summary>
+        /// Stage 4 runtime: выбрать первую (по приоритету) политику для TCP/443 TLS ClientHello,
+        /// совпадающую с пакетом (селективность по IPv4 адресам цели через MatchCondition.DstIpv4Set).
+        /// </summary>
+        public FlowPolicy? EvaluateTcp443TlsClientHello(uint dstIpv4Int, bool isIpv4, bool isIpv6, TlsStage tlsStage)
+        {
+            // Важно: здесь мы рассматриваем и точный ключ, и fallback-ключи,
+            // чтобы политики вида (Tcp,443,*) тоже могли сработать.
+            var keys = new[]
+            {
+                new Key(FlowTransportProtocol.Tcp, 443, tlsStage),
+                new Key(FlowTransportProtocol.Tcp, 443, null),
+                new Key(FlowTransportProtocol.Tcp, null, tlsStage),
+                new Key(FlowTransportProtocol.Tcp, null, null),
+                new Key(null, 443, tlsStage),
+                new Key(null, 443, null),
+                new Key(null, null, tlsStage),
+                new Key(null, null, null)
+            };
+
+            foreach (var key in keys)
+            {
+                if (!Index.TryGetValue(key, out var list))
+                {
+                    continue;
+                }
+
+                foreach (var policy in list)
+                {
+                    if (policy.Match.MatchesTcpPacket(dstIpv4Int, isIpv4, isIpv6))
+                    {
+                        return policy;
+                    }
+                }
+            }
+
+            return null;
+        }
+
         internal static DecisionGraphSnapshot Create(IEnumerable<FlowPolicy> policies)
         {
             var arr = policies

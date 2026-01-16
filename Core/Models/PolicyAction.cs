@@ -20,6 +20,9 @@ namespace IspAudit.Core.Models
     {
         public const string StrategyIdDropUdp443 = "drop_udp_443";
         public const string StrategyIdHttpHostTricks = "http_host_tricks";
+        public const string StrategyIdTlsBypassStrategy = "tls_bypass_strategy";
+
+        public const string ParameterKeyTlsStrategy = "tls_strategy";
 
         public PolicyActionKind Kind { get; init; }
 
@@ -37,6 +40,13 @@ namespace IspAudit.Core.Models
         public static PolicyAction Block { get; } = new() { Kind = PolicyActionKind.Block };
         public static PolicyAction DropUdp443 { get; } = Strategy(StrategyIdDropUdp443);
         public static PolicyAction HttpHostTricks { get; } = Strategy(StrategyIdHttpHostTricks);
+
+        public static PolicyAction TlsBypassStrategy(string tlsStrategy)
+        {
+            if (string.IsNullOrWhiteSpace(tlsStrategy)) throw new ArgumentException("tlsStrategy не должен быть пустым", nameof(tlsStrategy));
+            return Strategy(StrategyIdTlsBypassStrategy,
+                ImmutableDictionary<string, string>.Empty.Add(ParameterKeyTlsStrategy, tlsStrategy));
+        }
 
         public static PolicyAction Strategy(string strategyId, ImmutableDictionary<string, string>? parameters = null)
         {

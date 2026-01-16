@@ -764,6 +764,164 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_PolicyDrivenTcp443_TlsStrategySelection_ViaDecisionGraph(CancellationToken ct)
+            => RunAsync("DPI2-044", "TCP/443 TLS strategy: policy-driven выбор стратегии (per-endpoint) + fallback", () =>
+            {
+                var prevGate = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443");
+                try
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443", "1");
+
+                    static uint ToIpv4Int(IPAddress ip)
+                    {
+                        var b = ip.GetAddressBytes();
+                        if (b.Length != 4) return 0;
+                        return ((uint)b[0] << 24) | ((uint)b[1] << 16) | ((uint)b[2] << 8) | b[3];
+                    }
+
+                    // Legacy стратегия намеренно отличается от policy-выбранных,
+                    // чтобы можно было проверить fallback (когда policy не мэтчится).
+                    var profile = new BypassProfile
+                    {
+                        DropTcpRst = false,
+                        FragmentTlsClientHello = true,
+                        TlsStrategy = TlsBypassStrategy.Fake, // fallback
+                        TlsFragmentThreshold = 1,
+                        TlsFragmentSizes = new List<int> { 64 },
+                        AllowNoSni = true,
+                        DropUdp443 = false,
+                        HttpHostTricks = false,
+                        RedirectRules = Array.Empty<BypassRedirectRule>()
+                    };
+
+                    var filter = new IspAudit.Core.Traffic.Filters.BypassFilter(profile, logAction: null, presetName: "smoke");
+
+                    var policyA = "tcp443_tls_strategy_fragment";
+                    var policyB = "tcp443_tls_strategy_fake_disorder";
+
+                    var ipA = IPAddress.Parse("203.0.113.10");
+                    var ipB = IPAddress.Parse("198.51.100.20");
+                    var ipC = IPAddress.Parse("192.0.2.30");
+                    var clientIp = IPAddress.Parse("10.10.0.2");
+
+                    var snapshot = IspAudit.Core.Bypass.PolicySetCompiler.CompileOrThrow(new[]
+                    {
+                        new FlowPolicy
+                        {
+                            Id = policyA,
+                            Priority = 100,
+                            Match = new MatchCondition
+                            {
+                                Proto = FlowTransportProtocol.Tcp,
+                                Port = 443,
+                                TlsStage = TlsStage.ClientHello,
+                                DstIpv4Set = new[] { ToIpv4Int(ipA) }.ToImmutableHashSet()
+                            },
+                            Action = PolicyAction.TlsBypassStrategy(TlsBypassStrategy.Fragment.ToString()),
+                            Scope = PolicyScope.Local
+                        },
+                        new FlowPolicy
+                        {
+                            Id = policyB,
+                            Priority = 100,
+                            Match = new MatchCondition
+                            {
+                                Proto = FlowTransportProtocol.Tcp,
+                                Port = 443,
+                                TlsStage = TlsStage.ClientHello,
+                                DstIpv4Set = new[] { ToIpv4Int(ipB) }.ToImmutableHashSet()
+                            },
+                            Action = PolicyAction.TlsBypassStrategy(TlsBypassStrategy.FakeDisorder.ToString()),
+                            Scope = PolicyScope.Local
+                        }
+                    });
+
+                    filter.SetDecisionGraphSnapshot(snapshot);
+
+                    var tlsPayload = new byte[200];
+                    tlsPayload[0] = 0x16; // TLS Handshake record
+                    tlsPayload[5] = 0x01; // ClientHello
+
+                    var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+
+                    // A) ipA: Fragment => 2 отправки (2 сегмента)
+                    {
+                        var sender = new CapturePacketSender();
+                        var pkt = BuildIpv4TcpPacket(clientIp, ipA, srcPort: 50110, dstPort: 443, ttl: 64, ipId: 210, seq: 123450u, tcpFlags: 0x18, payload: tlsPayload);
+                        var forwarded = filter.Process(new InterceptedPacket(pkt, pkt.Length), ctx, sender);
+                        if (forwarded)
+                        {
+                            return new SmokeTestResult("DPI2-044", "TCP/443 TLS strategy: policy-driven выбор стратегии (per-endpoint) + fallback", SmokeOutcome.Fail, TimeSpan.Zero,
+                                "ipA: ожидали drop оригинального пакета (Process вернёт false)");
+                        }
+
+                        if (sender.Sent.Count != 2)
+                        {
+                            return new SmokeTestResult("DPI2-044", "TCP/443 TLS strategy: policy-driven выбор стратегии (per-endpoint) + fallback", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"ipA: ожидали 2 отправки (Fragment), получили: {sender.Sent.Count}");
+                        }
+                    }
+
+                    // B) ipB: FakeDisorder => 3 отправки (1 fake + 2 сегмента)
+                    {
+                        var sender = new CapturePacketSender();
+                        var pkt = BuildIpv4TcpPacket(clientIp, ipB, srcPort: 50111, dstPort: 443, ttl: 64, ipId: 211, seq: 223450u, tcpFlags: 0x18, payload: tlsPayload);
+                        var forwarded = filter.Process(new InterceptedPacket(pkt, pkt.Length), ctx, sender);
+                        if (forwarded)
+                        {
+                            return new SmokeTestResult("DPI2-044", "TCP/443 TLS strategy: policy-driven выбор стратегии (per-endpoint) + fallback", SmokeOutcome.Fail, TimeSpan.Zero,
+                                "ipB: ожидали drop оригинального пакета (Process вернёт false)");
+                        }
+
+                        if (sender.Sent.Count != 3)
+                        {
+                            return new SmokeTestResult("DPI2-044", "TCP/443 TLS strategy: policy-driven выбор стратегии (per-endpoint) + fallback", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"ipB: ожидали 3 отправки (FakeDisorder), получили: {sender.Sent.Count}");
+                        }
+                    }
+
+                    // C) ipC: нет policy => fallback на профайл (Fake => 1 отправка)
+                    {
+                        var sender = new CapturePacketSender();
+                        var pkt = BuildIpv4TcpPacket(clientIp, ipC, srcPort: 50112, dstPort: 443, ttl: 64, ipId: 212, seq: 323450u, tcpFlags: 0x18, payload: tlsPayload);
+                        var forwarded = filter.Process(new InterceptedPacket(pkt, pkt.Length), ctx, sender);
+                        if (forwarded)
+                        {
+                            return new SmokeTestResult("DPI2-044", "TCP/443 TLS strategy: policy-driven выбор стратегии (per-endpoint) + fallback", SmokeOutcome.Fail, TimeSpan.Zero,
+                                "ipC: ожидали drop оригинального пакета (Process вернёт false) по legacy Fake");
+                        }
+
+                        if (sender.Sent.Count != 1)
+                        {
+                            return new SmokeTestResult("DPI2-044", "TCP/443 TLS strategy: policy-driven выбор стратегии (per-endpoint) + fallback", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"ipC: ожидали 1 отправку (legacy Fake), получили: {sender.Sent.Count}");
+                        }
+                    }
+
+                    var perPolicy = filter.GetPolicyAppliedCountsSnapshot();
+                    if (!perPolicy.TryGetValue(policyA, out var cntA) || cntA != 1)
+                    {
+                        var observed = string.Join(", ", perPolicy.Select(kv => kv.Key + "=" + kv.Value));
+                        return new SmokeTestResult("DPI2-044", "TCP/443 TLS strategy: policy-driven выбор стратегии (per-endpoint) + fallback", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали per-policy счётчик {policyA}=1, получили: {observed}");
+                    }
+
+                    if (!perPolicy.TryGetValue(policyB, out var cntB) || cntB != 1)
+                    {
+                        var observed = string.Join(", ", perPolicy.Select(kv => kv.Key + "=" + kv.Value));
+                        return new SmokeTestResult("DPI2-044", "TCP/443 TLS strategy: policy-driven выбор стратегии (per-endpoint) + fallback", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали per-policy счётчик {policyB}=1, получили: {observed}");
+                    }
+
+                    return new SmokeTestResult("DPI2-044", "TCP/443 TLS strategy: policy-driven выбор стратегии (per-endpoint) + fallback", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: per-endpoint TLS стратегии выбираются через decision graph; fallback на legacy работает; per-policy метрики инкрементятся");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443", prevGate);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_Guard_BypassStateManager_IsSingleSourceOfTruth(CancellationToken ct)
             => RunAsyncAwait("DPI2-026", "Guard: TrafficEngine/TlsBypassService только через BypassStateManager", async innerCt =>
             {

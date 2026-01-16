@@ -343,7 +343,8 @@ namespace IspAudit.Bypass
 
                 var shouldCompileSnapshot =
                     (PolicyDrivenExecutionGates.PolicyDrivenUdp443Enabled() && normalized.DropUdp443)
-                    || (PolicyDrivenExecutionGates.PolicyDrivenTcp80HostTricksEnabled() && normalized.HttpHostTricksEnabled);
+                    || (PolicyDrivenExecutionGates.PolicyDrivenTcp80HostTricksEnabled() && normalized.HttpHostTricksEnabled)
+                    || (PolicyDrivenExecutionGates.PolicyDrivenTcp443TlsStrategyEnabled() && (normalized.FragmentEnabled || normalized.DisorderEnabled || normalized.FakeEnabled));
 
                 if (shouldCompileSnapshot)
                 {
@@ -406,6 +407,41 @@ namespace IspAudit.Bypass
                                 Action = PolicyAction.HttpHostTricks,
                                 Scope = PolicyScope.Global
                             });
+                        }
+
+                        // P0.2 Stage 4: TCP/443 TLS ClientHello strategy selection
+                        if (PolicyDrivenExecutionGates.PolicyDrivenTcp443TlsStrategyEnabled()
+                            && (normalized.FragmentEnabled || normalized.DisorderEnabled || normalized.FakeEnabled))
+                        {
+                            var tlsStrategy = TlsBypassStrategy.None;
+
+                            if (normalized.DisorderEnabled && normalized.FakeEnabled)
+                                tlsStrategy = TlsBypassStrategy.FakeDisorder;
+                            else if (normalized.FragmentEnabled && normalized.FakeEnabled)
+                                tlsStrategy = TlsBypassStrategy.FakeFragment;
+                            else if (normalized.DisorderEnabled)
+                                tlsStrategy = TlsBypassStrategy.Disorder;
+                            else if (normalized.FakeEnabled)
+                                tlsStrategy = TlsBypassStrategy.Fake;
+                            else if (normalized.FragmentEnabled)
+                                tlsStrategy = TlsBypassStrategy.Fragment;
+
+                            if (tlsStrategy != TlsBypassStrategy.None)
+                            {
+                                policies.Add(new FlowPolicy
+                                {
+                                    Id = "tcp443_tls_clienthello_strategy",
+                                    Priority = 100,
+                                    Match = new MatchCondition
+                                    {
+                                        Proto = FlowTransportProtocol.Tcp,
+                                        Port = 443,
+                                        TlsStage = TlsStage.ClientHello
+                                    },
+                                    Action = PolicyAction.TlsBypassStrategy(tlsStrategy.ToString()),
+                                    Scope = PolicyScope.Global
+                                });
+                            }
                         }
 
                         decisionSnapshot = policies.Count == 0 ? null : PolicySetCompiler.CompileOrThrow(policies);

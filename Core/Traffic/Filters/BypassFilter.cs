@@ -160,17 +160,29 @@ namespace IspAudit.Core.Traffic.Filters
 
                 var fragmentPlan = BuildFragmentPlan(packet);
 
-                if (ProcessTlsStrategy(packet, context, sender, isNewConnection, fragmentPlan))
+                var effectiveTlsStrategy = _profile.TlsStrategy;
+                if (TrySelectTlsStrategyPolicyDriven(packet, payloadLength, hasSni, out var selectedPolicyId, out var policyStrategy))
+                {
+                    effectiveTlsStrategy = policyStrategy;
+                }
+
+                if (effectiveTlsStrategy != TlsBypassStrategy.None
+                    && ProcessTlsStrategy(packet, context, sender, isNewConnection, fragmentPlan, effectiveTlsStrategy))
                 {
                     if (!isProbe)
                     {
                         Interlocked.Increment(ref _clientHellosFragmented);
                         Interlocked.Increment(ref _tlsHandled);
                         _lastFragmentPlan = fragmentPlan != null ? string.Join('/', fragmentPlan.Select(f => f.PayloadLength)) : "";
+
+                        if (!string.IsNullOrWhiteSpace(selectedPolicyId))
+                        {
+                            RecordPolicyApplied(selectedPolicyId);
+                        }
                     }
                     if (_verbosePacketLog)
                     {
-                        _log?.Invoke($"[Bypass][TLS] preset={_presetName}, payload={packet.Info.PayloadLength}, plan={_lastFragmentPlan}, strategy={_profile.TlsStrategy}, result=fragmented");
+                        _log?.Invoke($"[Bypass][TLS] preset={_presetName}, payload={packet.Info.PayloadLength}, plan={_lastFragmentPlan}, strategy={effectiveTlsStrategy}, result=fragmented");
                     }
                     _connections.AddOrUpdate(connectionKey,
                         _ => new ConnectionState(Environment.TickCount64, true),

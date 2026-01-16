@@ -131,6 +131,25 @@ namespace IspAudit.Core.Models
             return DstIpv4Set.Contains(dstIpv4Int);
         }
 
+        internal bool MatchesTcpPacket(uint dstIpv4Int, bool isIpv4, bool isIpv6)
+        {
+            // Протокол/порт проверяются выше через индекс/кандидаты.
+            // IPv6: селективность по dst IPv4 недоступна — мэтчим только если нет ipv4-селективного условия.
+            if (isIpv6)
+            {
+                return DstIpv4Set is null;
+            }
+
+            if (!isIpv4)
+            {
+                return false;
+            }
+
+            if (DstIpv4Set is null) return true;
+            if (DstIpv4Set.Count == 0) return false;
+            return DstIpv4Set.Contains(dstIpv4Int);
+        }
+
         private static bool SniOverlaps(string? a, string? b)
         {
             if (string.IsNullOrWhiteSpace(a) || a == "*") return true;

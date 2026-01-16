@@ -597,6 +597,18 @@
 **Входные данные:** `BypassFilter` + синтетические IPv4 TCP пакеты на порт 80 с HTTP `Host:` + snapshot с `PolicyAction.HttpHostTricks` + `ISP_AUDIT_POLICY_DRIVEN_TCP80=1`
 **Ожидаемый результат:** Тест PASS
 
+### 5.4.5 Policy-Driven Execution Plane (Stage 4)
+**Test ID:** `DPI2-044`
+**Что проверяет:** TCP/443 TLS ClientHello выбирает стратегию через `DecisionGraphSnapshot` (per-endpoint) с fallback на legacy
+**Для чего:** Перейти от «одной глобальной TLS стратегии» к policy-выбору стратегии как функции от пакета (dst_ip/proto/port/tls_stage)
+**Критерий успеха:**
+- Для IP A: применяется policy-стратегия `Fragment` (2 отправки сегментов) и оригинальный пакет дропается.
+- Для IP B: применяется policy-стратегия `FakeDisorder` (1 fake + 2 сегмента = 3 отправки) и оригинальный пакет дропается.
+- Для IP C без мэтча: применяется legacy стратегия из профиля (`Fake`, 1 отправка) — fallback корректен.
+- Per-policy счётчики (по policy-id) увеличиваются на 1 для A и B.
+**Входные данные:** `BypassFilter` + синтетические IPv4 TCP пакеты на порт 443 с TLS ClientHello (минимальная сигнатура) + snapshot с `PolicyAction.TlsBypassStrategy(...)` + `ISP_AUDIT_POLICY_DRIVEN_TCP443=1`
+**Ожидаемый результат:** Тест PASS
+
 ### 5.5 Feedback & Rerank
 **Test ID:** `DPI2-014`
 **Что проверяет:** Ранжирование стратегий по feedback поверх basePriority

@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using IspAudit.Bypass;
+using IspAudit.Core.Bypass;
 using IspAudit.Core.Traffic;
 
 namespace IspAudit.Core.Traffic.Filters
@@ -37,13 +38,14 @@ namespace IspAudit.Core.Traffic.Filters
             PacketContext context,
             IPacketSender sender,
             bool isNewConnection,
-            List<FragmentSlice>? fragmentPlan)
+            List<FragmentSlice>? fragmentPlan,
+            TlsBypassStrategy tlsStrategy)
         {
             bool handled = false;
 
-            if (_profile.TlsStrategy == TlsBypassStrategy.Fake ||
-                _profile.TlsStrategy == TlsBypassStrategy.FakeFragment ||
-                _profile.TlsStrategy == TlsBypassStrategy.FakeDisorder)
+            if (tlsStrategy == TlsBypassStrategy.Fake ||
+                tlsStrategy == TlsBypassStrategy.FakeFragment ||
+                tlsStrategy == TlsBypassStrategy.FakeDisorder)
             {
                 if (ApplyFakeStrategy(packet, context, sender, isNewConnection))
                 {
@@ -51,16 +53,16 @@ namespace IspAudit.Core.Traffic.Filters
                 }
             }
 
-            if ((_profile.TlsStrategy == TlsBypassStrategy.Fragment ||
-                _profile.TlsStrategy == TlsBypassStrategy.FakeFragment) && fragmentPlan != null)
+            if ((tlsStrategy == TlsBypassStrategy.Fragment ||
+                tlsStrategy == TlsBypassStrategy.FakeFragment) && fragmentPlan != null)
             {
                 if (ApplyFragmentStrategy(packet, context, sender, fragmentPlan))
                 {
                     handled = true;
                 }
             }
-            else if ((_profile.TlsStrategy == TlsBypassStrategy.Disorder ||
-                     _profile.TlsStrategy == TlsBypassStrategy.FakeDisorder) && fragmentPlan != null)
+            else if ((tlsStrategy == TlsBypassStrategy.Disorder ||
+                     tlsStrategy == TlsBypassStrategy.FakeDisorder) && fragmentPlan != null)
             {
                 if (ApplyDisorderStrategy(packet, context, sender, fragmentPlan))
                 {
@@ -69,6 +71,69 @@ namespace IspAudit.Core.Traffic.Filters
             }
 
             return handled;
+        }
+
+        private bool TrySelectTlsStrategyPolicyDriven(
+            InterceptedPacket packet,
+            int payloadLength,
+            bool hasSni,
+            out string? selectedPolicyId,
+            out TlsBypassStrategy tlsStrategy)
+        {
+            selectedPolicyId = null;
+            tlsStrategy = _profile.TlsStrategy;
+
+            var snapshot = _decisionGraphSnapshot;
+            if (snapshot == null) return false;
+            if (!PolicyDrivenExecutionGates.PolicyDrivenTcp443TlsStrategyEnabled()) return false;
+
+            // Stage 4: выбор стратегии для TCP/443 на ClientHello (и NoSni, если SNI отсутствует).
+            if (!packet.Info.IsTcp || packet.Info.DstPort != 443) return false;
+            if (!packet.Info.IsIpv4 && !packet.Info.IsIpv6) return false;
+
+            var primaryStage = (!hasSni && payloadLength >= _profile.TlsFragmentThreshold)
+                ? IspAudit.Core.Models.TlsStage.NoSni
+                : IspAudit.Core.Models.TlsStage.ClientHello;
+
+            // Если политика явно не задаёт NoSni, но при этом хочет управлять ClientHello,
+            // даём предсказуемый fallback: NoSni → ClientHello.
+            // Это также помогает в smoke-тестах с синтетическим ClientHello без SNI.
+            var selected = snapshot.EvaluateTcp443TlsClientHello(
+                packet.Info.DstIpInt,
+                isIpv4: packet.Info.IsIpv4,
+                isIpv6: packet.Info.IsIpv6,
+                tlsStage: primaryStage);
+
+            if (selected == null && primaryStage == IspAudit.Core.Models.TlsStage.NoSni)
+            {
+                selected = snapshot.EvaluateTcp443TlsClientHello(
+                    packet.Info.DstIpInt,
+                    isIpv4: packet.Info.IsIpv4,
+                    isIpv6: packet.Info.IsIpv6,
+                    tlsStage: IspAudit.Core.Models.TlsStage.ClientHello);
+            }
+
+            if (selected == null) return false;
+            if (selected.Action.Kind != IspAudit.Core.Models.PolicyActionKind.Strategy) return false;
+            if (!string.Equals(selected.Action.StrategyId, IspAudit.Core.Models.PolicyAction.StrategyIdTlsBypassStrategy, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (!selected.Action.Parameters.TryGetValue(IspAudit.Core.Models.PolicyAction.ParameterKeyTlsStrategy, out var rawStrategy)
+                || string.IsNullOrWhiteSpace(rawStrategy))
+            {
+                return false;
+            }
+
+            if (!Enum.TryParse<TlsBypassStrategy>(rawStrategy, ignoreCase: true, out var parsed))
+            {
+                return false;
+            }
+
+            selectedPolicyId = selected.Id;
+            tlsStrategy = parsed;
+            return true;
         }
 
         private bool ApplyFakeStrategy(InterceptedPacket packet, PacketContext context, IPacketSender sender, bool isNewConnection)

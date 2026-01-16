@@ -71,5 +71,28 @@ namespace IspAudit.Core.Bypass
                 return false;
             }
         }
+
+        /// <summary>
+        /// Фича-гейт: включить policy-driven runtime-путь для TCP/443 TLS (выбор стратегии на ClientHello).
+        /// Управляется env var `ISP_AUDIT_POLICY_DRIVEN_TCP443`.
+        /// По умолчанию выключен.
+        /// </summary>
+        public static bool PolicyDrivenTcp443TlsStrategyEnabled()
+        {
+            try
+            {
+                var raw = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443");
+                if (string.IsNullOrWhiteSpace(raw)) return false;
+
+                return string.Equals(raw, "1", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(raw, "yes", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(raw, "on", StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
 }
