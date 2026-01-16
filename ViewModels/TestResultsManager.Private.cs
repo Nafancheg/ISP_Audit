@@ -234,11 +234,11 @@ namespace IspAudit.ViewModels
             var hasRecentPass = lastPass != DateTime.MinValue && now - lastPass <= UnstableWindow;
             var hasRecentProblem = lastProblem != DateTime.MinValue && now - lastProblem <= UnstableWindow;
 
-            // Важно: "Нестабильно" не должно перетирать реальный успех.
-            // Если текущая проверка успешна — показываем Pass, даже если недавно были ошибки.
-            if (incoming == TestStatus.Pass)
+            // Детерминированное правило "Нестабильно": если в окне есть и успех, и проблема (Fail/Warn)
+            // — показываем Warn, даже если текущий входящий статус Pass.
+            if (hasRecentPass && hasRecentProblem)
             {
-                return TestStatus.Pass;
+                return TestStatus.Warn;
             }
 
             // Если сейчас пришла проблема, но в недавнем окне был успех — это плавающая/частичная проблема.
