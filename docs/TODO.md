@@ -393,8 +393,8 @@ WinDivert.dll (native driver)
 
 - [ ] Задача 5.0: Подготовка инфраструктуры Rust (🟢)
   - Подзадачи:
-    - 5.0.1: Создать Rust workspace `native/isp_audit_native/`
-    - 5.0.2: Настроить `Cargo.toml` с `crate-type = ["cdylib"]`
+    - [x] 5.0.1: Создать Rust workspace `native/isp_audit_native/`
+    - [x] 5.0.2: Настроить `Cargo.toml` с `crate-type = ["cdylib"]`
     - 5.0.3: Настроить MSBuild для автоматической сборки Rust DLL при `dotnet build`
     - 5.0.4: Добавить копирование `isp_audit_native.dll` в output directory
   - Gate: `dotnet build` собирает и копирует Rust DLL без ручных шагов
@@ -402,12 +402,19 @@ WinDivert.dll (native driver)
 - [ ] Задача 5.1: WinDivert FFI обёртка на Rust (🟡)
   - Цель: заменить `WinDivertNative.cs` на безопасную Rust обёртку с C ABI.
   - Подзадачи:
-    - 5.1.1: Реализовать структуры `DivertAddress`, `DivertIpHdr`, `DivertTcpHdr` в Rust
-    - 5.1.2: Реализовать `divert_open`, `divert_recv`, `divert_send`, `divert_close`
+    - [~] 5.1.1: Реализовать структуры `DivertAddress`, `DivertIpHdr`, `DivertTcpHdr` в Rust
+      - Сделано: `DivertAddress` (80 байт, совместимый layout) в `native/isp_audit_native/src/lib.rs`
+      - Осталось: `DivertIpHdr`, `DivertTcpHdr` (пока не реализованы)
+    - [~] 5.1.2: Реализовать `divert_open`, `divert_recv`, `divert_send`, `divert_close`
+      - Сделано: `divert_open/divert_recv/divert_send/divert_close` как proxy в `WinDivert.dll` (динамическая загрузка)
     - 5.1.3: Реализовать `divert_calc_checksums` с валидацией буфера
     - 5.1.4: Создать C# interop класс `WinDivertNativeRust.cs`
     - 5.1.5: Feature flag для переключения между старым и новым P/Invoke
   - Gate: NATIVE-001 — smoke-тест WinDivert через Rust DLL проходит (требует admin)
+
+Примечание (Dev, 16.01.2026):
+- На этом шаге **основной .NET код не менялся**: заготовка добавлена отдельно, чтобы позже включить переключение бесшовно.
+- MSBuild сборка Rust и копирование `isp_audit_native.dll` в output directory пока **не подключены** (в очереди после более приоритетных задач).
 
 - [ ] Задача 5.2: Packet Parser на Rust (🟡)
   - Цель: zero-copy парсинг IP/TCP/UDP заголовков с bounds checking.
