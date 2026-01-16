@@ -19,6 +19,7 @@ using IspAudit.Windows;
 using IspAudit;
 using System.Windows.Media;
 using System.Net;
+using IspAudit.ViewModels.OrchestratorState;
 
 // Явно указываем WPF вместо WinForms
 using Application = System.Windows.Application;
@@ -93,9 +94,7 @@ namespace IspAudit.ViewModels
 
         // Пост-Apply ретест (практический UX): после применения обхода
         // сразу запускаем короткий ретест по цели, чтобы пользователь видел эффект.
-        private bool _isPostApplyRetestRunning;
-        private string _postApplyRetestStatus = "";
-        private CancellationTokenSource? _postApplyRetestCts;
+        private readonly PostApplyRetestState _postApplyRetest = new();
 
         // Legacy (справочно): не влияет на основную рекомендацию v2
         private readonly HashSet<string> _legacyRecommendedStrategies = new(StringComparer.OrdinalIgnoreCase);
@@ -275,20 +274,20 @@ namespace IspAudit.ViewModels
 
         public bool IsPostApplyRetestRunning
         {
-            get => _isPostApplyRetestRunning;
+            get => _postApplyRetest.IsRunning;
             private set
             {
-                _isPostApplyRetestRunning = value;
+                _postApplyRetest.IsRunning = value;
                 OnPropertyChanged(nameof(IsPostApplyRetestRunning));
             }
         }
 
         public string PostApplyRetestStatus
         {
-            get => _postApplyRetestStatus;
+            get => _postApplyRetest.Status;
             private set
             {
-                _postApplyRetestStatus = value;
+                _postApplyRetest.Status = value;
                 OnPropertyChanged(nameof(PostApplyRetestStatus));
             }
         }

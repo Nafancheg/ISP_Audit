@@ -211,6 +211,8 @@ Dev-проверка (smoke): для воспроизводимой провер
 
 Статус (P0.3): `DiagnosticOrchestrator` декомпозирован через partial-файлы (без изменения поведения): [ViewModels/DiagnosticOrchestrator.cs](ViewModels/DiagnosticOrchestrator.cs), [ViewModels/DiagnosticOrchestrator.Core.cs](ViewModels/DiagnosticOrchestrator.Core.cs), [ViewModels/DiagnosticOrchestrator.Monitoring.cs](ViewModels/DiagnosticOrchestrator.Monitoring.cs), [ViewModels/DiagnosticOrchestrator.Recommendations.cs](ViewModels/DiagnosticOrchestrator.Recommendations.cs), [ViewModels/DiagnosticOrchestrator.Recommendations.Apply.cs](ViewModels/DiagnosticOrchestrator.Recommendations.Apply.cs), [ViewModels/DiagnosticOrchestrator.System.cs](ViewModels/DiagnosticOrchestrator.System.cs), [ViewModels/DiagnosticOrchestrator.Private.cs](ViewModels/DiagnosticOrchestrator.Private.cs).
 
+Статус (4.3, начало): модели состояния `DiagnosticOrchestrator` постепенно выносятся в отдельные типы в [ViewModels/OrchestratorState/](ViewModels/OrchestratorState/). Первый вынесенный объект — [ViewModels/OrchestratorState/PostApplyRetestState.cs](ViewModels/OrchestratorState/PostApplyRetestState.cs) (состояние пост-Apply ретеста).
+
 Статус (P0.3): `TestResultsManager` декомпозирован через partial-файлы (без изменения поведения): [ViewModels/TestResultsManager.cs](ViewModels/TestResultsManager.cs) (63), [ViewModels/TestResultsManager.Counters.cs](ViewModels/TestResultsManager.Counters.cs) (35), [ViewModels/TestResultsManager.Initialization.cs](ViewModels/TestResultsManager.Initialization.cs) (46), [ViewModels/TestResultsManager.Update.cs](ViewModels/TestResultsManager.Update.cs) (136), [ViewModels/TestResultsManager.PipelineParsing.cs](ViewModels/TestResultsManager.PipelineParsing.cs) (14), [ViewModels/TestResultsManager.PipelineMessageParser.cs](ViewModels/TestResultsManager.PipelineMessageParser.cs) (73), [ViewModels/TestResultsManager.Tokens.cs](ViewModels/TestResultsManager.Tokens.cs) (31), [ViewModels/TestResultsManager.DnsResolution.cs](ViewModels/TestResultsManager.DnsResolution.cs) (89), [ViewModels/TestResultsManager.Heuristics.cs](ViewModels/TestResultsManager.Heuristics.cs) (71), [ViewModels/TestResultsManager.Private.cs](ViewModels/TestResultsManager.Private.cs) (327).
 
 Статус (P0.3): парсинг строк pipeline вынесен в top-level сервис [ViewModels/PipelineMessageParser.cs](ViewModels/PipelineMessageParser.cs) (593) с явным контекстом (`IPipelineMessageParserContext`).
@@ -516,6 +518,7 @@ ISP_Audit/
 ├── ViewModels/                 # MVVM (UI Logic)
 │   ├── MainViewModel.*.cs              # MainViewModel (partial): Constructor/Commands/State/Handlers/etc.
 │   ├── DiagnosticOrchestrator.*.cs
+│   ├── OrchestratorState/
 │   ├── BypassController.*.cs
 │   └── TestResultsManager*.cs
 │

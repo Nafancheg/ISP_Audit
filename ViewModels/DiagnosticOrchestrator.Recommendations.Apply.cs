@@ -212,14 +212,14 @@ namespace IspAudit.ViewModels
 
             try
             {
-                _postApplyRetestCts?.Cancel();
+                _postApplyRetest.Cancellation?.Cancel();
             }
             catch
             {
             }
 
-            _postApplyRetestCts = new CancellationTokenSource();
-            var ct = _postApplyRetestCts.Token;
+            _postApplyRetest.Cancellation = new CancellationTokenSource();
+            var ct = _postApplyRetest.Cancellation.Token;
 
             IsPostApplyRetestRunning = true;
             PostApplyRetestStatus = $"Ретест после Apply: запуск ({hostKey})";
