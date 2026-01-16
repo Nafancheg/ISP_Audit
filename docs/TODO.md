@@ -137,14 +137,14 @@
     | Semantic Groups | Domain families в UI (концепция) | Policy bundle с merge-правилами и UI статусами |
     | LOCAL/GLOBAL scope | Селективный UDP/443 через `ObservedTargetIpCache` | FlowPolicy.Scope с явными правилами приоритетов |
   - Этапы (минимально инвазивно):
-    - [ ] **Этап 0**: Типы FlowPolicy/DecisionGraphSnapshot + компилятор + hard‑conflict валидация
+    - [x] **Этап 0**: Типы FlowPolicy/DecisionGraphSnapshot + компилятор + hard‑conflict валидация
       - Подзадачи:
         - 0.1: Создать `Core/Models/FlowPolicy.cs` (Id, Match, Action, Scope, Priority, TTL, CreatedAt)
         - 0.2: Создать `Core/Models/MatchCondition.cs` (DstIpSet, Proto, Port, TlsStage, SniPattern)
         - 0.3: Создать `Core/Models/PolicyAction.cs` (enum: Pass, Block, Strategy + параметры)
         - 0.4: Создать `Core/Models/DecisionGraphSnapshot.cs` (ImmutableDictionary lookup)
         - 0.5: Создать `Core/Bypass/PolicySetCompiler.cs` (валидация конфликтов, компиляция в snapshot)
-        - 0.6: JSON-схема для FlowPolicy (для экспорта/импорта)
+        - 0.6: JSON-схема для FlowPolicy (для экспорта/импорта) — `docs/schemas/flow_policy.schema.json`
       - Gate: DPI2-040 — компилятор корректно детектирует hard-конфликты; поведение не меняется (zero runtime impact)
     - [ ] **Этап 1**: UDP/443 (QUIC→TCP) как политики (LOCAL/GLOBAL), observability matched/applied
       - Подзадачи:

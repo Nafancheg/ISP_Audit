@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -11,6 +12,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.Core.Bypass;
 using IspAudit.Core.Diagnostics;
 using IspAudit.Core.IntelligenceV2.Contracts;
 using IspAudit.Core.IntelligenceV2.Diagnosis;
@@ -29,6 +31,80 @@ namespace TestNetworkApp.Smoke
 {
     internal static partial class SmokeTests
     {
+        public static Task<SmokeTestResult> Dpi2_PolicySetCompiler_DetectsHardConflicts(CancellationToken ct)
+            => RunAsync("DPI2-040", "PolicySetCompiler: hard-conflicts детектируются детерминированно", () =>
+            {
+                // Конфликт: одинаковый приоритет + пересечение match + разные actions.
+                var p1 = new FlowPolicy
+                {
+                    Id = "p1",
+                    Priority = 10,
+                    Scope = PolicyScope.Local,
+                    Match = new MatchCondition
+                    {
+                        Proto = FlowTransportProtocol.Udp,
+                        Port = 443,
+                        DstIpSet = ImmutableHashSet.Create("1.1.1.1"),
+                        SniPattern = "youtube.com"
+                    },
+                    Action = PolicyAction.Block
+                };
+
+                var p2 = new FlowPolicy
+                {
+                    Id = "p2",
+                    Priority = 10,
+                    Scope = PolicyScope.Local,
+                    Match = new MatchCondition
+                    {
+                        Proto = FlowTransportProtocol.Udp,
+                        Port = 443,
+                        DstIpSet = ImmutableHashSet.Create("1.1.1.1"),
+                        SniPattern = "youtube.com"
+                    },
+                    Action = PolicyAction.Pass
+                };
+
+                var conflicts = PolicySetCompiler.DetectHardConflicts(new[] { p1, p2 });
+                if (conflicts.Length == 0)
+                {
+                    return new SmokeTestResult("DPI2-040", "PolicySetCompiler: hard-conflicts детектируются детерминированно", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали hard-conflict (одинаковый приоритет, пересечение match, разные actions), но конфликтов нет");
+                }
+
+                try
+                {
+                    _ = PolicySetCompiler.CompileOrThrow(new[] { p1, p2 });
+                    return new SmokeTestResult("DPI2-040", "PolicySetCompiler: hard-conflicts детектируются детерминированно", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали PolicyCompilationException, но компиляция прошла без ошибок");
+                }
+                catch (PolicyCompilationException ex)
+                {
+                    if (ex.Conflicts.IsDefaultOrEmpty)
+                    {
+                        return new SmokeTestResult("DPI2-040", "PolicySetCompiler: hard-conflicts детектируются детерминированно", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "PolicyCompilationException получен, но список конфликтов пуст");
+                    }
+                }
+
+                // Неконфликтный случай: более высокий приоритет снимает неоднозначность.
+                var p3 = p2 with { Id = "p3", Priority = 11 };
+                _ = PolicySetCompiler.CompileOrThrow(new[] { p1, p3 });
+
+                // Неконфликтный случай: disjoint ip-set.
+                var p4 = p2 with
+                {
+                    Id = "p4",
+                    Match = p2.Match with { DstIpSet = ImmutableHashSet.Create("2.2.2.2") },
+                    Priority = 10
+                };
+
+                _ = PolicySetCompiler.CompileOrThrow(new[] { p1, p4 });
+
+                return new SmokeTestResult("DPI2-040", "PolicySetCompiler: hard-conflicts детектируются детерминированно", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: hard-conflict ловится, а не-амбигуозные кейсы компилируются");
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_Watchdog_CrashRecovery_AndTimeout_DisablesBypass(CancellationToken ct)
             => RunAsyncAwait("DPI2-027", "Watchdog: crash recovery + timeout => Disable", async innerCt =>
             {

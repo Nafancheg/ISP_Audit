@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isp-audit.local/schema/flow_policy.schema.json",
+  "title": "FlowPolicy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "match", "action"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dstIpSet": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "proto": {
+          "type": "string",
+          "enum": ["Tcp", "Udp"]
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "tlsStage": {
+          "type": "string",
+          "enum": ["ClientHello", "Handshake", "ApplicationData", "NoSni"]
+        },
+        "sniPattern": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["Pass", "Block", "Strategy"]
+        },
+        "strategyId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "kind": { "const": "Strategy" } },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["strategyId"]
+          }
+        }
+      ]
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["Local", "Global"],
+      "default": "Local"
+    },
+    "priority": {
+      "type": "integer",
+      "default": 0
+    },
+    "ttl": {
+      "type": "string",
+      "description": "TimeSpan в формате .NET (например, 00:00:30)."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

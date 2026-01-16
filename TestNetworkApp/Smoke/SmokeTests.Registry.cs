@@ -114,6 +114,7 @@ namespace TestNetworkApp.Smoke
                 ["DPI2-028"] = Dpi2_ActivationDetection_Statuses_AreDeterministic,
                 ["DPI2-029"] = Dpi2_OutcomeCheck_Https_TaggedProbe_IsDeterministic_ViaTaggedProbe,
                 ["DPI2-030"] = Dpi2_QuicFallback_DropUdp443_IsSelectiveByObservedIp,
+                ["DPI2-040"] = Dpi2_PolicySetCompiler_DetectsHardConflicts,
                 ["DPI2-019"] = Dpi2_ExecutorV2_ManualApply_MapsPlanToBypassOptions,
                 ["DPI2-020"] = Dpi2_ExecutorV2_Cancel_RollbacksToPreviousState,
                 ["DPI2-021"] = Dpi2_Pipeline_DoesNotAutoApply_BypassControllerOrTlsBypassService,
