@@ -146,12 +146,12 @@
         - 0.5: Создать `Core/Bypass/PolicySetCompiler.cs` (валидация конфликтов, компиляция в snapshot)
         - 0.6: JSON-схема для FlowPolicy (для экспорта/импорта) — `docs/schemas/flow_policy.schema.json`
       - Gate: DPI2-040 — компилятор корректно детектирует hard-конфликты; поведение не меняется (zero runtime impact)
-    - [ ] **Этап 1**: UDP/443 (QUIC→TCP) как политики (LOCAL/GLOBAL), observability matched/applied
+    - [x] **Этап 1**: UDP/443 (QUIC→TCP) как политики (LOCAL/GLOBAL), observability matched/applied
       - Подзадачи:
         - 1.1: Рефакторинг ветки `BypassFilter.ShouldDropUdp443(...)`/`BypassFilter.Process(...)` — lookup в DecisionGraph вместо глобального флага
         - 1.2: Генерация FlowPolicy из `DropUdp443` + `ObservedTargetIpCache` при Apply
         - 1.3: Метрики per-policy: `matched_count`, `applied_count` (не только глобальный `Udp443Dropped`)
-        - 1.4: Feature gate: `PolicyDrivenUdp443` (выключен по умолчанию, включается для smoke)
+        - 1.4: Feature gate: `ISP_AUDIT_POLICY_DRIVEN_UDP443` (выключен по умолчанию, включается для smoke)
       - Gate: DPI2-041 — UDP/443 drop работает через политику; метрики per-policy корректны; fallback на старую логику при выключенном gate
     - [ ] **Этап 2**: TTL endpoint block (reconnect‑nudge) как TTL‑политика с самым высоким приоритетом
       - Подзадачи:

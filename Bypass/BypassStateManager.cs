@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Immutable;
+using IspAudit.Core.Bypass;
+using IspAudit.Core.Models;
 using IspAudit.Core.Traffic;
 
 namespace IspAudit.Bypass
@@ -334,8 +337,64 @@ namespace IspAudit.Bypass
                     }
                 }
 
+                // Policy-driven execution plane (P0.2 Stage 1): компилируем snapshot только при включённом gate.
+                // При gate=off не меняем runtime-поведение: filter использует legacy ветку.
+                DecisionGraphSnapshot? decisionSnapshot = null;
+                if (PolicyDrivenExecutionGates.PolicyDrivenUdp443Enabled() && normalized.DropUdp443)
+                {
+                    try
+                    {
+                        var policies = new List<FlowPolicy>();
+
+                        if (normalized.DropUdp443Global)
+                        {
+                            policies.Add(new FlowPolicy
+                            {
+                                Id = "udp443_quic_fallback_global",
+                                Priority = 100,
+                                Match = new MatchCondition
+                                {
+                                    Proto = FlowTransportProtocol.Udp,
+                                    Port = 443
+                                },
+                                Action = PolicyAction.DropUdp443,
+                                Scope = PolicyScope.Global
+                            });
+                        }
+                        else
+                        {
+                            // Селективный режим: если targets пусты — не создаём политику (IPv4 не дропаем).
+                            if (udp443Targets.Length > 0)
+                            {
+                                policies.Add(new FlowPolicy
+                                {
+                                    Id = "udp443_quic_fallback_selective",
+                                    Priority = 100,
+                                    Match = new MatchCondition
+                                    {
+                                        Proto = FlowTransportProtocol.Udp,
+                                        Port = 443,
+                                        DstIpv4Set = udp443Targets.ToImmutableHashSet()
+                                    },
+                                    Action = PolicyAction.DropUdp443,
+                                    Scope = PolicyScope.Local
+                                });
+                            }
+                        }
+
+                        decisionSnapshot = PolicySetCompiler.CompileOrThrow(policies);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Gate включён, но компиляция не удалась — откатываемся на legacy путь.
+                        _log?.Invoke($"[Bypass] Policy-driven UDP/443: ошибка компиляции snapshot, fallback на legacy. {ex.Message}");
+                        decisionSnapshot = null;
+                    }
+                }
+
                 using var scope = BypassStateManagerGuard.EnterScope();
                 _tlsService.SetUdp443DropTargetIpsForManager(udp443Targets);
+                _tlsService.SetDecisionGraphSnapshotForManager(decisionSnapshot);
                 await _tlsService.ApplyAsync(normalized, cancellationToken).ConfigureAwait(false);
 
                 if (normalized.IsAnyEnabled())

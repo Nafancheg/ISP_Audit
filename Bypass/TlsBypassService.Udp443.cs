@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 using IspAudit.Core.Traffic.Filters;
+using IspAudit.Core.Models;
 
 namespace IspAudit.Bypass
 {
@@ -26,6 +27,21 @@ namespace IspAudit.Bypass
 
                 // Smoke может подменять фильтр напрямую — пробрасываем текущие target IP.
                 _filter.SetUdp443DropTargetIps(_udp443DropTargetIps);
+
+                // И snapshot decision graph (если задан), чтобы smoke мог проверить policy-driven путь.
+                _filter.SetDecisionGraphSnapshot(_decisionGraphSnapshot);
+            }
+        }
+
+        /// <summary>
+        /// Для BypassStateManager: задать снимок Decision Graph для policy-driven execution plane.
+        /// </summary>
+        internal void SetDecisionGraphSnapshotForManager(DecisionGraphSnapshot? snapshot)
+        {
+            lock (_sync)
+            {
+                _decisionGraphSnapshot = snapshot;
+                _filter?.SetDecisionGraphSnapshot(_decisionGraphSnapshot);
             }
         }
 

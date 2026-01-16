@@ -192,6 +192,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Зафиксировано целевое направление в `ARCHITECTURE_CURRENT.md` (раздел про policy-driven).
 - План внедрения инкрементальный (без переписывания WinDivert/TrafficEngine): см. P0.2 в `docs/TODO.md`.
 - Реализован P0.2 Этап 0 (zero runtime impact): добавлены базовые типы FlowPolicy/DecisionGraphSnapshot, компилятор hard-конфликтов и smoke-гейт `DPI2-040`.
+- Реализован P0.2 Этап 1 (gated runtime): UDP/443 (QUIC→TCP) работает через `DecisionGraphSnapshot` под feature-gate `ISP_AUDIT_POLICY_DRIVEN_UDP443=1`, добавлена минимальная per-policy наблюдаемость и smoke-гейт `DPI2-041`.
 
 Актуализация (Dev, 12.01.2026): базовые analyzers/линт для стабильности
 - Добавлены `Directory.Build.props` и `.editorconfig`.

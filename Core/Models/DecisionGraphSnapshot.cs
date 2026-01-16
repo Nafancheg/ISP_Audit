@@ -64,6 +64,23 @@ namespace IspAudit.Core.Models
             return Array.Empty<FlowPolicy>();
         }
 
+        /// <summary>
+        /// Stage 1 runtime: выбрать первую (по приоритету) политику для UDP/443,
+        /// совпадающую с пакетом (селективность по IPv4 адресам цели через MatchCondition.DstIpv4Set).
+        /// </summary>
+        public FlowPolicy? EvaluateUdp443(uint dstIpv4Int, bool isIpv4, bool isIpv6)
+        {
+            foreach (var policy in GetCandidates(FlowTransportProtocol.Udp, 443, tlsStage: null))
+            {
+                if (policy.Match.MatchesUdp443Packet(dstIpv4Int, isIpv4, isIpv6))
+                {
+                    return policy;
+                }
+            }
+
+            return null;
+        }
+
         internal static DecisionGraphSnapshot Create(IEnumerable<FlowPolicy> policies)
         {
             var arr = policies

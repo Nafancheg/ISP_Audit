@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using IspAudit.Core.Bypass;
+using IspAudit.Core.Models;
 using IspAudit.Core.Traffic;
 
 namespace IspAudit.Core.Traffic.Filters
@@ -12,6 +14,14 @@ namespace IspAudit.Core.Traffic.Filters
         // - IPv4: drop только если dst ∈ _udp443DropTargetDstIps
         // - IPv6: оставляем прежнее поведение (drop при включённом DropUdp443)
         private volatile uint[] _udp443DropTargetDstIps = Array.Empty<uint>();
+
+        // Policy-driven execution plane (P0.2 Stage 1): snapshot decision graph для UDP/443.
+        private volatile DecisionGraphSnapshot? _decisionGraphSnapshot;
+
+        internal void SetDecisionGraphSnapshot(DecisionGraphSnapshot? snapshot)
+        {
+            _decisionGraphSnapshot = snapshot;
+        }
 
         /// <summary>
         /// Задать observed IPv4 адреса (dst ip), к которым следует применять QUIC fallback (DROP UDP/443).
@@ -63,7 +73,7 @@ namespace IspAudit.Core.Traffic.Filters
             _udp443DropTargetDstIps = dedup.ToArray();
         }
 
-        private bool ShouldDropUdp443(PacketInfo info)
+        private bool ShouldDropUdp443(PacketInfo info, bool isProbe)
         {
             if (!info.IsUdp || info.DstPort != 443) return false;
             if (!_profile.DropUdp443) return false;
@@ -74,7 +84,29 @@ namespace IspAudit.Core.Traffic.Filters
             // IPv6: адресов для селективности нет, сохраняем прежнее поведение.
             if (info.IsIpv6) return true;
 
-            // IPv4: drop только к observed адресам цели.
+            // Policy-driven путь (feature gate): при включении используем snapshot.
+            // При выключенном gate или отсутствии snapshot — работаем по legacy ветке.
+            var snapshot = _decisionGraphSnapshot;
+            if (snapshot != null && PolicyDrivenExecutionGates.PolicyDrivenUdp443Enabled())
+            {
+                // IPv4: оценка по policy (селективность по observed IP цели).
+                if (!info.IsIpv4) return false;
+
+                var selected = snapshot.EvaluateUdp443(info.DstIpInt, isIpv4: true, isIpv6: false);
+                if (selected != null && selected.Action.Kind == PolicyActionKind.Strategy
+                    && string.Equals(selected.Action.StrategyId, PolicyAction.StrategyIdDropUdp443, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!isProbe)
+                    {
+                        RecordPolicyApplied(selected.Id);
+                    }
+                    return true;
+                }
+
+                return false;
+            }
+
+            // Legacy: IPv4 drop только к observed адресам цели.
             if (!info.IsIpv4) return false;
 
             var targets = _udp443DropTargetDstIps;

@@ -35,7 +35,7 @@ namespace IspAudit.Core.Traffic.Filters
             // QUIC fallback: многие клиенты/браузеры по умолчанию используют QUIC (UDP/443).
             // TLS обход работает только на TCP, поэтому при включённом DropUdp443
             // принудительно глушим UDP:443, чтобы клиент откатился на TCP/HTTPS.
-            if (ShouldDropUdp443(packet.Info))
+            if (ShouldDropUdp443(packet.Info, isProbe))
             {
                 if (!isProbe)
                 {

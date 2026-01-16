@@ -32,6 +32,13 @@ namespace IspAudit.Core.Models
         public ImmutableHashSet<string>? DstIpSet { get; init; }
 
         /// <summary>
+        /// Runtime-only набор IPv4 адресов назначения в виде uint (network-order), чтобы быстро мэтчить пакеты.
+        /// На Этапе 1 P0.2 используется для UDP/443 (QUIC→TCP) и не предназначен для JSON экспорта.
+        /// </summary>
+        [JsonIgnore]
+        public ImmutableHashSet<uint>? DstIpv4Set { get; init; }
+
+        /// <summary>
         /// Протокол (TCP/UDP). null = любой.
         /// </summary>
         public FlowTransportProtocol? Proto { get; init; }
@@ -72,6 +79,7 @@ namespace IspAudit.Core.Models
             if (a.TlsStage.HasValue && b.TlsStage.HasValue && a.TlsStage.Value != b.TlsStage.Value) return false;
 
             if (!IpSetOverlaps(a.DstIpSet, b.DstIpSet)) return false;
+            if (!Ipv4SetOverlaps(a.DstIpv4Set, b.DstIpv4Set)) return false;
             if (!SniOverlaps(a.SniPattern, b.SniPattern)) return false;
 
             return true;
@@ -86,6 +94,41 @@ namespace IspAudit.Core.Models
                 if (b.Contains(ip)) return true;
             }
             return false;
+        }
+
+        private static bool Ipv4SetOverlaps(ImmutableHashSet<uint>? a, ImmutableHashSet<uint>? b)
+        {
+            // Семантика для runtime-only набора:
+            // - null => ANY
+            // - empty => NONE (никогда не мэтчится)
+            if (a is { Count: 0 }) return false;
+            if (b is { Count: 0 }) return false;
+            if (a is null) return true;
+            if (b is null) return true;
+            foreach (var ip in a)
+            {
+                if (b.Contains(ip)) return true;
+            }
+            return false;
+        }
+
+        internal bool MatchesUdp443Packet(uint dstIpv4Int, bool isIpv4, bool isIpv6)
+        {
+            // Протокол/порт проверяются выше через индекс/кандидаты.
+            // IPv6: селективность пока недоступна, считаем мэтчем только если нет ipv4-селективного условия.
+            if (isIpv6)
+            {
+                return DstIpv4Set is null;
+            }
+
+            if (!isIpv4)
+            {
+                return false;
+            }
+
+            if (DstIpv4Set is null) return true;
+            if (DstIpv4Set.Count == 0) return false;
+            return DstIpv4Set.Contains(dstIpv4Int);
         }
 
         private static bool SniOverlaps(string? a, string? b)

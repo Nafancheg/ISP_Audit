@@ -505,6 +505,113 @@ namespace TestNetworkApp.Smoke
                     "OK: UDP/443 дропается только к target IP");
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_PolicyDrivenUdp443_DropUdp443_ViaDecisionGraph(CancellationToken ct)
+            => RunAsync("DPI2-041", "Policy-driven UDP/443: DROP UDP/443 через DecisionGraphSnapshot + per-policy метрика", () =>
+            {
+                static uint ToIpv4Int(IPAddress ip)
+                {
+                    var bytes = ip.GetAddressBytes();
+                    if (bytes.Length != 4) throw new ArgumentException("Ожидали IPv4 адрес", nameof(ip));
+                    return ((uint)bytes[0] << 24) | ((uint)bytes[1] << 16) | ((uint)bytes[2] << 8) | bytes[3];
+                }
+
+                var prevGate = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_UDP443");
+                try
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_UDP443", "1");
+
+                    // Тестируем на уровне BypassFilter (без TrafficEngine/сети), но уже через decision graph.
+                    var profile = new BypassProfile
+                    {
+                        DropUdp443 = true
+                    };
+
+                    var filter = new BypassFilter(profile, logAction: null, presetName: "smoke");
+
+                    var targetIp = IPAddress.Parse("203.0.113.10");
+                    var otherIp = IPAddress.Parse("198.51.100.20");
+                    var srcIp = IPAddress.Parse("10.0.0.2");
+
+                    var policyId = "smoke_udp443_drop";
+                    var snapshot = IspAudit.Core.Bypass.PolicySetCompiler.CompileOrThrow(new[]
+                    {
+                        new IspAudit.Core.Models.FlowPolicy
+                        {
+                            Id = policyId,
+                            Priority = 100,
+                            Match = new IspAudit.Core.Models.MatchCondition
+                            {
+                                Proto = IspAudit.Core.Models.FlowTransportProtocol.Udp,
+                                Port = 443,
+                                DstIpv4Set = new[] { ToIpv4Int(targetIp) }.ToImmutableHashSet()
+                            },
+                            Action = IspAudit.Core.Models.PolicyAction.DropUdp443,
+                            Scope = IspAudit.Core.Models.PolicyScope.Local
+                        }
+                    });
+
+                    filter.SetDecisionGraphSnapshot(snapshot);
+
+                    var udpToTarget = BuildIpv4UdpPacket(
+                        srcIp,
+                        targetIp,
+                        srcPort: 50000,
+                        dstPort: 443,
+                        ttl: 64,
+                        ipId: 1,
+                        payload: new byte[] { 1, 2, 3 });
+
+                    var udpToOther = BuildIpv4UdpPacket(
+                        srcIp,
+                        otherIp,
+                        srcPort: 50001,
+                        dstPort: 443,
+                        ttl: 64,
+                        ipId: 2,
+                        payload: new byte[] { 4, 5, 6 });
+
+                    var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+                    var sender = new DummyPacketSender();
+
+                    var allow1 = filter.Process(new InterceptedPacket(udpToTarget, udpToTarget.Length), ctx, sender);
+                    var allow2 = filter.Process(new InterceptedPacket(udpToOther, udpToOther.Length), ctx, sender);
+
+                    if (allow1)
+                    {
+                        return new SmokeTestResult("DPI2-041", "Policy-driven UDP/443: DROP UDP/443 через DecisionGraphSnapshot + per-policy метрика", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали DROP UDP/443 для пакета к target IP, но пакет был пропущен");
+                    }
+
+                    if (!allow2)
+                    {
+                        return new SmokeTestResult("DPI2-041", "Policy-driven UDP/443: DROP UDP/443 через DecisionGraphSnapshot + per-policy метрика", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали PASS UDP/443 для пакета к НЕ-целевому IP, но пакет был дропнут");
+                    }
+
+                    var metrics = filter.GetMetrics();
+                    if (metrics.Udp443Dropped != 1)
+                    {
+                        return new SmokeTestResult("DPI2-041", "Policy-driven UDP/443: DROP UDP/443 через DecisionGraphSnapshot + per-policy метрика", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали Udp443Dropped=1, получили {metrics.Udp443Dropped}");
+                    }
+
+                    var perPolicy = filter.GetPolicyAppliedCountsSnapshot();
+                    if (!perPolicy.TryGetValue(policyId, out var cnt) || cnt != 1)
+                    {
+                        var observed = string.Join(", ", perPolicy.Select(kv => kv.Key + "=" + kv.Value));
+                        return new SmokeTestResult("DPI2-041", "Policy-driven UDP/443: DROP UDP/443 через DecisionGraphSnapshot + per-policy метрика", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали per-policy счётчик {policyId}=1, получили: {observed}");
+                    }
+
+                    return new SmokeTestResult("DPI2-041", "Policy-driven UDP/443: DROP UDP/443 через DecisionGraphSnapshot + per-policy метрика", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: decision graph влияет на runtime, метрика по policy-id инкрементится");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_UDP443", prevGate);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_Guard_BypassStateManager_IsSingleSourceOfTruth(CancellationToken ct)
             => RunAsyncAwait("DPI2-026", "Guard: TrafficEngine/TlsBypassService только через BypassStateManager", async innerCt =>
             {

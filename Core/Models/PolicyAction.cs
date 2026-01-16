@@ -18,6 +18,8 @@ namespace IspAudit.Core.Models
     /// </summary>
     public sealed record PolicyAction
     {
+        public const string StrategyIdDropUdp443 = "drop_udp_443";
+
         public PolicyActionKind Kind { get; init; }
 
         /// <summary>
@@ -32,6 +34,7 @@ namespace IspAudit.Core.Models
 
         public static PolicyAction Pass { get; } = new() { Kind = PolicyActionKind.Pass };
         public static PolicyAction Block { get; } = new() { Kind = PolicyActionKind.Block };
+        public static PolicyAction DropUdp443 { get; } = Strategy(StrategyIdDropUdp443);
 
         public static PolicyAction Strategy(string strategyId, ImmutableDictionary<string, string>? parameters = null)
         {

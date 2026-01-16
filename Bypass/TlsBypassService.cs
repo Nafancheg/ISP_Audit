@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Core.Traffic;
 using IspAudit.Core.Traffic.Filters;
+using IspAudit.Core.Models;
 
 using Timer = System.Timers.Timer;
 
@@ -36,6 +37,10 @@ namespace IspAudit.Bypass
         // Селективный QUIC fallback (DROP UDP/443): observed IPv4 адреса (dst ip) текущей цели.
         // Хранится в сервисе, чтобы переживать пересоздание фильтра при Apply.
         private uint[] _udp443DropTargetIps = Array.Empty<uint>();
+
+        // Policy-driven execution plane (P0.2 Stage 1): snapshot decision graph для runtime lookup.
+        // Хранится в сервисе, чтобы переживать пересоздание фильтра при Apply.
+        private DecisionGraphSnapshot? _decisionGraphSnapshot;
 
         public event Action<TlsBypassMetrics>? MetricsUpdated;
         public event Action<TlsBypassVerdict>? VerdictChanged;

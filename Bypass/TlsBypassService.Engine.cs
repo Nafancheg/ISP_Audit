@@ -113,6 +113,18 @@ namespace IspAudit.Bypass
                 var profile = BuildProfile(optionsSnapshot);
                 var filter = new BypassFilter(profile, _log, optionsSnapshot.PresetName);
 
+                // Важно: фильтр пересоздаётся при каждом Apply. Пробрасываем runtime-настройки,
+                // которые хранятся в сервисе и должны переживать пересоздание.
+                uint[] udp443TargetsSnapshot;
+                IspAudit.Core.Models.DecisionGraphSnapshot? decisionSnapshot;
+                lock (_sync)
+                {
+                    udp443TargetsSnapshot = _udp443DropTargetIps.Length == 0 ? Array.Empty<uint>() : _udp443DropTargetIps.ToArray();
+                    decisionSnapshot = _decisionGraphSnapshot;
+                }
+                filter.SetUdp443DropTargetIps(udp443TargetsSnapshot);
+                filter.SetDecisionGraphSnapshot(decisionSnapshot);
+
                 if (_useTrafficEngine)
                 {
                     _trafficEngine.RegisterFilter(filter);

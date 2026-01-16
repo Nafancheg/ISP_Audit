@@ -565,6 +565,17 @@
 **Входные данные:** Синтетический набор `FlowPolicy` с пересечением match и одинаковым priority
 **Ожидаемый результат:** Тест PASS, hard-conflicts детектируются детерминированно
 
+### 5.4.2 Policy-Driven Execution Plane (Stage 1)
+**Test ID:** `DPI2-041`
+**Что проверяет:** Policy-driven runtime для UDP/443 использует `DecisionGraphSnapshot` и даёт per-policy наблюдаемость
+**Для чего:** Перевести QUIC fallback (DROP UDP/443) на execution plane и получить детерминированное решение + минимальные метрики
+**Критерий успеха:**
+- UDP/443 к целевому IP дропается.
+- UDP/443 к нецелевому IP пропускается.
+- Per-policy счётчик (по policy-id) увеличивается на 1 для применённой политики.
+**Входные данные:** `BypassFilter` + синтетические IPv4 UDP пакеты на порт 443 + snapshot с `PolicyAction.DropUdp443` + `ISP_AUDIT_POLICY_DRIVEN_UDP443=1`
+**Ожидаемый результат:** Тест PASS
+
 ### 5.5 Feedback & Rerank
 **Test ID:** `DPI2-014`
 **Что проверяет:** Ранжирование стратегий по feedback поверх basePriority
