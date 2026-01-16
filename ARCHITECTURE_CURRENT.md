@@ -213,6 +213,8 @@ Dev-проверка (smoke): для воспроизводимой провер
 
 Статус (4.3, начало): модели состояния `DiagnosticOrchestrator` постепенно выносятся в отдельные типы в [ViewModels/OrchestratorState/](ViewModels/OrchestratorState/). Первый вынесенный объект — [ViewModels/OrchestratorState/PostApplyRetestState.cs](ViewModels/OrchestratorState/PostApplyRetestState.cs) (состояние пост-Apply ретеста).
 
+Статус (P0.2, Этап 0): добавлен каркас policy-driven слоя без влияния на runtime: модель политик [Core/Models/FlowPolicy.cs](Core/Models/FlowPolicy.cs) + [Core/Models/MatchCondition.cs](Core/Models/MatchCondition.cs) + [Core/Models/PolicyAction.cs](Core/Models/PolicyAction.cs), snapshot [Core/Models/DecisionGraphSnapshot.cs](Core/Models/DecisionGraphSnapshot.cs) и компилятор конфликтов [Core/Bypass/PolicySetCompiler.cs](Core/Bypass/PolicySetCompiler.cs). Gate smoke: `DPI2-040`.
+
 Статус (P0.3): `TestResultsManager` декомпозирован через partial-файлы (без изменения поведения): [ViewModels/TestResultsManager.cs](ViewModels/TestResultsManager.cs) (63), [ViewModels/TestResultsManager.Counters.cs](ViewModels/TestResultsManager.Counters.cs) (35), [ViewModels/TestResultsManager.Initialization.cs](ViewModels/TestResultsManager.Initialization.cs) (46), [ViewModels/TestResultsManager.Update.cs](ViewModels/TestResultsManager.Update.cs) (136), [ViewModels/TestResultsManager.PipelineParsing.cs](ViewModels/TestResultsManager.PipelineParsing.cs) (14), [ViewModels/TestResultsManager.PipelineMessageParser.cs](ViewModels/TestResultsManager.PipelineMessageParser.cs) (73), [ViewModels/TestResultsManager.Tokens.cs](ViewModels/TestResultsManager.Tokens.cs) (31), [ViewModels/TestResultsManager.DnsResolution.cs](ViewModels/TestResultsManager.DnsResolution.cs) (89), [ViewModels/TestResultsManager.Heuristics.cs](ViewModels/TestResultsManager.Heuristics.cs) (71), [ViewModels/TestResultsManager.Private.cs](ViewModels/TestResultsManager.Private.cs) (327).
 
 Статус (P0.3): парсинг строк pipeline вынесен в top-level сервис [ViewModels/PipelineMessageParser.cs](ViewModels/PipelineMessageParser.cs) (593) с явным контекстом (`IPipelineMessageParserContext`).
@@ -533,6 +535,10 @@ ISP_Audit/
 ├── Bypass/                     # Логика обхода (Legacy & Helpers)
 │   ├── StrategyMapping.cs      # Подбор стратегии по типу ошибки
 │   └── WinDivertNative.cs      # P/Invoke обертка
+
+├── native/                     # Нативные зависимости/прототипы (Windows)
+│   ├── README.md               # Как положить WinDivert.dll/WinDivert64.sys
+│   └── isp_audit_native/       # Rust cdylib (заготовка WinDivert proxy)
 │
 └── docs/                       # Документация
     ├── ARCHITECTURE_CURRENT.md # Этот файл
@@ -541,6 +547,11 @@ ISP_Audit/
 ```
 
 ---
+
+Актуализация (Dev, 16.01.2026): добавлена заготовка нативной Rust DLL
+- Репозиторий: [native/isp_audit_native/](native/isp_audit_native/)
+- Назначение: `isp_audit_native.dll` проксирует вызовы в `WinDivert.dll` через C ABI (под будущий бесшовный свитч P/Invoke)
+- Важно: на текущем этапе .NET рантайм не изменён; переключение будет включаться отдельно feature-flag'ом
 
 ## 6. Известные ограничения (Known Issues)
 

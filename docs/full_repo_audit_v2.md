@@ -75,6 +75,11 @@
 └─────────────────────────────────────────────────────────────────┘
 * Панель Bypass Control в UI: тумблеры Fragment/Disorder/Fake/Drop RST/DoH, бейдж статуса/latency, выпадающий список пресетов фрагментации (стандарт/умеренный/агрессивный) и метрики фрагментации/RST.
 
+Актуализация (Dev, 16.01.2026): заготовка Rust DLL для WinDivertNative
+- Добавлен Rust cdylib: [native/isp_audit_native/](native/isp_audit_native/)
+- DLL экспортирует `divert_*` функции и **проксирует** их в `WinDivert.dll` (динамическая загрузка через `LoadLibraryA/GetProcAddress`)
+- Цель: подготовить безопасную/изолированную native-обвязку под будущий feature-flag переключения P/Invoke без переписывания Bypass-логики
+
 Актуализация (Runtime, 26.12.2025): принудительный откат с QUIC на TCP для v2
 - TLS-обход в `BypassFilter` применим только к TCP-трафику (ClientHello на 443). YouTube и многие сайты по умолчанию используют QUIC/HTTP3 (UDP/443), поэтому «TLS стратегии включены, а сайт не оживает» может быть просто тем, что трафик не TCP. Для этого есть явный флаг `DropUdp443` (тумблер `QUIC→TCP`), который принудительно переводит клиент на TCP/HTTPS.
 - `DropUdp443` поддерживает 2 режима подавления UDP/443:
@@ -186,6 +191,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 Актуализация (Design, 15.01.2026): Policy‑Driven Execution Plane
 - Зафиксировано целевое направление в `ARCHITECTURE_CURRENT.md` (раздел про policy-driven).
 - План внедрения инкрементальный (без переписывания WinDivert/TrafficEngine): см. P0.2 в `docs/TODO.md`.
+- Реализован P0.2 Этап 0 (zero runtime impact): добавлены базовые типы FlowPolicy/DecisionGraphSnapshot, компилятор hard-конфликтов и smoke-гейт `DPI2-040`.
 
 Актуализация (Dev, 12.01.2026): базовые analyzers/линт для стабильности
 - Добавлены `Directory.Build.props` и `.editorconfig`.

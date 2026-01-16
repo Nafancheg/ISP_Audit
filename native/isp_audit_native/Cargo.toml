@@ -1,0 +1,14 @@
+[package]
+name = "isp_audit_native"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Используем windows-sys для загрузки WinDivert.dll и вызова его экспортов.
+windows-sys = { version = "0.52", features = [
+  "Win32_Foundation",
+  "Win32_System_LibraryLoader",
+] }
