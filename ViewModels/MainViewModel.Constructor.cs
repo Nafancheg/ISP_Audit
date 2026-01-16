@@ -128,10 +128,13 @@ namespace IspAudit.ViewModels
                     CommandManager.InvalidateRequerySuggested();
                 }
 
-                if (e.PropertyName == nameof(Orchestrator.IsPostApplyRetestRunning) || e.PropertyName == nameof(Orchestrator.PostApplyRetestStatus))
+                if (e.PropertyName == nameof(Orchestrator.IsPostApplyRetestRunning)
+                    || e.PropertyName == nameof(Orchestrator.PostApplyRetestStatus)
+                    || e.PropertyName == nameof(Orchestrator.EndpointBlockStatus))
                 {
                     OnPropertyChanged(nameof(IsPostApplyRetestRunning));
                     OnPropertyChanged(nameof(PostApplyRetestStatus));
+                    OnPropertyChanged(nameof(EndpointBlockStatus));
                 }
             };
 

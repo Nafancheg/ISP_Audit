@@ -25,5 +25,28 @@ namespace IspAudit.Core.Bypass
                 return false;
             }
         }
+
+        /// <summary>
+        /// Фича-гейт: включить policy-driven runtime-путь для TTL endpoint block (reconnect-nudge).
+        /// Управляется env var `ISP_AUDIT_POLICY_DRIVEN_TTLBLOCK`.
+        /// По умолчанию выключен.
+        /// </summary>
+        public static bool PolicyDrivenTtlEndpointBlockEnabled()
+        {
+            try
+            {
+                var raw = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TTLBLOCK");
+                if (string.IsNullOrWhiteSpace(raw)) return false;
+
+                return string.Equals(raw, "1", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(raw, "yes", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(raw, "on", StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
 }

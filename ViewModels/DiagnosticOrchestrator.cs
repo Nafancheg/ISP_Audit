@@ -96,6 +96,9 @@ namespace IspAudit.ViewModels
         // сразу запускаем короткий ретест по цели, чтобы пользователь видел эффект.
         private readonly PostApplyRetestState _postApplyRetest = new();
 
+        // Reconnect-nudge: короткий TTL-блок endpoint-ов, чтобы принудить переподключение.
+        private string _endpointBlockStatus = "";
+
         // Legacy (справочно): не влияет на основную рекомендацию v2
         private readonly HashSet<string> _legacyRecommendedStrategies = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _legacyManualRecommendations = new(StringComparer.OrdinalIgnoreCase);
@@ -289,6 +292,16 @@ namespace IspAudit.ViewModels
             {
                 _postApplyRetest.Status = value;
                 OnPropertyChanged(nameof(PostApplyRetestStatus));
+            }
+        }
+
+        public string EndpointBlockStatus
+        {
+            get => _endpointBlockStatus;
+            private set
+            {
+                _endpointBlockStatus = value;
+                OnPropertyChanged(nameof(EndpointBlockStatus));
             }
         }
 

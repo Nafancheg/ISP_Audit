@@ -612,6 +612,74 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_PolicyDrivenTtlEndpointBlock_Expires_AndHasHigherPriority(CancellationToken ct)
+            => RunAsync("DPI2-042", "TTL endpoint block (policy-driven): истечение TTL + высокий приоритет", () =>
+            {
+                var prevGate = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TTLBLOCK");
+                try
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TTLBLOCK", "1");
+
+                    var targetIp = IPAddress.Parse("203.0.113.10");
+                    var otherIp = IPAddress.Parse("198.51.100.20");
+                    var srcIp = IPAddress.Parse("10.0.0.2");
+
+                    var ttl = TimeSpan.FromMilliseconds(200);
+                    var filter = new IspAudit.Core.Traffic.Filters.TemporaryEndpointBlockFilter(
+                        name: "smoke_ttl_block",
+                        ipv4Targets: new[] { targetIp },
+                        ttl: ttl,
+                        port: 443,
+                        blockTcp: true,
+                        blockUdp: true);
+
+                    // Проверяем приоритет относительно BypassFilter (важно для «переподключения»).
+                    var bypassFilter = new IspAudit.Core.Traffic.Filters.BypassFilter(new BypassProfile { DropUdp443 = true });
+                    if (filter.Priority <= bypassFilter.Priority)
+                    {
+                        return new SmokeTestResult("DPI2-042", "TTL endpoint block (policy-driven): истечение TTL + высокий приоритет", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали priority TTL-block фильтра > priority BypassFilter, получили {filter.Priority} <= {bypassFilter.Priority}");
+                    }
+
+                    var tcpToTarget = BuildIpv4TcpPacket(srcIp, targetIp, srcPort: 50000, dstPort: 443, ttl: 64, ipId: 10, seq: 1000, tcpFlags: 0x18, payload: new byte[] { 1, 2, 3 });
+                    var tcpToOther = BuildIpv4TcpPacket(srcIp, otherIp, srcPort: 50001, dstPort: 443, ttl: 64, ipId: 11, seq: 2000, tcpFlags: 0x18, payload: new byte[] { 4, 5, 6 });
+
+                    var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+                    var sender = new DummyPacketSender();
+
+                    var allowTargetBefore = filter.Process(new InterceptedPacket(tcpToTarget, tcpToTarget.Length), ctx, sender);
+                    var allowOtherBefore = filter.Process(new InterceptedPacket(tcpToOther, tcpToOther.Length), ctx, sender);
+
+                    if (allowTargetBefore)
+                    {
+                        return new SmokeTestResult("DPI2-042", "TTL endpoint block (policy-driven): истечение TTL + высокий приоритет", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали DROP TCP/443 для target IP до истечения TTL, но пакет был пропущен");
+                    }
+
+                    if (!allowOtherBefore)
+                    {
+                        return new SmokeTestResult("DPI2-042", "TTL endpoint block (policy-driven): истечение TTL + высокий приоритет", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали PASS TCP/443 для НЕ-целевого IP до истечения TTL, но пакет был дропнут");
+                    }
+
+                    Thread.Sleep(ttl + TimeSpan.FromMilliseconds(80));
+
+                    var allowTargetAfter = filter.Process(new InterceptedPacket(tcpToTarget, tcpToTarget.Length), ctx, sender);
+                    if (!allowTargetAfter)
+                    {
+                        return new SmokeTestResult("DPI2-042", "TTL endpoint block (policy-driven): истечение TTL + высокий приоритет", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали PASS TCP/443 для target IP после истечения TTL, но пакет всё ещё дропается");
+                    }
+
+                    return new SmokeTestResult("DPI2-042", "TTL endpoint block (policy-driven): истечение TTL + высокий приоритет", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: TTL-блок работает до истечения TTL и не влияет после");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TTLBLOCK", prevGate);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_Guard_BypassStateManager_IsSingleSourceOfTruth(CancellationToken ct)
             => RunAsyncAwait("DPI2-026", "Guard: TrafficEngine/TlsBypassService только через BypassStateManager", async innerCt =>
             {

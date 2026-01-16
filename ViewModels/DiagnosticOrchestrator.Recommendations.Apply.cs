@@ -349,6 +349,7 @@ namespace IspAudit.ViewModels
             }
 
             var ttl = TimeSpan.FromSeconds(2);
+            var untilLocal = DateTime.Now + ttl;
             var filterName = $"TempReconnectNudge:{DateTime.UtcNow:HHmmss}";
             var filter = new IspAudit.Core.Traffic.Filters.TemporaryEndpointBlockFilter(
                 filterName,
@@ -358,7 +359,7 @@ namespace IspAudit.ViewModels
                 blockTcp: true,
                 blockUdp: true);
 
-            PostApplyRetestStatus = $"Рестарт коннекта: блокирую {ips.Count} IP на {ttl.TotalSeconds:0}с…";
+            EndpointBlockStatus = $"Endpoint заблокирован до {untilLocal:HH:mm:ss} (порт 443, IP={ips.Count})";
             _stateManager.RegisterEngineFilter(filter);
 
             _ = Task.Run(async () =>
@@ -367,6 +368,21 @@ namespace IspAudit.ViewModels
                 {
                     await Task.Delay(ttl + TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
                     _stateManager.RemoveEngineFilter(filterName);
+
+                    // Сбрасываем индикатор TTL-блока (best-effort).
+                    try
+                    {
+                        Application.Current?.Dispatcher.Invoke(() =>
+                        {
+                            if (!string.IsNullOrWhiteSpace(EndpointBlockStatus))
+                            {
+                                EndpointBlockStatus = "";
+                            }
+                        });
+                    }
+                    catch
+                    {
+                    }
                 }
                 catch
                 {

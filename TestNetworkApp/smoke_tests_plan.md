@@ -576,6 +576,17 @@
 **Входные данные:** `BypassFilter` + синтетические IPv4 UDP пакеты на порт 443 + snapshot с `PolicyAction.DropUdp443` + `ISP_AUDIT_POLICY_DRIVEN_UDP443=1`
 **Ожидаемый результат:** Тест PASS
 
+### 5.4.3 Policy-Driven Execution Plane (Stage 2)
+**Test ID:** `DPI2-042`
+**Что проверяет:** TTL endpoint block (reconnect‑nudge) работает как TTL‑политика и истекает по TTL
+**Для чего:** Перевести временную блокировку endpoint-ов на policy-driven модель с самым высоким приоритетом и детерминированным истечением
+**Критерий успеха:**
+- До истечения TTL: трафик к целевому IP:443 дропается.
+- До истечения TTL: трафик к нецелевому IP:443 не дропается.
+- После истечения TTL: трафик к целевому IP:443 перестаёт дропаться.
+**Входные данные:** `TemporaryEndpointBlockFilter` + синтетические IPv4 TCP пакеты на порт 443 + `ISP_AUDIT_POLICY_DRIVEN_TTLBLOCK=1`
+**Ожидаемый результат:** Тест PASS
+
 ### 5.5 Feedback & Rerank
 **Test ID:** `DPI2-014`
 **Что проверяет:** Ранжирование стратегий по feedback поверх basePriority

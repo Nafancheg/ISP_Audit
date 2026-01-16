@@ -153,11 +153,12 @@
         - 1.3: Метрики per-policy: `matched_count`, `applied_count` (не только глобальный `Udp443Dropped`)
         - 1.4: Feature gate: `ISP_AUDIT_POLICY_DRIVEN_UDP443` (выключен по умолчанию, включается для smoke)
       - Gate: DPI2-041 — UDP/443 drop работает через политику; метрики per-policy корректны; fallback на старую логику при выключенном gate
-    - [ ] **Этап 2**: TTL endpoint block (reconnect‑nudge) как TTL‑политика с самым высоким приоритетом
+    - [x] **Этап 2**: TTL endpoint block (reconnect‑nudge) как TTL‑политика с самым высоким приоритетом
       - Подзадачи:
         - 2.1: FlowPolicy с TTL и Priority=MAX для блокировки endpoint-а
         - 2.2: Автоматическое удаление политики по истечении TTL
         - 2.3: UI индикатор «endpoint заблокирован до HH:MM:SS»
+        - 2.4: Feature gate: `ISP_AUDIT_POLICY_DRIVEN_TTLBLOCK` (выключен по умолчанию, включается для smoke)
       - Gate: DPI2-042 — TTL-политика корректно истекает; приоритет выше любых других политик
     - [ ] **Этап 3**: TCP/80 Host tricks как политика (включает существующую реализацию)
       - Подзадачи:

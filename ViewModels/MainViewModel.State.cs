@@ -215,6 +215,7 @@ namespace IspAudit.ViewModels
 
         public bool IsPostApplyRetestRunning => Orchestrator.IsPostApplyRetestRunning;
         public string PostApplyRetestStatus => Orchestrator.PostApplyRetestStatus;
+        public string EndpointBlockStatus => Orchestrator.EndpointBlockStatus;
 
         public bool HasDomainSuggestion
         {

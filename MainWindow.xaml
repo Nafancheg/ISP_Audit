@@ -170,6 +170,9 @@
                                         <TextBlock Text="{Binding PostApplyRetestStatus}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6" Foreground="#1E40AF"
                                                Visibility="{Binding PostApplyRetestStatus, Converter={StaticResource StringToVisibilityConverter}}"/>
 
+                                             <TextBlock Text="{Binding EndpointBlockStatus}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6" Foreground="#1E40AF"
+                                                 Visibility="{Binding EndpointBlockStatus, Converter={StaticResource StringToVisibilityConverter}}"/>
+
                                     <Button Content="{Binding ApplyRecommendationsButtonText}" Command="{Binding ApplyRecommendationsCommand}"
                                             Style="{StaticResource PrimaryButtonStyle}" Padding="10,5" FontSize="12" HorizontalAlignment="Left" Height="30"/>
 
