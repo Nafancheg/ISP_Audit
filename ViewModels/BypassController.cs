@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Collections.ObjectModel;
 using System.Threading;
+using System.IO;
 using IspAudit.Bypass;
 using IspAudit.Core.IntelligenceV2.Contracts;
 using IspAudit.Core.IntelligenceV2.Execution;
@@ -59,6 +60,9 @@ namespace IspAudit.ViewModels
         private string _outcomeProbeStatusText = "";
         private bool _isOutcomeProbeRunning;
 
+        private string _policyExportStatusText = "";
+        private string _lastPolicySnapshotJson = string.Empty;
+
         // DNS Presets
         private string _selectedDnsPreset = "Hybrid (CF + Yandex)";
         public List<string> AvailableDnsPresets { get; } = new()
@@ -73,6 +77,21 @@ namespace IspAudit.ViewModels
 
         public ICommand SetDnsPresetCommand { get; private set; } = null!;
         public ICommand RunOutcomeProbeNowCommand { get; private set; } = null!;
+
+        public ICommand ExportPolicySnapshotCommand { get; private set; } = null!;
+
+        public ObservableCollection<ActiveFlowPolicyRow> ActivePolicies { get; } = new();
+
+        public string PolicyExportStatusText
+        {
+            get => _policyExportStatusText;
+            private set
+            {
+                if (_policyExportStatusText == value) return;
+                _policyExportStatusText = value;
+                OnPropertyChanged(nameof(PolicyExportStatusText));
+            }
+        }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -251,6 +270,11 @@ namespace IspAudit.ViewModels
                 }
             }, _ => true);
 
+            ExportPolicySnapshotCommand = new RelayCommand(_ =>
+            {
+                ExportPolicySnapshot();
+            }, _ => true);
+
             RefreshQuicObservability(null);
         }
 
@@ -333,7 +357,58 @@ namespace IspAudit.ViewModels
                 }
             }, _ => true);
 
+            ExportPolicySnapshotCommand = new RelayCommand(_ =>
+            {
+                ExportPolicySnapshot();
+            }, _ => true);
+
             RefreshQuicObservability(null);
+        }
+
+        private void ExportPolicySnapshot()
+        {
+            try
+            {
+                var json = _lastPolicySnapshotJson;
+                if (string.IsNullOrWhiteSpace(json))
+                {
+                    PolicyExportStatusText = "Экспорт: snapshot пуст (policy-driven не активен)";
+                    return;
+                }
+
+                var artifactsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "artifacts");
+                Directory.CreateDirectory(artifactsDir);
+
+                var filename = $"decision_graph_snapshot_{DateTime.Now:yyyyMMdd_HHmmss}.json";
+                var path = Path.Combine(artifactsDir, filename);
+
+                File.WriteAllText(path, json, System.Text.Encoding.UTF8);
+
+                Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    try
+                    {
+                        System.Windows.Clipboard.SetText(json);
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                });
+
+                PolicyExportStatusText = $"Экспорт: сохранено {filename} (и скопировано в буфер)";
+                try
+                {
+                    System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\"");
+                }
+                catch
+                {
+                }
+            }
+            catch (Exception ex)
+            {
+                PolicyExportStatusText = $"Экспорт: ошибка ({ex.Message})";
+            }
         }
 
         private void RefreshAutoHostlistText()

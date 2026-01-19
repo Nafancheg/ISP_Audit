@@ -5,6 +5,22 @@ using System.Linq;
 namespace IspAudit.Bypass
 {
     /// <summary>
+    /// Строка для UI-таблицы активных политик (P0.2 Stage 6).
+    /// </summary>
+    public sealed record ActiveFlowPolicyRow
+    {
+        public string Id { get; init; } = string.Empty;
+        public string Match { get; init; } = string.Empty;
+        public string Action { get; init; } = string.Empty;
+        public string Scope { get; init; } = string.Empty;
+        public int Priority { get; init; }
+        public long MatchedCount { get; init; }
+        public long AppliedCount { get; init; }
+        public string CreatedAtUtc { get; init; } = string.Empty;
+        public string Ttl { get; init; } = string.Empty;
+    }
+
+    /// <summary>
     /// Описание пресета фрагментации TLS.
     /// </summary>
     public record TlsFragmentPreset(string Name, IReadOnlyList<int> Sizes, string Description);
@@ -156,6 +172,18 @@ namespace IspAudit.Bypass
         /// Короткая сводка статусов Semantic Groups (одной строкой) — для UI, который пользователь видит сразу.
         /// </summary>
         public string SemanticGroupsSummaryText { get; init; } = string.Empty;
+
+        /// <summary>
+        /// Активные политики policy-driven execution (для UI-таблицы).
+        /// Пусто, если policy-driven ветка не активна.
+        /// </summary>
+        public IReadOnlyList<ActiveFlowPolicyRow> ActivePolicies { get; init; } = Array.Empty<ActiveFlowPolicyRow>();
+
+        /// <summary>
+        /// JSON-экспорт текущего DecisionGraphSnapshot (для репорта/копирования).
+        /// Пусто, если policy-driven ветка не активна.
+        /// </summary>
+        public string PolicySnapshotJson { get; init; } = string.Empty;
 
         public static TlsBypassMetrics Empty => new();
     }

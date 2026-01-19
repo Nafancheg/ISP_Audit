@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Core.Bypass;
@@ -40,12 +42,18 @@ namespace IspAudit.Bypass
 
                 string semanticGroupsText = string.Empty;
                 string semanticGroupsSummary = string.Empty;
+                IReadOnlyList<ActiveFlowPolicyRow> activePolicies = Array.Empty<ActiveFlowPolicyRow>();
+                string policySnapshotJson = string.Empty;
                 if (decisionSnapshot != null)
                 {
                     var matchedCounts = filter.GetPolicyMatchedCountsSnapshot();
+                    var appliedCounts = filter.GetPolicyAppliedCountsSnapshot();
                     var sg = BuildSemanticGroupsStatus(decisionSnapshot, matchedCounts);
                     semanticGroupsText = sg.Details;
                     semanticGroupsSummary = sg.Summary;
+
+                    activePolicies = BuildActivePoliciesTable(decisionSnapshot, matchedCounts, appliedCounts);
+                    policySnapshotJson = BuildPolicySnapshotJson(decisionSnapshot, matchedCounts, appliedCounts);
                 }
 
                 var metrics = new TlsBypassMetrics
@@ -65,7 +73,9 @@ namespace IspAudit.Bypass
                     FragmentThreshold = options.AllowNoSni ? 1 : _baseProfile.TlsFragmentThreshold,
                     MinChunk = (options.FragmentSizes ?? Array.Empty<int>()).DefaultIfEmpty(0).Min(),
                     SemanticGroupsStatusText = semanticGroupsText,
-                    SemanticGroupsSummaryText = semanticGroupsSummary
+                    SemanticGroupsSummaryText = semanticGroupsSummary,
+                    ActivePolicies = activePolicies,
+                    PolicySnapshotJson = policySnapshotJson
                 };
 
                 var verdict = CalculateVerdict(metrics, options);
@@ -144,6 +154,136 @@ namespace IspAudit.Bypass
             var details = "Semantic Groups:\n" + string.Join("\n", lines);
             var summary = "SG: " + string.Join("; ", summaryParts);
             return (summary, details);
+        }
+
+        private static IReadOnlyList<ActiveFlowPolicyRow> BuildActivePoliciesTable(
+            DecisionGraphSnapshot snapshot,
+            IReadOnlyDictionary<string, long> policyMatchedCounts,
+            IReadOnlyDictionary<string, long> policyAppliedCounts)
+        {
+            try
+            {
+                if (snapshot == null) return Array.Empty<ActiveFlowPolicyRow>();
+
+                var rows = new List<ActiveFlowPolicyRow>();
+
+                foreach (var p in snapshot.Policies)
+                {
+                    if (p == null || string.IsNullOrWhiteSpace(p.Id)) continue;
+
+                    policyMatchedCounts.TryGetValue(p.Id, out var matched);
+                    policyAppliedCounts.TryGetValue(p.Id, out var applied);
+
+                    rows.Add(new ActiveFlowPolicyRow
+                    {
+                        Id = p.Id,
+                        Priority = p.Priority,
+                        Scope = p.Scope.ToString(),
+                        Match = p.Match?.ToString() ?? string.Empty,
+                        Action = p.Action?.ToString() ?? string.Empty,
+                        MatchedCount = matched,
+                        AppliedCount = applied,
+                        CreatedAtUtc = p.CreatedAt.ToUniversalTime().ToString("u").TrimEnd(),
+                        Ttl = p.Ttl.HasValue ? p.Ttl.Value.ToString() : string.Empty
+                    });
+                }
+
+                return rows
+                    .OrderByDescending(r => r.Priority)
+                    .ThenBy(r => r.Id, StringComparer.Ordinal)
+                    .ToList();
+            }
+            catch
+            {
+                return Array.Empty<ActiveFlowPolicyRow>();
+            }
+        }
+
+        private sealed record PolicySnapshotExportV1
+        {
+            public string Version { get; init; } = "v1";
+            public string GeneratedAtUtc { get; init; } = DateTimeOffset.UtcNow.ToString("u").TrimEnd();
+            public IReadOnlyList<PolicyExportRowV1> Policies { get; init; } = Array.Empty<PolicyExportRowV1>();
+        }
+
+        private sealed record PolicyExportRowV1
+        {
+            public string Id { get; init; } = string.Empty;
+            public int Priority { get; init; }
+            public string Scope { get; init; } = string.Empty;
+            public string Match { get; init; } = string.Empty;
+            public string Action { get; init; } = string.Empty;
+            public long MatchedCount { get; init; }
+            public long AppliedCount { get; init; }
+            public string CreatedAtUtc { get; init; } = string.Empty;
+            public string? Ttl { get; init; }
+            public IReadOnlyList<string> DstIpv4SetPreview { get; init; } = Array.Empty<string>();
+        }
+
+        private static string BuildPolicySnapshotJson(
+            DecisionGraphSnapshot snapshot,
+            IReadOnlyDictionary<string, long> policyMatchedCounts,
+            IReadOnlyDictionary<string, long> policyAppliedCounts)
+        {
+            try
+            {
+                if (snapshot == null) return string.Empty;
+
+                var policies = new List<PolicyExportRowV1>();
+                foreach (var p in snapshot.Policies)
+                {
+                    if (p == null || string.IsNullOrWhiteSpace(p.Id)) continue;
+
+                    policyMatchedCounts.TryGetValue(p.Id, out var matched);
+                    policyAppliedCounts.TryGetValue(p.Id, out var applied);
+
+                    var preview = new List<string>();
+                    var ipv4 = p.Match?.DstIpv4Set;
+                    if (ipv4 is { Count: > 0 })
+                    {
+                        foreach (var v in ipv4.Take(16))
+                        {
+                            // DstIpv4Set хранит network-order uint. Конвертируем в IPv4 строку.
+                            var b1 = (byte)((v >> 24) & 0xFF);
+                            var b2 = (byte)((v >> 16) & 0xFF);
+                            var b3 = (byte)((v >> 8) & 0xFF);
+                            var b4 = (byte)(v & 0xFF);
+                            preview.Add($"{b1}.{b2}.{b3}.{b4}");
+                        }
+                    }
+
+                    policies.Add(new PolicyExportRowV1
+                    {
+                        Id = p.Id,
+                        Priority = p.Priority,
+                        Scope = p.Scope.ToString(),
+                        Match = p.Match?.ToString() ?? string.Empty,
+                        Action = p.Action?.ToString() ?? string.Empty,
+                        MatchedCount = matched,
+                        AppliedCount = applied,
+                        CreatedAtUtc = p.CreatedAt.ToUniversalTime().ToString("u").TrimEnd(),
+                        Ttl = p.Ttl?.ToString(),
+                        DstIpv4SetPreview = preview
+                    });
+                }
+
+                var export = new PolicySnapshotExportV1
+                {
+                    Policies = policies
+                        .OrderByDescending(p => p.Priority)
+                        .ThenBy(p => p.Id, StringComparer.Ordinal)
+                        .ToList()
+                };
+
+                return JsonSerializer.Serialize(export, new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+            }
+            catch
+            {
+                return string.Empty;
+            }
         }
 
         private TlsBypassVerdict CalculateVerdict(TlsBypassMetrics metrics, TlsBypassOptions options)

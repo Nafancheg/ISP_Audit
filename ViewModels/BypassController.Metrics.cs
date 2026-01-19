@@ -29,6 +29,13 @@ namespace IspAudit.ViewModels
                 BypassSemanticGroupsText = metrics.SemanticGroupsStatusText ?? string.Empty;
                 BypassSemanticGroupsSummaryText = metrics.SemanticGroupsSummaryText ?? string.Empty;
 
+                _lastPolicySnapshotJson = metrics.PolicySnapshotJson ?? string.Empty;
+                ActivePolicies.Clear();
+                foreach (var row in (metrics.ActivePolicies ?? Array.Empty<ActiveFlowPolicyRow>()))
+                {
+                    ActivePolicies.Add(row);
+                }
+
                 RefreshQuicObservability(metrics);
             });
         }

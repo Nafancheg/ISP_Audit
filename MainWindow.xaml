@@ -383,6 +383,42 @@
                                     </StackPanel>
                                 </TabItem>
 
+                                <TabItem Header="Политики" FontSize="13">
+                                    <StackPanel Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                            <Button Content="💾 Экспорт snapshot" Command="{Binding Bypass.ExportPolicySnapshotCommand}"
+                                                    Height="32" FontSize="12" HorizontalAlignment="Left"
+                                                    ToolTip="Сохраняет decision graph snapshot в JSON и копирует в буфер"/>
+                                            <TextBlock Text="{Binding Bypass.PolicyExportStatusText}" FontSize="12"
+                                                       Margin="10,0,0,0" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                       TextWrapping="Wrap"
+                                                       Visibility="{Binding Bypass.PolicyExportStatusText, Converter={StaticResource StringToVisibilityConverter}}"/>
+                                        </StackPanel>
+
+                                        <DataGrid ItemsSource="{Binding Bypass.ActivePolicies}"
+                                                  AutoGenerateColumns="False"
+                                                  CanUserAddRows="False"
+                                                  CanUserDeleteRows="False"
+                                                  IsReadOnly="True"
+                                                  HeadersVisibility="Column"
+                                                  GridLinesVisibility="None"
+                                                  FontSize="12"
+                                                  RowBackground="{DynamicResource MaterialDesignPaper}"
+                                                  AlternatingRowBackground="{DynamicResource MaterialDesignPaper}">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Id" Binding="{Binding Id}" Width="*"/>
+                                                <DataGridTextColumn Header="Scope" Binding="{Binding Scope}" Width="90"/>
+                                                <DataGridTextColumn Header="Prio" Binding="{Binding Priority}" Width="60"/>
+                                                <DataGridTextColumn Header="Match" Binding="{Binding Match}" Width="2*"/>
+                                                <DataGridTextColumn Header="Action" Binding="{Binding Action}" Width="160"/>
+                                                <DataGridTextColumn Header="Matched" Binding="{Binding MatchedCount}" Width="80"/>
+                                                <DataGridTextColumn Header="Applied" Binding="{Binding AppliedCount}" Width="80"/>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </StackPanel>
+                                </TabItem>
+
                                 <TabItem Header="Hostlist" FontSize="13">
                                     <StackPanel Margin="0,8,0,0">
                                         <CheckBox Content="Авто-hostlist (показывать кандидатов)"
