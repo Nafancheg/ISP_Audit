@@ -12,6 +12,8 @@
 
 Дополнение (19.01.2026): добавлена наблюдаемость policy-driven execution: вкладка активных политик (matched/applied per-policy) + экспорт DecisionGraph snapshot в JSON (копируется в буфер и сохраняется в `artifacts/`).
 
+Дополнение (19.01.2026): сохранён контекст сессии по P0.1 Step 1 (multi-group: REG-005/REG-006, per-target TCP/443 и TCP/80) — см. `docs/chat_log_2026-01-19_P0.1_Step1.md`.
+
 ---
 
 ## 1. Карта зависимостей проекта
