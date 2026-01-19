@@ -30,6 +30,9 @@ namespace IspAudit.ViewModels
         public ICommand RetestFromResultCommand { get; }
         public ICommand ReconnectFromResultCommand { get; }
 
+        // Step 9: детали применения для выбранной карточки
+        public ICommand CopySelectedResultApplyTransactionJsonCommand { get; }
+
         // P0.6: Network change staged revalidation
         public ICommand NetworkRevalidateCommand { get; }
         public ICommand NetworkDisableBypassCommand { get; }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Net;
 using System.Threading;
@@ -219,6 +220,9 @@ namespace IspAudit.ViewModels
             ReconnectFromResultCommand = new RelayCommand(async param => await ReconnectFromResultAsync(param as IspAudit.Models.TestResult),
                 _ => ShowBypassPanel);
 
+            CopySelectedResultApplyTransactionJsonCommand = new RelayCommand(_ => CopySelectedResultApplyTransactionJson(),
+                _ => !string.IsNullOrWhiteSpace(SelectedResultApplyTransactionJson));
+
             NetworkRevalidateCommand = new RelayCommand(async _ => await RunNetworkRevalidationAsync(), _ => ShowBypassPanel && IsNetworkChangePromptVisible);
             NetworkDisableBypassCommand = new RelayCommand(async _ => await DisableBypassFromNetworkPromptAsync(), _ => ShowBypassPanel && IsNetworkChangePromptVisible);
             NetworkIgnoreCommand = new RelayCommand(_ => HideNetworkChangePrompt(), _ => IsNetworkChangePromptVisible);
@@ -240,6 +244,73 @@ namespace IspAudit.ViewModels
                     }
                 };
                 _networkChangeMonitor.Start();
+            }
+
+            // Step 7/9: авто-обновление per-card статусов/деталей.
+            try
+            {
+                Results.TestResults.CollectionChanged += (_, e) =>
+                {
+                    try
+                    {
+                        if (e == null) return;
+                        if (e.Action != NotifyCollectionChangedAction.Add) return;
+                        if (e.NewItems == null || e.NewItems.Count == 0) return;
+
+                        foreach (var item in e.NewItems)
+                        {
+                            if (item is not IspAudit.Models.TestResult test) continue;
+                            var hostKey = GetPreferredHostKey(test);
+                            if (string.IsNullOrWhiteSpace(hostKey)) continue;
+
+                            var groupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                            if (string.IsNullOrWhiteSpace(groupKey)) continue;
+
+                            UpdateLastApplyTransactionTextForGroupKey(groupKey);
+                        }
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                };
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                Bypass.ApplyTransactions.CollectionChanged += (_, e) =>
+                {
+                    try
+                    {
+                        if (e == null) return;
+                        if (e.Action != NotifyCollectionChangedAction.Add) return;
+                        if (e.NewItems == null || e.NewItems.Count == 0) return;
+
+                        foreach (var item in e.NewItems)
+                        {
+                            if (item is not IspAudit.Bypass.BypassApplyTransaction tx) continue;
+                            if (!string.IsNullOrWhiteSpace(tx.GroupKey))
+                            {
+                                UpdateLastApplyTransactionTextForGroupKey(tx.GroupKey);
+                            }
+                        }
+
+                        // Если выбранная строка относится к этой же группе — обновим панель деталей.
+                        UpdateSelectedResultApplyTransactionDetails();
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                };
+            }
+            catch
+            {
+                // ignore
             }
 
             Log("✓ MainViewModel инициализирован");

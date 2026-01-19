@@ -296,6 +296,34 @@ namespace IspAudit.ViewModels
                 // Важно для QUIC→TCP (селективный режим): если цель не задана, UDP/443 по IPv4 не глушится.
                 // Самый понятный UX: цель берём из выбранной строки результатов (если это не шумовой хост).
                 TryUpdateOutcomeTargetFromSelection(_selectedTestResult);
+
+                // Step 9: панель деталей по выбранной карточке
+                UpdateSelectedResultApplyTransactionDetails();
+            }
+        }
+
+        private string _selectedResultApplyTransactionTitle = "Детали применения обхода";
+        public string SelectedResultApplyTransactionTitle
+        {
+            get => _selectedResultApplyTransactionTitle;
+            private set
+            {
+                if (string.Equals(_selectedResultApplyTransactionTitle, value, StringComparison.Ordinal)) return;
+                _selectedResultApplyTransactionTitle = value;
+                OnPropertyChanged(nameof(SelectedResultApplyTransactionTitle));
+            }
+        }
+
+        private string _selectedResultApplyTransactionJson = string.Empty;
+        public string SelectedResultApplyTransactionJson
+        {
+            get => _selectedResultApplyTransactionJson;
+            private set
+            {
+                if (string.Equals(_selectedResultApplyTransactionJson, value, StringComparison.Ordinal)) return;
+                _selectedResultApplyTransactionJson = value ?? string.Empty;
+                OnPropertyChanged(nameof(SelectedResultApplyTransactionJson));
+                System.Windows.Input.CommandManager.InvalidateRequerySuggested();
             }
         }
 

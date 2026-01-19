@@ -367,7 +367,9 @@ namespace IspAudit.ViewModels
                     // ignore
                 }
 
-                var summary = $"Последнее применение: {localTimeText}; {tx.AppliedStrategyText}; IP={tx.CandidateIpEndpoints.Count}";
+                var activationText = string.IsNullOrWhiteSpace(tx.ActivationStatusText) ? "" : $"; {tx.ActivationStatusText}";
+                var policiesText = $"; Policies={tx.ActivePolicies.Count}";
+                var summary = $"Последнее применение: {localTimeText}; {tx.AppliedStrategyText}{policiesText}; IP={tx.CandidateIpEndpoints.Count}{activationText}";
                 var key = (tx.GroupKey ?? groupKey ?? string.Empty).Trim().Trim('.');
                 if (string.IsNullOrWhiteSpace(key)) return;
 
@@ -383,6 +385,71 @@ namespace IspAudit.ViewModels
                         {
                             r.LastApplyTransactionText = summary;
                         }
+                    }
+                });
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void UpdateSelectedResultApplyTransactionDetails()
+        {
+            try
+            {
+                var selected = SelectedTestResult;
+                if (selected == null)
+                {
+                    SelectedResultApplyTransactionTitle = "Детали применения обхода";
+                    SelectedResultApplyTransactionJson = string.Empty;
+                    return;
+                }
+
+                var hostKey = GetPreferredHostKey(selected);
+                if (string.IsNullOrWhiteSpace(hostKey))
+                {
+                    SelectedResultApplyTransactionTitle = "Детали применения обхода";
+                    SelectedResultApplyTransactionJson = string.Empty;
+                    return;
+                }
+
+                var groupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                var normalized = (groupKey ?? string.Empty).Trim().Trim('.');
+                SelectedResultApplyTransactionTitle = string.IsNullOrWhiteSpace(normalized)
+                    ? "Детали применения обхода"
+                    : $"Детали применения обхода (группа: {normalized})";
+
+                SelectedResultApplyTransactionJson = Bypass.TryGetLatestApplyTransactionJsonForGroupKey(groupKey);
+            }
+            catch
+            {
+                SelectedResultApplyTransactionTitle = "Детали применения обхода";
+                SelectedResultApplyTransactionJson = string.Empty;
+            }
+        }
+
+        private void CopySelectedResultApplyTransactionJson()
+        {
+            try
+            {
+                var json = SelectedResultApplyTransactionJson;
+                if (string.IsNullOrWhiteSpace(json))
+                {
+                    UserMessage = "Буфер обмена: нет данных для копирования";
+                    return;
+                }
+
+                UiBeginInvoke(() =>
+                {
+                    try
+                    {
+                        System.Windows.Clipboard.SetText(json);
+                        UserMessage = "Буфер обмена: детали применения скопированы";
+                    }
+                    catch
+                    {
+                        UserMessage = "Буфер обмена: ошибка копирования";
                     }
                 });
             }

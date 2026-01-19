@@ -63,6 +63,25 @@ namespace IspAudit.ViewModels
             }
         }
 
+        public string GetApplyTransactionJson(BypassApplyTransaction? tx)
+        {
+            if (tx == null) return string.Empty;
+            return BuildApplyTransactionJson(tx);
+        }
+
+        public string TryGetLatestApplyTransactionJsonForGroupKey(string? groupKey)
+        {
+            try
+            {
+                var tx = TryGetLatestApplyTransactionForGroupKey(groupKey);
+                return tx == null ? string.Empty : BuildApplyTransactionJson(tx);
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
         public string ApplyTransactionsExportStatusText
         {
             get => _applyTransactionsExportStatusText;
