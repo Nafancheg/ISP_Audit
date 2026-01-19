@@ -525,5 +525,82 @@ namespace TestNetworkApp.Smoke
                     Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP80", prevGate);
                 }
             }, ct);
+
+        public static Task<SmokeTestResult> REG_CapabilitiesUnion_TlsFragmentAndDisorder_StayEnabled(CancellationToken ct)
+            => RunAsyncAwait("REG-008", "REG: capabilities union (TLS): Fragment+Disorder не выключаются при multi-target apply", async _ =>
+            {
+                var sw = Stopwatch.StartNew();
+                string? prevGate = null;
+                try
+                {
+                    // Не обязательно для union, но включаем policy-driven TCP/443, чтобы сценарий соответствовал Step 1.
+                    prevGate = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443", "1");
+
+                    var baseProfile = BypassProfile.CreateDefault();
+
+                    using var engine = new IspAudit.Core.Traffic.TrafficEngine();
+                    using var tls = new TlsBypassService(
+                        engine,
+                        baseProfile,
+                        log: null,
+                        startMetricsTimer: false,
+                        useTrafficEngine: false,
+                        nowProvider: () => DateTime.UtcNow);
+
+                    var bypass = new BypassController(tls, baseProfile);
+
+                    var planFragment = new IspAudit.Core.IntelligenceV2.Contracts.BypassPlan
+                    {
+                        ForDiagnosis = IspAudit.Core.IntelligenceV2.Contracts.DiagnosisId.SilentDrop,
+                        PlanConfidence = 100,
+                        Strategies =
+                        {
+                            new IspAudit.Core.IntelligenceV2.Contracts.BypassStrategy
+                            {
+                                Id = IspAudit.Core.IntelligenceV2.Contracts.StrategyId.TlsFragment
+                            }
+                        }
+                    };
+
+                    var planDisorder = new IspAudit.Core.IntelligenceV2.Contracts.BypassPlan
+                    {
+                        ForDiagnosis = IspAudit.Core.IntelligenceV2.Contracts.DiagnosisId.SilentDrop,
+                        PlanConfidence = 100,
+                        Strategies =
+                        {
+                            new IspAudit.Core.IntelligenceV2.Contracts.BypassStrategy
+                            {
+                                Id = IspAudit.Core.IntelligenceV2.Contracts.StrategyId.TlsDisorder
+                            }
+                        }
+                    };
+
+                    // 1) Применяем Fragment к цели A
+                    await bypass.ApplyV2PlanAsync(planFragment, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
+
+                    // 2) Применяем Disorder к цели B — важно, чтобы Fragment не «выключился» в effective options
+                    await bypass.ApplyV2PlanAsync(planDisorder, outcomeTargetHost: "2.2.2.2", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
+
+                    var manager = GetPrivateField<IspAudit.Bypass.BypassStateManager>(bypass, "_stateManager");
+                    var options = manager.GetOptionsSnapshot();
+
+                    if (!options.FragmentEnabled || !options.DisorderEnabled)
+                    {
+                        return new SmokeTestResult("REG-008", "REG: capabilities union (TLS): Fragment+Disorder не выключаются при multi-target apply", SmokeOutcome.Fail, sw.Elapsed,
+                            $"Ожидали FragmentEnabled=true и DisorderEnabled=true после двух apply; получили FragmentEnabled={options.FragmentEnabled}, DisorderEnabled={options.DisorderEnabled}");
+                    }
+
+                    return new SmokeTestResult("REG-008", "REG: capabilities union (TLS): Fragment+Disorder не выключаются при multi-target apply", SmokeOutcome.Pass, sw.Elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-008", "REG: capabilities union (TLS): Fragment+Disorder не выключаются при multi-target apply", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443", prevGate);
+                }
+            }, ct);
     }
 }

@@ -1052,6 +1052,13 @@
 **Входные данные:** Два OutcomeTargetHost (например, 1.1.1.1 и 2.2.2.2) + два плана (HttpHostTricks), режим без TrafficEngine (no admin), чтение DecisionGraphSnapshot через smoke reflection
 **Ожидаемый результат:** Для 1.1.1.1 выбирается policy `tcp80_http_host_tricks_1_1_1_1`, для 2.2.2.2 — `tcp80_http_host_tricks_2_2_2_2`
 
+**Test ID:** `REG-008`
+**Что проверяет:** Capabilities union для TLS (Fragment/Disorder): применение к цели B не выключает ранее нужные capabilities цели A
+**Для чего:** Дополнительный регресс-гейт к P0.1 Step 1: при multi-target применении нужно удерживать необходимые техники включёнными одновременно (union), а выбор «какая именно» техника должна происходить по decision graph.
+**Критерий успеха:** После двух apply (Fragment→A, Disorder→B) в effective options остаются включены и `FragmentEnabled`, и `DisorderEnabled`
+**Входные данные:** Два OutcomeTargetHost (например, 1.1.1.1 и 2.2.2.2) + два плана (TlsFragment и TlsDisorder), режим без TrafficEngine (no admin), чтение `BypassStateManager.GetOptionsSnapshot()`
+**Ожидаемый результат:** `FragmentEnabled=true` и `DisorderEnabled=true`
+
 ---
 
 ## Приоритизация тестов
