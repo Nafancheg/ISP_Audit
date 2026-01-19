@@ -7,21 +7,35 @@ namespace IspAudit.Windows
 {
     public partial class TestDetailsWindow : Window
     {
-        public TestDetailsWindow(TestResult testResult)
+        public TestDetailsWindow(TestResult testResult, string? applyDetailsJson = null)
         {
             InitializeComponent();
-            DataContext = new TestDetailsViewModel(testResult);
+            DataContext = new TestDetailsViewModel(testResult, applyDetailsJson);
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
             Close();
         }
+
+        private void CopyApplyDetailsJson_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (DataContext is not TestDetailsViewModel vm) return;
+                if (string.IsNullOrWhiteSpace(vm.ApplyDetailsJson)) return;
+                System.Windows.Clipboard.SetText(vm.ApplyDetailsJson);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
     }
 
     public class TestDetailsViewModel
     {
-        public TestDetailsViewModel(TestResult testResult)
+        public TestDetailsViewModel(TestResult testResult, string? applyDetailsJson)
         {
             TargetName = testResult.Target?.Name ?? "Неизвестно";
             Host = testResult.Target?.Host ?? "N/A";
@@ -29,6 +43,8 @@ namespace IspAudit.Windows
             StatusText = testResult.StatusText;
             Error = testResult.Error ?? "";
             FallbackIp = testResult.Target?.FallbackIp ?? "";
+
+            ApplyDetailsJson = applyDetailsJson ?? string.Empty;
 
             // Парсим детали (в т.ч. форматы без разделителей '|')
             ParseDetails(testResult.Details);
@@ -194,6 +210,9 @@ namespace IspAudit.Windows
         public string TlsStatus { get; private set; } = BlockageCode.StatusUnknown;
         public string Diagnosis { get; private set; } = "";
         public string Recommendation { get; private set; } = "";
+
+        public string ApplyDetailsJson { get; } = string.Empty;
+        public bool HasApplyDetails => !string.IsNullOrWhiteSpace(ApplyDetailsJson);
 
         public bool HasError => !string.IsNullOrEmpty(Error);
         public bool HasFallbackIp => !string.IsNullOrEmpty(FallbackIp);

@@ -319,6 +319,54 @@
                                FontSize="13"
                            Foreground="{DynamicResource MaterialDesignBody}"/>
                 </Border>
+
+                <!-- P0.1/Step 9: Детали применения обхода (по группе), показываем только в окне деталей -->
+                <TextBlock Text="Детали применения обхода"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           Margin="0,16,0,12"
+                           Visibility="{Binding HasApplyDetails, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                <Border Background="{DynamicResource MaterialDesignCardBackground}"
+                        BorderBrush="{DynamicResource MaterialDesignDivider}"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Padding="12"
+                        Visibility="{Binding HasApplyDetails, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Text="JSON последней транзакции (с участием группы)"
+                                       Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                       VerticalAlignment="Center"/>
+
+                            <Button Grid.Column="1"
+                                    Content="📋 Копировать JSON"
+                                    Padding="10,4"
+                                    FontSize="12"
+                                    Margin="12,0,0,0"
+                                    Click="CopyApplyDetailsJson_Click"
+                                    Style="{StaticResource SecondaryButtonStyle}"/>
+                        </Grid>
+
+                        <TextBox Text="{Binding ApplyDetailsJson, Mode=OneWay}"
+                                 Margin="0,10,0,0"
+                                 FontFamily="Consolas"
+                                 FontSize="11"
+                                 IsReadOnly="True"
+                                 AcceptsReturn="True"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 Background="#F9FAFB"
+                                 BorderBrush="#E5E7EB"
+                                 BorderThickness="1"
+                                 Padding="10"/>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 

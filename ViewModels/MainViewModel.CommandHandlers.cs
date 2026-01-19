@@ -1180,7 +1180,26 @@ namespace IspAudit.ViewModels
 
             try
             {
-                var window = new IspAudit.Windows.TestDetailsWindow(result)
+                string? applyDetailsJson = null;
+                try
+                {
+                    var hostKey = GetPreferredHostKey(result);
+                    if (!string.IsNullOrWhiteSpace(hostKey))
+                    {
+                        var groupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                        var txJson = Bypass.TryGetLatestApplyTransactionJsonForGroupKey(groupKey);
+                        if (!string.IsNullOrWhiteSpace(txJson))
+                        {
+                            applyDetailsJson = BuildSelectedResultDetailsJson(groupKey, txJson);
+                        }
+                    }
+                }
+                catch
+                {
+                    applyDetailsJson = null;
+                }
+
+                var window = new IspAudit.Windows.TestDetailsWindow(result, applyDetailsJson)
                 {
                     Owner = Application.Current.MainWindow
                 };

@@ -530,7 +530,6 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <!-- Кнопка управления левой панелью (стрелки) -->
@@ -923,58 +922,8 @@
                     </DataGrid.Columns>
                 </DataGrid>
 
-                <!-- Step 9: Details panel for selected result/group -->
-                <Border Grid.Row="3"
-                        Background="{DynamicResource MaterialDesignPaper}"
-                        BorderBrush="{DynamicResource MaterialDesignDivider}"
-                        BorderThickness="0,1,0,0"
-                        Padding="12,10"
-                        Visibility="{Binding SelectedResultApplyTransactionJson, Converter={StaticResource StringToVisibilityConverter}}">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <Grid Grid.Row="0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock Text="{Binding SelectedResultApplyTransactionTitle}"
-                                       FontWeight="SemiBold"
-                                       FontSize="12"
-                                       Foreground="{DynamicResource MaterialDesignBody}"
-                                       VerticalAlignment="Center"/>
-
-                            <Button Grid.Column="1"
-                                    Content="📋 Копировать JSON"
-                                    Style="{StaticResource SecondaryButtonStyle}"
-                                    Padding="10,4"
-                                    FontSize="12"
-                                    Margin="12,0,0,0"
-                                    Command="{Binding CopySelectedResultApplyTransactionJsonCommand}"/>
-                        </Grid>
-
-                        <TextBox Grid.Row="1"
-                                 Text="{Binding SelectedResultApplyTransactionJson, Mode=OneWay}"
-                                 Margin="0,8,0,0"
-                                 FontFamily="Consolas"
-                                 FontSize="11"
-                                 IsReadOnly="True"
-                                 AcceptsReturn="True"
-                                 VerticalScrollBarVisibility="Auto"
-                                 HorizontalScrollBarVisibility="Auto"
-                                 Background="#F9FAFB"
-                                 BorderBrush="#E5E7EB"
-                                 BorderThickness="1"
-                                 Padding="10"/>
-                    </Grid>
-                </Border>
-
                 <!-- Footer -->
-                <Border Grid.Row="4" Background="{DynamicResource MaterialDesignPaper}" Padding="12,8" Margin="0,8,0,0" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="0,1,0,0">
+                <Border Grid.Row="3" Background="{DynamicResource MaterialDesignPaper}" Padding="12,8" Margin="0,8,0,0" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="0,1,0,0">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                         <materialDesign:PackIcon Kind="InformationOutline" Margin="0,0,8,0" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding UserMessage}" FontWeight="Medium" Foreground="{DynamicResource MaterialDesignBody}" FontSize="12" VerticalAlignment="Center"/>
