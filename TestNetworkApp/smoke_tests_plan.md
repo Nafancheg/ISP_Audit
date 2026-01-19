@@ -1052,6 +1052,13 @@
 **Входные данные:** Два `ApplyV2PlanAsync` в `Task.WhenAll` при `ISP_AUDIT_TEST_APPLY_DELAY_MS=250`
 **Ожидаемый результат:** Время выполнения >= ~500ms (с допуском)
 
+**Test ID:** `REG-013`
+**Что проверяет:** Детерминированный merge состояния группы в `GroupBypassAttachmentStore` (endpoints=union, assist-флаги=OR) и «sticky excluded»
+**Для чего:** Регресс-гейт P0.1 Step 14: единый источник истины по группе не должен терять ручное исключение и должен собирать итоговую конфигурацию детерминированно
+**Критерий успеха:** `CandidateIpEndpointsUnion` содержит union endpoint-ов и отсортирован; `DropUdp443/AllowNoSni` = OR по attachments; excluded host не становится included после UpdateAttachmentFromApply/Pin
+**Входные данные:** In-memory сценарий: два hostKey (один excluded), два apply (с разными plan tokens и endpoints)
+**Ожидаемый результат:** AttachmentCount=2, Included=1, Excluded=1, union endpoints=2, флаги OR=true, excluded не сброшен
+
 **Test ID:** `REG-004`
 **Что проверяет:** Per-card ретест во время диагностики ставится в очередь и флашится после завершения
 **Для чего:** Регресс-гейт UX: кнопка «Ретест» не должна быть «мертвой» во время диагностики

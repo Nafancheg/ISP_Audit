@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using IspAudit.Bypass;
+using IspAudit.Core.Bypass;
 using IspAudit.Utils;
 using IspAudit.Wpf;
 
@@ -31,14 +32,8 @@ namespace IspAudit.ViewModels
 
         private readonly System.Collections.Generic.HashSet<string> _pendingManualRetestHostKeys = new(StringComparer.OrdinalIgnoreCase);
 
-        // P0.1 Step 7: manual participation (исключение карточек из группы) — пока UI-level модель.
-        private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>> _manualExcludedHostKeysByGroupKey
-            = new(StringComparer.OrdinalIgnoreCase);
-
-        // P0.1 Step 11: "пин" группы для конкретного hostKey.
-        // Нужен, чтобы SuggestedDomainSuffix (диагностика) не менял groupKey у вручную управляемых карточек.
-        private readonly System.Collections.Generic.Dictionary<string, string> _pinnedGroupKeyByHostKey
-            = new(StringComparer.OrdinalIgnoreCase);
+        // P0.1 Step 14: единый источник истины для group participation / pinning / merge состояния группы.
+        private readonly GroupBypassAttachmentStore _groupBypassAttachmentStore = new();
 
         public MainViewModel()
         {
@@ -336,53 +331,13 @@ namespace IspAudit.ViewModels
             Log("✓ MainViewModel инициализирован");
         }
 
-        private static string GetManualParticipationPersistPath()
-        {
-            var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var dir = System.IO.Path.Combine(baseDir, "ISP_Audit");
-            return System.IO.Path.Combine(dir, "group_participation.json");
-        }
-
         private void PersistManualParticipationBestEffort()
         {
             _ = Task.Run(() =>
             {
                 try
                 {
-                    var path = GetManualParticipationPersistPath();
-                    var dir = System.IO.Path.GetDirectoryName(path);
-                    if (!string.IsNullOrWhiteSpace(dir))
-                    {
-                        System.IO.Directory.CreateDirectory(dir);
-                    }
-
-                    System.Collections.Generic.Dictionary<string, string[]> excluded;
-                    System.Collections.Generic.Dictionary<string, string> pinned;
-                    lock (_manualExcludedHostKeysByGroupKey)
-                    {
-                        excluded = _manualExcludedHostKeysByGroupKey
-                            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToArray(), StringComparer.OrdinalIgnoreCase);
-                    }
-
-                    lock (_pinnedGroupKeyByHostKey)
-                    {
-                        pinned = _pinnedGroupKeyByHostKey
-                            .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Key) && !string.IsNullOrWhiteSpace(kvp.Value))
-                            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.OrdinalIgnoreCase);
-                    }
-
-                    var state = new ManualParticipationPersistStateV1
-                    {
-                        ExcludedHostKeysByGroupKey = excluded,
-                        PinnedGroupKeyByHostKey = pinned
-                    };
-
-                    var json = JsonSerializer.Serialize(state, new JsonSerializerOptions
-                    {
-                        WriteIndented = true
-                    });
-
-                    System.IO.File.WriteAllText(path, json, System.Text.Encoding.UTF8);
+                    _groupBypassAttachmentStore.PersistToDiskBestEffort();
                 }
                 catch
                 {
@@ -397,79 +352,7 @@ namespace IspAudit.ViewModels
             {
                 try
                 {
-                    var path = GetManualParticipationPersistPath();
-                    if (!System.IO.File.Exists(path)) return;
-
-                    var json = System.IO.File.ReadAllText(path);
-                    if (string.IsNullOrWhiteSpace(json)) return;
-
-                    var state = JsonSerializer.Deserialize<ManualParticipationPersistStateV1>(json);
-                    var map = state?.ExcludedHostKeysByGroupKey;
-                    var pinnedMap = state?.PinnedGroupKeyByHostKey;
-                    if ((map == null || map.Count == 0) && (pinnedMap == null || pinnedMap.Count == 0)) return;
-
-                    lock (_manualExcludedHostKeysByGroupKey)
-                    {
-                        _manualExcludedHostKeysByGroupKey.Clear();
-                        if (map != null)
-                        {
-                            foreach (var kvp in map)
-                            {
-                                var key = (kvp.Key ?? string.Empty).Trim().Trim('.');
-                                if (string.IsNullOrWhiteSpace(key)) continue;
-
-                                var set = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                                foreach (var host in kvp.Value ?? Array.Empty<string>())
-                                {
-                                    var h = (host ?? string.Empty).Trim().Trim('.');
-                                    if (string.IsNullOrWhiteSpace(h)) continue;
-                                    set.Add(h);
-                                }
-
-                                if (set.Count > 0)
-                                {
-                                    _manualExcludedHostKeysByGroupKey[key] = set;
-                                }
-                            }
-                        }
-                    }
-
-                    // Загружаем пиннинги groupKey (v2). Если их нет — выводим их из manual excluded.
-                    lock (_pinnedGroupKeyByHostKey)
-                    {
-                        _pinnedGroupKeyByHostKey.Clear();
-
-                        if (pinnedMap != null)
-                        {
-                            foreach (var kvp in pinnedMap)
-                            {
-                                var hostKey = (kvp.Key ?? string.Empty).Trim().Trim('.');
-                                var groupKey = (kvp.Value ?? string.Empty).Trim().Trim('.');
-                                if (string.IsNullOrWhiteSpace(hostKey) || string.IsNullOrWhiteSpace(groupKey)) continue;
-                                _pinnedGroupKeyByHostKey[hostKey] = groupKey;
-                            }
-                        }
-
-                        if (_pinnedGroupKeyByHostKey.Count == 0)
-                        {
-                            // Back-compat: если файл старый (v1), пиним только то, что было вручную исключено.
-                            lock (_manualExcludedHostKeysByGroupKey)
-                            {
-                                foreach (var kvp in _manualExcludedHostKeysByGroupKey)
-                                {
-                                    var groupKey = (kvp.Key ?? string.Empty).Trim().Trim('.');
-                                    if (string.IsNullOrWhiteSpace(groupKey)) continue;
-
-                                    foreach (var hostKey in kvp.Value)
-                                    {
-                                        var hk = (hostKey ?? string.Empty).Trim().Trim('.');
-                                        if (string.IsNullOrWhiteSpace(hk)) continue;
-                                        _pinnedGroupKeyByHostKey[hk] = groupKey;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    _groupBypassAttachmentStore.LoadFromDiskBestEffort();
 
                     // Обновим UI best-effort.
                     try
@@ -493,16 +376,6 @@ namespace IspAudit.ViewModels
                     // ignore
                 }
             });
-        }
-
-        private sealed record ManualParticipationPersistStateV1
-        {
-            public string Version { get; init; } = "v2";
-            public string SavedAtUtc { get; init; } = DateTimeOffset.UtcNow.ToString("u").TrimEnd();
-            public System.Collections.Generic.Dictionary<string, string[]> ExcludedHostKeysByGroupKey { get; init; } = new(StringComparer.OrdinalIgnoreCase);
-
-            // Step 11 (v2): фиксируем hostKey -> groupKey, чтобы диагностика не могла "перегруппировать" вручную управляемые карточки.
-            public System.Collections.Generic.Dictionary<string, string> PinnedGroupKeyByHostKey { get; init; } = new(StringComparer.OrdinalIgnoreCase);
         }
 
         public async Task InitializeAsync()

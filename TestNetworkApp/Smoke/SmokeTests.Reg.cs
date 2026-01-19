@@ -9,6 +9,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.Core.Bypass;
 using IspAudit.Utils;
 using IspAudit.ViewModels;
 
@@ -472,6 +473,81 @@ namespace TestNetworkApp.Smoke
                 finally
                 {
                     Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_APPLY_DELAY_MS", prevDelay);
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> REG_GroupBypassAttachmentStore_DeterministicMerge_AndExcludedSticky(CancellationToken ct)
+            => RunAsync("REG-013", "REG: GroupBypassAttachmentStore merge (union/OR) и excluded не сбрасывается", () =>
+            {
+                try
+                {
+                    _ = ct;
+
+                    var store = new GroupBypassAttachmentStore();
+                    const string groupKey = "example.com";
+
+                    store.PinHostKeyToGroupKey("a.example.com", groupKey);
+                    var excludedNow = store.ToggleExcluded(groupKey, "a.example.com");
+                    if (!excludedNow)
+                    {
+                        return new SmokeTestResult("REG-013", "REG: GroupBypassAttachmentStore merge (union/OR) и excluded не сбрасывается",
+                            SmokeOutcome.Fail, TimeSpan.Zero, "Ожидали excludedNow=true после ToggleExcluded");
+                    }
+
+                    // Apply-обновление не должно снимать ручное исключение.
+                    store.UpdateAttachmentFromApply(groupKey, "a.example.com", new[] { "1.1.1.1:443" }, planText: "DROP_UDP_443");
+                    if (!store.IsExcluded(groupKey, "a.example.com"))
+                    {
+                        return new SmokeTestResult("REG-013", "REG: GroupBypassAttachmentStore merge (union/OR) и excluded не сбрасывается",
+                            SmokeOutcome.Fail, TimeSpan.Zero, "excluded сброшен после UpdateAttachmentFromApply (ожидали sticky excluded)");
+                    }
+
+                    store.PinHostKeyToGroupKey("b.example.com", groupKey);
+                    store.UpdateAttachmentFromApply(groupKey, "b.example.com", new[] { "2.2.2.2:443", "1.1.1.1:443" }, planText: "ALLOW_NO_SNI, DROP_UDP_443");
+
+                    var cfg = store.GetEffectiveGroupConfig(groupKey);
+                    if (cfg.AttachmentCount != 2)
+                    {
+                        return new SmokeTestResult("REG-013", "REG: GroupBypassAttachmentStore merge (union/OR) и excluded не сбрасывается",
+                            SmokeOutcome.Fail, TimeSpan.Zero, $"Ожидали AttachmentCount=2, получили {cfg.AttachmentCount}");
+                    }
+
+                    if (cfg.IncludedCount != 1 || cfg.ExcludedCount != 1)
+                    {
+                        return new SmokeTestResult("REG-013", "REG: GroupBypassAttachmentStore merge (union/OR) и excluded не сбрасывается",
+                            SmokeOutcome.Fail, TimeSpan.Zero, $"Ожидали IncludedCount=1 и ExcludedCount=1, получили Included={cfg.IncludedCount}, Excluded={cfg.ExcludedCount}");
+                    }
+
+                    if (!cfg.DropUdp443 || !cfg.AllowNoSni)
+                    {
+                        return new SmokeTestResult("REG-013", "REG: GroupBypassAttachmentStore merge (union/OR) и excluded не сбрасывается",
+                            SmokeOutcome.Fail, TimeSpan.Zero, $"Ожидали DropUdp443=true и AllowNoSni=true, получили DropUdp443={cfg.DropUdp443}, AllowNoSni={cfg.AllowNoSni}");
+                    }
+
+                    var union = cfg.CandidateIpEndpointsUnion ?? Array.Empty<string>();
+                    if (union.Count != 2
+                        || !union.Contains("1.1.1.1:443", StringComparer.OrdinalIgnoreCase)
+                        || !union.Contains("2.2.2.2:443", StringComparer.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-013", "REG: GroupBypassAttachmentStore merge (union/OR) и excluded не сбрасывается",
+                            SmokeOutcome.Fail, TimeSpan.Zero, "Ожидали union endpoints из 2 элементов (1.1.1.1:443 и 2.2.2.2:443)");
+                    }
+
+                    // Детерминированность: union должен быть отсортирован.
+                    var sorted = union.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToArray();
+                    if (!union.SequenceEqual(sorted, StringComparer.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-013", "REG: GroupBypassAttachmentStore merge (union/OR) и excluded не сбрасывается",
+                            SmokeOutcome.Fail, TimeSpan.Zero, "Ожидали отсортированный CandidateIpEndpointsUnion");
+                    }
+
+                    return new SmokeTestResult("REG-013", "REG: GroupBypassAttachmentStore merge (union/OR) и excluded не сбрасывается",
+                        SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-013", "REG: GroupBypassAttachmentStore merge (union/OR) и excluded не сбрасывается",
+                        SmokeOutcome.Fail, TimeSpan.Zero, ex.Message);
                 }
             }, ct);
 

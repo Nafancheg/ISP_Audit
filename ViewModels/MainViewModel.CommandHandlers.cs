@@ -29,15 +29,12 @@ namespace IspAudit.ViewModels
                 var hk = (hostKey ?? string.Empty).Trim().Trim('.');
                 if (string.IsNullOrWhiteSpace(hk)) return string.Empty;
 
-                lock (_pinnedGroupKeyByHostKey)
+                if (_groupBypassAttachmentStore.TryGetPinnedGroupKey(hk, out var pinned))
                 {
-                    if (_pinnedGroupKeyByHostKey.TryGetValue(hk, out var pinned))
+                    var pk = (pinned ?? string.Empty).Trim().Trim('.');
+                    if (!string.IsNullOrWhiteSpace(pk))
                     {
-                        var pk = (pinned ?? string.Empty).Trim().Trim('.');
-                        if (!string.IsNullOrWhiteSpace(pk))
-                        {
-                            return pk;
-                        }
+                        return pk;
                     }
                 }
 
@@ -57,10 +54,7 @@ namespace IspAudit.ViewModels
                 var gk = (groupKey ?? string.Empty).Trim().Trim('.');
                 if (string.IsNullOrWhiteSpace(hk) || string.IsNullOrWhiteSpace(gk)) return;
 
-                lock (_pinnedGroupKeyByHostKey)
-                {
-                    _pinnedGroupKeyByHostKey[hk] = gk;
-                }
+                _groupBypassAttachmentStore.PinHostKeyToGroupKey(hk, gk);
             }
             catch
             {
@@ -98,30 +92,7 @@ namespace IspAudit.ViewModels
 
                 var normalizedHostKey = hostKey.Trim().Trim('.');
 
-                var nowExcluded = false;
-                lock (_manualExcludedHostKeysByGroupKey)
-                {
-                    if (!_manualExcludedHostKeysByGroupKey.TryGetValue(normalizedGroupKey, out var set))
-                    {
-                        set = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                        _manualExcludedHostKeysByGroupKey[normalizedGroupKey] = set;
-                    }
-
-                    if (set.Contains(normalizedHostKey))
-                    {
-                        set.Remove(normalizedHostKey);
-                        if (set.Count == 0)
-                        {
-                            _manualExcludedHostKeysByGroupKey.Remove(normalizedGroupKey);
-                        }
-                        nowExcluded = false;
-                    }
-                    else
-                    {
-                        set.Add(normalizedHostKey);
-                        nowExcluded = true;
-                    }
-                }
+                var nowExcluded = _groupBypassAttachmentStore.ToggleExcluded(normalizedGroupKey, normalizedHostKey);
 
                 // Step 11: как только пользователь явно управляет участием, пиним groupKey для hostKey.
                 PinHostKeyToGroupKeyBestEffort(normalizedHostKey, normalizedGroupKey);
@@ -176,6 +147,12 @@ namespace IspAudit.ViewModels
                     {
                         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
                         endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                    }
+
+                    if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _groupBypassAttachmentStore.UpdateAttachmentFromApply(groupKey, outcome.HostKey, endpoints, outcome.PlanText);
+                        PersistManualParticipationBestEffort();
                     }
 
                     Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning,
@@ -252,6 +229,12 @@ namespace IspAudit.ViewModels
                     {
                         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
                         endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                    }
+
+                    if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _groupBypassAttachmentStore.UpdateAttachmentFromApply(groupKey, outcome.HostKey, endpoints, outcome.PlanText);
+                        PersistManualParticipationBestEffort();
                     }
 
                     Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning,
@@ -332,6 +315,12 @@ namespace IspAudit.ViewModels
                     {
                         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
                         endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                    }
+
+                    if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _groupBypassAttachmentStore.UpdateAttachmentFromApply(groupKey, outcome.HostKey, endpoints, outcome.PlanText);
+                        PersistManualParticipationBestEffort();
                     }
 
                     Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning,
@@ -692,13 +681,7 @@ namespace IspAudit.ViewModels
 
             try
             {
-                lock (_manualExcludedHostKeysByGroupKey)
-                {
-                    if (_manualExcludedHostKeysByGroupKey.TryGetValue(normalizedGroupKey, out var set))
-                    {
-                        excludedManual.AddRange(set.OrderBy(s => s, StringComparer.OrdinalIgnoreCase));
-                    }
-                }
+                excludedManual.AddRange(_groupBypassAttachmentStore.GetExcludedHostsSnapshot(normalizedGroupKey));
             }
             catch
             {
@@ -762,14 +745,9 @@ namespace IspAudit.ViewModels
                 var key = groupKey.Trim().Trim('.');
                 if (string.IsNullOrWhiteSpace(key)) return;
 
-                System.Collections.Generic.HashSet<string>? excluded = null;
-                lock (_manualExcludedHostKeysByGroupKey)
-                {
-                    if (_manualExcludedHostKeysByGroupKey.TryGetValue(key, out var set))
-                    {
-                        excluded = new System.Collections.Generic.HashSet<string>(set, StringComparer.OrdinalIgnoreCase);
-                    }
-                }
+                var excluded = new System.Collections.Generic.HashSet<string>(
+                    _groupBypassAttachmentStore.GetExcludedHostsSnapshot(key),
+                    StringComparer.OrdinalIgnoreCase);
 
                 UiBeginInvoke(() =>
                 {
@@ -782,7 +760,7 @@ namespace IspAudit.ViewModels
                         if (!string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase)) continue;
 
                         var normalizedHostKey = hostKey.Trim().Trim('.');
-                        r.IsManuallyExcludedFromApplyGroup = excluded != null && excluded.Contains(normalizedHostKey);
+                        r.IsManuallyExcludedFromApplyGroup = excluded.Contains(normalizedHostKey);
                         r.ParticipationText = GetParticipationTextForHostKey(key, hostKey);
                     }
                 });
@@ -1137,10 +1115,7 @@ namespace IspAudit.ViewModels
                 var hk = (hostKey ?? string.Empty).Trim().Trim('.');
                 if (string.IsNullOrWhiteSpace(hk)) return false;
 
-                lock (_manualExcludedHostKeysByGroupKey)
-                {
-                    return _manualExcludedHostKeysByGroupKey.TryGetValue(key, out var set) && set.Contains(hk);
-                }
+                return _groupBypassAttachmentStore.IsExcluded(key, hk);
             }
             catch
             {
