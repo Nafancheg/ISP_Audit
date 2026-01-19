@@ -116,7 +116,18 @@
     - Невозможно получить состояние «кнопки переключаются, не понятно что применено»: всегда видно активный policy bundle группы и какие политики реально матчились/применялись.
     - Per-card ретест/переподключение не зависят от видимости bypass‑панели и доступны во время диагностики.
   - План реализации по шагам (выполнять строго по порядку):
-    - [ ] Шаг 1: Зафиксировать продуктовый режим: поддерживаем несколько активных групп одновременно (Steam + YouTube), а Decision Graph выбирает действие по признакам пакета. *(В работе: селективный `DropUdp443` (QUIC→TCP) теперь собирает target IP как union по нескольким активным целям; добавлены регресс-гейты `REG-005` (QUIC fallback multi-target) и `REG-006` (TCP/443 TLS стратегия выбирается per-target по dst_ip через Decision Graph).)*
+    - [ ] Шаг 1: Зафиксировать продуктовый режим: поддерживаем несколько активных групп/целей одновременно (Steam + YouTube), а Decision Graph выбирает действие по признакам пакета (dst_ip/proto/port/tls_stage).
+      - ✅ Сделано (мульти-цель / multi-group):
+        - ✅ Аккумуляция «активных целей» (TTL/cap) и union по capabilities (assist-флаги + разрешение стратегий) — BypassStateManager держит кэш активных hostKey и строит effective options.
+          - Реализация: Bypass/BypassStateManager.ActiveTargets.cs + изменения в Bypass/BypassStateManager.cs и ViewModels/BypassController.V2.cs.
+        - ✅ UDP/443 (QUIC→TCP) в селективном режиме: target IPv4 собираются как union по нескольким недавно активным целям.
+          - Регресс-гейт: REG-005.
+        - ✅ TCP/443: TLS стратегия выбирается per-target через policy `DstIpv4Set` (Decision Graph), чтобы разные цели могли иметь разные стратегии одновременно.
+          - Регресс-гейт: REG-006.
+        - ✅ TCP/80: HttpHostTricks компилируется per-target (DstIpv4Set) при наличии активных целей, с fallback на глобальную политику только если per-target правила не удалось собрать.
+      - ⏳ Осталось, чтобы закрыть Шаг 1 как Done:
+        - Добавить regression smoke-гейт для TCP/80 per-target (аналог REG-006, но проверяем выбор policy `tcp80_http_host_tricks_<host>` по dst_ip).
+        - (Опционально) Добавить smoke-гейт на «capabilities union»: при двух целях A/B с разными нуждами effective options не должны выключать ранее нужные capabilities (например, Fragment остаётся разрешённым после применения Disorder для другой цели).
     - [ ] Шаг 2: Определить контракт данных для Transaction (Request/Snapshot/Result) и вкладов (contributions) + формат лог-строк. *(частично сделано: есть MVP-модель транзакции + лог-строка, но нет полного Request/Result контракта)*
     - [ ] Шаг 3: Вынести «применение обхода» в отдельный сервис уровня Core/Bypass (не UI), который возвращает TransactionResult + Snapshot.
     - [x] Шаг 4: Добавить in-memory журнал транзакций (N=50) и сохранение последних K транзакций на диск (LocalAppData) для репорта.
