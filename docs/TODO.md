@@ -130,6 +130,10 @@
         - ✅ Усиление (smoke/regression): «capabilities union» закреплён тестом `REG-008`.
     - [x] Шаг 2: Определить контракт данных для Transaction (Request/Snapshot/Result) и вкладов (contributions) + формат лог-строк. *(Done: в `BypassApplyTransaction` добавлены секции `Request/Snapshot/Result` и `Contributions`, плюс регресс-гейт `REG-009` на структуру экспортируемого JSON.)*
     - [x] Шаг 3: Вынести «применение обхода» в отдельный сервис уровня Core/Bypass (не UI), который возвращает TransactionResult + Snapshot. *(Done: `Core/Bypass/BypassApplyService`, делегирование из `BypassController.ApplyV2PlanAsync`, регресс‑гейт `REG-010` на управляемый `result.Status`.)*
+      - Follow-up (наблюдаемость, после стабилизации):
+        - [ ] 3.a: «Честные» статусы результата транзакции не только на success: фиксировать `CANCELED` (cancel/timeout), `FAILED` (ошибка apply) и `ROLLED_BACK` (после отката), чтобы журнал объяснял исход операции.
+        - [ ] 3.b: `BypassApplyService` возвращает структурированный outcome (before/after + error + rollback outcome), чтобы сбор Snapshot/Result был единым и детерминированным.
+        - [ ] 3.c: Добавить регресс-гейт `REG-011` на статусы (например, cancel/timeout → `CANCELED`, exception → `FAILED`).
     - [x] Шаг 4: Добавить in-memory журнал транзакций (N=50) и сохранение последних K транзакций на диск (LocalAppData) для репорта.
     - [x] Шаг 5: Добавить сбор «фактических endpoint-ов» в одном месте (DNS+SNI кеши + DNS resolve) и включить в Snapshot.
     - [x] Шаг 6: Добавить вычисление «ожидаемых эффектов/инвариантов» (ожидания по метрикам) и включить в Snapshot.
