@@ -1,7 +1,9 @@
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -294,6 +296,118 @@ namespace TestNetworkApp.Smoke
                 catch (Exception ex)
                 {
                     return new SmokeTestResult("REG-005", "REG: QUIC fallback (селективно) поддерживает несколько активных целей", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> REG_Tcp443TlsStrategy_PerTarget_MultiGroup(CancellationToken ct)
+            => RunAsyncAwait("REG-006", "REG: TCP/443 TLS стратегия выбирается per-target (multi-group)", async _ =>
+            {
+                var sw = Stopwatch.StartNew();
+                string? prevGate = null;
+                try
+                {
+                    prevGate = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443", "1");
+
+                    var baseProfile = BypassProfile.CreateDefault();
+
+                    using var engine = new IspAudit.Core.Traffic.TrafficEngine();
+                    using var tls = new TlsBypassService(
+                        engine,
+                        baseProfile,
+                        log: null,
+                        startMetricsTimer: false,
+                        useTrafficEngine: false,
+                        nowProvider: () => DateTime.UtcNow);
+
+                    var bypass = new BypassController(tls, baseProfile);
+
+                    // 1) Цель A: Fragment
+                    var planA = new IspAudit.Core.IntelligenceV2.Contracts.BypassPlan
+                    {
+                        ForDiagnosis = IspAudit.Core.IntelligenceV2.Contracts.DiagnosisId.SilentDrop,
+                        PlanConfidence = 100,
+                        Strategies =
+                        {
+                            new IspAudit.Core.IntelligenceV2.Contracts.BypassStrategy
+                            {
+                                Id = IspAudit.Core.IntelligenceV2.Contracts.StrategyId.TlsFragment
+                            }
+                        }
+                    };
+
+                    // 2) Цель B: Disorder
+                    var planB = new IspAudit.Core.IntelligenceV2.Contracts.BypassPlan
+                    {
+                        ForDiagnosis = IspAudit.Core.IntelligenceV2.Contracts.DiagnosisId.SilentDrop,
+                        PlanConfidence = 100,
+                        Strategies =
+                        {
+                            new IspAudit.Core.IntelligenceV2.Contracts.BypassStrategy
+                            {
+                                Id = IspAudit.Core.IntelligenceV2.Contracts.StrategyId.TlsDisorder
+                            }
+                        }
+                    };
+
+                    await bypass.ApplyV2PlanAsync(planA, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
+                    await bypass.ApplyV2PlanAsync(planB, outcomeTargetHost: "2.2.2.2", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
+
+                    var manager = GetPrivateField<IspAudit.Bypass.BypassStateManager>(bypass, "_stateManager");
+                    var tlsService = GetPrivateField<IspAudit.Bypass.TlsBypassService>(manager, "_tlsService");
+                    var snapshot = GetPrivateField<IspAudit.Core.Models.DecisionGraphSnapshot?>(tlsService, "_decisionGraphSnapshot");
+
+                    if (snapshot == null)
+                    {
+                        return new SmokeTestResult("REG-006", "REG: TCP/443 TLS стратегия выбирается per-target (multi-group)", SmokeOutcome.Fail, sw.Elapsed,
+                            "Ожидали DecisionGraphSnapshot != null (gate TCP443=1), получили null");
+                    }
+
+                    static uint ToIpv4Int(string ipText)
+                    {
+                        var ip = IPAddress.Parse(ipText);
+                        var bytes = ip.GetAddressBytes();
+                        return BinaryPrimitives.ReadUInt32BigEndian(bytes);
+                    }
+
+                    var ipA = ToIpv4Int("1.1.1.1");
+                    var ipB = ToIpv4Int("2.2.2.2");
+
+                    var selA = snapshot.EvaluateTcp443TlsClientHello(ipA, isIpv4: true, isIpv6: false, tlsStage: IspAudit.Core.Models.TlsStage.ClientHello);
+                    var selB = snapshot.EvaluateTcp443TlsClientHello(ipB, isIpv4: true, isIpv6: false, tlsStage: IspAudit.Core.Models.TlsStage.ClientHello);
+
+                    if (selA == null || selB == null)
+                    {
+                        return new SmokeTestResult("REG-006", "REG: TCP/443 TLS стратегия выбирается per-target (multi-group)", SmokeOutcome.Fail, sw.Elapsed,
+                            $"Ожидали, что обе цели смэтчатся (selA={(selA == null ? "null" : selA.Id)}; selB={(selB == null ? "null" : selB.Id)})");
+                    }
+
+                    string? rawA = null;
+                    selA.Action.Parameters.TryGetValue(IspAudit.Core.Models.PolicyAction.ParameterKeyTlsStrategy, out rawA);
+                    string? rawB = null;
+                    selB.Action.Parameters.TryGetValue(IspAudit.Core.Models.PolicyAction.ParameterKeyTlsStrategy, out rawB);
+
+                    if (!string.Equals(rawA, nameof(TlsBypassStrategy.Fragment), StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-006", "REG: TCP/443 TLS стратегия выбирается per-target (multi-group)", SmokeOutcome.Fail, sw.Elapsed,
+                            $"Ожидали strategy=Fragment для 1.1.1.1, получили '{rawA ?? "(null)"}' (policy={selA.Id})");
+                    }
+
+                    if (!string.Equals(rawB, nameof(TlsBypassStrategy.Disorder), StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-006", "REG: TCP/443 TLS стратегия выбирается per-target (multi-group)", SmokeOutcome.Fail, sw.Elapsed,
+                            $"Ожидали strategy=Disorder для 2.2.2.2, получили '{rawB ?? "(null)"}' (policy={selB.Id})");
+                    }
+
+                    return new SmokeTestResult("REG-006", "REG: TCP/443 TLS стратегия выбирается per-target (multi-group)", SmokeOutcome.Pass, sw.Elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-006", "REG: TCP/443 TLS стратегия выбирается per-target (multi-group)", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443", prevGate);
                 }
             }, ct);
     }

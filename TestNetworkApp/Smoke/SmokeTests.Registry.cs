@@ -62,6 +62,7 @@ namespace TestNetworkApp.Smoke
                 ["REG-003"] = REG_ApplyTransactions_Persisted_RoundTrip_NoWpf,
                 ["REG-004"] = REG_PerCardRetest_Queued_DuringRun_ThenFlushed,
                 ["REG-005"] = REG_QuicFallback_Selective_MultiTarget_DoesNotForgetPrevious,
+                ["REG-006"] = REG_Tcp443TlsStrategy_PerTarget_MultiGroup,
 
                 ["PIPE-005"] = Pipe_UnifiedFilter_LoopbackDropped,
                 ["PIPE-006"] = Pipe_UnifiedFilter_NoiseOnlyOnDisplay,

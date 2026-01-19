@@ -51,12 +51,20 @@ namespace IspAudit.ViewModels
                 TlsFragmentPreset? requestedPreset = null;
                 bool? requestedAutoAdjustAggressive = null;
 
+                var wantFragment = false;
+                var wantDisorder = false;
+                var wantFake = false;
+                var wantQuicFallback = false;
+                var wantAllowNoSni = false;
+                var wantHttpHostTricks = false;
+
                 foreach (var strategy in plan.Strategies)
                 {
                     switch (strategy.Id)
                     {
                         case StrategyId.TlsFragment:
                             updated = updated with { FragmentEnabled = true, DisorderEnabled = false };
+                            wantFragment = true;
 
                             // Опциональные параметры стратегии: пресет/размеры/auto-adjust.
                             // Если параметров нет — сохраняем текущий выбранный пресет пользователя.
@@ -95,15 +103,18 @@ namespace IspAudit.ViewModels
                         case StrategyId.AggressiveFragment:
                             // Агрессивная фрагментация: используем пресет «Агрессивный» + авто-подстройку.
                             updated = updated with { FragmentEnabled = true, DisorderEnabled = false };
+                            wantFragment = true;
                             requestedPreset = FragmentPresets
                                 .FirstOrDefault(p => string.Equals(p.Name, "Агрессивный", StringComparison.OrdinalIgnoreCase));
                             requestedAutoAdjustAggressive = true;
                             break;
                         case StrategyId.TlsDisorder:
                             updated = updated with { DisorderEnabled = true, FragmentEnabled = false };
+                            wantDisorder = true;
                             break;
                         case StrategyId.TlsFakeTtl:
                             updated = updated with { FakeEnabled = true };
+                            wantFake = true;
                             break;
                         case StrategyId.DropRst:
                             updated = updated with { DropRstEnabled = true };
@@ -114,10 +125,12 @@ namespace IspAudit.ViewModels
                         case StrategyId.QuicObfuscation:
                             // Реализация MVP: QUIC obfuscation = QUIC→TCP fallback (DROP UDP/443).
                             updated = updated with { DropUdp443 = true };
+                            wantQuicFallback = true;
                             Log("[V2][Executor] QuicObfuscation: включаем QUIC→TCP (DROP UDP/443)");
                             break;
                         case StrategyId.HttpHostTricks:
                             updated = updated with { HttpHostTricksEnabled = true };
+                            wantHttpHostTricks = true;
                             Log("[V2][Executor] HttpHostTricks: включаем HTTP Host tricks");
                             break;
                         case StrategyId.BadChecksum:
@@ -135,13 +148,46 @@ namespace IspAudit.ViewModels
                 if (plan.DropUdp443)
                 {
                     updated = updated with { DropUdp443 = true };
+                    wantQuicFallback = true;
                     Log("[V2][Executor] Assist: включаем QUIC→TCP (DROP UDP/443)");
                 }
 
                 if (plan.AllowNoSni)
                 {
                     updated = updated with { AllowNoSni = true };
+                    wantAllowNoSni = true;
                     Log("[V2][Executor] Assist: включаем No SNI (разрешить обход без SNI)");
+                }
+
+                // P0.1 Step 1: запоминаем per-target политику (какая цель + какая стратегия/assist-флаги).
+                // Это нужно, чтобы несколько целей могли оставаться активными одновременно,
+                // а Decision Graph выбирал действие по признакам пакета.
+                try
+                {
+                    var hostKey = _stateManager.GetOutcomeTargetHost();
+                    if (!string.IsNullOrWhiteSpace(hostKey))
+                    {
+                        var tlsStrategy = TlsBypassStrategy.None;
+                        if (wantDisorder && wantFake) tlsStrategy = TlsBypassStrategy.FakeDisorder;
+                        else if (wantFragment && wantFake) tlsStrategy = TlsBypassStrategy.FakeFragment;
+                        else if (wantDisorder) tlsStrategy = TlsBypassStrategy.Disorder;
+                        else if (wantFake) tlsStrategy = TlsBypassStrategy.Fake;
+                        else if (wantFragment) tlsStrategy = TlsBypassStrategy.Fragment;
+
+                        _stateManager.RememberActiveTargetPolicy(new BypassStateManager.ActiveTargetPolicy
+                        {
+                            HostKey = hostKey,
+                            LastAppliedUtc = DateTime.UtcNow,
+                            DropUdp443 = wantQuicFallback,
+                            AllowNoSni = wantAllowNoSni,
+                            HttpHostTricksEnabled = wantHttpHostTricks,
+                            TlsStrategy = tlsStrategy
+                        });
+                    }
+                }
+                catch
+                {
+                    // Не блокируем apply из-за наблюдаемости/памяти активных целей.
                 }
 
                 if (requestedPreset != null)

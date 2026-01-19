@@ -309,14 +309,57 @@ namespace IspAudit.Bypass
             {
                 var normalized = options.Normalize();
 
+                // P0.1 Step 1: поддержка нескольких активных целей одновременно.
+                // Пользователь может применить разные v2 планы для разных hostKey; рантайм должен
+                // держать нужные «capabilities» включёнными (union), а decision graph выбирать действие по пакету.
+                var preferredHost = _outcomeTargetHost;
+                var activeTargetPolicies = GetActiveTargetPoliciesSnapshot(preferredHost);
+
+                var effective = normalized;
+                if (activeTargetPolicies.Length > 0)
+                {
+                    // OR по assist-флагам.
+                    var needDropUdp443 = activeTargetPolicies.Any(p => p.DropUdp443);
+                    var needAllowNoSni = activeTargetPolicies.Any(p => p.AllowNoSni);
+                    var needHttpHostTricks = activeTargetPolicies.Any(p => p.HttpHostTricksEnabled);
+
+                    // OR по TLS стратегиям (capabilities): разрешаем всем стратегиям существовать одновременно,
+                    // а выбор конкретной стратегии переносим на decision graph.
+                    var needFragment = activeTargetPolicies.Any(p => p.TlsStrategy == TlsBypassStrategy.Fragment
+                        || p.TlsStrategy == TlsBypassStrategy.FakeFragment);
+                    var needDisorder = activeTargetPolicies.Any(p => p.TlsStrategy == TlsBypassStrategy.Disorder
+                        || p.TlsStrategy == TlsBypassStrategy.FakeDisorder);
+                    var needFake = activeTargetPolicies.Any(p => p.TlsStrategy == TlsBypassStrategy.Fake
+                        || p.TlsStrategy == TlsBypassStrategy.FakeFragment
+                        || p.TlsStrategy == TlsBypassStrategy.FakeDisorder);
+
+                    effective = effective with
+                    {
+                        DropUdp443 = effective.DropUdp443 || needDropUdp443,
+                        AllowNoSni = effective.AllowNoSni || needAllowNoSni,
+                        HttpHostTricksEnabled = effective.HttpHostTricksEnabled || needHttpHostTricks,
+                        FragmentEnabled = effective.FragmentEnabled || needFragment,
+                        DisorderEnabled = effective.DisorderEnabled || needDisorder,
+                        FakeEnabled = effective.FakeEnabled || needFake
+                    };
+                }
+
+                // Если пользователь явно выключил bypass полностью — очищаем remembered активные цели,
+                // чтобы при следующем apply они не «воскресли» сами.
+                if (!effective.IsAnyEnabled())
+                {
+                    ClearActiveTargetPolicies();
+                    activeTargetPolicies = Array.Empty<ActiveTargetPolicy>();
+                }
+
                 // DROP UDP/443:
                 // - global: глушим весь UDP/443 (цель не нужна)
                 // - selective: перед Apply подготавливаем observed IP цели
                 // Важно: вычисляем вне manager-scope (нет доступа к TrafficEngine), чтобы не держать guard дольше.
                 uint[] udp443Targets = Array.Empty<uint>();
-                if (normalized.DropUdp443)
+                if (effective.DropUdp443)
                 {
-                    if (normalized.DropUdp443Global)
+                    if (effective.DropUdp443Global)
                     {
                         _log?.Invoke("[Bypass] DROP UDP/443 включён (GLOBAL) — глушим весь UDP/443");
                     }
@@ -324,7 +367,7 @@ namespace IspAudit.Bypass
                     {
                         // P0.1 Step 1: поддерживаем несколько активных целей одновременно.
                         // Поэтому в селективном режиме собираем union по нескольким активным host.
-                        var host = _outcomeTargetHost;
+                        var host = preferredHost;
                         if (!string.IsNullOrWhiteSpace(host))
                         {
                             RememberUdp443ActiveHost(host);
@@ -370,9 +413,9 @@ namespace IspAudit.Bypass
                 DecisionGraphSnapshot? decisionSnapshot = null;
 
                 var shouldCompileSnapshot =
-                    (PolicyDrivenExecutionGates.PolicyDrivenUdp443Enabled() && normalized.DropUdp443)
-                    || (PolicyDrivenExecutionGates.PolicyDrivenTcp80HostTricksEnabled() && normalized.HttpHostTricksEnabled)
-                    || (PolicyDrivenExecutionGates.PolicyDrivenTcp443TlsStrategyEnabled() && (normalized.FragmentEnabled || normalized.DisorderEnabled || normalized.FakeEnabled));
+                    (PolicyDrivenExecutionGates.PolicyDrivenUdp443Enabled() && effective.DropUdp443)
+                    || (PolicyDrivenExecutionGates.PolicyDrivenTcp80HostTricksEnabled() && effective.HttpHostTricksEnabled)
+                    || (PolicyDrivenExecutionGates.PolicyDrivenTcp443TlsStrategyEnabled() && (effective.FragmentEnabled || effective.DisorderEnabled || effective.FakeEnabled));
 
                 if (shouldCompileSnapshot)
                 {
@@ -381,9 +424,9 @@ namespace IspAudit.Bypass
                         var policies = new List<FlowPolicy>();
 
                         // P0.2 Stage 1: UDP/443 (QUIC fallback)
-                        if (PolicyDrivenExecutionGates.PolicyDrivenUdp443Enabled() && normalized.DropUdp443)
+                        if (PolicyDrivenExecutionGates.PolicyDrivenUdp443Enabled() && effective.DropUdp443)
                         {
-                            if (normalized.DropUdp443Global)
+                            if (effective.DropUdp443Global)
                             {
                                 policies.Add(new FlowPolicy
                                 {
@@ -421,7 +464,7 @@ namespace IspAudit.Bypass
                         }
 
                         // P0.2 Stage 3: TCP/80 HTTP Host tricks
-                        if (PolicyDrivenExecutionGates.PolicyDrivenTcp80HostTricksEnabled() && normalized.HttpHostTricksEnabled)
+                        if (PolicyDrivenExecutionGates.PolicyDrivenTcp80HostTricksEnabled() && effective.HttpHostTricksEnabled)
                         {
                             policies.Add(new FlowPolicy
                             {
@@ -439,22 +482,49 @@ namespace IspAudit.Bypass
 
                         // P0.2 Stage 4: TCP/443 TLS ClientHello strategy selection
                         if (PolicyDrivenExecutionGates.PolicyDrivenTcp443TlsStrategyEnabled()
-                            && (normalized.FragmentEnabled || normalized.DisorderEnabled || normalized.FakeEnabled))
+                            && (effective.FragmentEnabled || effective.DisorderEnabled || effective.FakeEnabled))
                         {
-                            var tlsStrategy = TlsBypassStrategy.None;
+                            // Per-target политики (DstIpv4Set) — позволяют держать одновременно разные стратегии
+                            // для разных целей (Steam + YouTube).
+                            foreach (var tp in activeTargetPolicies)
+                            {
+                                if (tp.TlsStrategy == TlsBypassStrategy.None) continue;
+                                if (string.IsNullOrWhiteSpace(tp.HostKey)) continue;
 
-                            if (normalized.DisorderEnabled && normalized.FakeEnabled)
-                                tlsStrategy = TlsBypassStrategy.FakeDisorder;
-                            else if (normalized.FragmentEnabled && normalized.FakeEnabled)
-                                tlsStrategy = TlsBypassStrategy.FakeFragment;
-                            else if (normalized.DisorderEnabled)
-                                tlsStrategy = TlsBypassStrategy.Disorder;
-                            else if (normalized.FakeEnabled)
-                                tlsStrategy = TlsBypassStrategy.Fake;
-                            else if (normalized.FragmentEnabled)
-                                tlsStrategy = TlsBypassStrategy.Fragment;
+                                var ips = await GetOrSeedUdp443DropTargetsAsync(tp.HostKey, cancellationToken).ConfigureAwait(false);
+                                if (ips.Length == 0) continue;
 
-                            if (tlsStrategy != TlsBypassStrategy.None)
+                                policies.Add(new FlowPolicy
+                                {
+                                    Id = $"tcp443_tls_{NormalizeHostKeyForPolicyId(tp.HostKey)}",
+                                    Priority = 110,
+                                    Match = new MatchCondition
+                                    {
+                                        Proto = FlowTransportProtocol.Tcp,
+                                        Port = 443,
+                                        TlsStage = TlsStage.ClientHello,
+                                        DstIpv4Set = ips.Take(32).ToImmutableHashSet()
+                                    },
+                                    Action = PolicyAction.TlsBypassStrategy(tp.TlsStrategy.ToString()),
+                                    Scope = PolicyScope.Local
+                                });
+                            }
+
+                            // Fallback глобальная политика: если per-target мэтча нет (IP неизвестен/IPv6),
+                            // используем стратегию, выведенную из effective опций.
+                            var fallback = TlsBypassStrategy.None;
+                            if (effective.DisorderEnabled && effective.FakeEnabled)
+                                fallback = TlsBypassStrategy.FakeDisorder;
+                            else if (effective.FragmentEnabled && effective.FakeEnabled)
+                                fallback = TlsBypassStrategy.FakeFragment;
+                            else if (effective.DisorderEnabled)
+                                fallback = TlsBypassStrategy.Disorder;
+                            else if (effective.FakeEnabled)
+                                fallback = TlsBypassStrategy.Fake;
+                            else if (effective.FragmentEnabled)
+                                fallback = TlsBypassStrategy.Fragment;
+
+                            if (fallback != TlsBypassStrategy.None)
                             {
                                 policies.Add(new FlowPolicy
                                 {
@@ -466,7 +536,7 @@ namespace IspAudit.Bypass
                                         Port = 443,
                                         TlsStage = TlsStage.ClientHello
                                     },
-                                    Action = PolicyAction.TlsBypassStrategy(tlsStrategy.ToString()),
+                                    Action = PolicyAction.TlsBypassStrategy(fallback.ToString()),
                                     Scope = PolicyScope.Global
                                 });
                             }
@@ -485,9 +555,9 @@ namespace IspAudit.Bypass
                 using var scope = BypassStateManagerGuard.EnterScope();
                 _tlsService.SetUdp443DropTargetIpsForManager(udp443Targets);
                 _tlsService.SetDecisionGraphSnapshotForManager(decisionSnapshot);
-                await _tlsService.ApplyAsync(normalized, cancellationToken).ConfigureAwait(false);
+                await _tlsService.ApplyAsync(effective, cancellationToken).ConfigureAwait(false);
 
-                if (normalized.IsAnyEnabled())
+                if (effective.IsAnyEnabled())
                 {
                     _lastBypassActivatedUtc = DateTime.UtcNow;
                     _lastMetricsEventUtc = DateTime.UtcNow;
@@ -544,6 +614,31 @@ namespace IspAudit.Bypass
             {
                 _applyGate.Release();
             }
+        }
+
+        private static string NormalizeHostKeyForPolicyId(string hostKey)
+        {
+            if (string.IsNullOrWhiteSpace(hostKey)) return "unknown";
+
+            var trimmed = hostKey.Trim();
+            if (trimmed.Length == 0) return "unknown";
+
+            // policy-id используется только как ключ метрик/наблюдаемости, поэтому безопасно нормализуем.
+            // Ограничиваем длину, чтобы не раздувать snapshot.
+            var chars = trimmed
+                .Select(ch => char.IsLetterOrDigit(ch) ? char.ToLowerInvariant(ch) : '_')
+                .ToArray();
+
+            var s = new string(chars);
+            while (s.Contains("__", StringComparison.Ordinal))
+            {
+                s = s.Replace("__", "_", StringComparison.Ordinal);
+            }
+
+            s = s.Trim('_');
+            if (s.Length == 0) s = "unknown";
+            if (s.Length > 32) s = s.Substring(0, 32);
+            return s;
         }
 
         public void Dispose()

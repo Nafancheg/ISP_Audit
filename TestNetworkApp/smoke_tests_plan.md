@@ -1038,6 +1038,13 @@
 **Входные данные:** Два разных OutcomeTargetHost (например, 1.1.1.1 и 2.2.2.2), режим без TrafficEngine (no admin), чтение snapshot через smoke reflection
 **Ожидаемый результат:** TargetIpCount после второго применения >= TargetIpCount после первого + 1
 
+**Test ID:** `REG-006`
+**Что проверяет:** TCP/443 TLS стратегия выбирается per-target (multi-group) через Decision Graph по dst_ip
+**Для чего:** Регресс-гейт для P0.1 Step 1: после последовательного применения разных сервисов TCP/443 стратегия не должна «перетерать» предыдущую — выбор должен быть по признакам пакета
+**Критерий успеха:** Для двух разных IPv4 назначаются разные TLS стратегии при EvaluateTcp443TlsClientHello (policy-driven)
+**Входные данные:** Два OutcomeTargetHost (например, 1.1.1.1 и 2.2.2.2) + два плана (TlsFragment и TlsDisorder), режим без TrafficEngine (no admin), чтение DecisionGraphSnapshot через smoke reflection
+**Ожидаемый результат:** Для 1.1.1.1 выбирается Fragment, для 2.2.2.2 — Disorder
+
 ---
 
 ## Приоритизация тестов

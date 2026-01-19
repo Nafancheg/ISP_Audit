@@ -112,11 +112,40 @@ namespace IspAudit.Bypass
 
             // MVP Stage 5.3: дефолтные группы строим из policy-id, которые создаёт BypassStateManager.
             // Это даёт пользователю видимость: есть ли трафик, который вообще попадает в policy-driven ветку.
+            var policyIds = snapshot.Policies.Select(p => p.Id).Where(id => !string.IsNullOrWhiteSpace(id)).ToArray();
+
+            var tls443 = policyIds
+                .Where(id => id.StartsWith("tcp443_tls_", StringComparison.Ordinal) || string.Equals(id, "tcp443_tls_clienthello_strategy", StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (tls443.Length == 0)
+            {
+                tls443 = new[] { "tcp443_tls_clienthello_strategy" };
+            }
+
+            var udp443 = policyIds
+                .Where(id => id.StartsWith("udp443_quic_fallback", StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (udp443.Length == 0)
+            {
+                udp443 = new[] { "udp443_quic_fallback_selective" };
+            }
+
+            var tcp80 = policyIds
+                .Where(id => id.StartsWith("tcp80_http_host_tricks", StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (tcp80.Length == 0)
+            {
+                tcp80 = new[] { "tcp80_http_host_tricks" };
+            }
+
             var groups = new (string GroupKey, string DisplayName, string[] PolicyIds)[]
             {
-                ("tls_tcp443", "TLS@443 (ClientHello)", new[] { "tcp443_tls_clienthello_strategy" }),
-                ("udp443", "QUIC→TCP (UDP/443 drop)", new[] { "udp443_quic_fallback_selective" }),
-                ("tcp80", "HTTP Host tricks (TCP/80)", new[] { "tcp80_http_host_tricks" })
+                ("tls_tcp443", "TLS@443 (ClientHello)", tls443),
+                ("udp443", "QUIC→TCP (UDP/443 drop)", udp443),
+                ("tcp80", "HTTP Host tricks (TCP/80)", tcp80)
             };
 
             var lines = new List<string>();

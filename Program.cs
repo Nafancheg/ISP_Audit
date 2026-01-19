@@ -16,6 +16,13 @@ namespace IspAudit
             // Без этого: Encoding.GetEncoding(866) бросает исключение.
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
+            // P0.1 Step 1: продуктовый режим — DecisionGraph выбирает TLS стратегию по признакам пакета.
+            // Гейт можно переопределить снаружи (env var уже задана) — тогда не трогаем.
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443")))
+            {
+                Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443", "1");
+            }
+
             // Загружаем профиль по умолчанию
             Config.SetActiveProfile("Default");
 
