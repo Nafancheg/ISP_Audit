@@ -284,7 +284,7 @@ namespace IspAudit.ViewModels
             SelectedTestResult = test;
             await ApplyDomainRecommendationsAsync().ConfigureAwait(false);
         }
-        
+
         private Task RetestFromResultAsync(TestResult? test)
         {
             try
@@ -438,6 +438,7 @@ namespace IspAudit.ViewModels
                 var activationText = string.IsNullOrWhiteSpace(tx.ActivationStatusText) ? "" : $"; {tx.ActivationStatusText}";
                 var policiesText = $"; Policies={tx.ActivePolicies.Count}";
                 var summary = $"Последнее применение: {localTimeText}; {tx.AppliedStrategyText}{policiesText}; IP={tx.CandidateIpEndpoints.Count}{activationText}";
+                var bundleSummary = BuildBundleSummaryFromTransaction(tx);
                 var key = (tx.GroupKey ?? groupKey ?? string.Empty).Trim().Trim('.');
                 if (string.IsNullOrWhiteSpace(key)) return;
 
@@ -452,6 +453,17 @@ namespace IspAudit.ViewModels
                         if (string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase))
                         {
                             r.LastApplyTransactionText = summary;
+
+                            if (!IsHostManuallyExcludedFromGroupKey(key, hostKey) && !IsNoiseHostKey(hostKey))
+                            {
+                                r.BundleSummaryText = bundleSummary;
+                            }
+                            else
+                            {
+                                r.BundleSummaryText = string.Empty;
+                            }
+
+                            r.ParticipationText = GetParticipationTextForHostKey(key, hostKey);
                         }
                     }
                 });
@@ -459,6 +471,57 @@ namespace IspAudit.ViewModels
             catch
             {
                 // ignore
+            }
+        }
+
+        private static string BuildBundleSummaryFromTransaction(IspAudit.Bypass.BypassApplyTransaction tx)
+        {
+            try
+            {
+                // Сводка “policy bundle” на основе факта транзакции.
+                // Это MVP-репрезентация: стратегия + флаги + endpoints/policies.
+                var tokens = SplitPlanTokens(tx.PlanText ?? string.Empty);
+
+                var flags = new System.Collections.Generic.List<string>();
+                if (tokens.Contains("DROP_UDP_443")) flags.Add("QUIC→TCP");
+                if (tokens.Contains("ALLOW_NO_SNI")) flags.Add("NoSNI");
+                if (tokens.Contains("TLS_FRAGMENT")) flags.Add("Frag");
+                if (tokens.Contains("TLS_DISORDER")) flags.Add("Disorder");
+                if (tokens.Contains("TLS_FAKE")) flags.Add("FakeTTL");
+                if (tokens.Contains("DROP_RST")) flags.Add("DropRST");
+
+                var flagsText = flags.Count == 0 ? "—" : string.Join(",", flags);
+                return $"Bundle: {tx.AppliedStrategyText}; Flags={flagsText}; Endpoints={tx.CandidateIpEndpoints.Count}; Policies={tx.ActivePolicies.Count}";
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private static System.Collections.Generic.HashSet<string> SplitPlanTokens(string planText)
+        {
+            try
+            {
+                var set = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (string.IsNullOrWhiteSpace(planText)) return set;
+
+                // План часто содержит токены-метки (например "DROP_UDP_443") — извлекаем все такие подстроки.
+                var separators = new[] { ' ', '\t', '\r', '\n', ';', ',', '|', '[', ']', '(', ')', '{', '}', ':' };
+                var parts = planText.Split(separators, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var p in parts)
+                {
+                    var t = p.Trim();
+                    if (t.Length == 0) continue;
+                    if (t.Length > 64) continue;
+                    if (t.Any(ch => !(char.IsLetterOrDigit(ch) || ch == '_' || ch == '-'))) continue;
+                    set.Add(t);
+                }
+                return set;
+            }
+            catch
+            {
+                return new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
             }
         }
 
@@ -535,7 +598,9 @@ namespace IspAudit.ViewModels
         private JsonNode BuildParticipationSnapshotNode(string? groupKey)
         {
             var normalizedGroupKey = (groupKey ?? string.Empty).Trim().Trim('.');
-            var excluded = new System.Collections.Generic.List<string>();
+            var excludedManual = new System.Collections.Generic.List<string>();
+            var excludedNoise = new System.Collections.Generic.List<string>();
+            var included = new System.Collections.Generic.List<string>();
 
             try
             {
@@ -543,7 +608,7 @@ namespace IspAudit.ViewModels
                 {
                     if (_manualExcludedHostKeysByGroupKey.TryGetValue(normalizedGroupKey, out var set))
                     {
-                        excluded.AddRange(set.OrderBy(s => s, StringComparer.OrdinalIgnoreCase));
+                        excludedManual.AddRange(set.OrderBy(s => s, StringComparer.OrdinalIgnoreCase));
                     }
                 }
             }
@@ -552,9 +617,49 @@ namespace IspAudit.ViewModels
                 // ignore
             }
 
+            try
+            {
+                var includedSet = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var excludedNoiseSet = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var r in Results.TestResults)
+                {
+                    var hostKey = GetPreferredHostKey(r);
+                    if (string.IsNullOrWhiteSpace(hostKey)) continue;
+
+                    var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                    if (!string.Equals(rowGroupKey, normalizedGroupKey, StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var normalizedHostKey = hostKey.Trim().Trim('.');
+                    if (string.IsNullOrWhiteSpace(normalizedHostKey)) continue;
+
+                    if (IsNoiseHostKey(normalizedHostKey))
+                    {
+                        excludedNoiseSet.Add(normalizedHostKey);
+                        continue;
+                    }
+
+                    if (IsHostManuallyExcludedFromGroupKey(normalizedGroupKey, normalizedHostKey))
+                    {
+                        continue;
+                    }
+
+                    includedSet.Add(normalizedHostKey);
+                }
+
+                excludedNoise.AddRange(excludedNoiseSet.OrderBy(s => s, StringComparer.OrdinalIgnoreCase));
+                included.AddRange(includedSet.OrderBy(s => s, StringComparer.OrdinalIgnoreCase));
+            }
+            catch
+            {
+                // ignore
+            }
+
             return JsonSerializer.SerializeToNode(new
             {
-                excludedHostKeys = excluded.ToArray()
+                includedHostKeys = included.ToArray(),
+                excludedManualHostKeys = excludedManual.ToArray(),
+                excludedNoiseHostKeys = excludedNoise.ToArray()
             }, new JsonSerializerOptions
             {
                 WriteIndented = true
@@ -590,12 +695,42 @@ namespace IspAudit.ViewModels
 
                         var normalizedHostKey = hostKey.Trim().Trim('.');
                         r.IsManuallyExcludedFromApplyGroup = excluded != null && excluded.Contains(normalizedHostKey);
+                        r.ParticipationText = GetParticipationTextForHostKey(key, hostKey);
                     }
                 });
             }
             catch
             {
                 // ignore
+            }
+        }
+
+        private static bool IsNoiseHostKey(string hostKey)
+        {
+            try
+            {
+                var hk = (hostKey ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(hk)) return false;
+                if (IPAddress.TryParse(hk, out _)) return false;
+                return NoiseHostFilter.Instance.IsNoiseHost(hk);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private string GetParticipationTextForHostKey(string groupKey, string hostKey)
+        {
+            try
+            {
+                if (IsNoiseHostKey(hostKey)) return "EXCLUDED";
+                if (IsHostManuallyExcludedFromGroupKey(groupKey, hostKey)) return "OUT";
+                return "IN";
+            }
+            catch
+            {
+                return string.Empty;
             }
         }
 

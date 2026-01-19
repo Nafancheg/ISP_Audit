@@ -742,6 +742,24 @@
                                             </Border.Style>
                                             <TextBlock Text="OUT" Foreground="#991B1B" FontWeight="SemiBold" FontSize="10"/>
                                         </Border>
+
+                                        <Border Background="#DCFCE7" CornerRadius="4" Padding="6,2" Margin="6,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding IsManuallyExcludedFromApplyGroup}" Value="False"/>
+                                                                <Condition Binding="{Binding Converter={StaticResource TestResultIsExcludedNoiseHostConverter}}" Value="False"/>
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </MultiDataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="IN" Foreground="#166534" FontWeight="SemiBold" FontSize="10"/>
+                                        </Border>
                                     </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
@@ -891,6 +909,13 @@
                                                Margin="0,2,0,0"
                                                TextWrapping="Wrap"
                                                Visibility="{Binding ShowLastApplyTransactionText, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                                    <TextBlock Text="{Binding BundleSummaryText}"
+                                               FontSize="11"
+                                               Foreground="#6B7280"
+                                               Margin="0,2,0,0"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding ShowBundleSummaryText, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>

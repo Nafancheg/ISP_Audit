@@ -227,6 +227,36 @@ namespace IspAudit.Models
 
         public bool ShowManuallyExcludedFromApplyGroup => IsManuallyExcludedFromApplyGroup;
 
+        private string _participationText = string.Empty;
+        public string ParticipationText
+        {
+            get => _participationText;
+            set
+            {
+                if (string.Equals(_participationText, value, StringComparison.Ordinal)) return;
+                _participationText = value ?? string.Empty;
+                OnPropertyChanged(nameof(ParticipationText));
+                OnPropertyChanged(nameof(ShowParticipationText));
+            }
+        }
+
+        public bool ShowParticipationText => !string.IsNullOrWhiteSpace(ParticipationText);
+
+        private string _bundleSummaryText = string.Empty;
+        public string BundleSummaryText
+        {
+            get => _bundleSummaryText;
+            set
+            {
+                if (string.Equals(_bundleSummaryText, value, StringComparison.Ordinal)) return;
+                _bundleSummaryText = value ?? string.Empty;
+                OnPropertyChanged(nameof(BundleSummaryText));
+                OnPropertyChanged(nameof(ShowBundleSummaryText));
+            }
+        }
+
+        public bool ShowBundleSummaryText => !string.IsNullOrWhiteSpace(BundleSummaryText);
+
         /// <summary>
         /// Фактически применённая стратегия обхода для этой карточки (после нажатия "Подключить"/Apply).
         /// </summary>
