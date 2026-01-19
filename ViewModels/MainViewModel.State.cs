@@ -363,7 +363,68 @@ namespace IspAudit.ViewModels
 
         public string ApplyRecommendationsButtonText => IsApplyingRecommendations
             ? "Применяю…"
-            : "Применить рекомендации v2";
+            : BuildApplyRecommendationsButtonText();
+
+        public string ApplyRecommendationsHintText
+        {
+            get
+            {
+                try
+                {
+                    if (IsApplyingRecommendations) return "Идёт применение рекомендаций v2…";
+
+                    var preferredHostKey = GetPreferredHostKey(SelectedTestResult);
+                    if (!string.IsNullOrWhiteSpace(preferredHostKey))
+                    {
+                        var groupKey = ComputeApplyGroupKey(preferredHostKey, Results.SuggestedDomainSuffix);
+                        return $"Применяет v2-план для выбранной строки.\nЦель: {preferredHostKey}\nГруппа: {groupKey}";
+                    }
+
+                    // Если ничего не выбрано — orchestrator выберет сохранённую/последнюю цель.
+                    var activeGroup = ActiveApplyGroupKey;
+                    if (!string.IsNullOrWhiteSpace(activeGroup))
+                    {
+                        return $"Применяет v2-план для последней известной цели (без выбора строки).\nТекущая активная группа: {activeGroup}";
+                    }
+
+                    return "Применяет v2-план.\nСовет: выберите строку результата, чтобы явно задать цель.";
+                }
+                catch
+                {
+                    return "Применяет v2-план.";
+                }
+            }
+        }
+
+        private string BuildApplyRecommendationsButtonText()
+        {
+            try
+            {
+                var preferredHostKey = GetPreferredHostKey(SelectedTestResult);
+                if (!string.IsNullOrWhiteSpace(preferredHostKey))
+                {
+                    var groupKey = ComputeApplyGroupKey(preferredHostKey, Results.SuggestedDomainSuffix);
+                    if (!string.IsNullOrWhiteSpace(groupKey))
+                    {
+                        return $"Подключить v2 (группа: {groupKey})";
+                    }
+
+                    return $"Подключить v2 (цель: {preferredHostKey})";
+                }
+
+                var activeGroup = ActiveApplyGroupKey;
+                if (!string.IsNullOrWhiteSpace(activeGroup))
+                {
+                    return $"Подключить v2 (активная группа: {activeGroup})";
+                }
+
+                return "Подключить v2 (цель: авто)";
+            }
+            catch
+            {
+                return "Подключить v2";
+            }
+        }
 
         // Прокси-свойства для BypassController
         public bool ShowBypassPanel => Bypass.ShowBypassPanel;
