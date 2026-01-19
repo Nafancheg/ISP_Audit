@@ -368,6 +368,9 @@
 
                                                 <TextBlock Text="📊 Статистика bypass" FontWeight="SemiBold" FontSize="13" Margin="0,8,0,6"/>
                                                 <TextBlock Text="{Binding BypassMetricsText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding BypassSemanticGroupsText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,4"
+                                                           Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                           Visibility="{Binding BypassSemanticGroupsText, Converter={StaticResource StringToVisibilityConverter}}"/>
                                                 <TextBlock Text="{Binding BypassVerdictText}" FontSize="12" FontWeight="SemiBold" Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>

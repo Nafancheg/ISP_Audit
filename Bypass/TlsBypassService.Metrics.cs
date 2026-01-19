@@ -1,7 +1,11 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using IspAudit.Core.Bypass;
+using IspAudit.Core.Models;
 using IspAudit.Core.Traffic.Filters;
 
 namespace IspAudit.Bypass
@@ -15,12 +19,14 @@ namespace IspAudit.Bypass
                 BypassFilter? filter;
                 TlsBypassOptions options;
                 DateTime since;
+                DecisionGraphSnapshot? decisionSnapshot;
 
                 lock (_sync)
                 {
                     filter = _filter;
                     options = _options;
                     since = _metricsSince;
+                    decisionSnapshot = _decisionGraphSnapshot;
                 }
 
                 if (filter == null)
@@ -31,6 +37,14 @@ namespace IspAudit.Bypass
                 }
 
                 var snapshot = filter.GetMetrics();
+
+                string semanticGroupsText = string.Empty;
+                if (decisionSnapshot != null)
+                {
+                    var matchedCounts = filter.GetPolicyMatchedCountsSnapshot();
+                    semanticGroupsText = BuildSemanticGroupsStatusText(decisionSnapshot, matchedCounts);
+                }
+
                 var metrics = new TlsBypassMetrics
                 {
                     TlsHandled = snapshot.TlsHandled,
@@ -46,7 +60,8 @@ namespace IspAudit.Bypass
                     ClientHellosNoSni = snapshot.ClientHellosNoSni,
                     PresetName = options.PresetName,
                     FragmentThreshold = options.AllowNoSni ? 1 : _baseProfile.TlsFragmentThreshold,
-                    MinChunk = (options.FragmentSizes ?? Array.Empty<int>()).DefaultIfEmpty(0).Min()
+                    MinChunk = (options.FragmentSizes ?? Array.Empty<int>()).DefaultIfEmpty(0).Min(),
+                    SemanticGroupsStatusText = semanticGroupsText
                 };
 
                 var verdict = CalculateVerdict(metrics, options);
@@ -73,6 +88,54 @@ namespace IspAudit.Bypass
             {
                 _log?.Invoke($"[Bypass] Ошибка чтения метрик: {ex.Message}");
             }
+        }
+
+        private static string BuildSemanticGroupsStatusText(
+            DecisionGraphSnapshot snapshot,
+            IReadOnlyDictionary<string, long> policyMatchedCounts)
+        {
+            if (snapshot == null) return string.Empty;
+
+            // MVP Stage 5.3: дефолтные группы строим из policy-id, которые создаёт BypassStateManager.
+            // Это даёт пользователю видимость: есть ли трафик, который вообще попадает в policy-driven ветку.
+            var groups = new (string GroupKey, string DisplayName, string[] PolicyIds)[]
+            {
+                ("tls_tcp443", "TLS@443 (ClientHello)", new[] { "tcp443_tls_clienthello_strategy" }),
+                ("udp443", "QUIC→TCP (UDP/443 drop)", new[] { "udp443_quic_fallback_selective" }),
+                ("tcp80", "HTTP Host tricks (TCP/80)", new[] { "tcp80_http_host_tricks" })
+            };
+
+            var lines = new List<string>();
+
+            foreach (var g in groups)
+            {
+                var bundle = snapshot.Policies
+                    .Where(p => p != null && !string.IsNullOrWhiteSpace(p.Id) && g.PolicyIds.Contains(p.Id, StringComparer.Ordinal))
+                    .ToImmutableArray();
+
+                if (bundle.IsDefaultOrEmpty)
+                {
+                    continue;
+                }
+
+                var group = new SemanticGroup
+                {
+                    GroupKey = g.GroupKey,
+                    DisplayName = g.DisplayName,
+                    DomainPatterns = ImmutableArray<string>.Empty,
+                    PolicyBundle = bundle
+                };
+
+                var status = SemanticGroupEvaluator.EvaluateStatus(group, policyMatchedCounts);
+                lines.Add($"{g.DisplayName}: {status.Text} ({status.Details})");
+            }
+
+            if (lines.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            return "Semantic Groups:\n" + string.Join("\n", lines);
         }
 
         private TlsBypassVerdict CalculateVerdict(TlsBypassMetrics metrics, TlsBypassOptions options)

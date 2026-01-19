@@ -146,6 +146,12 @@ namespace IspAudit.Bypass
         public int FragmentThreshold { get; init; }
         public int MinChunk { get; init; }
 
+        /// <summary>
+        /// Статусы Semantic Groups (ENABLED/PARTIAL/NO_TRAFFIC) на основе matched-count метрик policy-driven execution.
+        /// Пусто, если policy-driven ветка не активна или группы не применимы.
+        /// </summary>
+        public string SemanticGroupsStatusText { get; init; } = string.Empty;
+
         public static TlsBypassMetrics Empty => new();
     }
 

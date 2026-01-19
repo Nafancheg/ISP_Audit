@@ -343,6 +343,7 @@ namespace IspAudit.ViewModels
         public IspAudit.Bypass.TlsFragmentPreset? SelectedFragmentPreset { get => Bypass.SelectedFragmentPreset; set => Bypass.SelectedFragmentPreset = value; }
         public string SelectedFragmentPresetLabel => Bypass.SelectedFragmentPresetLabel;
         public string BypassMetricsText => Bypass.BypassMetricsText;
+        public string BypassSemanticGroupsText => Bypass.BypassSemanticGroupsText;
         public System.Windows.Media.Brush BypassVerdictBrush => Bypass.BypassVerdictBrush;
         public string BypassVerdictText => Bypass.BypassVerdictText;
 

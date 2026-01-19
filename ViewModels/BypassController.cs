@@ -42,6 +42,7 @@ namespace IspAudit.ViewModels
         private string _compatibilityWarning = "";
         private string _bypassWarningText = "";
         private string _bypassMetricsText = "";
+        private string _bypassSemanticGroupsText = "";
         private System.Windows.Media.Brush _bypassVerdictBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
         private string _bypassVerdictText = "";
         private string _bypassPlanText = "-";
@@ -121,6 +122,23 @@ namespace IspAudit.ViewModels
         /// Сервис Auto-hostlist (передаётся в pipeline).
         /// </summary>
         public AutoHostlistService AutoHostlist => _autoHostlist;
+
+        /// <summary>
+        /// Статусы Semantic Groups (ENABLED/PARTIAL/NO_TRAFFIC) из policy-driven execution.
+        /// Пусто, если feature не активен/не применим.
+        /// </summary>
+        public string BypassSemanticGroupsText
+        {
+            get => _bypassSemanticGroupsText;
+            private set
+            {
+                if (_bypassSemanticGroupsText != value)
+                {
+                    _bypassSemanticGroupsText = value;
+                    OnPropertyChanged(nameof(BypassSemanticGroupsText));
+                }
+            }
+        }
 
         public TlsFragmentPreset? SelectedFragmentPreset
         {

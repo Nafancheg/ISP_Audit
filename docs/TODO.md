@@ -177,8 +177,8 @@
       - Подзадачи:
         - [x] 5.1: Модель `SemanticGroup` (GroupKey, DisplayName, DomainPatterns, PolicyBundle)
         - [x] 5.2: Merge-правила для политик группы (MVP: endpoints=union для эквивалентных политик)
-        - [ ] 5.3: UI статусы группы: ENABLED / PARTIAL (часть политик не matched) / NO_TRAFFIC
-          - Примечание: инфраструктура статусов готова (policy `matched_count` + evaluator), но привязка к UI/VM ещё не сделана.
+        - [x] 5.3: UI статусы группы: ENABLED / PARTIAL (часть политик не matched) / NO_TRAFFIC
+          - Примечание: MVP выводится в вкладке «Метрики» bypass-панели как текст `Semantic Groups` на основе policy `matched_count`.
         - [ ] 5.4: Интеграция с P0.1 (Accumulative Attachment Model)
       - Gate: DPI2-045 — детерминированная оценка статуса Semantic Group по policy-matched метрикам (smoke)
     - [ ] **Этап 6**: UI таблица политик + экспорт snapshot (репорт)
