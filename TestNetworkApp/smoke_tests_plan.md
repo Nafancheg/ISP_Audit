@@ -1045,6 +1045,13 @@
 **Входные данные:** Два OutcomeTargetHost (например, 1.1.1.1 и 2.2.2.2) + два плана (TlsFragment и TlsDisorder), режим без TrafficEngine (no admin), чтение DecisionGraphSnapshot через smoke reflection
 **Ожидаемый результат:** Для 1.1.1.1 выбирается Fragment, для 2.2.2.2 — Disorder
 
+**Test ID:** `REG-007`
+**Что проверяет:** TCP/80 HTTP Host tricks выбирается per-target (multi-group) через Decision Graph по dst_ip
+**Для чего:** Регресс-гейт для P0.1 Step 1: при нескольких активных целях policy `HttpHostTricks` должна матчиться по `dst_ip` (per-target `tcp80_http_host_tricks_<hostKey>`), чтобы не расширять blast radius.
+**Критерий успеха:** Для двух разных IPv4 выбираются разные per-target политики при Evaluate (по candidates + MatchCondition.DstIpv4Set)
+**Входные данные:** Два OutcomeTargetHost (например, 1.1.1.1 и 2.2.2.2) + два плана (HttpHostTricks), режим без TrafficEngine (no admin), чтение DecisionGraphSnapshot через smoke reflection
+**Ожидаемый результат:** Для 1.1.1.1 выбирается policy `tcp80_http_host_tricks_1_1_1_1`, для 2.2.2.2 — `tcp80_http_host_tricks_2_2_2_2`
+
 ---
 
 ## Приоритизация тестов

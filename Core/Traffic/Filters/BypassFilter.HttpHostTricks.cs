@@ -21,10 +21,19 @@ namespace IspAudit.Core.Traffic.Filters
             if (snapshot == null) return false;
             if (!PolicyDrivenExecutionGates.PolicyDrivenTcp80HostTricksEnabled()) return false;
 
+            var info = packet.Info;
+
             foreach (var policy in snapshot.GetCandidates(FlowTransportProtocol.Tcp, 80, tlsStage: null))
             {
                 if (policy.Action.Kind != PolicyActionKind.Strategy) continue;
                 if (!string.Equals(policy.Action.StrategyId, PolicyAction.StrategyIdHttpHostTricks, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                // P0.1 Step 1: поддержка per-target политик (DstIpv4Set).
+                // Если политика селективная — применяем только когда dst_ip совпадает.
+                if (!policy.Match.MatchesTcpPacket(info.DstIpInt, info.IsIpv4, info.IsIpv6))
                 {
                     continue;
                 }

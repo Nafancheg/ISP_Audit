@@ -410,5 +410,120 @@ namespace TestNetworkApp.Smoke
                     Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443", prevGate);
                 }
             }, ct);
+
+        public static Task<SmokeTestResult> REG_Tcp80HttpHostTricks_PerTarget_MultiGroup(CancellationToken ct)
+            => RunAsyncAwait("REG-007", "REG: TCP/80 HTTP Host tricks выбирается per-target (multi-group)", async _ =>
+            {
+                var sw = Stopwatch.StartNew();
+                string? prevGate = null;
+                try
+                {
+                    prevGate = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP80");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP80", "1");
+
+                    var baseProfile = BypassProfile.CreateDefault();
+
+                    using var engine = new IspAudit.Core.Traffic.TrafficEngine();
+                    using var tls = new TlsBypassService(
+                        engine,
+                        baseProfile,
+                        log: null,
+                        startMetricsTimer: false,
+                        useTrafficEngine: false,
+                        nowProvider: () => DateTime.UtcNow);
+
+                    var bypass = new BypassController(tls, baseProfile);
+
+                    static IspAudit.Core.IntelligenceV2.Contracts.BypassPlan CreateHostTricksPlan()
+                        => new()
+                        {
+                            ForDiagnosis = IspAudit.Core.IntelligenceV2.Contracts.DiagnosisId.SilentDrop,
+                            PlanConfidence = 100,
+                            Strategies =
+                            {
+                                new IspAudit.Core.IntelligenceV2.Contracts.BypassStrategy
+                                {
+                                    Id = IspAudit.Core.IntelligenceV2.Contracts.StrategyId.HttpHostTricks
+                                }
+                            }
+                        };
+
+                    // Важно: используем IPv4-строки как "host": Dns.GetHostAddressesAsync на них возвращает тот же IP.
+                    await bypass.ApplyV2PlanAsync(CreateHostTricksPlan(), outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
+                    await bypass.ApplyV2PlanAsync(CreateHostTricksPlan(), outcomeTargetHost: "2.2.2.2", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
+
+                    var manager = GetPrivateField<IspAudit.Bypass.BypassStateManager>(bypass, "_stateManager");
+                    var tlsService = GetPrivateField<IspAudit.Bypass.TlsBypassService>(manager, "_tlsService");
+                    var snapshot = GetPrivateField<IspAudit.Core.Models.DecisionGraphSnapshot?>(tlsService, "_decisionGraphSnapshot");
+
+                    if (snapshot == null)
+                    {
+                        return new SmokeTestResult("REG-007", "REG: TCP/80 HTTP Host tricks выбирается per-target (multi-group)", SmokeOutcome.Fail, sw.Elapsed,
+                            "Ожидали DecisionGraphSnapshot != null (gate TCP80=1), получили null");
+                    }
+
+                    static uint ToIpv4Int(string ipText)
+                    {
+                        var ip = IPAddress.Parse(ipText);
+                        var bytes = ip.GetAddressBytes();
+                        return BinaryPrimitives.ReadUInt32BigEndian(bytes);
+                    }
+
+                    static IspAudit.Core.Models.FlowPolicy? EvaluateTcp80HostTricks(IspAudit.Core.Models.DecisionGraphSnapshot snapshot, uint dstIpv4Int)
+                    {
+                        foreach (var policy in snapshot.GetCandidates(IspAudit.Core.Models.FlowTransportProtocol.Tcp, 80, tlsStage: null))
+                        {
+                            if (policy.Action.Kind != IspAudit.Core.Models.PolicyActionKind.Strategy) continue;
+                            if (!string.Equals(policy.Action.StrategyId, IspAudit.Core.Models.PolicyAction.StrategyIdHttpHostTricks, StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+
+                            if (!policy.Match.MatchesTcpPacket(dstIpv4Int, isIpv4: true, isIpv6: false))
+                            {
+                                continue;
+                            }
+
+                            return policy;
+                        }
+
+                        return null;
+                    }
+
+                    var ipA = ToIpv4Int("1.1.1.1");
+                    var ipB = ToIpv4Int("2.2.2.2");
+
+                    var selA = EvaluateTcp80HostTricks(snapshot, ipA);
+                    var selB = EvaluateTcp80HostTricks(snapshot, ipB);
+
+                    if (selA == null || selB == null)
+                    {
+                        return new SmokeTestResult("REG-007", "REG: TCP/80 HTTP Host tricks выбирается per-target (multi-group)", SmokeOutcome.Fail, sw.Elapsed,
+                            $"Ожидали, что обе цели смэтчатся (selA={(selA == null ? "null" : selA.Id)}; selB={(selB == null ? "null" : selB.Id)})");
+                    }
+
+                    if (!selA.Id.Contains("1_1_1_1", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-007", "REG: TCP/80 HTTP Host tricks выбирается per-target (multi-group)", SmokeOutcome.Fail, sw.Elapsed,
+                            $"Ожидали per-target policy для 1.1.1.1, получили policy={selA.Id}");
+                    }
+
+                    if (!selB.Id.Contains("2_2_2_2", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-007", "REG: TCP/80 HTTP Host tricks выбирается per-target (multi-group)", SmokeOutcome.Fail, sw.Elapsed,
+                            $"Ожидали per-target policy для 2.2.2.2, получили policy={selB.Id}");
+                    }
+
+                    return new SmokeTestResult("REG-007", "REG: TCP/80 HTTP Host tricks выбирается per-target (multi-group)", SmokeOutcome.Pass, sw.Elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-007", "REG: TCP/80 HTTP Host tricks выбирается per-target (multi-group)", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP80", prevGate);
+                }
+            }, ct);
     }
 }
