@@ -93,6 +93,10 @@ namespace IspAudit.Core.Traffic.Filters
                 if (!info.IsIpv4) return false;
 
                 var selected = snapshot.EvaluateUdp443(info.DstIpInt, isIpv4: true, isIpv6: false);
+                if (selected != null && !isProbe)
+                {
+                    RecordPolicyMatched(selected.Id);
+                }
                 if (selected != null && selected.Action.Kind == PolicyActionKind.Strategy
                     && string.Equals(selected.Action.StrategyId, PolicyAction.StrategyIdDropUdp443, StringComparison.OrdinalIgnoreCase))
                 {

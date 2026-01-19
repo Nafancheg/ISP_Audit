@@ -922,6 +922,153 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_SemanticGroups_Statuses_AreDeterministic(CancellationToken ct)
+            => RunAsync("DPI2-045", "Semantic Groups: статусы NO_TRAFFIC/PARTIAL/ENABLED по policy-matched", () =>
+            {
+                var prevGate = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443");
+                try
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443", "1");
+
+                    static uint ToIpv4Int(IPAddress ip)
+                    {
+                        var b = ip.GetAddressBytes();
+                        if (b.Length != 4) return 0;
+                        return ((uint)b[0] << 24) | ((uint)b[1] << 16) | ((uint)b[2] << 8) | b[3];
+                    }
+
+                    var profile = new BypassProfile
+                    {
+                        DropTcpRst = false,
+                        FragmentTlsClientHello = true,
+                        TlsStrategy = TlsBypassStrategy.Fake, // fallback не должен влиять на статус группы
+                        TlsFragmentThreshold = 1,
+                        TlsFragmentSizes = new List<int> { 64 },
+                        AllowNoSni = true,
+                        DropUdp443 = false,
+                        HttpHostTricks = false,
+                        RedirectRules = Array.Empty<BypassRedirectRule>()
+                    };
+
+                    var filter = new IspAudit.Core.Traffic.Filters.BypassFilter(profile, logAction: null, presetName: "smoke");
+
+                    var ipA = IPAddress.Parse("203.0.113.10");
+                    var ipB = IPAddress.Parse("198.51.100.20");
+                    var ipC = IPAddress.Parse("192.0.2.30");
+                    var clientIp = IPAddress.Parse("10.10.0.2");
+
+                    var pA = new FlowPolicy
+                    {
+                        Id = "sg_youtube_tcp443_A",
+                        Priority = 100,
+                        Match = new MatchCondition
+                        {
+                            Proto = FlowTransportProtocol.Tcp,
+                            Port = 443,
+                            TlsStage = TlsStage.ClientHello,
+                            DstIpv4Set = new[] { ToIpv4Int(ipA) }.ToImmutableHashSet()
+                        },
+                        Action = PolicyAction.TlsBypassStrategy(TlsBypassStrategy.Fragment.ToString()),
+                        Scope = PolicyScope.Local
+                    };
+
+                    var pB = new FlowPolicy
+                    {
+                        Id = "sg_youtube_tcp443_B",
+                        Priority = 100,
+                        Match = new MatchCondition
+                        {
+                            Proto = FlowTransportProtocol.Tcp,
+                            Port = 443,
+                            TlsStage = TlsStage.ClientHello,
+                            DstIpv4Set = new[] { ToIpv4Int(ipB) }.ToImmutableHashSet()
+                        },
+                        Action = PolicyAction.TlsBypassStrategy(TlsBypassStrategy.FakeDisorder.ToString()),
+                        Scope = PolicyScope.Local
+                    };
+
+                    var pC = new FlowPolicy
+                    {
+                        Id = "sg_youtube_tcp443_C",
+                        Priority = 100,
+                        Match = new MatchCondition
+                        {
+                            Proto = FlowTransportProtocol.Tcp,
+                            Port = 443,
+                            TlsStage = TlsStage.ClientHello,
+                            DstIpv4Set = new[] { ToIpv4Int(ipC) }.ToImmutableHashSet()
+                        },
+                        Action = PolicyAction.TlsBypassStrategy(TlsBypassStrategy.Fake.ToString()),
+                        Scope = PolicyScope.Local
+                    };
+
+                    var snapshot = IspAudit.Core.Bypass.PolicySetCompiler.CompileOrThrow(new[] { pA, pB, pC });
+                    filter.SetDecisionGraphSnapshot(snapshot);
+
+                    var group = new SemanticGroup
+                    {
+                        GroupKey = "youtube",
+                        DisplayName = "YouTube",
+                        DomainPatterns = ImmutableArray.Create("youtube.com", "googlevideo.com", "ytimg.com"),
+                        PolicyBundle = snapshot.Policies
+                    };
+
+                    // 0) NO_TRAFFIC
+                    {
+                        var s0 = SemanticGroupEvaluator.EvaluateStatus(group, filter.GetPolicyMatchedCountsSnapshot());
+                        if (s0.Status != SemanticGroupStatus.NoTraffic)
+                        {
+                            return new SmokeTestResult("DPI2-045", "Semantic Groups: статусы NO_TRAFFIC/PARTIAL/ENABLED по policy-matched", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"Ожидали NO_TRAFFIC, получили {s0.Text} ({s0.Details})");
+                        }
+                    }
+
+                    var tlsPayload = new byte[200];
+                    tlsPayload[0] = 0x16; // TLS Handshake record
+                    tlsPayload[5] = 0x01; // ClientHello
+
+                    var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+
+                    // 1) PARTIAL: был трафик только для A и B
+                    {
+                        var sender = new CapturePacketSender();
+                        var pktA = BuildIpv4TcpPacket(clientIp, ipA, srcPort: 50110, dstPort: 443, ttl: 64, ipId: 210, seq: 123450u, tcpFlags: 0x18, payload: tlsPayload);
+                        _ = filter.Process(new InterceptedPacket(pktA, pktA.Length), ctx, sender);
+
+                        var pktB = BuildIpv4TcpPacket(clientIp, ipB, srcPort: 50111, dstPort: 443, ttl: 64, ipId: 211, seq: 223450u, tcpFlags: 0x18, payload: tlsPayload);
+                        _ = filter.Process(new InterceptedPacket(pktB, pktB.Length), ctx, sender);
+
+                        var s1 = SemanticGroupEvaluator.EvaluateStatus(group, filter.GetPolicyMatchedCountsSnapshot());
+                        if (s1.Status != SemanticGroupStatus.Partial)
+                        {
+                            return new SmokeTestResult("DPI2-045", "Semantic Groups: статусы NO_TRAFFIC/PARTIAL/ENABLED по policy-matched", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"Ожидали PARTIAL после трафика A+B, получили {s1.Text} ({s1.Details})");
+                        }
+                    }
+
+                    // 2) ENABLED: добавили трафик для C
+                    {
+                        var sender = new CapturePacketSender();
+                        var pktC = BuildIpv4TcpPacket(clientIp, ipC, srcPort: 50112, dstPort: 443, ttl: 64, ipId: 212, seq: 323450u, tcpFlags: 0x18, payload: tlsPayload);
+                        _ = filter.Process(new InterceptedPacket(pktC, pktC.Length), ctx, sender);
+
+                        var s2 = SemanticGroupEvaluator.EvaluateStatus(group, filter.GetPolicyMatchedCountsSnapshot());
+                        if (s2.Status != SemanticGroupStatus.Enabled)
+                        {
+                            return new SmokeTestResult("DPI2-045", "Semantic Groups: статусы NO_TRAFFIC/PARTIAL/ENABLED по policy-matched", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"Ожидали ENABLED после трафика A+B+C, получили {s2.Text} ({s2.Details})");
+                        }
+                    }
+
+                    return new SmokeTestResult("DPI2-045", "Semantic Groups: статусы NO_TRAFFIC/PARTIAL/ENABLED по policy-matched", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: статусы группы детерминированны и основаны на policy-matched метриках");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443", prevGate);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_Guard_BypassStateManager_IsSingleSourceOfTruth(CancellationToken ct)
             => RunAsyncAwait("DPI2-026", "Guard: TrafficEngine/TlsBypassService только через BypassStateManager", async innerCt =>
             {

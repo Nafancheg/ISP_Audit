@@ -175,11 +175,12 @@
       - Gate: DPI2-044 — per-domain стратегии работают; fallback корректен; метрики per-policy
     - [ ] **Этап 5**: Semantic Groups как «пакет политик» + UI статусы ENABLED/PARTIAL/NO_TRAFFIC
       - Подзадачи:
-        - 5.1: Модель `SemanticGroup` (GroupKey, DisplayName, DomainPatterns, PolicyBundle)
-        - 5.2: Merge-правила для политик группы (endpoints=union, flags=OR, по приоритетам)
-        - 5.3: UI статусы группы: ENABLED / PARTIAL (часть политик не matched) / NO_TRAFFIC
-        - 5.4: Интеграция с P0.1 (Accumulative Attachment Model)
-      - Gate: DPI2-045 — группа YouTube с несколькими доменами показывает корректный статус
+        - [x] 5.1: Модель `SemanticGroup` (GroupKey, DisplayName, DomainPatterns, PolicyBundle)
+        - [x] 5.2: Merge-правила для политик группы (MVP: endpoints=union для эквивалентных политик)
+        - [ ] 5.3: UI статусы группы: ENABLED / PARTIAL (часть политик не matched) / NO_TRAFFIC
+          - Примечание: инфраструктура статусов готова (policy `matched_count` + evaluator), но привязка к UI/VM ещё не сделана.
+        - [ ] 5.4: Интеграция с P0.1 (Accumulative Attachment Model)
+      - Gate: DPI2-045 — детерминированная оценка статуса Semantic Group по policy-matched метрикам (smoke)
     - [ ] **Этап 6**: UI таблица политик + экспорт snapshot (репорт)
       - Подзадачи:
         - 6.1: UI таблица активных политик (Id, Match, Action, Scope, Priority, Matched, Applied)

@@ -164,6 +164,11 @@ namespace IspAudit.Core.Traffic.Filters
                 if (TrySelectTlsStrategyPolicyDriven(packet, payloadLength, hasSni, out var selectedPolicyId, out var policyStrategy))
                 {
                     effectiveTlsStrategy = policyStrategy;
+
+                    if (!isProbe && !string.IsNullOrWhiteSpace(selectedPolicyId))
+                    {
+                        RecordPolicyMatched(selectedPolicyId);
+                    }
                 }
 
                 if (effectiveTlsStrategy != TlsBypassStrategy.None

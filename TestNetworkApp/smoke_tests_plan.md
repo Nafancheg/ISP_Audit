@@ -609,6 +609,17 @@
 **Входные данные:** `BypassFilter` + синтетические IPv4 TCP пакеты на порт 443 с TLS ClientHello (минимальная сигнатура) + snapshot с `PolicyAction.TlsBypassStrategy(...)` + `ISP_AUDIT_POLICY_DRIVEN_TCP443=1`
 **Ожидаемый результат:** Тест PASS
 
+### 5.4.6 Policy-Driven Execution Plane (Stage 5)
+**Test ID:** `DPI2-045`
+**Что проверяет:** Semantic Groups: статус группы (NO_TRAFFIC / PARTIAL / ENABLED) вычисляется детерминированно по policy-matched метрикам
+**Для чего:** Ввести наблюдаемое состояние «группа = пакет политик» и не путать отсутствие трафика с частичным покрытием
+**Критерий успеха:**
+- До любого трафика: статус `NO_TRAFFIC`.
+- После трафика только для части policy-id группы: статус `PARTIAL`.
+- После трафика для всех policy-id группы: статус `ENABLED`.
+**Входные данные:** `BypassFilter` + `DecisionGraphSnapshot` с 3 policy-id (TCP/443 ClientHello) + синтетический трафик к 2/3/3 endpoint-ам + `ISP_AUDIT_POLICY_DRIVEN_TCP443=1`
+**Ожидаемый результат:** Тест PASS
+
 ### 5.5 Feedback & Rerank
 **Test ID:** `DPI2-014`
 **Что проверяет:** Ранжирование стратегий по feedback поверх basePriority
