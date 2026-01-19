@@ -466,18 +466,52 @@ namespace IspAudit.Bypass
                         // P0.2 Stage 3: TCP/80 HTTP Host tricks
                         if (PolicyDrivenExecutionGates.PolicyDrivenTcp80HostTricksEnabled() && effective.HttpHostTricksEnabled)
                         {
-                            policies.Add(new FlowPolicy
+                            // P0.1 Step 1: в multi-group режиме стараемся ограничить blast radius.
+                            // Если есть remembered активные цели, компилируем per-target политики (match по dst_ip).
+                            var addedPerTarget = false;
+
+                            foreach (var tp in activeTargetPolicies)
                             {
-                                Id = "tcp80_http_host_tricks",
-                                Priority = 100,
-                                Match = new MatchCondition
+                                if (!tp.HttpHostTricksEnabled) continue;
+                                if (string.IsNullOrWhiteSpace(tp.HostKey)) continue;
+
+                                var ips = await GetOrSeedUdp443DropTargetsAsync(tp.HostKey, cancellationToken).ConfigureAwait(false);
+                                if (ips.Length == 0) continue;
+
+                                policies.Add(new FlowPolicy
                                 {
-                                    Proto = FlowTransportProtocol.Tcp,
-                                    Port = 80
-                                },
-                                Action = PolicyAction.HttpHostTricks,
-                                Scope = PolicyScope.Global
-                            });
+                                    Id = $"tcp80_http_host_tricks_{NormalizeHostKeyForPolicyId(tp.HostKey)}",
+                                    Priority = 110,
+                                    Match = new MatchCondition
+                                    {
+                                        Proto = FlowTransportProtocol.Tcp,
+                                        Port = 80,
+                                        DstIpv4Set = ips.Take(32).ToImmutableHashSet()
+                                    },
+                                    Action = PolicyAction.HttpHostTricks,
+                                    Scope = PolicyScope.Local
+                                });
+
+                                addedPerTarget = true;
+                            }
+
+                            // Fallback: если per-target политики не добавились (нет активных целей или не смогли получить IP),
+                            // сохраняем прежнее поведение (глобальная политика).
+                            if (!addedPerTarget)
+                            {
+                                policies.Add(new FlowPolicy
+                                {
+                                    Id = "tcp80_http_host_tricks",
+                                    Priority = 100,
+                                    Match = new MatchCondition
+                                    {
+                                        Proto = FlowTransportProtocol.Tcp,
+                                        Port = 80
+                                    },
+                                    Action = PolicyAction.HttpHostTricks,
+                                    Scope = PolicyScope.Global
+                                });
+                            }
                         }
 
                         // P0.2 Stage 4: TCP/443 TLS ClientHello strategy selection
