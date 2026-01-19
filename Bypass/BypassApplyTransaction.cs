@@ -6,7 +6,7 @@ namespace IspAudit.Bypass
     /// <summary>
     /// Транзакция «применения обхода» (P0.1 MVP): фиксирует что применили, к какой цели,
     /// и какой snapshot policy-driven состояния был виден на момент применения.
-    /// 
+    ///
     /// Важно: это не «источник истины» для policy bundle (это будет на следующих шагах P0.1),
     /// а наблюдаемость/репортинг текущего ручного apply.
     /// </summary>
@@ -36,7 +36,7 @@ namespace IspAudit.Bypass
 
         /// <summary>
         /// Ожидаемые эффекты/инварианты после транзакции (для репорта и самодиагностики).
-        /// Пример: «при QUIC→TCP должен расти Udp443Dropped при трафике». 
+        /// Пример: «при QUIC→TCP должен расти Udp443Dropped при трафике».
         /// </summary>
         public IReadOnlyList<string> ExpectedEffects { get; init; } = Array.Empty<string>();
 

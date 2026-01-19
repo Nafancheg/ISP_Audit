@@ -262,6 +262,26 @@ namespace IspAudit.ViewModels
             }
         }
 
+        /// <summary>
+        /// Текущая «активная группа» применения обхода (для подсветки строк в таблице).
+        /// Вычисляется из OutcomeTargetHost и SuggestedDomainSuffix.
+        /// </summary>
+        public string ActiveApplyGroupKey
+        {
+            get
+            {
+                try
+                {
+                    var host = Bypass.GetOutcomeTargetHost();
+                    return ComputeApplyGroupKey(host, Results.SuggestedDomainSuffix);
+                }
+                catch
+                {
+                    return string.Empty;
+                }
+            }
+        }
+
         private TestResult? _selectedTestResult;
         public TestResult? SelectedTestResult
         {

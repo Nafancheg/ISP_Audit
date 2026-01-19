@@ -142,6 +142,12 @@ namespace IspAudit.ViewModels
 
         public string GetOutcomeTargetHost() => _stateManager.GetOutcomeTargetHost();
 
-        public void SetOutcomeTargetHost(string? host) => _stateManager.SetOutcomeTargetHost(host);
+        public string OutcomeTargetHost => _stateManager.GetOutcomeTargetHost();
+
+        public void SetOutcomeTargetHost(string? host)
+        {
+            _stateManager.SetOutcomeTargetHost(host);
+            SafeUiInvoke(() => OnPropertyChanged(nameof(OutcomeTargetHost)));
+        }
     }
 }

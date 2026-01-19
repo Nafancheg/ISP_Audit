@@ -26,6 +26,9 @@ namespace IspAudit.ViewModels
         public ICommand ApplyDomainRecommendationsCommand { get; }
         public ICommand RestartConnectionCommand { get; }
         public ICommand ConnectFromResultCommand { get; }
+        public ICommand ConnectDomainFromResultCommand { get; }
+        public ICommand RetestFromResultCommand { get; }
+        public ICommand ReconnectFromResultCommand { get; }
 
         // P0.6: Network change staged revalidation
         public ICommand NetworkRevalidateCommand { get; }

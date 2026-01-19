@@ -26,6 +26,8 @@ namespace IspAudit.ViewModels
         private volatile bool _pendingRetestAfterRun;
         private string _pendingRetestReason = "";
 
+        private readonly System.Collections.Generic.HashSet<string> _pendingManualRetestHostKeys = new(StringComparer.OrdinalIgnoreCase);
+
         public MainViewModel()
         {
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -63,6 +65,11 @@ namespace IspAudit.ViewModels
                         ClearAppliedBypassMarkers();
                     }
                 }
+
+                if (e.PropertyName == nameof(BypassController.OutcomeTargetHost))
+                {
+                    OnPropertyChanged(nameof(ActiveApplyGroupKey));
+                }
             };
 
             Orchestrator.OnLog += Log;
@@ -95,6 +102,12 @@ namespace IspAudit.ViewModels
                 {
                     _pendingNetworkChangePrompt = false;
                     ShowNetworkChangePrompt();
+                }
+
+                // Per-card ручные ретесты, запрошенные во время диагностики.
+                if (_pendingManualRetestHostKeys.Count > 0)
+                {
+                    _ = RunPendingManualRetestsAfterRunAsync();
                 }
             };
             Orchestrator.PropertyChanged += (s, e) =>
@@ -151,6 +164,7 @@ namespace IspAudit.ViewModels
                     OnPropertyChanged(nameof(HasDomainSuggestion));
                     OnPropertyChanged(nameof(ApplyDomainButtonText));
                     OnPropertyChanged(nameof(DomainSuggestionHintText));
+                    OnPropertyChanged(nameof(ActiveApplyGroupKey));
                     CommandManager.InvalidateRequerySuggested();
                 }
             };
@@ -193,6 +207,17 @@ namespace IspAudit.ViewModels
             // UX: пользователь видит стратегию рядом с целью и нажимает "Подключить" именно для неё.
             ConnectFromResultCommand = new RelayCommand(async param => await ConnectFromResultAsync(param as IspAudit.Models.TestResult),
                 param => ShowBypassPanel && !IsApplyingRecommendations);
+
+            // Доменное применение v2 плана из конкретной строки результата.
+            // UX: если строка относится к SuggestedDomainSuffix, даём кнопку "Подключить домен" прямо в таблице.
+            ConnectDomainFromResultCommand = new RelayCommand(async param => await ConnectDomainFromResultAsync(param as IspAudit.Models.TestResult),
+                param => ShowBypassPanel && !IsApplyingRecommendations);
+
+            RetestFromResultCommand = new RelayCommand(async param => await RetestFromResultAsync(param as IspAudit.Models.TestResult),
+                _ => true);
+
+            ReconnectFromResultCommand = new RelayCommand(async param => await ReconnectFromResultAsync(param as IspAudit.Models.TestResult),
+                _ => ShowBypassPanel);
 
             NetworkRevalidateCommand = new RelayCommand(async _ => await RunNetworkRevalidationAsync(), _ => ShowBypassPanel && IsNetworkChangePromptVisible);
             NetworkDisableBypassCommand = new RelayCommand(async _ => await DisableBypassFromNetworkPromptAsync(), _ => ShowBypassPanel && IsNetworkChangePromptVisible);

@@ -27,6 +27,9 @@
             <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
             <converters:EqualityConverter x:Key="EqualityConverter"/>
             <converters:StringToPackIconKindConverter x:Key="StringToPackIconKindConverter"/>
+            <converters:TestResultToGroupKeyConverter x:Key="TestResultToGroupKeyConverter"/>
+            <converters:TestResultIsInActiveGroupConverter x:Key="TestResultIsInActiveGroupConverter"/>
+            <converters:TestResultHasDomainSuggestionConverter x:Key="TestResultHasDomainSuggestionConverter"/>
 
             <!-- Статусные цвета (фиксированные) -->
             <SolidColorBrush x:Key="PassBrush" Color="#4CAF50"/>

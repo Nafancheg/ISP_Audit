@@ -252,7 +252,7 @@ namespace IspAudit.ViewModels
         /// </summary>
         public Task ApplyV2PlanAsync(BypassPlan plan, string? outcomeTargetHost, TimeSpan timeout, CancellationToken cancellationToken)
         {
-            _stateManager.SetOutcomeTargetHost(outcomeTargetHost);
+            SetOutcomeTargetHost(outcomeTargetHost);
             return ApplyV2PlanAsync(plan, timeout, cancellationToken);
         }
 

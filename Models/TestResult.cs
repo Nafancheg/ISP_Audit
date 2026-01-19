@@ -182,6 +182,36 @@ namespace IspAudit.Models
             }
         }
 
+        private string _lastApplyTransactionText = string.Empty;
+        public string LastApplyTransactionText
+        {
+            get => _lastApplyTransactionText;
+            set
+            {
+                if (string.Equals(_lastApplyTransactionText, value, StringComparison.Ordinal)) return;
+                _lastApplyTransactionText = value ?? string.Empty;
+                OnPropertyChanged(nameof(LastApplyTransactionText));
+                OnPropertyChanged(nameof(ShowLastApplyTransactionText));
+            }
+        }
+
+        public bool ShowLastApplyTransactionText => !string.IsNullOrWhiteSpace(LastApplyTransactionText);
+
+        private string _actionStatusText = string.Empty;
+        public string ActionStatusText
+        {
+            get => _actionStatusText;
+            set
+            {
+                if (string.Equals(_actionStatusText, value, StringComparison.Ordinal)) return;
+                _actionStatusText = value ?? string.Empty;
+                OnPropertyChanged(nameof(ActionStatusText));
+                OnPropertyChanged(nameof(ShowActionStatusText));
+            }
+        }
+
+        public bool ShowActionStatusText => !string.IsNullOrWhiteSpace(ActionStatusText);
+
         /// <summary>
         /// Фактически применённая стратегия обхода для этой карточки (после нажатия "Подключить"/Apply).
         /// </summary>

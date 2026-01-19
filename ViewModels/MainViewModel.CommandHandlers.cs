@@ -39,10 +39,10 @@ namespace IspAudit.ViewModels
                 if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
                 {
                     ClearAppliedBypassMarkers();
-                    ApplyAppliedStrategyToResults(outcome.HostKey, outcome.AppliedStrategyText);
-                    MarkAppliedBypassTarget(SelectedTestResult);
-
                     var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
+                    ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
+                    MarkAppliedBypassTargetsForGroupKey(groupKey);
+
                     var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
                     if (endpoints.Count == 0)
                     {
@@ -51,6 +51,7 @@ namespace IspAudit.ViewModels
                     }
 
                     Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
+                    UpdateLastApplyTransactionTextForGroupKey(groupKey);
                 }
             }
             catch (OperationCanceledException)
@@ -104,10 +105,10 @@ namespace IspAudit.ViewModels
                 if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
                 {
                     ClearAppliedBypassMarkers();
-                    ApplyAppliedStrategyToResults(outcome.HostKey, outcome.AppliedStrategyText);
-                    MarkAppliedBypassTarget(SelectedTestResult);
-
                     var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
+                    ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
+                    MarkAppliedBypassTargetsForGroupKey(groupKey);
+
                     var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
                     if (endpoints.Count == 0)
                     {
@@ -116,6 +117,7 @@ namespace IspAudit.ViewModels
                     }
 
                     Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
+                    UpdateLastApplyTransactionTextForGroupKey(groupKey);
                 }
             }
             catch (OperationCanceledException)
@@ -173,10 +175,10 @@ namespace IspAudit.ViewModels
                 if (Bypass.IsBypassActive && outcome != null)
                 {
                     ClearAppliedBypassMarkers();
-                    ApplyAppliedStrategyToResults(outcome.HostKey, outcome.AppliedStrategyText);
-                    MarkAppliedBypassTarget(test);
-
                     var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
+                    ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
+                    MarkAppliedBypassTargetsForGroupKey(groupKey);
+
                     var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
                     if (endpoints.Count == 0)
                     {
@@ -185,6 +187,7 @@ namespace IspAudit.ViewModels
                     }
 
                     Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
+                    UpdateLastApplyTransactionTextForGroupKey(groupKey);
                 }
             }
             catch (OperationCanceledException)
@@ -198,6 +201,194 @@ namespace IspAudit.ViewModels
             finally
             {
                 IsApplyingRecommendations = false;
+            }
+        }
+
+        private async Task ConnectDomainFromResultAsync(TestResult? test)
+        {
+            if (test == null)
+            {
+                return;
+            }
+
+            // Важно: HasDomainSuggestion вычисляется от SelectedTestResult.
+            // Поэтому перед доменным Apply выставляем выбранную строку.
+            SelectedTestResult = test;
+            await ApplyDomainRecommendationsAsync().ConfigureAwait(false);
+        }
+        
+        private Task RetestFromResultAsync(TestResult? test)
+        {
+            try
+            {
+                if (test == null) return Task.CompletedTask;
+
+                var hostKey = GetPreferredHostKey(test);
+                if (string.IsNullOrWhiteSpace(hostKey))
+                {
+                    test.ActionStatusText = "Ретест: нет цели";
+                    return Task.CompletedTask;
+                }
+
+                // Во время активной диагностики ретест запрещён (Orchestrator.RetestTargetsAsync и PostApplyRetest).
+                // UX: позволяем нажать кнопку, но ставим ретест в очередь после завершения.
+                if (IsRunning)
+                {
+                    lock (_pendingManualRetestHostKeys)
+                    {
+                        _pendingManualRetestHostKeys.Add(hostKey);
+                    }
+
+                    test.ActionStatusText = "Ретест запланирован (после диагностики)";
+                    Log($"[PerCardRetest] Queued retest after run: {hostKey}");
+                    return Task.CompletedTask;
+                }
+
+                test.ActionStatusText = "Ретест запущен";
+                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, hostKey);
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                test!.ActionStatusText = $"Ретест: ошибка: {ex.Message}";
+                return Task.CompletedTask;
+            }
+        }
+
+        private async Task ReconnectFromResultAsync(TestResult? test)
+        {
+            if (test == null)
+            {
+                return;
+            }
+
+            if (!ShowBypassPanel)
+            {
+                test.ActionStatusText = "Переподключение недоступно (нужны права администратора)";
+                return;
+            }
+
+            var hostKey = GetPreferredHostKey(test);
+            if (string.IsNullOrWhiteSpace(hostKey))
+            {
+                test.ActionStatusText = "Переподключение: нет цели";
+                return;
+            }
+
+            try
+            {
+                test.ActionStatusText = "Переподключаю…";
+                await Orchestrator.NudgeReconnectAsync(Bypass, hostKey).ConfigureAwait(false);
+
+                // По UX после переподключения просим быстрый ретест. Если сейчас идёт диагностика — ставим в очередь.
+                if (IsRunning)
+                {
+                    lock (_pendingManualRetestHostKeys)
+                    {
+                        _pendingManualRetestHostKeys.Add(hostKey);
+                    }
+                    test.ActionStatusText = "Переподключено; ретест запланирован";
+                }
+                else
+                {
+                    test.ActionStatusText = "Переподключено; ретест…";
+                    _ = Orchestrator.StartPostApplyRetestAsync(Bypass, hostKey);
+                }
+            }
+            catch (Exception ex)
+            {
+                test.ActionStatusText = $"Переподключение: ошибка: {ex.Message}";
+            }
+        }
+
+        private async Task RunPendingManualRetestsAfterRunAsync()
+        {
+            string[] hostKeys;
+            lock (_pendingManualRetestHostKeys)
+            {
+                hostKeys = _pendingManualRetestHostKeys.ToArray();
+                _pendingManualRetestHostKeys.Clear();
+            }
+
+            foreach (var hostKey in hostKeys)
+            {
+                try
+                {
+                    var groupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                    SetActionStatusTextForGroupKey(groupKey, "Ретест запущен (очередь)");
+                    await Orchestrator.StartPostApplyRetestAsync(Bypass, hostKey).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    Log($"[PerCardRetest] Error: {ex.Message}");
+                }
+            }
+        }
+
+        private void SetActionStatusTextForGroupKey(string groupKey, string text)
+        {
+            if (string.IsNullOrWhiteSpace(groupKey)) return;
+            var key = groupKey.Trim().Trim('.');
+            if (string.IsNullOrWhiteSpace(key)) return;
+
+            UiBeginInvoke(() =>
+            {
+                foreach (var r in Results.TestResults)
+                {
+                    var hostKey = GetPreferredHostKey(r);
+                    if (string.IsNullOrWhiteSpace(hostKey)) continue;
+
+                    var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                    if (string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase))
+                    {
+                        r.ActionStatusText = text;
+                    }
+                }
+            });
+        }
+
+        private void UpdateLastApplyTransactionTextForGroupKey(string groupKey)
+        {
+            try
+            {
+                var tx = Bypass.TryGetLatestApplyTransactionForGroupKey(groupKey);
+                if (tx == null) return;
+
+                var localTimeText = tx.CreatedAtUtc;
+                try
+                {
+                    if (DateTimeOffset.TryParse(tx.CreatedAtUtc, out var dto))
+                    {
+                        localTimeText = dto.ToLocalTime().ToString("HH:mm:ss");
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                var summary = $"Последнее применение: {localTimeText}; {tx.AppliedStrategyText}; IP={tx.CandidateIpEndpoints.Count}";
+                var key = (tx.GroupKey ?? groupKey ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(key)) return;
+
+                UiBeginInvoke(() =>
+                {
+                    foreach (var r in Results.TestResults)
+                    {
+                        var hostKey = GetPreferredHostKey(r);
+                        if (string.IsNullOrWhiteSpace(hostKey)) continue;
+
+                        var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                        if (string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase))
+                        {
+                            r.LastApplyTransactionText = summary;
+                        }
+                    }
+                });
+            }
+            catch
+            {
+                // ignore
             }
         }
 
@@ -386,6 +577,30 @@ namespace IspAudit.ViewModels
             });
         }
 
+        private void ApplyAppliedStrategyToGroupKey(string groupKey, string appliedStrategyText)
+        {
+            if (string.IsNullOrWhiteSpace(groupKey)) return;
+            if (string.IsNullOrWhiteSpace(appliedStrategyText)) return;
+
+            var key = groupKey.Trim().Trim('.');
+            if (string.IsNullOrWhiteSpace(key)) return;
+
+            UiBeginInvoke(() =>
+            {
+                foreach (var r in Results.TestResults)
+                {
+                    var hostKey = GetPreferredHostKey(r);
+                    if (string.IsNullOrWhiteSpace(hostKey)) continue;
+
+                    var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                    if (string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase))
+                    {
+                        r.AppliedBypassStrategy = appliedStrategyText;
+                    }
+                }
+            });
+        }
+
         private void MarkAppliedBypassTarget(TestResult applied)
         {
             UiBeginInvoke(() =>
@@ -393,6 +608,30 @@ namespace IspAudit.ViewModels
                 foreach (var r in Results.TestResults)
                 {
                     r.IsAppliedBypassTarget = ReferenceEquals(r, applied);
+                }
+            });
+        }
+
+        private void MarkAppliedBypassTargetsForGroupKey(string groupKey)
+        {
+            if (string.IsNullOrWhiteSpace(groupKey)) return;
+
+            var key = groupKey.Trim().Trim('.');
+            if (string.IsNullOrWhiteSpace(key)) return;
+
+            UiBeginInvoke(() =>
+            {
+                foreach (var r in Results.TestResults)
+                {
+                    var hostKey = GetPreferredHostKey(r);
+                    if (string.IsNullOrWhiteSpace(hostKey))
+                    {
+                        r.IsAppliedBypassTarget = false;
+                        continue;
+                    }
+
+                    var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                    r.IsAppliedBypassTarget = string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase);
                 }
             });
         }

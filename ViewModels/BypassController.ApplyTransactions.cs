@@ -32,6 +32,37 @@ namespace IspAudit.ViewModels
 
         public ObservableCollection<BypassApplyTransaction> ApplyTransactions { get; } = new();
 
+        public BypassApplyTransaction? TryGetLatestApplyTransactionForGroupKey(string? groupKey)
+        {
+            try
+            {
+                var key = (groupKey ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(key)) return null;
+
+                // Быстрый путь: UI коллекция уже отсортирована по убыванию (новые сверху).
+                try
+                {
+                    return ApplyTransactions.FirstOrDefault(t =>
+                        string.Equals((t.GroupKey ?? string.Empty).Trim().Trim('.'), key, StringComparison.OrdinalIgnoreCase));
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                // Fallback: snapshot журнала.
+                var snapshot = _applyTransactionsJournal.Snapshot();
+                return snapshot
+                    .Where(t => string.Equals((t.GroupKey ?? string.Empty).Trim().Trim('.'), key, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(t => ParseCreatedAtUtcOrMin(t.CreatedAtUtc))
+                    .FirstOrDefault();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public string ApplyTransactionsExportStatusText
         {
             get => _applyTransactionsExportStatusText;
