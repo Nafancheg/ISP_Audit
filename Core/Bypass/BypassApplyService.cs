@@ -111,6 +111,15 @@ namespace IspAudit.Core.Bypass
 
                 _log?.Invoke($"[V2][Executor] Target={planned.PlannedOptions.ToReadableStrategy()}; DoH={(planned.PlannedDoHEnabled ? "on" : "off")}; DNS={planned.PlannedDnsPreset}");
 
+                // Тестовый хук (smoke/regression): искусственная задержка, чтобы можно было
+                // детерминированно проверить сериализацию apply (P0.1 Step 13).
+                var testDelayMsText = Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_APPLY_DELAY_MS");
+                if (int.TryParse(testDelayMsText, out var testDelayMs) && testDelayMs > 0)
+                {
+                    _log?.Invoke($"[V2][Executor] Test delay: {testDelayMs}ms");
+                    await Task.Delay(testDelayMs, linked.Token).ConfigureAwait(false);
+                }
+
                 linked.Token.ThrowIfCancellationRequested();
 
                 _log?.Invoke("[V2][Executor] Applying bypass options...");

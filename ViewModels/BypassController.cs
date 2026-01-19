@@ -31,6 +31,10 @@ namespace IspAudit.ViewModels
         private TlsBypassOptions _currentOptions;
         private TlsFragmentPreset? _selectedPreset;
 
+        // P0.1 Step 13: сериализация ручных apply-операций (v2), чтобы исключить гонки.
+        // Важно: это gate только для операций ApplyV2PlanAsync (ручное применение плана).
+        private readonly SemaphoreSlim _applyV2Gate = new(1, 1);
+
         private readonly AutoHostlistService _autoHostlist;
         private bool _isAutoHostlistEnabled;
         private string _autoHostlistText = "(пока пусто)";

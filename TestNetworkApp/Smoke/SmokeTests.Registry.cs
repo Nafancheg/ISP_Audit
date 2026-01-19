@@ -68,6 +68,7 @@ namespace TestNetworkApp.Smoke
                 ["REG-009"] = REG_ApplyTransactions_ContractV2_HasRequestSnapshotResultContributions,
                 ["REG-010"] = REG_ApplyTransactions_ResultStatus_Applied_IsPersisted,
                 ["REG-011"] = REG_ApplyTransactions_ResultStatus_AndRollback_ArePersisted,
+                ["REG-012"] = REG_ApplyV2Plan_IsSerialized_NoParallelApply,
 
                 ["PIPE-005"] = Pipe_UnifiedFilter_LoopbackDropped,
                 ["PIPE-006"] = Pipe_UnifiedFilter_NoiseOnlyOnDisplay,

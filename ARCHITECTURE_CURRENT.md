@@ -332,6 +332,7 @@ Smoke-хелперы (для детерминированных проверок
 
 3) **Исполнитель v2 (реальный apply с безопасным откатом)**
 - `BypassController.ApplyV2PlanAsync` делегирует исполнение (таймаут/отмена + безопасный rollback на snapshot состояния) в `Core/Bypass/BypassApplyService`.
+- P0.1: ручные apply-операции сериализованы (apply-gate) — параллельные вызовы `ApplyV2PlanAsync` выполняются строго последовательно, чтобы исключить гонки.
  - Оркестратор не применяет «не тот» план: если рекомендации обновились и `hostKey` изменился, apply будет заблокирован.
  - `StrategyId.AggressiveFragment` при ручном apply выбирает пресет фрагментации «Агрессивный» и включает `AutoAdjustAggressive`.
  - `StrategyId.TlsFragment` может нести параметры (например, `TlsFragmentSizes`, `PresetName`, `AutoAdjustAggressive`). Парсинг параметров вынесен в `Core/IntelligenceV2/Execution/TlsFragmentPlanParamsParser.cs`, применение выполняет `Core/Bypass/BypassApplyService` (вызывается из `BypassController.ApplyV2PlanAsync`).

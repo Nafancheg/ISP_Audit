@@ -412,6 +412,69 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> REG_ApplyV2Plan_IsSerialized_NoParallelApply(CancellationToken ct)
+            => RunAsyncAwait("REG-012", "REG: ApplyV2PlanAsync сериализован (нет параллельного apply)", async _ =>
+            {
+                var sw = Stopwatch.StartNew();
+                string? prevDelay = null;
+                try
+                {
+                    prevDelay = Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_APPLY_DELAY_MS");
+
+                    const int delayMs = 250;
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_APPLY_DELAY_MS", delayMs.ToString());
+
+                    var baseProfile = BypassProfile.CreateDefault();
+
+                    using var engine = new IspAudit.Core.Traffic.TrafficEngine();
+                    using var tls = new TlsBypassService(
+                        engine,
+                        baseProfile,
+                        log: null,
+                        startMetricsTimer: false,
+                        useTrafficEngine: false,
+                        nowProvider: () => DateTime.UtcNow);
+
+                    var bypass = new BypassController(tls, baseProfile);
+
+                    var plan = new IspAudit.Core.IntelligenceV2.Contracts.BypassPlan
+                    {
+                        ForDiagnosis = IspAudit.Core.IntelligenceV2.Contracts.DiagnosisId.SilentDrop,
+                        PlanConfidence = 100,
+                        Strategies =
+                        {
+                            new IspAudit.Core.IntelligenceV2.Contracts.BypassStrategy
+                            {
+                                Id = IspAudit.Core.IntelligenceV2.Contracts.StrategyId.TlsFragment
+                            }
+                        }
+                    };
+
+                    // Запускаем два apply конкурентно. Если gate работает — они должны выполниться строго последовательно.
+                    var t1 = bypass.ApplyV2PlanAsync(plan, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(3), cancellationToken: ct);
+                    var t2 = bypass.ApplyV2PlanAsync(plan, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(3), cancellationToken: ct);
+                    await Task.WhenAll(t1, t2).ConfigureAwait(false);
+
+                    var elapsed = sw.Elapsed;
+                    var expectedMin = TimeSpan.FromMilliseconds(delayMs * 2 - 50);
+                    if (elapsed < expectedMin)
+                    {
+                        return new SmokeTestResult("REG-012", "REG: ApplyV2PlanAsync сериализован (нет параллельного apply)", SmokeOutcome.Fail, elapsed,
+                            $"Ожидали последовательное выполнение: elapsed={elapsed.TotalMilliseconds:0}ms < {expectedMin.TotalMilliseconds:0}ms (delayMs={delayMs})");
+                    }
+
+                    return new SmokeTestResult("REG-012", "REG: ApplyV2PlanAsync сериализован (нет параллельного apply)", SmokeOutcome.Pass, elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-012", "REG: ApplyV2PlanAsync сериализован (нет параллельного apply)", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_APPLY_DELAY_MS", prevDelay);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> REG_PerCardRetest_Queued_DuringRun_ThenFlushed(CancellationToken ct)
             => RunAsync("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", () =>
             {

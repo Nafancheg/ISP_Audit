@@ -194,6 +194,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - v2 контур подключён в рантайм: Signals → Diagnosis → Selector → Plan.
 - Auto-apply запрещён: применяется только по ручному действию пользователя (manual apply).
 - Реальный apply v2 реализован в `Core/Bypass/BypassApplyService`: таймаут/отмена + безопасный rollback; вызывается через `BypassController.ApplyV2PlanAsync(...)`.
+- P0.1: `ApplyV2PlanAsync` защищён apply-gate (сериализация) — параллельные apply выполняются последовательно, чтобы исключить гонки.
 - Feedback store (MVP) реализован и может влиять на ранжирование в `StandardStrategySelectorV2`.
 
 ### Target (реалистичное целевое состояние)

@@ -25,6 +25,19 @@ namespace IspAudit.ViewModels
 
             cancellationToken.ThrowIfCancellationRequested();
 
+            // P0.1 Step 13: сериализуем все ручные apply-операции.
+            // Если пользователь (или UI) инициировал несколько apply подряд, они должны отработать строго последовательно.
+            if (!await _applyV2Gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+            {
+                Log("[V2][APPLY_GATE] queued (another apply in progress)");
+                await _applyV2Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            Log("[V2][APPLY_GATE] enter");
+
+            try
+            {
+
             var applyService = new BypassApplyService(_stateManager, Log);
             var applied = await applyService
                 .ApplyV2PlanWithRollbackAsync(plan, timeout, _isDoHEnabled, SelectedDnsPreset, cancellationToken)
@@ -74,6 +87,21 @@ namespace IspAudit.ViewModels
 
             // Сохраняем assist-флаги (QUIC→TCP / No SNI) в профиль.
             PersistAssistSettings();
+
+            }
+            finally
+            {
+                try
+                {
+                    _applyV2Gate.Release();
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                Log("[V2][APPLY_GATE] exit");
+            }
         }
 
         /// <summary>
