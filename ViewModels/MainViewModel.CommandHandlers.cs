@@ -1183,15 +1183,48 @@ namespace IspAudit.ViewModels
                 string? applyDetailsJson = null;
                 try
                 {
-                    var hostKey = GetPreferredHostKey(result);
-                    if (!string.IsNullOrWhiteSpace(hostKey))
+                    // Важно: у некоторых карточек «предпочтительный» hostKey может оказаться IP или шумовым rDNS.
+                    // Тогда groupKey не совпадает с тем, по которому реально применялся обход, и JSON не находится.
+                    // Поэтому пробуем несколько кандидатных ключей в предсказуемом порядке.
+                    var suffix = Results.SuggestedDomainSuffix;
+
+                    string? TryGetApplyJsonForGroupKey(string? candidateGroupKey)
                     {
-                        var groupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
-                        var txJson = Bypass.TryGetLatestApplyTransactionJsonForGroupKey(groupKey);
-                        if (!string.IsNullOrWhiteSpace(txJson))
+                        var key = (candidateGroupKey ?? string.Empty).Trim().Trim('.');
+                        if (string.IsNullOrWhiteSpace(key)) return null;
+
+                        var txJson = Bypass.TryGetLatestApplyTransactionJsonForGroupKey(key);
+                        if (string.IsNullOrWhiteSpace(txJson)) return null;
+                        return BuildSelectedResultDetailsJson(key, txJson);
+                    }
+
+                    // 1) Сначала — groupKey, который сейчас активен в UI (если есть).
+                    applyDetailsJson = TryGetApplyJsonForGroupKey(ActiveApplyGroupKey);
+
+                    // 2) Дальше — варианты, вычисленные из разных полей цели.
+                    if (string.IsNullOrWhiteSpace(applyDetailsJson) && result.Target != null)
+                    {
+                        var hostCandidates = new[]
                         {
-                            applyDetailsJson = BuildSelectedResultDetailsJson(groupKey, txJson);
+                            result.Target.SniHost,
+                            result.Target.Host,
+                            result.Target.Name,
+                            result.Target.FallbackIp,
+                        };
+
+                        foreach (var c in hostCandidates)
+                        {
+                            if (string.IsNullOrWhiteSpace(c)) continue;
+                            var groupKey = ComputeApplyGroupKey(c, suffix);
+                            applyDetailsJson = TryGetApplyJsonForGroupKey(groupKey);
+                            if (!string.IsNullOrWhiteSpace(applyDetailsJson)) break;
                         }
+                    }
+
+                    // 3) Если есть suggested suffix — пробуем его напрямую (частый кейс для групповых применений).
+                    if (string.IsNullOrWhiteSpace(applyDetailsJson))
+                    {
+                        applyDetailsJson = TryGetApplyJsonForGroupKey(suffix);
                     }
                 }
                 catch

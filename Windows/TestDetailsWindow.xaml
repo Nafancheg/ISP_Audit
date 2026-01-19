@@ -11,6 +11,7 @@
 
     <Window.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
 
         <!-- Полупрозрачные фоны статусов (смотрятся нормально и в светлой, и в тёмной теме) -->
         <SolidColorBrush x:Key="UnknownBgBrush" Color="#9CA3AF" Opacity="0.25"/>
@@ -324,15 +325,13 @@
                 <TextBlock Text="Детали применения обхода"
                            FontSize="16"
                            FontWeight="SemiBold"
-                           Margin="0,16,0,12"
-                           Visibility="{Binding HasApplyDetails, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                           Margin="0,16,0,12"/>
 
                 <Border Background="{DynamicResource MaterialDesignCardBackground}"
                         BorderBrush="{DynamicResource MaterialDesignDivider}"
                         BorderThickness="1"
                         CornerRadius="6"
-                        Padding="12"
-                        Visibility="{Binding HasApplyDetails, Converter={StaticResource BoolToVisibilityConverter}}">
+                        Padding="12">
                     <StackPanel>
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -350,8 +349,14 @@
                                     FontSize="12"
                                     Margin="12,0,0,0"
                                     Click="CopyApplyDetailsJson_Click"
-                                    Style="{StaticResource SecondaryButtonStyle}"/>
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Visibility="{Binding HasApplyDetails, Converter={StaticResource BoolToVisibilityConverter}}"/>
                         </Grid>
+
+                        <TextBlock Text="Нет данных применения обхода для этой карточки/группы."
+                                   Margin="0,10,0,0"
+                                   Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                   Visibility="{Binding HasApplyDetails, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
 
                         <TextBox Text="{Binding ApplyDetailsJson, Mode=OneWay}"
                                  Margin="0,10,0,0"
@@ -364,7 +369,8 @@
                                  Background="#F9FAFB"
                                  BorderBrush="#E5E7EB"
                                  BorderThickness="1"
-                                 Padding="10"/>
+                                 Padding="10"
+                                 Visibility="{Binding HasApplyDetails, Converter={StaticResource BoolToVisibilityConverter}}"/>
                     </StackPanel>
                 </Border>
             </StackPanel>
