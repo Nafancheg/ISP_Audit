@@ -80,5 +80,28 @@ namespace IspAudit.Bypass
         /// Может быть пусто, если policy-driven ветка не активна.
         /// </summary>
         public string PolicySnapshotJson { get; init; } = string.Empty;
+
+        // P0.1 Step 2 (контракт наблюдаемости): формализованные секции транзакции.
+        // Важно: оставляем v1 поля выше для обратной совместимости persisted JSON и UI.
+
+        /// <summary>
+        /// Request-секция: что именно запросили применить (план/цель/группа).
+        /// </summary>
+        public BypassApplyRequest? Request { get; init; }
+
+        /// <summary>
+        /// Snapshot-секция: снимок состояния обхода/политик в момент записи транзакции.
+        /// </summary>
+        public BypassApplySnapshot? Snapshot { get; init; }
+
+        /// <summary>
+        /// Result-секция: итог применения (best-effort, так как apply выполняется отдельно).
+        /// </summary>
+        public BypassApplyResult? Result { get; init; }
+
+        /// <summary>
+        /// Contributions: детализированный список вкладов/изменений (для репорта и объяснимости).
+        /// </summary>
+        public IReadOnlyList<BypassApplyContribution> Contributions { get; init; } = Array.Empty<BypassApplyContribution>();
     }
 }

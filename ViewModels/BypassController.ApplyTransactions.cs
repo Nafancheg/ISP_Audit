@@ -152,6 +152,19 @@ namespace IspAudit.ViewModels
             try
             {
                 var activation = _stateManager.GetActivationStatusSnapshot();
+                var outcome = _stateManager.GetOutcomeStatusSnapshot();
+                var optionsSnapshot = _stateManager.GetOptionsSnapshot();
+                var udp443TargetCount = _stateManager.GetUdp443DropTargetIpCountSnapshot();
+                BypassStateManager.ActiveTargetPolicy[] activeTargetPolicies = Array.Empty<BypassStateManager.ActiveTargetPolicy>();
+                try
+                {
+                    // internal API (P0.1 Step 1): фиксируем «активные цели» как часть snapshot.
+                    activeTargetPolicies = _stateManager.GetActiveTargetPoliciesSnapshot(initiatorHostKey);
+                }
+                catch
+                {
+                    activeTargetPolicies = Array.Empty<BypassStateManager.ActiveTargetPolicy>();
+                }
 
                 var candidateIps = candidateIpEndpoints?.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
                     ?? Array.Empty<string>();
@@ -159,20 +172,66 @@ namespace IspAudit.ViewModels
                 var expected = BuildExpectedEffects(planText ?? string.Empty, candidateIps);
                 var warnings = BuildWarnings(planText ?? string.Empty, candidateIps, activation.Text, ActivePolicies.Count);
 
+                var safeInitiator = initiatorHostKey ?? string.Empty;
+                var safeGroup = groupKey ?? string.Empty;
+                var safePlanText = planText ?? string.Empty;
+                var safeReasoning = reasoning ?? string.Empty;
+
+                var request = new BypassApplyRequest
+                {
+                    InitiatorHostKey = safeInitiator,
+                    GroupKey = safeGroup,
+                    CandidateIpEndpoints = candidateIps,
+                    PlanText = safePlanText,
+                    Reasoning = safeReasoning
+                };
+
+                var snapshot = new BypassApplySnapshot
+                {
+                    ActivationStatusText = activation.Text,
+                    ActivationStatusDetails = activation.Details,
+                    OptionsSnapshot = optionsSnapshot,
+                    DoHEnabled = _isDoHEnabled,
+                    SelectedDnsPreset = SelectedDnsPreset,
+                    Udp443DropTargetIpCount = udp443TargetCount,
+                    ActiveTargetPolicies = activeTargetPolicies,
+                    ActivePolicies = ActivePolicies.ToList(),
+                    PolicySnapshotJson = _lastPolicySnapshotJson
+                };
+
+                var result = new BypassApplyResult
+                {
+                    Status = "RECORDED",
+                    AppliedStrategyText = appliedStrategyText ?? string.Empty,
+                    PlanText = safePlanText,
+                    Reasoning = safeReasoning,
+                    OutcomeTargetHost = _stateManager.GetOutcomeTargetHost(),
+                    OutcomeStatus = outcome
+                };
+
+                var contributions = BuildContributions(safePlanText, safeInitiator, activeTargetPolicies, optionsSnapshot, _isDoHEnabled);
+
                 var tx = new BypassApplyTransaction
                 {
-                    InitiatorHostKey = initiatorHostKey ?? string.Empty,
-                    GroupKey = groupKey ?? string.Empty,
+                    Version = "v2",
+
+                    InitiatorHostKey = safeInitiator,
+                    GroupKey = safeGroup,
                     CandidateIpEndpoints = candidateIps,
                     ExpectedEffects = expected,
                     Warnings = warnings,
                     AppliedStrategyText = appliedStrategyText ?? string.Empty,
-                    PlanText = planText ?? string.Empty,
-                    Reasoning = reasoning ?? string.Empty,
+                    PlanText = safePlanText,
+                    Reasoning = safeReasoning,
                     ActivationStatusText = activation.Text,
                     ActivationStatusDetails = activation.Details,
                     ActivePolicies = ActivePolicies.ToList(),
-                    PolicySnapshotJson = _lastPolicySnapshotJson
+                    PolicySnapshotJson = _lastPolicySnapshotJson,
+
+                    Request = request,
+                    Snapshot = snapshot,
+                    Result = result,
+                    Contributions = contributions
                 };
 
                 _applyTransactionsJournal.Add(tx);
@@ -431,6 +490,8 @@ namespace IspAudit.ViewModels
         {
             try
             {
+                var jsonOpts = new JsonSerializerOptions { WriteIndented = true };
+
                 var node = new JsonObject
                 {
                     ["version"] = tx.Version,
@@ -438,18 +499,9 @@ namespace IspAudit.ViewModels
                     ["createdAtUtc"] = tx.CreatedAtUtc,
                     ["initiatorHostKey"] = tx.InitiatorHostKey,
                     ["groupKey"] = tx.GroupKey,
-                    ["candidateIpEndpoints"] = JsonSerializer.SerializeToNode(tx.CandidateIpEndpoints, new JsonSerializerOptions
-                    {
-                        WriteIndented = true
-                    }),
-                    ["expectedEffects"] = JsonSerializer.SerializeToNode(tx.ExpectedEffects, new JsonSerializerOptions
-                    {
-                        WriteIndented = true
-                    }),
-                    ["warnings"] = JsonSerializer.SerializeToNode(tx.Warnings, new JsonSerializerOptions
-                    {
-                        WriteIndented = true
-                    }),
+                    ["candidateIpEndpoints"] = JsonSerializer.SerializeToNode(tx.CandidateIpEndpoints, jsonOpts),
+                    ["expectedEffects"] = JsonSerializer.SerializeToNode(tx.ExpectedEffects, jsonOpts),
+                    ["warnings"] = JsonSerializer.SerializeToNode(tx.Warnings, jsonOpts),
                     ["appliedStrategyText"] = tx.AppliedStrategyText,
                     ["planText"] = tx.PlanText,
                     ["reasoning"] = tx.Reasoning,
@@ -479,6 +531,55 @@ namespace IspAudit.ViewModels
                     }
                 }
 
+                // P0.1 Step 2: v2 секции (контракт), плюс contributions.
+                if (tx.Request != null)
+                {
+                    node["request"] = JsonSerializer.SerializeToNode(tx.Request, jsonOpts);
+                }
+
+                if (tx.Result != null)
+                {
+                    node["result"] = JsonSerializer.SerializeToNode(tx.Result, jsonOpts);
+                }
+
+                if (tx.Contributions != null && tx.Contributions.Count > 0)
+                {
+                    node["contributions"] = JsonSerializer.SerializeToNode(tx.Contributions, jsonOpts);
+                }
+
+                if (tx.Snapshot != null)
+                {
+                    var snap = new JsonObject
+                    {
+                        ["activationStatus"] = new JsonObject
+                        {
+                            ["text"] = tx.Snapshot.ActivationStatusText,
+                            ["details"] = tx.Snapshot.ActivationStatusDetails
+                        },
+                        ["optionsSnapshot"] = JsonSerializer.SerializeToNode(tx.Snapshot.OptionsSnapshot, jsonOpts),
+                        ["doHEnabled"] = tx.Snapshot.DoHEnabled,
+                        ["selectedDnsPreset"] = tx.Snapshot.SelectedDnsPreset,
+                        ["udp443DropTargetIpCount"] = tx.Snapshot.Udp443DropTargetIpCount,
+                        ["activeTargetPolicies"] = JsonSerializer.SerializeToNode(tx.Snapshot.ActiveTargetPolicies, jsonOpts),
+                        ["activePolicies"] = JsonSerializer.SerializeToNode(tx.Snapshot.ActivePolicies, jsonOpts)
+                    };
+
+                    // Встроим policy snapshot как JSON, если возможно.
+                    if (!string.IsNullOrWhiteSpace(tx.Snapshot.PolicySnapshotJson))
+                    {
+                        try
+                        {
+                            snap["policySnapshot"] = JsonNode.Parse(tx.Snapshot.PolicySnapshotJson);
+                        }
+                        catch
+                        {
+                            snap["policySnapshotJson"] = tx.Snapshot.PolicySnapshotJson;
+                        }
+                    }
+
+                    node["snapshot"] = snap;
+                }
+
                 return node.ToJsonString(new JsonSerializerOptions
                 {
                     WriteIndented = true
@@ -487,6 +588,55 @@ namespace IspAudit.ViewModels
             catch
             {
                 return string.Empty;
+            }
+        }
+
+        private static BypassApplyContribution[] BuildContributions(
+            string planText,
+            string initiatorHostKey,
+            IReadOnlyList<BypassStateManager.ActiveTargetPolicy> activeTargetPolicies,
+            TlsBypassOptions optionsSnapshot,
+            bool doHEnabled)
+        {
+            try
+            {
+                var list = new List<BypassApplyContribution>();
+                var tokens = SplitPlanTokens(planText);
+
+                // Плановые «вклады» (по токенам плана).
+                if (tokens.Contains("DROP_UDP_443")) list.Add(BypassApplyContribution.Create("assist", "drop_udp_443", "true", "QUIC→TCP"));
+                if (tokens.Contains("ALLOW_NO_SNI")) list.Add(BypassApplyContribution.Create("assist", "allow_no_sni", "true", "No SNI"));
+                if (tokens.Contains("DROP_RST")) list.Add(BypassApplyContribution.Create("capability", "drop_rst", "true"));
+                if (tokens.Contains("TLS_FRAGMENT")) list.Add(BypassApplyContribution.Create("capability", "tls_fragment", "true"));
+                if (tokens.Contains("TLS_DISORDER")) list.Add(BypassApplyContribution.Create("capability", "tls_disorder", "true"));
+                if (tokens.Contains("TLS_FAKE")) list.Add(BypassApplyContribution.Create("capability", "tls_fake", "true"));
+
+                // Состояние на момент записи.
+                if (doHEnabled) list.Add(BypassApplyContribution.Create("state", "doh_enabled", "true"));
+                if (!string.IsNullOrWhiteSpace(optionsSnapshot.PresetName))
+                {
+                    list.Add(BypassApplyContribution.Create("state", "tls_preset", optionsSnapshot.PresetName));
+                }
+
+                // Вклад «активной цели» (P0.1 Step 1).
+                if (!string.IsNullOrWhiteSpace(initiatorHostKey) && activeTargetPolicies != null && activeTargetPolicies.Count > 0)
+                {
+                    var p = activeTargetPolicies.FirstOrDefault(v => string.Equals(v.HostKey, initiatorHostKey, StringComparison.OrdinalIgnoreCase));
+                    if (p != null)
+                    {
+                        list.Add(BypassApplyContribution.Create("target_policy", "host", p.HostKey));
+                        list.Add(BypassApplyContribution.Create("target_policy", "tls_strategy", p.TlsStrategy.ToString()));
+                        if (p.DropUdp443) list.Add(BypassApplyContribution.Create("target_policy", "drop_udp_443", "true"));
+                        if (p.AllowNoSni) list.Add(BypassApplyContribution.Create("target_policy", "allow_no_sni", "true"));
+                        if (p.HttpHostTricksEnabled) list.Add(BypassApplyContribution.Create("target_policy", "http_host_tricks", "true"));
+                    }
+                }
+
+                return list.ToArray();
+            }
+            catch
+            {
+                return Array.Empty<BypassApplyContribution>();
             }
         }
 

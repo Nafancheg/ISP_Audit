@@ -65,6 +65,7 @@ namespace TestNetworkApp.Smoke
                 ["REG-006"] = REG_Tcp443TlsStrategy_PerTarget_MultiGroup,
                 ["REG-007"] = REG_Tcp80HttpHostTricks_PerTarget_MultiGroup,
                 ["REG-008"] = REG_CapabilitiesUnion_TlsFragmentAndDisorder_StayEnabled,
+                ["REG-009"] = REG_ApplyTransactions_ContractV2_HasRequestSnapshotResultContributions,
 
                 ["PIPE-005"] = Pipe_UnifiedFilter_LoopbackDropped,
                 ["PIPE-006"] = Pipe_UnifiedFilter_NoiseOnlyOnDisplay,

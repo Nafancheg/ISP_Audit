@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
@@ -185,6 +186,66 @@ namespace TestNetworkApp.Smoke
                 {
                     try { Environment.SetEnvironmentVariable("ISP_AUDIT_APPLY_TRANSACTIONS_PATH", prev); } catch { }
                     try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> REG_ApplyTransactions_ContractV2_HasRequestSnapshotResultContributions(CancellationToken ct)
+            => RunAsync("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)", () =>
+            {
+                try
+                {
+                    using var engine = new IspAudit.Core.Traffic.TrafficEngine();
+                    var bypass = new BypassController(engine);
+
+                    bypass.RecordApplyTransaction(
+                        initiatorHostKey: "youtube.com",
+                        groupKey: "youtube.com",
+                        candidateIpEndpoints: new[] { "1.1.1.1" },
+                        appliedStrategyText: "Drop RST",
+                        planText: "DROP_RST",
+                        reasoning: "smoke");
+
+                    var json = bypass.TryGetLatestApplyTransactionJsonForGroupKey("youtube.com");
+                    if (string.IsNullOrWhiteSpace(json))
+                    {
+                        return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)",
+                            SmokeOutcome.Fail, TimeSpan.Zero, "JSON пуст");
+                    }
+
+                    JsonNode? root;
+                    try
+                    {
+                        root = JsonNode.Parse(json);
+                    }
+                    catch (Exception ex)
+                    {
+                        return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)",
+                            SmokeOutcome.Fail, TimeSpan.Zero, "JSON не парсится: " + ex.Message);
+                    }
+
+                    if (root == null)
+                    {
+                        return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)",
+                            SmokeOutcome.Fail, TimeSpan.Zero, "JSON root=null");
+                    }
+
+                    // v2 секции
+                    if (root["request"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет секции request");
+                    if (root["snapshot"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет секции snapshot");
+                    if (root["result"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет секции result");
+                    if (root["contributions"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет секции contributions");
+
+                    // Обратная совместимость: старые ключи остаются.
+                    if (root["candidateIpEndpoints"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет candidateIpEndpoints (ожидали обратную совместимость)");
+                    if (root["activationStatus"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет activationStatus (ожидали обратную совместимость)");
+
+                    return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)",
+                        SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)",
+                        SmokeOutcome.Fail, TimeSpan.Zero, ex.Message);
                 }
             }, ct);
 

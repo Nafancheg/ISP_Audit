@@ -127,7 +127,7 @@
         - ✅ TCP/80: HttpHostTricks компилируется per-target (DstIpv4Set) при наличии активных целей, с fallback на глобальную политику только если per-target правила не удалось собрать.
         - ✅ Закрыто (regression): TCP/80 per-target закреплён тестом `REG-007`.
         - ✅ Усиление (smoke/regression): «capabilities union» закреплён тестом `REG-008`.
-    - [ ] Шаг 2: Определить контракт данных для Transaction (Request/Snapshot/Result) и вкладов (contributions) + формат лог-строк. *(частично сделано: есть MVP-модель транзакции + лог-строка, но нет полного Request/Result контракта)*
+    - [x] Шаг 2: Определить контракт данных для Transaction (Request/Snapshot/Result) и вкладов (contributions) + формат лог-строк. *(Done: в `BypassApplyTransaction` добавлены секции `Request/Snapshot/Result` и `Contributions`, плюс регресс-гейт `REG-009` на структуру экспортируемого JSON.)*
     - [ ] Шаг 3: Вынести «применение обхода» в отдельный сервис уровня Core/Bypass (не UI), который возвращает TransactionResult + Snapshot.
     - [x] Шаг 4: Добавить in-memory журнал транзакций (N=50) и сохранение последних K транзакций на диск (LocalAppData) для репорта.
     - [x] Шаг 5: Добавить сбор «фактических endpoint-ов» в одном месте (DNS+SNI кеши + DNS resolve) и включить в Snapshot.
