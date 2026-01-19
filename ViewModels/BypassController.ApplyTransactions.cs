@@ -103,11 +103,19 @@ namespace IspAudit.ViewModels
             {
                 var activation = _stateManager.GetActivationStatusSnapshot();
 
+                var candidateIps = candidateIpEndpoints?.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+                    ?? Array.Empty<string>();
+
+                var expected = BuildExpectedEffects(planText ?? string.Empty, candidateIps);
+                var warnings = BuildWarnings(planText ?? string.Empty, candidateIps, activation.Text, ActivePolicies.Count);
+
                 var tx = new BypassApplyTransaction
                 {
                     InitiatorHostKey = initiatorHostKey ?? string.Empty,
                     GroupKey = groupKey ?? string.Empty,
-                    CandidateIpEndpoints = candidateIpEndpoints?.ToArray() ?? Array.Empty<string>(),
+                    CandidateIpEndpoints = candidateIps,
+                    ExpectedEffects = expected,
+                    Warnings = warnings,
                     AppliedStrategyText = appliedStrategyText ?? string.Empty,
                     PlanText = planText ?? string.Empty,
                     Reasoning = reasoning ?? string.Empty,
@@ -358,6 +366,14 @@ namespace IspAudit.ViewModels
                     {
                         WriteIndented = true
                     }),
+                    ["expectedEffects"] = JsonSerializer.SerializeToNode(tx.ExpectedEffects, new JsonSerializerOptions
+                    {
+                        WriteIndented = true
+                    }),
+                    ["warnings"] = JsonSerializer.SerializeToNode(tx.Warnings, new JsonSerializerOptions
+                    {
+                        WriteIndented = true
+                    }),
                     ["appliedStrategyText"] = tx.AppliedStrategyText,
                     ["planText"] = tx.PlanText,
                     ["reasoning"] = tx.Reasoning,
@@ -396,6 +412,92 @@ namespace IspAudit.ViewModels
             {
                 return string.Empty;
             }
+        }
+
+        private static string[] BuildExpectedEffects(string planText, IReadOnlyList<string> candidateIps)
+        {
+            var list = new System.Collections.Generic.List<string>();
+
+            var tokens = SplitPlanTokens(planText);
+            var hasTlsBypass = tokens.Contains("TLS_FRAGMENT") || tokens.Contains("TLS_DISORDER") || tokens.Contains("TLS_FAKE") || tokens.Contains("DROP_RST");
+
+            if (tokens.Contains("DROP_UDP_443"))
+            {
+                // Режим GLOBAL/селективный в транзакции не фиксируем (это опция), но эффект описываем универсально.
+                var scopeHint = candidateIps.Count == 0
+                    ? "(селективный режим требует endpoints)"
+                    : $"(IPs={candidateIps.Count})";
+                list.Add($"QUIC→TCP: при QUIC/HTTP3 трафике должен расти счётчик Udp443Dropped {scopeHint}");
+            }
+
+            if (hasTlsBypass)
+            {
+                list.Add("TLS bypass: при наличии TLS@443 (ClientHello@443) ожидается статус ACTIVATED и рост метрик обработки");
+            }
+
+            if (tokens.Contains("ALLOW_NO_SNI"))
+            {
+                list.Add("No SNI: обход должен применяться даже без распознанного SNI (ECH/ESNI/фрагментация)");
+            }
+
+            if (list.Count == 0)
+            {
+                list.Add("Ожидаемый эффект не определён: транзакция не содержит явных стратегий/assist-флагов");
+            }
+
+            return list.ToArray();
+        }
+
+        private static string[] BuildWarnings(string planText, IReadOnlyList<string> candidateIps, string activationText, int activePoliciesCount)
+        {
+            var list = new System.Collections.Generic.List<string>();
+
+            var tokens = SplitPlanTokens(planText);
+
+            if (tokens.Contains("DROP_UDP_443") && candidateIps.Count == 0)
+            {
+                list.Add("QUIC→TCP (селективно): endpoints пусты — UDP/443 может не глушиться, если цель не задана/не resolved");
+            }
+
+            if (string.Equals(activationText, "ENGINE_DEAD", StringComparison.OrdinalIgnoreCase))
+            {
+                list.Add("ENGINE_DEAD: TrafficEngine не запущен или метрики не обновляются — нужен запуск от администратора/проверка WinDivert");
+            }
+            else if (string.Equals(activationText, "BYPASS OFF", StringComparison.OrdinalIgnoreCase))
+            {
+                list.Add("BYPASS OFF: обход выключен — транзакция не может дать эффект");
+            }
+            else if (string.Equals(activationText, "NO_TRAFFIC", StringComparison.OrdinalIgnoreCase))
+            {
+                list.Add("NO_TRAFFIC: нет TLS@443 трафика — откройте HTTPS/игру, иначе метрики/эффект не проявятся");
+            }
+            else if (string.Equals(activationText, "NOT_ACTIVATED", StringComparison.OrdinalIgnoreCase))
+            {
+                list.Add("NOT_ACTIVATED: трафик есть, но эффекта по метрикам нет (возможна несовместимость стратегии или неверная цель)");
+            }
+
+            if (activePoliciesCount == 0)
+            {
+                list.Add("Policy-driven snapshot пуст: не видно активных FlowPolicy (возможно, ветка policy-driven не активна для текущего трафика)");
+            }
+
+            return list.ToArray();
+        }
+
+        private static System.Collections.Generic.HashSet<string> SplitPlanTokens(string planText)
+        {
+            var set = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(planText)) return set;
+
+            var parts = planText.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var p in parts)
+            {
+                var token = p.Trim();
+                if (token.Length == 0) continue;
+                set.Add(token);
+            }
+
+            return set;
         }
     }
 }

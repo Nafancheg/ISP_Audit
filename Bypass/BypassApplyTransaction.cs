@@ -35,6 +35,17 @@ namespace IspAudit.Bypass
         public IReadOnlyList<string> CandidateIpEndpoints { get; init; } = Array.Empty<string>();
 
         /// <summary>
+        /// Ожидаемые эффекты/инварианты после транзакции (для репорта и самодиагностики).
+        /// Пример: «при QUIC→TCP должен расти Udp443Dropped при трафике». 
+        /// </summary>
+        public IReadOnlyList<string> ExpectedEffects { get; init; } = Array.Empty<string>();
+
+        /// <summary>
+        /// Предупреждения (почему транзакция может не дать эффекта) — best-effort эвристики.
+        /// </summary>
+        public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
+
+        /// <summary>
         /// Человекочитаемый текст «что применили» для UI (например: "TLS Fragment + DROP UDP/443").
         /// </summary>
         public string AppliedStrategyText { get; init; } = string.Empty;
