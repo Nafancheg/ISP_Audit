@@ -3,6 +3,16 @@
     <!-- Включаем встроенные .NET analyzers для стабильности/безопасности. -->
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
 
+    <!--
+      NuGet vulnerability audit (NU1900) требует онлайн-доступа к https://api.nuget.org.
+      Для этого репозитория важно, чтобы сборка и smoke-тесты были воспроизводимы даже
+      в среде с блокировками/без интернета.
+
+      При необходимости аудит можно включить вручную:
+        dotnet restore -p:NuGetAudit=true
+    -->
+    <NuGetAudit>false</NuGetAudit>
+
     <!-- Оставляем дефолтные уровни SDK, чтобы не раздувать шум предупреждений. -->
   </PropertyGroup>
 </Project>
