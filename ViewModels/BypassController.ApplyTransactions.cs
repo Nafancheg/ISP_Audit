@@ -82,7 +82,13 @@ namespace IspAudit.ViewModels
             }, _ => true);
         }
 
-        public void RecordApplyTransaction(string initiatorHostKey, string appliedStrategyText, string planText, string? reasoning)
+        public void RecordApplyTransaction(
+            string initiatorHostKey,
+            string groupKey,
+            System.Collections.Generic.IReadOnlyList<string>? candidateIpEndpoints,
+            string appliedStrategyText,
+            string planText,
+            string? reasoning)
         {
             try
             {
@@ -91,6 +97,8 @@ namespace IspAudit.ViewModels
                 var tx = new BypassApplyTransaction
                 {
                     InitiatorHostKey = initiatorHostKey ?? string.Empty,
+                    GroupKey = groupKey ?? string.Empty,
+                    CandidateIpEndpoints = candidateIpEndpoints?.ToArray() ?? Array.Empty<string>(),
                     AppliedStrategyText = appliedStrategyText ?? string.Empty,
                     PlanText = planText ?? string.Empty,
                     Reasoning = reasoning ?? string.Empty,
@@ -116,7 +124,7 @@ namespace IspAudit.ViewModels
                     }
                 });
 
-                Log($"[P0.1][APPLY_TX] tx={tx.TransactionId}; host={tx.InitiatorHostKey}; applied={tx.AppliedStrategyText}; act={tx.ActivationStatusText}");
+                Log($"[P0.1][APPLY_TX] tx={tx.TransactionId}; host={tx.InitiatorHostKey}; group={tx.GroupKey}; ip={tx.CandidateIpEndpoints.Count}; applied={tx.AppliedStrategyText}; act={tx.ActivationStatusText}");
             }
             catch (Exception ex)
             {
@@ -188,6 +196,11 @@ namespace IspAudit.ViewModels
                     ["transactionId"] = tx.TransactionId,
                     ["createdAtUtc"] = tx.CreatedAtUtc,
                     ["initiatorHostKey"] = tx.InitiatorHostKey,
+                    ["groupKey"] = tx.GroupKey,
+                    ["candidateIpEndpoints"] = JsonSerializer.SerializeToNode(tx.CandidateIpEndpoints, new JsonSerializerOptions
+                    {
+                        WriteIndented = true
+                    }),
                     ["appliedStrategyText"] = tx.AppliedStrategyText,
                     ["planText"] = tx.PlanText,
                     ["reasoning"] = tx.Reasoning,

@@ -23,6 +23,18 @@ namespace IspAudit.Bypass
         public string InitiatorHostKey { get; init; } = string.Empty;
 
         /// <summary>
+        /// Групповой ключ для агрегации (доменный suffix, если применимо; иначе hostKey).
+        /// Используется для репортинга: «что применили к какой группе целей».
+        /// </summary>
+        public string GroupKey { get; init; } = string.Empty;
+
+        /// <summary>
+        /// Снимок candidate endpoints (IP) для цели на момент применения.
+        /// Best-effort: берётся из DNS/SNI кешей и/или короткого DNS resolve.
+        /// </summary>
+        public IReadOnlyList<string> CandidateIpEndpoints { get; init; } = Array.Empty<string>();
+
+        /// <summary>
         /// Человекочитаемый текст «что применили» для UI (например: "TLS Fragment + DROP UDP/443").
         /// </summary>
         public string AppliedStrategyText { get; init; } = string.Empty;

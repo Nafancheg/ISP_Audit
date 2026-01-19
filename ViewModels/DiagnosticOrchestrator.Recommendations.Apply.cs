@@ -505,6 +505,78 @@ namespace IspAudit.ViewModels
             return result;
         }
 
+        /// <summary>
+        /// Быстрый снимок candidate IP endpoints (для apply-транзакции):
+        /// - если hostKey = IP, возвращаем его
+        /// - иначе читаем только локальные кеши DNS/SNI (без DNS resolve)
+        /// </summary>
+        public System.Collections.Generic.IReadOnlyList<string> GetCachedCandidateIpEndpointsSnapshot(string hostKey)
+        {
+            var result = new System.Collections.Generic.List<string>();
+            var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            hostKey = (hostKey ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(hostKey)) return result;
+
+            if (IPAddress.TryParse(hostKey, out var directIp))
+            {
+                result.Add(directIp.ToString());
+                return result;
+            }
+
+            try
+            {
+                if (_dnsParser != null)
+                {
+                    foreach (var kv in _dnsParser.DnsCache)
+                    {
+                        if (!IsHostKeyMatch(kv.Value, hostKey)) continue;
+                        if (IPAddress.TryParse(kv.Key, out var ip) && seen.Add(ip.ToString()))
+                        {
+                            result.Add(ip.ToString());
+                        }
+                    }
+
+                    foreach (var kv in _dnsParser.SniCache)
+                    {
+                        if (!IsHostKeyMatch(kv.Value, hostKey)) continue;
+                        if (IPAddress.TryParse(kv.Key, out var ip) && seen.Add(ip.ToString()))
+                        {
+                            result.Add(ip.ToString());
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Best-effort снимок candidate IP endpoints (для apply-транзакции):
+        /// кеши + DNS resolve (с таймаутом, задаваемым CancellationToken).
+        /// </summary>
+        public async Task<System.Collections.Generic.IReadOnlyList<string>> ResolveCandidateIpEndpointsSnapshotAsync(string hostKey, CancellationToken ct)
+        {
+            try
+            {
+                var ips = await ResolveCandidateIpsAsync(hostKey, ct).ConfigureAwait(false);
+                return ips
+                    .Where(ip => ip != null)
+                    .Select(ip => ip.ToString())
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+            catch
+            {
+                return Array.Empty<string>();
+            }
+        }
+
         private static bool IsHostKeyMatch(string candidate, string hostKey)
         {
             if (string.IsNullOrWhiteSpace(candidate) || string.IsNullOrWhiteSpace(hostKey)) return false;

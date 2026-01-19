@@ -450,6 +450,8 @@
                                             <DataGrid.Columns>
                                                 <DataGridTextColumn Header="Time (UTC)" Binding="{Binding CreatedAtUtc}" Width="150"/>
                                                 <DataGridTextColumn Header="Host" Binding="{Binding InitiatorHostKey}" Width="*"/>
+                                                <DataGridTextColumn Header="Group" Binding="{Binding GroupKey}" Width="160"/>
+                                                <DataGridTextColumn Header="IPs" Binding="{Binding CandidateIpEndpoints.Count}" Width="50"/>
                                                 <DataGridTextColumn Header="Applied" Binding="{Binding AppliedStrategyText}" Width="200"/>
                                                 <DataGridTextColumn Header="Plan" Binding="{Binding PlanText}" Width="260"/>
                                                 <DataGridTextColumn Header="ACT" Binding="{Binding ActivationStatusText}" Width="110"/>

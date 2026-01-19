@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using IspAudit.Models;
@@ -40,7 +42,15 @@ namespace IspAudit.ViewModels
                     ApplyAppliedStrategyToResults(outcome.HostKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTarget(SelectedTestResult);
 
-                    Bypass.RecordApplyTransaction(outcome.HostKey, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
+                    var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
+                    var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
+                    if (endpoints.Count == 0)
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
+                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                    }
+
+                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
                 }
             }
             catch (OperationCanceledException)
@@ -97,7 +107,15 @@ namespace IspAudit.ViewModels
                     ApplyAppliedStrategyToResults(outcome.HostKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTarget(SelectedTestResult);
 
-                    Bypass.RecordApplyTransaction(outcome.HostKey, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
+                    var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
+                    var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
+                    if (endpoints.Count == 0)
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
+                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                    }
+
+                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
                 }
             }
             catch (OperationCanceledException)
@@ -158,7 +176,15 @@ namespace IspAudit.ViewModels
                     ApplyAppliedStrategyToResults(outcome.HostKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTarget(test);
 
-                    Bypass.RecordApplyTransaction(outcome.HostKey, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
+                    var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
+                    var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
+                    if (endpoints.Count == 0)
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
+                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                    }
+
+                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
                 }
             }
             catch (OperationCanceledException)
@@ -215,6 +241,29 @@ namespace IspAudit.ViewModels
             catch
             {
                 return null;
+            }
+        }
+
+        private static string ComputeApplyGroupKey(string hostKey, string? suggestedDomainSuffix)
+        {
+            try
+            {
+                hostKey = (hostKey ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(hostKey)) return string.Empty;
+
+                // IP адрес не агрегируем.
+                if (IPAddress.TryParse(hostKey, out _)) return hostKey;
+
+                var suffix = (suggestedDomainSuffix ?? string.Empty).Trim().Trim('.');
+                if (suffix.Length == 0) return hostKey;
+
+                if (hostKey.Equals(suffix, StringComparison.OrdinalIgnoreCase)) return suffix;
+                if (hostKey.EndsWith("." + suffix, StringComparison.OrdinalIgnoreCase)) return suffix;
+                return hostKey;
+            }
+            catch
+            {
+                return hostKey ?? string.Empty;
             }
         }
 
