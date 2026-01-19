@@ -18,11 +18,50 @@ namespace IspAudit.ViewModels
         {
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
 
+            // 1) Самый простой вариант: TestNetworkApp.exe лежит рядом с основным exe.
             var path = Path.Combine(baseDir, "TestNetworkApp.exe");
             if (File.Exists(path)) return path;
 
+            // 2) Вариант для publish-скриптов: подпапка рядом с основным exe.
             path = Path.Combine(baseDir, "TestNetworkApp", "bin", "Publish", "TestNetworkApp.exe");
             if (File.Exists(path)) return path;
+
+            // 3) Dev-расклад: основной exe лежит в bin/Debug|Release/...,
+            // а TestNetworkApp публикуется в <repoRoot>/TestNetworkApp/bin/Publish/.
+            var repoRoot = TryFindRepoRoot(Environment.CurrentDirectory) ?? TryFindRepoRoot(baseDir);
+            if (!string.IsNullOrWhiteSpace(repoRoot))
+            {
+                path = Path.Combine(repoRoot, "TestNetworkApp", "bin", "Publish", "TestNetworkApp.exe");
+                if (File.Exists(path)) return path;
+            }
+
+            // 4) Фолбэк: идём вверх от baseDir и пытаемся найти стандартный путь, даже если sln не найден.
+            var dir = new DirectoryInfo(baseDir);
+            for (var i = 0; i < 10 && dir is not null; i++)
+            {
+                path = Path.Combine(dir.FullName, "TestNetworkApp", "bin", "Publish", "TestNetworkApp.exe");
+                if (File.Exists(path)) return path;
+                dir = dir.Parent;
+            }
+
+            return null;
+        }
+
+        private static string? TryFindRepoRoot(string startDir)
+        {
+            if (string.IsNullOrWhiteSpace(startDir)) return null;
+
+            var dir = new DirectoryInfo(startDir);
+            for (int i = 0; i < 10 && dir is not null; i++)
+            {
+                var sln = Path.Combine(dir.FullName, "ISP_Audit.sln");
+                if (File.Exists(sln))
+                {
+                    return dir.FullName;
+                }
+
+                dir = dir.Parent;
+            }
 
             return null;
         }
