@@ -182,6 +182,22 @@ namespace IspAudit.Models
             }
         }
 
+        /// <summary>
+        /// Фактически применённая стратегия обхода для этой карточки (после нажатия "Подключить"/Apply).
+        /// </summary>
+        private string? _appliedBypassStrategy;
+        public string? AppliedBypassStrategy
+        {
+            get => _appliedBypassStrategy;
+            set
+            {
+                _appliedBypassStrategy = value;
+                OnPropertyChanged(nameof(AppliedBypassStrategy));
+                OnPropertyChanged(nameof(StrategyIconNames));
+                OnPropertyChanged(nameof(StrategyIconHint));
+            }
+        }
+
         public bool ShowConnectButton
             => IsBypassStrategyFromV2 &&
                !string.IsNullOrWhiteSpace(BypassStrategy) &&
@@ -189,15 +205,34 @@ namespace IspAudit.Models
                !string.Equals(BypassStrategy, PipelineContract.BypassUnknown, StringComparison.OrdinalIgnoreCase);
 
         public string StrategyIconHint
-            => ShowConnectButton ? (BypassStrategy ?? string.Empty) : string.Empty;
+        {
+            get
+            {
+                var applied = AppliedBypassStrategy;
+                var recommended = ShowConnectButton ? (BypassStrategy ?? string.Empty) : string.Empty;
+
+                if (!string.IsNullOrWhiteSpace(applied) && !string.IsNullOrWhiteSpace(recommended)
+                    && !string.Equals(applied, recommended, StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"Применено: {applied}\nРекомендация: {recommended}";
+                }
+
+                if (!string.IsNullOrWhiteSpace(applied))
+                {
+                    return $"Применено: {applied}";
+                }
+
+                return recommended;
+            }
+        }
 
         public string[] StrategyIconNames
         {
             get
             {
-                if (!ShowConnectButton) return Array.Empty<string>();
-
-                var text = BypassStrategy ?? string.Empty;
+                var text = !string.IsNullOrWhiteSpace(AppliedBypassStrategy)
+                    ? AppliedBypassStrategy!
+                    : (ShowConnectButton ? (BypassStrategy ?? string.Empty) : string.Empty);
                 if (string.IsNullOrWhiteSpace(text)) return Array.Empty<string>();
 
                 // Иконки делаем консистентными для таблицы и кнопок слева.

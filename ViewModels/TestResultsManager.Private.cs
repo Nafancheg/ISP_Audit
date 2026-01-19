@@ -199,6 +199,11 @@ namespace IspAudit.ViewModels
                             domainCard.IsBypassStrategyFromV2 = true;
                         }
 
+                        if (!string.IsNullOrWhiteSpace(src.AppliedBypassStrategy) && string.IsNullOrWhiteSpace(domainCard.AppliedBypassStrategy))
+                        {
+                            domainCard.AppliedBypassStrategy = src.AppliedBypassStrategy;
+                        }
+
                         TestResults.Remove(src);
                     }
 

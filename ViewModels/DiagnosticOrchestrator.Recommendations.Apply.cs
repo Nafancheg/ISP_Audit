@@ -37,19 +37,21 @@ namespace IspAudit.ViewModels
     {
         #region Recommendations (Apply)
 
+        public sealed record V2ApplyOutcome(string HostKey, string AppliedStrategyText);
+
         private static bool PlanHasApplicableActions(BypassPlan plan)
             => plan.Strategies.Count > 0 || plan.DropUdp443 || plan.AllowNoSni;
 
-        public Task ApplyRecommendationsAsync(BypassController bypassController)
+        public Task<V2ApplyOutcome?> ApplyRecommendationsAsync(BypassController bypassController)
             => ApplyRecommendationsAsync(bypassController, preferredHostKey: null);
 
-        public async Task ApplyRecommendationsForDomainAsync(BypassController bypassController, string domainSuffix)
+        public async Task<V2ApplyOutcome?> ApplyRecommendationsForDomainAsync(BypassController bypassController, string domainSuffix)
         {
             if (bypassController == null) throw new ArgumentNullException(nameof(bypassController));
-            if (string.IsNullOrWhiteSpace(domainSuffix)) return;
+            if (string.IsNullOrWhiteSpace(domainSuffix)) return null;
 
             var domain = domainSuffix.Trim().Trim('.');
-            if (string.IsNullOrWhiteSpace(domain)) return;
+            if (string.IsNullOrWhiteSpace(domain)) return null;
 
             // На данном этапе это управляемая "гибридная" логика:
             // - UI может предложить доменный режим (по анализу доменных семейств в UI-слое)
@@ -69,7 +71,7 @@ namespace IspAudit.ViewModels
             if (candidates.Count == 0)
             {
                 Log($"[V2][APPLY] Domain '{domain}': нет сохранённых планов");
-                return;
+                return null;
             }
 
             // Предпочитаем план от последнего v2 (если он из этого домена), иначе берём первый применимый.
@@ -99,26 +101,25 @@ namespace IspAudit.ViewModels
             if (plan == null || !PlanHasApplicableActions(plan))
             {
                 Log($"[V2][APPLY] Domain '{domain}': нет применимых действий в планах");
-                return;
+                return null;
             }
 
             Log($"[V2][APPLY] Domain '{domain}': apply from '{sourceHost}'");
-            await ApplyPlanInternalAsync(bypassController, domain, plan).ConfigureAwait(false);
+            return await ApplyPlanInternalAsync(bypassController, domain, plan).ConfigureAwait(false);
         }
 
-        public async Task ApplyRecommendationsAsync(BypassController bypassController, string? preferredHostKey)
+        public async Task<V2ApplyOutcome?> ApplyRecommendationsAsync(BypassController bypassController, string? preferredHostKey)
         {
             // 1) Пытаемся применить план для выбранной цели (если UI передал её).
             if (!string.IsNullOrWhiteSpace(preferredHostKey)
                 && _v2PlansByHost.TryGetValue(preferredHostKey.Trim(), out var preferredPlan)
                 && PlanHasApplicableActions(preferredPlan))
             {
-                await ApplyPlanInternalAsync(bypassController, preferredHostKey.Trim(), preferredPlan).ConfigureAwait(false);
-                return;
+                return await ApplyPlanInternalAsync(bypassController, preferredHostKey.Trim(), preferredPlan).ConfigureAwait(false);
             }
 
             // 2) Fallback: старый режим «последний v2 план».
-            if (_lastV2Plan == null || !PlanHasApplicableActions(_lastV2Plan)) return;
+            if (_lastV2Plan == null || !PlanHasApplicableActions(_lastV2Plan)) return null;
 
             // Защита от «устаревшего» плана: применяем только если план относится
             // к последней цели, для которой был показан v2-диагноз.
@@ -133,15 +134,15 @@ namespace IspAudit.ViewModels
                 ? _lastV2PlanHostKey
                 : _lastV2DiagnosisHostKey;
 
-            await ApplyPlanInternalAsync(bypassController, hostKey, _lastV2Plan).ConfigureAwait(false);
+            return await ApplyPlanInternalAsync(bypassController, hostKey, _lastV2Plan).ConfigureAwait(false);
         }
 
-        private async Task ApplyPlanInternalAsync(BypassController bypassController, string hostKey, BypassPlan plan)
+        private async Task<V2ApplyOutcome?> ApplyPlanInternalAsync(BypassController bypassController, string hostKey, BypassPlan plan)
         {
             if (NoiseHostFilter.Instance.IsNoiseHost(hostKey))
             {
                 Log($"[V2][APPLY] Skip: шумовой хост '{hostKey}'");
-                return;
+                return null;
             }
 
             _applyCts?.Dispose();
@@ -161,6 +162,10 @@ namespace IspAudit.ViewModels
             if (plan.AllowNoSni) planTokens.Add("ALLOW_NO_SNI");
             var planStrategies = planTokens.Count == 0 ? "(none)" : string.Join(", ", planTokens);
 
+            var appliedUiText = planTokens.Count == 0
+                ? string.Empty
+                : string.Join(" + ", planTokens.Select(FormatStrategyTokenForUi).Where(t => !string.IsNullOrWhiteSpace(t)));
+
             var beforeState = BuildBypassStateSummary(bypassController);
 
             try
@@ -171,16 +176,25 @@ namespace IspAudit.ViewModels
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[V2][APPLY] OK; after={afterState}");
                 ResetRecommendations();
+
+                if (!string.IsNullOrWhiteSpace(appliedUiText))
+                {
+                    return new V2ApplyOutcome(hostKey, appliedUiText);
+                }
+
+                return new V2ApplyOutcome(hostKey, "(none)");
             }
             catch (OperationCanceledException)
             {
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[V2][APPLY] ROLLBACK (cancel/timeout); after={afterState}");
+                return null;
             }
             catch (Exception ex)
             {
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[V2][APPLY] ROLLBACK (error); after={afterState}; error={ex.Message}");
+                return null;
             }
             finally
             {

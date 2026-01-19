@@ -29,13 +29,15 @@ namespace IspAudit.ViewModels
             try
             {
                 var preferredHostKey = GetPreferredHostKey(SelectedTestResult);
-                await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey);
+                var outcome = await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey).ConfigureAwait(false);
 
                 // Практический UX: сразу запускаем короткий пост-Apply ретест по цели.
                 _ = Orchestrator.StartPostApplyRetestAsync(Bypass, preferredHostKey);
 
-                if (Bypass.IsBypassActive && SelectedTestResult != null)
+                if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
                 {
+                    ClearAppliedBypassMarkers();
+                    ApplyAppliedStrategyToResults(outcome.HostKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTarget(SelectedTestResult);
                 }
             }
@@ -82,13 +84,15 @@ namespace IspAudit.ViewModels
                     return;
                 }
 
-                await Orchestrator.ApplyRecommendationsForDomainAsync(Bypass, domain).ConfigureAwait(false);
+                var outcome = await Orchestrator.ApplyRecommendationsForDomainAsync(Bypass, domain).ConfigureAwait(false);
 
                 // Практический UX: ретестим доменную цель.
                 _ = Orchestrator.StartPostApplyRetestAsync(Bypass, domain);
 
-                if (Bypass.IsBypassActive && SelectedTestResult != null)
+                if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
                 {
+                    ClearAppliedBypassMarkers();
+                    ApplyAppliedStrategyToResults(outcome.HostKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTarget(SelectedTestResult);
                 }
             }
@@ -139,13 +143,15 @@ namespace IspAudit.ViewModels
 
                 // Если для этой цели есть v2 план — применяем его.
                 // Если плана нет, ApplyRecommendationsAsync просто ничего не сделает (и это лучше, чем включать тумблеры вслепую).
-                await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey);
+                var outcome = await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey).ConfigureAwait(false);
 
                 // Практический UX: ретестим именно выбранную цель.
                 _ = Orchestrator.StartPostApplyRetestAsync(Bypass, preferredHostKey);
 
-                if (Bypass.IsBypassActive)
+                if (Bypass.IsBypassActive && outcome != null)
                 {
+                    ClearAppliedBypassMarkers();
+                    ApplyAppliedStrategyToResults(outcome.HostKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTarget(test);
                 }
             }
@@ -265,6 +271,61 @@ namespace IspAudit.ViewModels
                     if (r.IsAppliedBypassTarget)
                     {
                         r.IsAppliedBypassTarget = false;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(r.AppliedBypassStrategy))
+                    {
+                        r.AppliedBypassStrategy = null;
+                    }
+                }
+            });
+        }
+
+        private void ApplyAppliedStrategyToResults(string hostKey, string appliedStrategyText)
+        {
+            if (string.IsNullOrWhiteSpace(hostKey)) return;
+            if (string.IsNullOrWhiteSpace(appliedStrategyText)) return;
+
+            var key = hostKey.Trim().Trim('.');
+            if (string.IsNullOrWhiteSpace(key)) return;
+
+            UiBeginInvoke(() =>
+            {
+                foreach (var r in Results.TestResults)
+                {
+                    if (r?.Target == null) continue;
+
+                    var candidates = new[]
+                    {
+                        r.Target.SniHost,
+                        r.Target.Host,
+                        r.Target.Name,
+                        r.Target.FallbackIp
+                    };
+
+                    foreach (var c in candidates)
+                    {
+                        if (string.IsNullOrWhiteSpace(c)) continue;
+                        var cc = c.Trim().Trim('.');
+                        if (string.IsNullOrWhiteSpace(cc)) continue;
+
+                        if (System.Net.IPAddress.TryParse(key, out _))
+                        {
+                            if (string.Equals(cc, key, StringComparison.OrdinalIgnoreCase))
+                            {
+                                r.AppliedBypassStrategy = appliedStrategyText;
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            if (string.Equals(cc, key, StringComparison.OrdinalIgnoreCase)
+                                || cc.EndsWith("." + key, StringComparison.OrdinalIgnoreCase))
+                            {
+                                r.AppliedBypassStrategy = appliedStrategyText;
+                                break;
+                            }
+                        }
                     }
                 }
             });

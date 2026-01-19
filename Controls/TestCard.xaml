@@ -25,21 +25,21 @@
                 <!-- Title and Critical Badge -->
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                     <TextBlock x:Name="titleText" Style="{StaticResource BodyStyle}" FontWeight="Medium"/>
-                    <Border x:Name="criticalBadge" 
-                            Background="#FEF3F2" 
-                            CornerRadius="6" 
-                            Padding="8,2" 
+                    <Border x:Name="criticalBadge"
+                            Background="#FEF3F2"
+                            CornerRadius="6"
+                            Padding="8,2"
                             Margin="8,0,0,0"
                             Visibility="Collapsed">
-                        <TextBlock Text="Критичный" 
-                                   Style="{StaticResource CaptionStyle}" 
+                        <TextBlock Text="Критичный"
+                                   Style="{StaticResource CaptionStyle}"
                                    Foreground="{StaticResource FailBrush}"/>
                     </Border>
                 </StackPanel>
 
                 <!-- Service -->
-                <TextBlock x:Name="serviceText" 
-                           Style="{StaticResource BodyStyle}" 
+                <TextBlock x:Name="serviceText"
+                           Style="{StaticResource BodyStyle}"
                            Foreground="{StaticResource MutedBrush}"
                            Margin="0,0,0,6"/>
 
@@ -48,16 +48,16 @@
                     <Border Background="#F3F4F6" CornerRadius="4" Padding="8,4" BorderBrush="#E5E7EB" BorderThickness="1">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="SNI / IP / rDNS: " Foreground="#6B7280" FontSize="11" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="hostText" 
-                                       Style="{StaticResource CaptionStyle}" 
+                            <TextBlock x:Name="hostText"
+                                       Style="{StaticResource CaptionStyle}"
                                        FontFamily="Consolas"
                                        FontWeight="SemiBold"
                                        Foreground="#374151"
                                        TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
-                    <TextBlock x:Name="fallbackText" 
-                               Style="{StaticResource CaptionStyle}" 
+                    <TextBlock x:Name="fallbackText"
+                               Style="{StaticResource CaptionStyle}"
                                Margin="8,0,0,0"
                                Visibility="Collapsed"/>
                 </StackPanel>
@@ -102,10 +102,17 @@
                         <TextBlock Text="{Binding DataContext.BypassSemanticGroupsSummaryText, RelativeSource={RelativeSource AncestorType=Window}}"
                                    FontSize="10" FontWeight="SemiBold" Foreground="#374151" TextWrapping="Wrap"/>
                     </Border>
+
+                    <!-- Applied strategy (per-card, after Apply/Connect) -->
+                    <Border Background="#ECFDF3" CornerRadius="4" Padding="6,2" Margin="0,0,4,4"
+                            Visibility="{Binding TestResult.AppliedBypassStrategy, Converter={StaticResource StringToVisibilityConverter}}">
+                        <TextBlock Text="{Binding TestResult.AppliedBypassStrategy, StringFormat=Применено: {0}}"
+                                   FontSize="10" FontWeight="SemiBold" Foreground="#166534" TextWrapping="Wrap"/>
+                    </Border>
                 </WrapPanel>
 
                 <!-- Status Text -->
-                <TextBlock x:Name="statusText" 
+                <TextBlock x:Name="statusText"
                            Style="{StaticResource CaptionStyle}"
                            Margin="0,8,0,0"
                            Visibility="Collapsed"/>
