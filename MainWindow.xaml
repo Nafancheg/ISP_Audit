@@ -700,6 +700,34 @@
                                             </Border.Style>
                                             <TextBlock Text="ACTIVE" Foreground="#166534" FontWeight="SemiBold" FontSize="10"/>
                                         </Border>
+
+                                        <Border Background="#DBEAFE" CornerRadius="4" Padding="6,2" Margin="6,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsAppliedBypassTarget}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="APPLIED" Foreground="#1D4ED8" FontWeight="SemiBold" FontSize="10"/>
+                                        </Border>
+
+                                        <Border Background="#FEF3C7" CornerRadius="4" Padding="6,2" Margin="6,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Converter={StaticResource TestResultIsExcludedNoiseHostConverter}}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="EXCLUDED" Foreground="#92400E" FontWeight="SemiBold" FontSize="10"/>
+                                        </Border>
                                     </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>

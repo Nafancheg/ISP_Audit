@@ -38,7 +38,6 @@ namespace IspAudit.ViewModels
 
                 if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
                 {
-                    ClearAppliedBypassMarkers();
                     var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
                     ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTargetsForGroupKey(groupKey);
@@ -104,7 +103,6 @@ namespace IspAudit.ViewModels
 
                 if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
                 {
-                    ClearAppliedBypassMarkers();
                     var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
                     ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTargetsForGroupKey(groupKey);
@@ -174,7 +172,6 @@ namespace IspAudit.ViewModels
 
                 if (Bypass.IsBypassActive && outcome != null)
                 {
-                    ClearAppliedBypassMarkers();
                     var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
                     ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTargetsForGroupKey(groupKey);
@@ -693,12 +690,15 @@ namespace IspAudit.ViewModels
                     var hostKey = GetPreferredHostKey(r);
                     if (string.IsNullOrWhiteSpace(hostKey))
                     {
-                        r.IsAppliedBypassTarget = false;
                         continue;
                     }
 
                     var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
-                    r.IsAppliedBypassTarget = string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase);
+                    if (string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Аккумулятивная модель: отмечаем группу как применённую, не сбрасывая другие группы.
+                        r.IsAppliedBypassTarget = true;
+                    }
                 }
             });
         }

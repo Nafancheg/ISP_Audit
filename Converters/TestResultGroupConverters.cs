@@ -241,4 +241,47 @@ namespace IspAudit.Converters
             return candidates[0]?.Trim() ?? string.Empty;
         }
     }
+
+    public sealed class TestResultIsExcludedNoiseHostConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            try
+            {
+                var test = value as TestResult;
+                if (test?.Target == null) return false;
+
+                var candidates = new[]
+                {
+                    test.Target.SniHost,
+                    test.Target.Host,
+                    test.Target.Name,
+                    test.Target.FallbackIp
+                };
+
+                foreach (var c in candidates)
+                {
+                    if (string.IsNullOrWhiteSpace(c)) continue;
+                    var trimmed = c.Trim().Trim('.');
+                    if (string.IsNullOrWhiteSpace(trimmed)) continue;
+
+                    // IP не считаем «исключением». Это может быть полезная цель.
+                    if (IPAddress.TryParse(trimmed, out _)) return false;
+
+                    return NoiseHostFilter.Instance.IsNoiseHost(trimmed);
+                }
+
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
 }

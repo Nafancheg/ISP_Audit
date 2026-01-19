@@ -30,6 +30,7 @@
             <converters:TestResultToGroupKeyConverter x:Key="TestResultToGroupKeyConverter"/>
             <converters:TestResultIsInActiveGroupConverter x:Key="TestResultIsInActiveGroupConverter"/>
             <converters:TestResultHasDomainSuggestionConverter x:Key="TestResultHasDomainSuggestionConverter"/>
+            <converters:TestResultIsExcludedNoiseHostConverter x:Key="TestResultIsExcludedNoiseHostConverter"/>
 
             <!-- Статусные цвета (фиксированные) -->
             <SolidColorBrush x:Key="PassBrush" Color="#4CAF50"/>
