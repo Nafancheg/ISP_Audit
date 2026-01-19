@@ -127,7 +127,7 @@ namespace IspAudit.ViewModels
             ClearApplyTransactionsCommand = new RelayCommand(_ =>
             {
                 _applyTransactionsJournal.Clear();
-                Application.Current?.Dispatcher.Invoke(() =>
+                UiInvoke(() =>
                 {
                     ApplyTransactions.Clear();
                     SelectedApplyTransaction = null;
@@ -177,7 +177,7 @@ namespace IspAudit.ViewModels
 
                 _applyTransactionsJournal.Add(tx);
 
-                Application.Current?.Dispatcher.Invoke(() =>
+                UiInvoke(() =>
                 {
                     ApplyTransactions.Insert(0, tx);
                     while (ApplyTransactions.Count > ApplyTransactionsCapacity)
@@ -310,7 +310,7 @@ namespace IspAudit.ViewModels
                         .Take(ApplyTransactionsCapacity)
                         .ToList();
 
-                    Application.Current?.Dispatcher.Invoke(() =>
+                    UiInvoke(() =>
                     {
                         try
                         {
@@ -339,6 +339,32 @@ namespace IspAudit.ViewModels
                     // ignore
                 }
             });
+        }
+
+        private static void UiInvoke(Action action)
+        {
+            try
+            {
+                var dispatcher = Application.Current?.Dispatcher;
+                if (dispatcher == null)
+                {
+                    action();
+                    return;
+                }
+
+                if (dispatcher.CheckAccess())
+                {
+                    action();
+                }
+                else
+                {
+                    dispatcher.Invoke(action);
+                }
+            }
+            catch
+            {
+                // ignore
+            }
         }
 
         private static DateTimeOffset ParseCreatedAtUtcOrMin(string? value)

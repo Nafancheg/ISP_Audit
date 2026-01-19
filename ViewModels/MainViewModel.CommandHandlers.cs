@@ -22,6 +22,52 @@ namespace IspAudit.ViewModels
     {
         #region Command Handlers
 
+        private string GetStableApplyGroupKeyForHostKey(string? hostKey)
+        {
+            try
+            {
+                var hk = (hostKey ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(hk)) return string.Empty;
+
+                lock (_pinnedGroupKeyByHostKey)
+                {
+                    if (_pinnedGroupKeyByHostKey.TryGetValue(hk, out var pinned))
+                    {
+                        var pk = (pinned ?? string.Empty).Trim().Trim('.');
+                        if (!string.IsNullOrWhiteSpace(pk))
+                        {
+                            return pk;
+                        }
+                    }
+                }
+
+                return ComputeApplyGroupKey(hk, Results.SuggestedDomainSuffix);
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private void PinHostKeyToGroupKeyBestEffort(string? hostKey, string? groupKey)
+        {
+            try
+            {
+                var hk = (hostKey ?? string.Empty).Trim().Trim('.');
+                var gk = (groupKey ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(hk) || string.IsNullOrWhiteSpace(gk)) return;
+
+                lock (_pinnedGroupKeyByHostKey)
+                {
+                    _pinnedGroupKeyByHostKey[hk] = gk;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
         private void ToggleParticipationFromResult(TestResult? test)
         {
             try
@@ -42,7 +88,7 @@ namespace IspAudit.ViewModels
                     return;
                 }
 
-                var groupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                var groupKey = GetStableApplyGroupKeyForHostKey(hostKey);
                 var normalizedGroupKey = (groupKey ?? string.Empty).Trim().Trim('.');
                 if (string.IsNullOrWhiteSpace(normalizedGroupKey))
                 {
@@ -77,7 +123,11 @@ namespace IspAudit.ViewModels
                     }
                 }
 
+                // Step 11: как только пользователь явно управляет участием, пиним groupKey для hostKey.
+                PinHostKeyToGroupKeyBestEffort(normalizedHostKey, normalizedGroupKey);
+
                 PersistManualParticipationBestEffort();
+
                 UpdateManualParticipationMarkersForGroupKey(normalizedGroupKey);
                 UpdateSelectedResultApplyTransactionDetails();
 
@@ -112,6 +162,10 @@ namespace IspAudit.ViewModels
                     var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
                     ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTargetsForGroupKey(groupKey);
+
+                    // Step 11: user-initiated apply фиксирует groupKey для этой цели.
+                    PinHostKeyToGroupKeyBestEffort(outcome.HostKey, groupKey);
+                    PersistManualParticipationBestEffort();
 
                     var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
                     if (endpoints.Count == 0)
@@ -177,6 +231,10 @@ namespace IspAudit.ViewModels
                     var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
                     ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTargetsForGroupKey(groupKey);
+
+                    // Step 11: domain-apply также фиксирует groupKey (чтобы суффикс не "прыгал").
+                    PinHostKeyToGroupKeyBestEffort(outcome.HostKey, groupKey);
+                    PersistManualParticipationBestEffort();
 
                     var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
                     if (endpoints.Count == 0)
@@ -246,6 +304,10 @@ namespace IspAudit.ViewModels
                     var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
                     ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTargetsForGroupKey(groupKey);
+
+                    // Step 11: per-card apply фиксирует groupKey для этой цели.
+                    PinHostKeyToGroupKeyBestEffort(outcome.HostKey, groupKey);
+                    PersistManualParticipationBestEffort();
 
                     var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
                     if (endpoints.Count == 0)
@@ -382,15 +444,20 @@ namespace IspAudit.ViewModels
             {
                 try
                 {
-                    var groupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                    var groupKey = GetStableApplyGroupKeyForHostKey(hostKey);
                     SetActionStatusTextForGroupKey(groupKey, "Ретест запущен (очередь)");
-                    await Orchestrator.StartPostApplyRetestAsync(Bypass, hostKey).ConfigureAwait(false);
+
+                    // Step 12: не блокируем UI/OnDiagnosticComplete ожиданием ретеста.
+                    // Ретест запускается асинхронно.
+                    _ = Orchestrator.StartPostApplyRetestAsync(Bypass, hostKey);
                 }
                 catch (Exception ex)
                 {
                     Log($"[PerCardRetest] Error: {ex.Message}");
                 }
             }
+
+            await Task.CompletedTask;
         }
 
         private void SetActionStatusTextForGroupKey(string groupKey, string text)
@@ -406,7 +473,7 @@ namespace IspAudit.ViewModels
                     var hostKey = GetPreferredHostKey(r);
                     if (string.IsNullOrWhiteSpace(hostKey)) continue;
 
-                    var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                    var rowGroupKey = GetStableApplyGroupKeyForHostKey(hostKey);
                     if (string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase))
                     {
                         r.ActionStatusText = text;
@@ -449,7 +516,7 @@ namespace IspAudit.ViewModels
                         var hostKey = GetPreferredHostKey(r);
                         if (string.IsNullOrWhiteSpace(hostKey)) continue;
 
-                        var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                        var rowGroupKey = GetStableApplyGroupKeyForHostKey(hostKey);
                         if (string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase))
                         {
                             r.LastApplyTransactionText = summary;
@@ -545,7 +612,7 @@ namespace IspAudit.ViewModels
                     return;
                 }
 
-                var groupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                var groupKey = GetStableApplyGroupKeyForHostKey(hostKey);
                 var normalized = (groupKey ?? string.Empty).Trim().Trim('.');
                 SelectedResultApplyTransactionTitle = string.IsNullOrWhiteSpace(normalized)
                     ? "Детали применения обхода"
@@ -627,7 +694,7 @@ namespace IspAudit.ViewModels
                     var hostKey = GetPreferredHostKey(r);
                     if (string.IsNullOrWhiteSpace(hostKey)) continue;
 
-                    var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                    var rowGroupKey = GetStableApplyGroupKeyForHostKey(hostKey);
                     if (!string.Equals(rowGroupKey, normalizedGroupKey, StringComparison.OrdinalIgnoreCase)) continue;
 
                     var normalizedHostKey = hostKey.Trim().Trim('.');
@@ -690,7 +757,7 @@ namespace IspAudit.ViewModels
                         var hostKey = GetPreferredHostKey(r);
                         if (string.IsNullOrWhiteSpace(hostKey)) continue;
 
-                        var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                        var rowGroupKey = GetStableApplyGroupKeyForHostKey(hostKey);
                         if (!string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase)) continue;
 
                         var normalizedHostKey = hostKey.Trim().Trim('.');
@@ -742,7 +809,7 @@ namespace IspAudit.ViewModels
                 {
                     var hostKey = GetPreferredHostKey(r);
                     if (string.IsNullOrWhiteSpace(hostKey)) continue;
-                    var groupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                    var groupKey = GetStableApplyGroupKeyForHostKey(hostKey);
                     if (string.IsNullOrWhiteSpace(groupKey)) continue;
                     UpdateManualParticipationMarkersForGroupKey(groupKey);
                 }
@@ -983,7 +1050,7 @@ namespace IspAudit.ViewModels
                     var hostKey = GetPreferredHostKey(r);
                     if (string.IsNullOrWhiteSpace(hostKey)) continue;
 
-                    var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                    var rowGroupKey = GetStableApplyGroupKeyForHostKey(hostKey);
                     if (string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase))
                     {
                         if (IsHostManuallyExcludedFromGroupKey(key, hostKey))
@@ -1024,7 +1091,7 @@ namespace IspAudit.ViewModels
                         continue;
                     }
 
-                    var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                    var rowGroupKey = GetStableApplyGroupKeyForHostKey(hostKey);
                     if (string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase))
                     {
                         if (IsHostManuallyExcludedFromGroupKey(key, hostKey))

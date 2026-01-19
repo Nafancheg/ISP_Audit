@@ -312,6 +312,12 @@ namespace TestNetworkApp.Smoke
                     "ui" => id.StartsWith("UI-", StringComparison.OrdinalIgnoreCase),
                     "bypass" => id.StartsWith("BYPASS-", StringComparison.OrdinalIgnoreCase),
                     "dpi2" => id.StartsWith("DPI2-", StringComparison.OrdinalIgnoreCase),
+                    "orch" => id.StartsWith("ORCH-", StringComparison.OrdinalIgnoreCase),
+                    "cfg" => id.StartsWith("CFG-", StringComparison.OrdinalIgnoreCase),
+                    "err" => id.StartsWith("ERR-", StringComparison.OrdinalIgnoreCase),
+                    "e2e" => id.StartsWith("E2E-", StringComparison.OrdinalIgnoreCase),
+                    "perf" => id.StartsWith("PERF-", StringComparison.OrdinalIgnoreCase),
+                    "reg" => id.StartsWith("REG-", StringComparison.OrdinalIgnoreCase),
                     _ => true
                 };
             }

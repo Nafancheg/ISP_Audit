@@ -1,5 +1,7 @@
 using System;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -100,5 +102,145 @@ namespace TestNetworkApp.Smoke
                 return new SmokeTestResult("REG-002", "REG: VPN warning (детект)", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
             }
         }
+
+        public static Task<SmokeTestResult> REG_ApplyTransactions_Persisted_RoundTrip_NoWpf(CancellationToken ct)
+            => RunAsyncAwait("REG-003", "REG: P0.1 apply_transactions persist+reload (без WPF)", async _ =>
+            {
+                var sw = Stopwatch.StartNew();
+                string? prev = null;
+                var tempPath = Path.Combine(Path.GetTempPath(), $"isp_audit_apply_tx_smoke_{Guid.NewGuid():N}.json");
+
+                try
+                {
+                    prev = Environment.GetEnvironmentVariable("ISP_AUDIT_APPLY_TRANSACTIONS_PATH");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_APPLY_TRANSACTIONS_PATH", tempPath);
+
+                    try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+
+                    using var engine = new IspAudit.Core.Traffic.TrafficEngine();
+                    var bypass1 = new BypassController(engine);
+
+                    bypass1.RecordApplyTransaction(
+                        initiatorHostKey: "youtube.com",
+                        groupKey: "youtube.com",
+                        candidateIpEndpoints: new[] { "1.1.1.1" },
+                        appliedStrategyText: "Drop RST",
+                        planText: "DROP_RST",
+                        reasoning: "smoke");
+
+                    // Persist идет в фоне (best-effort) — ждём появления файла.
+                    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+                    while (DateTime.UtcNow < deadline && !File.Exists(tempPath))
+                    {
+                        await Task.Delay(50, ct).ConfigureAwait(false);
+                    }
+
+                    if (!File.Exists(tempPath))
+                    {
+                        return new SmokeTestResult("REG-003", "REG: P0.1 apply_transactions persist+reload (без WPF)", SmokeOutcome.Fail, sw.Elapsed,
+                            $"Файл не появился: {tempPath}");
+                    }
+
+                    // Теперь создаём новый контроллер: он должен подхватить сохранённое.
+                    var bypass2 = new BypassController(engine);
+
+                    deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+                    while (DateTime.UtcNow < deadline && bypass2.ApplyTransactions.Count == 0)
+                    {
+                        await Task.Delay(50, ct).ConfigureAwait(false);
+                    }
+
+                    if (bypass2.ApplyTransactions.Count == 0)
+                    {
+                        var json = "";
+                        try { json = File.ReadAllText(tempPath); } catch { }
+                        return new SmokeTestResult("REG-003", "REG: P0.1 apply_transactions persist+reload (без WPF)", SmokeOutcome.Fail, sw.Elapsed,
+                            "После reload ApplyTransactions пуст. persisted json=" + (string.IsNullOrWhiteSpace(json) ? "<empty>" : json.Substring(0, Math.Min(500, json.Length))));
+                    }
+
+                    var tx = bypass2.ApplyTransactions.First();
+                    if (!string.Equals((tx.GroupKey ?? "").Trim().Trim('.'), "youtube.com", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-003", "REG: P0.1 apply_transactions persist+reload (без WPF)", SmokeOutcome.Fail, sw.Elapsed,
+                            $"Ожидали GroupKey=youtube.com, получили '{tx.GroupKey}'");
+                    }
+
+                    var txJson = bypass2.TryGetLatestApplyTransactionJsonForGroupKey("youtube.com");
+                    if (string.IsNullOrWhiteSpace(txJson) || !txJson.Contains("CandidateIpEndpoints", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-003", "REG: P0.1 apply_transactions persist+reload (без WPF)", SmokeOutcome.Fail, sw.Elapsed,
+                            "JSON транзакции пуст или не содержит CandidateIpEndpoints");
+                    }
+
+                    return new SmokeTestResult("REG-003", "REG: P0.1 apply_transactions persist+reload (без WPF)", SmokeOutcome.Pass, sw.Elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-003", "REG: P0.1 apply_transactions persist+reload (без WPF)", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+                finally
+                {
+                    try { Environment.SetEnvironmentVariable("ISP_AUDIT_APPLY_TRANSACTIONS_PATH", prev); } catch { }
+                    try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> REG_PerCardRetest_Queued_DuringRun_ThenFlushed(CancellationToken ct)
+            => RunAsync("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", () =>
+            {
+                var vm = new MainViewModel();
+
+                var test = new IspAudit.Models.TestResult
+                {
+                    Target = new IspAudit.Models.Target
+                    {
+                        Host = "127.0.0.1",
+                        Name = "loopback",
+                        Service = "443",
+                        Critical = false
+                    }
+                };
+
+                vm.Results.TestResults.Add(test);
+
+                // Эмулируем состояние "идёт диагностика" без реального запуска pipeline.
+                SetPrivateField(vm.Orchestrator, "_isDiagnosticRunning", true);
+
+                vm.RetestFromResultCommand.Execute(test);
+
+                if (string.IsNullOrWhiteSpace(test.ActionStatusText) || !test.ActionStatusText.Contains("заплан", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SmokeTestResult("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали статус 'запланирован', получили '{test.ActionStatusText}'");
+                }
+
+                var pending = GetPrivateField<System.Collections.Generic.HashSet<string>>(vm, "_pendingManualRetestHostKeys");
+                if (!pending.Contains("127.0.0.1"))
+                {
+                    return new SmokeTestResult("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что hostKey окажется в очереди _pendingManualRetestHostKeys");
+                }
+
+                // Завершение диагностики: очередь должна быть сброшена и ретест должен быть запущен асинхронно.
+                SetPrivateField(vm.Orchestrator, "_isDiagnosticRunning", false);
+
+                var task = (Task)InvokePrivateMethod(vm, "RunPendingManualRetestsAfterRunAsync")!;
+                task.GetAwaiter().GetResult();
+
+                pending = GetPrivateField<System.Collections.Generic.HashSet<string>>(vm, "_pendingManualRetestHostKeys");
+                if (pending.Count != 0)
+                {
+                    return new SmokeTestResult("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "После flush ожидали, что очередь будет пустой");
+                }
+
+                if (string.IsNullOrWhiteSpace(test.ActionStatusText) || !test.ActionStatusText.Contains("очеред", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SmokeTestResult("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали статус с 'очередь', получили '{test.ActionStatusText}'");
+                }
+
+                return new SmokeTestResult("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+            }, ct);
     }
 }

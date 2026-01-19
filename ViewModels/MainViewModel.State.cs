@@ -273,7 +273,7 @@ namespace IspAudit.ViewModels
                 try
                 {
                     var host = Bypass.GetOutcomeTargetHost();
-                    return ComputeApplyGroupKey(host, Results.SuggestedDomainSuffix);
+                    return GetStableApplyGroupKeyForHostKey(host);
                 }
                 catch
                 {
