@@ -212,6 +212,21 @@ namespace IspAudit.Models
 
         public bool ShowActionStatusText => !string.IsNullOrWhiteSpace(ActionStatusText);
 
+        private bool _isManuallyExcludedFromApplyGroup;
+        public bool IsManuallyExcludedFromApplyGroup
+        {
+            get => _isManuallyExcludedFromApplyGroup;
+            set
+            {
+                if (_isManuallyExcludedFromApplyGroup == value) return;
+                _isManuallyExcludedFromApplyGroup = value;
+                OnPropertyChanged(nameof(IsManuallyExcludedFromApplyGroup));
+                OnPropertyChanged(nameof(ShowManuallyExcludedFromApplyGroup));
+            }
+        }
+
+        public bool ShowManuallyExcludedFromApplyGroup => IsManuallyExcludedFromApplyGroup;
+
         /// <summary>
         /// Фактически применённая стратегия обхода для этой карточки (после нажатия "Подключить"/Apply).
         /// </summary>

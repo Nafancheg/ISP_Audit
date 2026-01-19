@@ -728,6 +728,20 @@
                                             </Border.Style>
                                             <TextBlock Text="EXCLUDED" Foreground="#92400E" FontWeight="SemiBold" FontSize="10"/>
                                         </Border>
+
+                                        <Border Background="#FEE2E2" CornerRadius="4" Padding="6,2" Margin="6,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsManuallyExcludedFromApplyGroup}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="OUT" Foreground="#991B1B" FontWeight="SemiBold" FontSize="10"/>
+                                        </Border>
                                     </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
@@ -838,6 +852,29 @@
                                                 Command="{Binding DataContext.ReconnectFromResultCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}">
                                             <TextBlock Text="↻" FontSize="14"/>
+                                        </Button>
+
+                                        <Button Style="{StaticResource SecondaryButtonStyle}"
+                                                Padding="8,4"
+                                                FontSize="12"
+                                                Margin="8,0,0,0"
+                                                ToolTip="Исключить/вернуть карточку из состава группы (P0.1 participation)"
+                                                Command="{Binding DataContext.ToggleParticipationFromResultCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}">
+                                            <TextBlock>
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="🚫"/>
+                                                        <Setter Property="FontFamily" Value="Segoe UI Emoji"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsManuallyExcludedFromApplyGroup}" Value="True">
+                                                                <Setter Property="Text" Value="↩"/>
+                                                                <Setter Property="FontFamily" Value="Segoe UI Symbol"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                         </Button>
                                     </StackPanel>
 

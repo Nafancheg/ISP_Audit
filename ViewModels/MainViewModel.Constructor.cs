@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Linq;
 using System.Net;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -28,6 +30,10 @@ namespace IspAudit.ViewModels
         private string _pendingRetestReason = "";
 
         private readonly System.Collections.Generic.HashSet<string> _pendingManualRetestHostKeys = new(StringComparer.OrdinalIgnoreCase);
+
+        // P0.1 Step 7: manual participation (исключение карточек из группы) — пока UI-level модель.
+        private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>> _manualExcludedHostKeysByGroupKey
+            = new(StringComparer.OrdinalIgnoreCase);
 
         public MainViewModel()
         {
@@ -166,6 +172,7 @@ namespace IspAudit.ViewModels
                     OnPropertyChanged(nameof(ApplyDomainButtonText));
                     OnPropertyChanged(nameof(DomainSuggestionHintText));
                     OnPropertyChanged(nameof(ActiveApplyGroupKey));
+                    RefreshManualParticipationMarkersBestEffort();
                     CommandManager.InvalidateRequerySuggested();
                 }
             };
@@ -220,6 +227,9 @@ namespace IspAudit.ViewModels
             ReconnectFromResultCommand = new RelayCommand(async param => await ReconnectFromResultAsync(param as IspAudit.Models.TestResult),
                 _ => ShowBypassPanel);
 
+            ToggleParticipationFromResultCommand = new RelayCommand(param => ToggleParticipationFromResult(param as IspAudit.Models.TestResult),
+                _ => true);
+
             CopySelectedResultApplyTransactionJsonCommand = new RelayCommand(_ => CopySelectedResultApplyTransactionJson(),
                 _ => !string.IsNullOrWhiteSpace(SelectedResultApplyTransactionJson));
 
@@ -267,6 +277,7 @@ namespace IspAudit.ViewModels
                             if (string.IsNullOrWhiteSpace(groupKey)) continue;
 
                             UpdateLastApplyTransactionTextForGroupKey(groupKey);
+                            UpdateManualParticipationMarkersForGroupKey(groupKey);
                         }
                     }
                     catch
@@ -296,6 +307,7 @@ namespace IspAudit.ViewModels
                             if (!string.IsNullOrWhiteSpace(tx.GroupKey))
                             {
                                 UpdateLastApplyTransactionTextForGroupKey(tx.GroupKey);
+                                UpdateManualParticipationMarkersForGroupKey(tx.GroupKey);
                             }
                         }
 
@@ -313,7 +325,126 @@ namespace IspAudit.ViewModels
                 // ignore
             }
 
+            // Автозагрузка manual participation (best-effort).
+            LoadManualParticipationFromDiskBestEffort();
+
             Log("✓ MainViewModel инициализирован");
+        }
+
+        private static string GetManualParticipationPersistPath()
+        {
+            var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var dir = System.IO.Path.Combine(baseDir, "ISP_Audit");
+            return System.IO.Path.Combine(dir, "group_participation.json");
+        }
+
+        private void PersistManualParticipationBestEffort()
+        {
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    var path = GetManualParticipationPersistPath();
+                    var dir = System.IO.Path.GetDirectoryName(path);
+                    if (!string.IsNullOrWhiteSpace(dir))
+                    {
+                        System.IO.Directory.CreateDirectory(dir);
+                    }
+
+                    System.Collections.Generic.Dictionary<string, string[]> payload;
+                    lock (_manualExcludedHostKeysByGroupKey)
+                    {
+                        payload = _manualExcludedHostKeysByGroupKey
+                            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToArray(), StringComparer.OrdinalIgnoreCase);
+                    }
+
+                    var state = new ManualParticipationPersistStateV1
+                    {
+                        ExcludedHostKeysByGroupKey = payload
+                    };
+
+                    var json = JsonSerializer.Serialize(state, new JsonSerializerOptions
+                    {
+                        WriteIndented = true
+                    });
+
+                    System.IO.File.WriteAllText(path, json, System.Text.Encoding.UTF8);
+                }
+                catch
+                {
+                    // ignore
+                }
+            });
+        }
+
+        private void LoadManualParticipationFromDiskBestEffort()
+        {
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    var path = GetManualParticipationPersistPath();
+                    if (!System.IO.File.Exists(path)) return;
+
+                    var json = System.IO.File.ReadAllText(path);
+                    if (string.IsNullOrWhiteSpace(json)) return;
+
+                    var state = JsonSerializer.Deserialize<ManualParticipationPersistStateV1>(json);
+                    var map = state?.ExcludedHostKeysByGroupKey;
+                    if (map == null || map.Count == 0) return;
+
+                    lock (_manualExcludedHostKeysByGroupKey)
+                    {
+                        _manualExcludedHostKeysByGroupKey.Clear();
+                        foreach (var kvp in map)
+                        {
+                            var key = (kvp.Key ?? string.Empty).Trim().Trim('.');
+                            if (string.IsNullOrWhiteSpace(key)) continue;
+
+                            var set = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                            foreach (var host in kvp.Value ?? Array.Empty<string>())
+                            {
+                                var h = (host ?? string.Empty).Trim().Trim('.');
+                                if (string.IsNullOrWhiteSpace(h)) continue;
+                                set.Add(h);
+                            }
+
+                            if (set.Count > 0)
+                            {
+                                _manualExcludedHostKeysByGroupKey[key] = set;
+                            }
+                        }
+                    }
+
+                    // Обновим UI best-effort.
+                    try
+                    {
+                        foreach (var r in Results.TestResults)
+                        {
+                            var hostKey = GetPreferredHostKey(r);
+                            if (string.IsNullOrWhiteSpace(hostKey)) continue;
+                            var groupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                            if (string.IsNullOrWhiteSpace(groupKey)) continue;
+                            UpdateManualParticipationMarkersForGroupKey(groupKey);
+                        }
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+            });
+        }
+
+        private sealed record ManualParticipationPersistStateV1
+        {
+            public string Version { get; init; } = "v1";
+            public string SavedAtUtc { get; init; } = DateTimeOffset.UtcNow.ToString("u").TrimEnd();
+            public System.Collections.Generic.Dictionary<string, string[]> ExcludedHostKeysByGroupKey { get; init; } = new(StringComparer.OrdinalIgnoreCase);
         }
 
         public async Task InitializeAsync()

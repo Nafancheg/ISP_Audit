@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -19,6 +21,75 @@ namespace IspAudit.ViewModels
     public partial class MainViewModel
     {
         #region Command Handlers
+
+        private void ToggleParticipationFromResult(TestResult? test)
+        {
+            try
+            {
+                if (test == null) return;
+
+                var hostKey = GetPreferredHostKey(test);
+                if (string.IsNullOrWhiteSpace(hostKey))
+                {
+                    test.ActionStatusText = "Участие: нет цели";
+                    return;
+                }
+
+                // Не даём управлять участием для шумовых хостов.
+                if (!IPAddress.TryParse(hostKey, out _) && NoiseHostFilter.Instance.IsNoiseHost(hostKey))
+                {
+                    test.ActionStatusText = "Участие: шумовой хост (EXCLUDED)";
+                    return;
+                }
+
+                var groupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                var normalizedGroupKey = (groupKey ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(normalizedGroupKey))
+                {
+                    test.ActionStatusText = "Участие: группа не определена";
+                    return;
+                }
+
+                var normalizedHostKey = hostKey.Trim().Trim('.');
+
+                var nowExcluded = false;
+                lock (_manualExcludedHostKeysByGroupKey)
+                {
+                    if (!_manualExcludedHostKeysByGroupKey.TryGetValue(normalizedGroupKey, out var set))
+                    {
+                        set = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        _manualExcludedHostKeysByGroupKey[normalizedGroupKey] = set;
+                    }
+
+                    if (set.Contains(normalizedHostKey))
+                    {
+                        set.Remove(normalizedHostKey);
+                        if (set.Count == 0)
+                        {
+                            _manualExcludedHostKeysByGroupKey.Remove(normalizedGroupKey);
+                        }
+                        nowExcluded = false;
+                    }
+                    else
+                    {
+                        set.Add(normalizedHostKey);
+                        nowExcluded = true;
+                    }
+                }
+
+                PersistManualParticipationBestEffort();
+                UpdateManualParticipationMarkersForGroupKey(normalizedGroupKey);
+                UpdateSelectedResultApplyTransactionDetails();
+
+                test.ActionStatusText = nowExcluded
+                    ? "Участие: исключено из группы"
+                    : "Участие: возвращено в группу";
+            }
+            catch (Exception ex)
+            {
+                Log($"[P0.1][Participation] Error: {ex.Message}");
+            }
+        }
 
         private async Task ApplyRecommendationsAsync()
         {
@@ -417,12 +488,133 @@ namespace IspAudit.ViewModels
                     ? "Детали применения обхода"
                     : $"Детали применения обхода (группа: {normalized})";
 
-                SelectedResultApplyTransactionJson = Bypass.TryGetLatestApplyTransactionJsonForGroupKey(groupKey);
+                var txJson = Bypass.TryGetLatestApplyTransactionJsonForGroupKey(groupKey);
+                SelectedResultApplyTransactionJson = BuildSelectedResultDetailsJson(groupKey, txJson);
             }
             catch
             {
                 SelectedResultApplyTransactionTitle = "Детали применения обхода";
                 SelectedResultApplyTransactionJson = string.Empty;
+            }
+        }
+
+        private string BuildSelectedResultDetailsJson(string? groupKey, string txJson)
+        {
+            try
+            {
+                var root = new JsonObject
+                {
+                    ["groupKey"] = (groupKey ?? string.Empty).Trim().Trim('.'),
+                    ["participation"] = BuildParticipationSnapshotNode(groupKey)
+                };
+
+                if (!string.IsNullOrWhiteSpace(txJson))
+                {
+                    try
+                    {
+                        root["applyTransaction"] = JsonNode.Parse(txJson);
+                    }
+                    catch
+                    {
+                        root["applyTransactionJson"] = txJson;
+                    }
+                }
+
+                return root.ToJsonString(new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+            }
+            catch
+            {
+                // fallback: просто транзакция
+                return txJson ?? string.Empty;
+            }
+        }
+
+        private JsonNode BuildParticipationSnapshotNode(string? groupKey)
+        {
+            var normalizedGroupKey = (groupKey ?? string.Empty).Trim().Trim('.');
+            var excluded = new System.Collections.Generic.List<string>();
+
+            try
+            {
+                lock (_manualExcludedHostKeysByGroupKey)
+                {
+                    if (_manualExcludedHostKeysByGroupKey.TryGetValue(normalizedGroupKey, out var set))
+                    {
+                        excluded.AddRange(set.OrderBy(s => s, StringComparer.OrdinalIgnoreCase));
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return JsonSerializer.SerializeToNode(new
+            {
+                excludedHostKeys = excluded.ToArray()
+            }, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            }) ?? new JsonObject();
+        }
+
+        private void UpdateManualParticipationMarkersForGroupKey(string groupKey)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(groupKey)) return;
+                var key = groupKey.Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(key)) return;
+
+                System.Collections.Generic.HashSet<string>? excluded = null;
+                lock (_manualExcludedHostKeysByGroupKey)
+                {
+                    if (_manualExcludedHostKeysByGroupKey.TryGetValue(key, out var set))
+                    {
+                        excluded = new System.Collections.Generic.HashSet<string>(set, StringComparer.OrdinalIgnoreCase);
+                    }
+                }
+
+                UiBeginInvoke(() =>
+                {
+                    foreach (var r in Results.TestResults)
+                    {
+                        var hostKey = GetPreferredHostKey(r);
+                        if (string.IsNullOrWhiteSpace(hostKey)) continue;
+
+                        var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                        if (!string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase)) continue;
+
+                        var normalizedHostKey = hostKey.Trim().Trim('.');
+                        r.IsManuallyExcludedFromApplyGroup = excluded != null && excluded.Contains(normalizedHostKey);
+                    }
+                });
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void RefreshManualParticipationMarkersBestEffort()
+        {
+            try
+            {
+                foreach (var r in Results.TestResults)
+                {
+                    var hostKey = GetPreferredHostKey(r);
+                    if (string.IsNullOrWhiteSpace(hostKey)) continue;
+                    var groupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
+                    if (string.IsNullOrWhiteSpace(groupKey)) continue;
+                    UpdateManualParticipationMarkersForGroupKey(groupKey);
+                }
+            }
+            catch
+            {
+                // ignore
             }
         }
 
@@ -659,6 +851,10 @@ namespace IspAudit.ViewModels
                     var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
                     if (string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase))
                     {
+                        if (IsHostManuallyExcludedFromGroupKey(key, hostKey))
+                        {
+                            continue;
+                        }
                         r.AppliedBypassStrategy = appliedStrategyText;
                     }
                 }
@@ -696,11 +892,37 @@ namespace IspAudit.ViewModels
                     var rowGroupKey = ComputeApplyGroupKey(hostKey, Results.SuggestedDomainSuffix);
                     if (string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase))
                     {
+                        if (IsHostManuallyExcludedFromGroupKey(key, hostKey))
+                        {
+                            r.IsAppliedBypassTarget = false;
+                            continue;
+                        }
                         // Аккумулятивная модель: отмечаем группу как применённую, не сбрасывая другие группы.
                         r.IsAppliedBypassTarget = true;
                     }
                 }
             });
+        }
+
+        private bool IsHostManuallyExcludedFromGroupKey(string groupKey, string hostKey)
+        {
+            try
+            {
+                var key = (groupKey ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(key)) return false;
+
+                var hk = (hostKey ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(hk)) return false;
+
+                lock (_manualExcludedHostKeysByGroupKey)
+                {
+                    return _manualExcludedHostKeysByGroupKey.TryGetValue(key, out var set) && set.Contains(hk);
+                }
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private async Task StartOrCancelAsync()

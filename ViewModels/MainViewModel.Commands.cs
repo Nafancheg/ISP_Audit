@@ -29,6 +29,7 @@ namespace IspAudit.ViewModels
         public ICommand ConnectDomainFromResultCommand { get; }
         public ICommand RetestFromResultCommand { get; }
         public ICommand ReconnectFromResultCommand { get; }
+        public ICommand ToggleParticipationFromResultCommand { get; }
 
         // Step 9: детали применения для выбранной карточки
         public ICommand CopySelectedResultApplyTransactionJsonCommand { get; }
