@@ -1,9 +1,11 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using IspAudit.Bypass;
 using IspAudit.Wpf;
@@ -16,6 +18,8 @@ namespace IspAudit.ViewModels
     public partial class BypassController
     {
         private const int ApplyTransactionsCapacity = 50;
+        private const int ApplyTransactionsPersistCount = 10;
+        private const int ApplyTransactionsPersistMaxBytes = 2 * 1024 * 1024;
 
         private readonly BypassApplyTransactionJournal _applyTransactionsJournal = new(ApplyTransactionsCapacity);
 
@@ -79,7 +83,12 @@ namespace IspAudit.ViewModels
                     SelectedApplyTransaction = null;
                     ApplyTransactionsExportStatusText = "";
                 });
+
+                TryDeleteApplyTransactionsPersistedFile();
             }, _ => true);
+
+            // Автозагрузка сохранённых транзакций (best-effort).
+            LoadApplyTransactionsFromDiskBestEffort();
         }
 
         public void RecordApplyTransaction(
@@ -125,11 +134,159 @@ namespace IspAudit.ViewModels
                 });
 
                 Log($"[P0.1][APPLY_TX] tx={tx.TransactionId}; host={tx.InitiatorHostKey}; group={tx.GroupKey}; ip={tx.CandidateIpEndpoints.Count}; applied={tx.AppliedStrategyText}; act={tx.ActivationStatusText}");
+
+                PersistApplyTransactionsBestEffort();
             }
             catch (Exception ex)
             {
                 Log($"[P0.1][APPLY_TX] Ошибка записи транзакции: {ex.Message}");
             }
+        }
+
+        private sealed record ApplyTransactionsPersistedStateV1
+        {
+            public string Version { get; init; } = "v1";
+            public string SavedAtUtc { get; init; } = DateTimeOffset.UtcNow.ToString("u").TrimEnd();
+            public IReadOnlyList<BypassApplyTransaction> Transactions { get; init; } = Array.Empty<BypassApplyTransaction>();
+        }
+
+        private static string GetApplyTransactionsPersistPath()
+        {
+            var overridePath = Environment.GetEnvironmentVariable("ISP_AUDIT_APPLY_TRANSACTIONS_PATH");
+            if (!string.IsNullOrWhiteSpace(overridePath))
+            {
+                return overridePath;
+            }
+
+            var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var dir = Path.Combine(baseDir, "ISP_Audit");
+            return Path.Combine(dir, "apply_transactions.json");
+        }
+
+        private void PersistApplyTransactionsBestEffort()
+        {
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    var path = GetApplyTransactionsPersistPath();
+                    var dir = Path.GetDirectoryName(path);
+                    if (!string.IsNullOrWhiteSpace(dir))
+                    {
+                        Directory.CreateDirectory(dir);
+                    }
+
+                    // Берём последние K транзакций из UI коллекции (новые в начале).
+                    // Если UI ещё не успел обновиться, fallback на snapshot из журнала.
+                    List<BypassApplyTransaction> list;
+                    try
+                    {
+                        list = ApplyTransactions.Take(ApplyTransactionsPersistCount).ToList();
+                    }
+                    catch
+                    {
+                        list = _applyTransactionsJournal.Snapshot().Take(ApplyTransactionsPersistCount).ToList();
+                    }
+
+                    var payload = new ApplyTransactionsPersistedStateV1
+                    {
+                        Transactions = list
+                    };
+
+                    var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions
+                    {
+                        WriteIndented = true
+                    });
+
+                    if (json.Length > ApplyTransactionsPersistMaxBytes)
+                    {
+                        // Не пишем слишком большие файлы (best-effort защита от раздувания snapshot-ов).
+                        return;
+                    }
+
+                    File.WriteAllText(path, json, System.Text.Encoding.UTF8);
+                }
+                catch
+                {
+                    // ignore
+                }
+            });
+        }
+
+        private void TryDeleteApplyTransactionsPersistedFile()
+        {
+            try
+            {
+                var path = GetApplyTransactionsPersistPath();
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void LoadApplyTransactionsFromDiskBestEffort()
+        {
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    var path = GetApplyTransactionsPersistPath();
+                    if (!File.Exists(path)) return;
+
+                    var json = File.ReadAllText(path);
+                    if (string.IsNullOrWhiteSpace(json)) return;
+                    if (json.Length > ApplyTransactionsPersistMaxBytes) return;
+
+                    var state = JsonSerializer.Deserialize<ApplyTransactionsPersistedStateV1>(json);
+                    var list = state?.Transactions;
+                    if (list == null || list.Count == 0) return;
+
+                    // Стабильно сортируем: новые сверху. CreatedAtUtc у нас строкой в формате "u".
+                    var ordered = list
+                        .OrderByDescending(t => ParseCreatedAtUtcOrMin(t.CreatedAtUtc))
+                        .Take(ApplyTransactionsCapacity)
+                        .ToList();
+
+                    Application.Current?.Dispatcher.Invoke(() =>
+                    {
+                        try
+                        {
+                            ApplyTransactions.Clear();
+                            _applyTransactionsJournal.Clear();
+
+                            foreach (var tx in ordered)
+                            {
+                                ApplyTransactions.Add(tx);
+                                _applyTransactionsJournal.Add(tx);
+                            }
+
+                            if (SelectedApplyTransaction == null)
+                            {
+                                SelectedApplyTransaction = ApplyTransactions.FirstOrDefault();
+                            }
+                        }
+                        catch
+                        {
+                            // ignore
+                        }
+                    });
+                }
+                catch
+                {
+                    // ignore
+                }
+            });
+        }
+
+        private static DateTimeOffset ParseCreatedAtUtcOrMin(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return DateTimeOffset.MinValue;
+            return DateTimeOffset.TryParse(value, out var dt) ? dt : DateTimeOffset.MinValue;
         }
 
         private void ExportSelectedApplyTransaction()
