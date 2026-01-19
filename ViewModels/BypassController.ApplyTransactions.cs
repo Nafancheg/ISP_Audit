@@ -148,7 +148,9 @@ namespace IspAudit.ViewModels
             string appliedStrategyText,
             string planText,
             string? reasoning,
-            string? resultStatus = null)
+            string? resultStatus = null,
+            string? error = null,
+            string? rollbackStatus = null)
         {
             try
             {
@@ -203,6 +205,8 @@ namespace IspAudit.ViewModels
                 var result = new BypassApplyResult
                 {
                     Status = string.IsNullOrWhiteSpace(resultStatus) ? "RECORDED" : resultStatus.Trim(),
+                    Error = string.IsNullOrWhiteSpace(error) ? string.Empty : error.Trim(),
+                    RollbackStatus = string.IsNullOrWhiteSpace(rollbackStatus) ? string.Empty : rollbackStatus.Trim(),
                     AppliedStrategyText = appliedStrategyText ?? string.Empty,
                     PlanText = safePlanText,
                     Reasoning = safeReasoning,

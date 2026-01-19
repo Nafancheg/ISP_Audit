@@ -160,12 +160,16 @@ namespace IspAudit.ViewModels
                 if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
                 {
                     var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
-                    ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
-                    MarkAppliedBypassTargetsForGroupKey(groupKey);
 
-                    // Step 11: user-initiated apply фиксирует groupKey для этой цели.
-                    PinHostKeyToGroupKeyBestEffort(outcome.HostKey, groupKey);
-                    PersistManualParticipationBestEffort();
+                    if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
+                        MarkAppliedBypassTargetsForGroupKey(groupKey);
+
+                        // Step 11: user-initiated apply фиксирует groupKey для этой цели.
+                        PinHostKeyToGroupKeyBestEffort(outcome.HostKey, groupKey);
+                        PersistManualParticipationBestEffort();
+                    }
 
                     var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
                     if (endpoints.Count == 0)
@@ -174,7 +178,10 @@ namespace IspAudit.ViewModels
                         endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
                     }
 
-                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning, resultStatus: "APPLIED");
+                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning,
+                        resultStatus: outcome.Status,
+                        error: outcome.Error,
+                        rollbackStatus: outcome.RollbackStatus);
                     UpdateLastApplyTransactionTextForGroupKey(groupKey);
                 }
             }
@@ -229,12 +236,16 @@ namespace IspAudit.ViewModels
                 if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
                 {
                     var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
-                    ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
-                    MarkAppliedBypassTargetsForGroupKey(groupKey);
 
-                    // Step 11: domain-apply также фиксирует groupKey (чтобы суффикс не "прыгал").
-                    PinHostKeyToGroupKeyBestEffort(outcome.HostKey, groupKey);
-                    PersistManualParticipationBestEffort();
+                    if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
+                        MarkAppliedBypassTargetsForGroupKey(groupKey);
+
+                        // Step 11: domain-apply также фиксирует groupKey (чтобы суффикс не "прыгал").
+                        PinHostKeyToGroupKeyBestEffort(outcome.HostKey, groupKey);
+                        PersistManualParticipationBestEffort();
+                    }
 
                     var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
                     if (endpoints.Count == 0)
@@ -243,7 +254,10 @@ namespace IspAudit.ViewModels
                         endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
                     }
 
-                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning, resultStatus: "APPLIED");
+                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning,
+                        resultStatus: outcome.Status,
+                        error: outcome.Error,
+                        rollbackStatus: outcome.RollbackStatus);
                     UpdateLastApplyTransactionTextForGroupKey(groupKey);
                 }
             }
@@ -302,12 +316,16 @@ namespace IspAudit.ViewModels
                 if (Bypass.IsBypassActive && outcome != null)
                 {
                     var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
-                    ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
-                    MarkAppliedBypassTargetsForGroupKey(groupKey);
 
-                    // Step 11: per-card apply фиксирует groupKey для этой цели.
-                    PinHostKeyToGroupKeyBestEffort(outcome.HostKey, groupKey);
-                    PersistManualParticipationBestEffort();
+                    if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
+                        MarkAppliedBypassTargetsForGroupKey(groupKey);
+
+                        // Step 11: per-card apply фиксирует groupKey для этой цели.
+                        PinHostKeyToGroupKeyBestEffort(outcome.HostKey, groupKey);
+                        PersistManualParticipationBestEffort();
+                    }
 
                     var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
                     if (endpoints.Count == 0)
@@ -316,7 +334,10 @@ namespace IspAudit.ViewModels
                         endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
                     }
 
-                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning, resultStatus: "APPLIED");
+                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning,
+                        resultStatus: outcome.Status,
+                        error: outcome.Error,
+                        rollbackStatus: outcome.RollbackStatus);
                     UpdateLastApplyTransactionTextForGroupKey(groupKey);
                 }
             }

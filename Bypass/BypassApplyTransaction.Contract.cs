@@ -48,6 +48,13 @@ namespace IspAudit.Bypass
     {
         public string Status { get; init; } = "RECORDED";
 
+        // Наблюдаемость: почему транзакция не завершилась успешно (best-effort).
+        public string Error { get; init; } = string.Empty;
+
+        // Наблюдаемость: был ли откат и чем закончился (best-effort).
+        // Примеры: NOT_NEEDED / DONE / FAILED.
+        public string RollbackStatus { get; init; } = string.Empty;
+
         public string AppliedStrategyText { get; init; } = string.Empty;
         public string PlanText { get; init; } = string.Empty;
         public string Reasoning { get; init; } = string.Empty;

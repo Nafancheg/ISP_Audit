@@ -1038,6 +1038,13 @@
 **Входные данные:** Синтетическая транзакция через `BypassController.RecordApplyTransaction(..., resultStatus: "APPLIED")`
 **Ожидаемый результат:** JSON валиден и содержит `result.Status=APPLIED`
 
+**Test ID:** `REG-011`
+**Что проверяет:** В apply-транзакции сохраняются поля ошибок/отката (`result.Error`, `result.RollbackStatus`) и поддерживаются статусы `FAILED`/`CANCELED`
+**Для чего:** Регресс-гейт наблюдаемости: при отмене/ошибке должно быть видно не только факт записи, но и исход apply + результат отката
+**Критерий успеха:** Exported JSON содержит `result.Status` = `FAILED`/`CANCELED`, `result.Error` (для FAILED) и `result.RollbackStatus` (например `DONE`)
+**Входные данные:** Синтетические транзакции через `BypassController.RecordApplyTransaction(..., resultStatus: "FAILED", error: "...", rollbackStatus: "DONE")`
+**Ожидаемый результат:** JSON валиден и содержит указанные поля
+
 **Test ID:** `REG-004`
 **Что проверяет:** Per-card ретест во время диагностики ставится в очередь и флашится после завершения
 **Для чего:** Регресс-гейт UX: кнопка «Ретест» не должна быть «мертвой» во время диагностики

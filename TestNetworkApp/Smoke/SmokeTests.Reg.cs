@@ -301,6 +301,117 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> REG_ApplyTransactions_ResultStatus_AndRollback_ArePersisted(CancellationToken ct)
+            => RunAsync("REG-011", "REG: apply-транзакция сохраняет result.Status + Error + RollbackStatus", () =>
+            {
+                try
+                {
+                    using var engine = new IspAudit.Core.Traffic.TrafficEngine();
+                    var bypass = new BypassController(engine);
+
+                    bypass.RecordApplyTransaction(
+                        initiatorHostKey: "failed.test",
+                        groupKey: "failed.test",
+                        candidateIpEndpoints: new[] { "1.1.1.1" },
+                        appliedStrategyText: "Drop RST",
+                        planText: "DROP_RST",
+                        reasoning: "smoke",
+                        resultStatus: "FAILED",
+                        error: "boom",
+                        rollbackStatus: "DONE");
+
+                    bypass.RecordApplyTransaction(
+                        initiatorHostKey: "canceled.test",
+                        groupKey: "canceled.test",
+                        candidateIpEndpoints: new[] { "1.1.1.1" },
+                        appliedStrategyText: "Drop RST",
+                        planText: "DROP_RST",
+                        reasoning: "smoke",
+                        resultStatus: "CANCELED",
+                        rollbackStatus: "DONE");
+
+                    static SmokeTestResult Fail(string msg)
+                        => new("REG-011", "REG: apply-транзакция сохраняет result.Status + Error + RollbackStatus",
+                            SmokeOutcome.Fail, TimeSpan.Zero, msg);
+
+                    static bool TryParse(string json, out JsonNode? root)
+                    {
+                        try
+                        {
+                            root = JsonNode.Parse(json);
+                            return root != null;
+                        }
+                        catch
+                        {
+                            root = null;
+                            return false;
+                        }
+                    }
+
+                    var jsonFailed = bypass.TryGetLatestApplyTransactionJsonForGroupKey("failed.test");
+                    if (string.IsNullOrWhiteSpace(jsonFailed))
+                    {
+                        return Fail("FAILED JSON пуст");
+                    }
+
+                    if (!TryParse(jsonFailed, out var rootFailed))
+                    {
+                        return Fail("FAILED JSON не парсится");
+                    }
+
+                    var statusFailed = rootFailed?["result"]?["Status"]?.ToString();
+                    var errorFailed = rootFailed?["result"]?["Error"]?.ToString();
+                    var rollbackFailed = rootFailed?["result"]?["RollbackStatus"]?.ToString();
+
+                    if (!string.Equals(statusFailed, "FAILED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Fail($"FAILED: ожидали Status=FAILED, получили '{statusFailed ?? "(null)"}'");
+                    }
+
+                    if (!string.Equals(errorFailed, "boom", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Fail($"FAILED: ожидали Error='boom', получили '{errorFailed ?? "(null)"}'");
+                    }
+
+                    if (!string.Equals(rollbackFailed, "DONE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Fail($"FAILED: ожидали RollbackStatus=DONE, получили '{rollbackFailed ?? "(null)"}'");
+                    }
+
+                    var jsonCanceled = bypass.TryGetLatestApplyTransactionJsonForGroupKey("canceled.test");
+                    if (string.IsNullOrWhiteSpace(jsonCanceled))
+                    {
+                        return Fail("CANCELED JSON пуст");
+                    }
+
+                    if (!TryParse(jsonCanceled, out var rootCanceled))
+                    {
+                        return Fail("CANCELED JSON не парсится");
+                    }
+
+                    var statusCanceled = rootCanceled?["result"]?["Status"]?.ToString();
+                    var rollbackCanceled = rootCanceled?["result"]?["RollbackStatus"]?.ToString();
+
+                    if (!string.Equals(statusCanceled, "CANCELED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Fail($"CANCELED: ожидали Status=CANCELED, получили '{statusCanceled ?? "(null)"}'");
+                    }
+
+                    if (!string.Equals(rollbackCanceled, "DONE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Fail($"CANCELED: ожидали RollbackStatus=DONE, получили '{rollbackCanceled ?? "(null)"}'");
+                    }
+
+                    return new SmokeTestResult("REG-011", "REG: apply-транзакция сохраняет result.Status + Error + RollbackStatus",
+                        SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-011", "REG: apply-транзакция сохраняет result.Status + Error + RollbackStatus",
+                        SmokeOutcome.Fail, TimeSpan.Zero, ex.Message);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> REG_PerCardRetest_Queued_DuringRun_ThenFlushed(CancellationToken ct)
             => RunAsync("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", () =>
             {

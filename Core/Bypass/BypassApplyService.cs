@@ -35,6 +35,35 @@ namespace IspAudit.Core.Bypass
             TlsFragmentPreset? PlannedFragmentPreset,
             bool? PlannedAutoAdjustAggressive);
 
+        public sealed record BypassApplyExecutionResult(
+            string Status,
+            string Error,
+            string RollbackStatus,
+            string CancelReason,
+            BypassApplyStateSnapshot Before);
+
+        public sealed class BypassApplyCanceledException : OperationCanceledException
+        {
+            public BypassApplyExecutionResult Execution { get; }
+
+            public BypassApplyCanceledException(BypassApplyExecutionResult execution, CancellationToken token)
+                : base("Bypass apply canceled", null, token)
+            {
+                Execution = execution;
+            }
+        }
+
+        public sealed class BypassApplyFailedException : Exception
+        {
+            public BypassApplyExecutionResult Execution { get; }
+
+            public BypassApplyFailedException(BypassApplyExecutionResult execution, Exception inner)
+                : base("Bypass apply failed", inner)
+            {
+                Execution = execution;
+            }
+        }
+
         /// <summary>
         /// Применить v2 план с таймаутом/отменой и безопасным откатом.
         /// На ошибке/отмене выполняет rollback и пробрасывает исключение дальше.
@@ -134,20 +163,38 @@ namespace IspAudit.Core.Bypass
                 _log?.Invoke($"[V2][Executor] Apply {cancelReason} — rollback");
                 _log?.Invoke($"[V2][Executor] Rollback to: {before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
 
-                await RestoreSnapshotAsync(before).ConfigureAwait(false);
+                var rollbackOk = await RestoreSnapshotAsync(before).ConfigureAwait(false);
+                var rollbackStatus = rollbackOk ? "DONE" : "FAILED";
 
-                _log?.Invoke($"[V2][Executor] Rollback complete: after={before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
-                throw;
+                _log?.Invoke($"[V2][Executor] Rollback complete ({rollbackStatus}): after={before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
+
+                throw new BypassApplyCanceledException(
+                    new BypassApplyExecutionResult(
+                        Status: "CANCELED",
+                        Error: string.Empty,
+                        RollbackStatus: rollbackStatus,
+                        CancelReason: cancelReason,
+                        Before: before),
+                    cancellationToken);
             }
             catch (Exception ex)
             {
                 _log?.Invoke($"[V2][Executor] Apply failed: {ex.Message} — rollback");
                 _log?.Invoke($"[V2][Executor] Rollback to: {before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
 
-                await RestoreSnapshotAsync(before).ConfigureAwait(false);
+                var rollbackOk = await RestoreSnapshotAsync(before).ConfigureAwait(false);
+                var rollbackStatus = rollbackOk ? "DONE" : "FAILED";
 
-                _log?.Invoke($"[V2][Executor] Rollback complete: after={before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
-                throw;
+                _log?.Invoke($"[V2][Executor] Rollback complete ({rollbackStatus}): after={before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
+
+                throw new BypassApplyFailedException(
+                    new BypassApplyExecutionResult(
+                        Status: "FAILED",
+                        Error: ex.Message,
+                        RollbackStatus: rollbackStatus,
+                        CancelReason: string.Empty,
+                        Before: before),
+                    ex);
             }
             finally
             {
@@ -155,8 +202,9 @@ namespace IspAudit.Core.Bypass
             }
         }
 
-        private async Task RestoreSnapshotAsync(BypassApplyStateSnapshot snapshot)
+        private async Task<bool> RestoreSnapshotAsync(BypassApplyStateSnapshot snapshot)
         {
+            var ok = true;
             try
             {
                 await _stateManager.ApplyTlsOptionsAsync(snapshot.Options, CancellationToken.None).ConfigureAwait(false);
@@ -164,6 +212,7 @@ namespace IspAudit.Core.Bypass
             catch
             {
                 // best-effort
+                ok = false;
             }
 
             try
@@ -180,7 +229,10 @@ namespace IspAudit.Core.Bypass
             catch
             {
                 // best-effort
+                ok = false;
             }
+
+            return ok;
         }
 
         private BypassApplyPlanResult BuildPlannedState(BypassApplyStateSnapshot before, BypassPlan plan)

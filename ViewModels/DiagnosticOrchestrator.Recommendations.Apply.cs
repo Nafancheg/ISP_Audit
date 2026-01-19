@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.Core.Bypass;
 using IspAudit.Core.IntelligenceV2.Contracts;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
@@ -37,7 +38,12 @@ namespace IspAudit.ViewModels
     {
         #region Recommendations (Apply)
 
-        public sealed record V2ApplyOutcome(string HostKey, string AppliedStrategyText, string PlanText, string? Reasoning);
+        public sealed record V2ApplyOutcome(string HostKey, string AppliedStrategyText, string PlanText, string? Reasoning)
+        {
+            public string Status { get; init; } = "APPLIED";
+            public string Error { get; init; } = string.Empty;
+            public string RollbackStatus { get; init; } = string.Empty;
+        }
 
         private static bool PlanHasApplicableActions(BypassPlan plan)
             => plan.Strategies.Count > 0 || plan.DropUdp443 || plan.AllowNoSni;
@@ -179,22 +185,61 @@ namespace IspAudit.ViewModels
 
                 if (!string.IsNullOrWhiteSpace(appliedUiText))
                 {
-                    return new V2ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning);
+                    return new V2ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
+                    {
+                        Status = "APPLIED",
+                        RollbackStatus = "NOT_NEEDED"
+                    };
                 }
 
-                return new V2ApplyOutcome(hostKey, "(none)", planStrategies, plan.Reasoning);
+                return new V2ApplyOutcome(hostKey, "(none)", planStrategies, plan.Reasoning)
+                {
+                    Status = "APPLIED",
+                    RollbackStatus = "NOT_NEEDED"
+                };
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException oce)
             {
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[V2][APPLY] ROLLBACK (cancel/timeout); after={afterState}");
-                return null;
+
+                if (oce is BypassApplyService.BypassApplyCanceledException ce)
+                {
+                    return new V2ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
+                    {
+                        Status = ce.Execution.Status,
+                        RollbackStatus = ce.Execution.RollbackStatus
+                    };
+                }
+
+                // Cancel до входа в apply/rollback (или неизвестный источник отмены).
+                return new V2ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
+                {
+                    Status = "CANCELED",
+                    RollbackStatus = "NOT_NEEDED"
+                };
             }
             catch (Exception ex)
             {
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[V2][APPLY] ROLLBACK (error); after={afterState}; error={ex.Message}");
-                return null;
+
+                if (ex is BypassApplyService.BypassApplyFailedException fe)
+                {
+                    return new V2ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
+                    {
+                        Status = fe.Execution.Status,
+                        Error = fe.Execution.Error,
+                        RollbackStatus = fe.Execution.RollbackStatus
+                    };
+                }
+
+                return new V2ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
+                {
+                    Status = "FAILED",
+                    Error = ex.Message,
+                    RollbackStatus = "DONE"
+                };
             }
             finally
             {
