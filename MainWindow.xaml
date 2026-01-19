@@ -958,7 +958,7 @@
                         </Grid>
 
                         <TextBox Grid.Row="1"
-                                 Text="{Binding SelectedResultApplyTransactionJson}"
+                                 Text="{Binding SelectedResultApplyTransactionJson, Mode=OneWay}"
                                  Margin="0,8,0,0"
                                  FontFamily="Consolas"
                                  FontSize="11"
