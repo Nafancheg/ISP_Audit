@@ -95,7 +95,7 @@
 - Практика (стабильность SNI): SNI-кеш по IP ведётся по принципу **first-wins**, чтобы результаты не «плавали» между прогонами из-за смены SNI для одного IP. Разрешена замена только для случая **шум → не шум** (через `NoiseHostFilter`).
 - Метрика `Udp443Dropped` отображается в bypass-панели и помогает однозначно проверить, что QUIC действительно глушится.
 - Дополнительно есть явный assist-флаг `AllowNoSni` (тумблер `No SNI`): разрешает применять TLS-обход даже при отсутствии распознанного SNI (ECH/ESNI/фрагментация ClientHello).
-- В v2 контуре эти assist-флаги могут попадать в рекомендацию как токены `DROP_UDP_443` / `ALLOW_NO_SNI` и применяются при ручном `ApplyV2PlanAsync`.
+- В v2 контуре эти assist-флаги могут попадать в рекомендацию как токены `DROP_UDP_443` / `ALLOW_NO_SNI` и применяются при ручном `ApplyV2PlanAsync` (исполнение вынесено в `Core/Bypass/BypassApplyService`).
 
 Практика (после Apply):
 - После ручного `Apply` UI запускает короткий **пост-Apply ретест** по цели (активные TCP/TLS проверки), чтобы быстро показать, помог ли обход.
@@ -138,7 +138,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
         - `HttpHostTricks` → `BypassFilter` режет HTTP `Host:` по границе TCP сегментов (исходящий TCP/80) и дропает оригинал.
         - `BadChecksum` → для фейковых TCP пакетов используется расширенный send без пересчёта checksum и со сбросом checksum-флагов адреса.
 - Step 4 v2 Executor (MVP) подключён: `BypassExecutorMvp` формирует компактный, читаемый пользователем вывод (диагноз + уверенность + 1 короткое объяснение + список стратегий) и **не** применяет обход.
-- Реальный executor v2 (ручной apply, без auto-apply): `LiveTestingPipeline` публикует объектный `BypassPlan` через `OnV2PlanBuilt`, `DiagnosticOrchestrator` хранит последний план и применяет его только по клику пользователя через `BypassController.ApplyV2PlanAsync(...)` (таймаут/отмена/безопасный откат).
+- Реальный executor v2 (ручной apply, без auto-apply): `LiveTestingPipeline` публикует объектный `BypassPlan` через `OnV2PlanBuilt`, `DiagnosticOrchestrator` хранит последний план и применяет его только по клику пользователя через `BypassController.ApplyV2PlanAsync(...)`, который делегирует apply/timeout/rollback в `Core/Bypass/BypassApplyService`.
 - UX-гейт для корректности: `OnV2PlanBuilt` публикуется только для хостов, которые реально прошли фильтр отображения как проблема (попали в UI как issue), чтобы кнопка apply не применяла план, построенный по шумовому/успешному хосту.
 
 Актуализация (Runtime, 29.12.2025): Bypass State Manager (2.V2.12)
@@ -193,7 +193,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 ### As‑Is (реально есть в репозитории)
 - v2 контур подключён в рантайм: Signals → Diagnosis → Selector → Plan.
 - Auto-apply запрещён: применяется только по ручному действию пользователя (manual apply).
-- Реальный apply v2 реализован в `BypassController.ApplyV2PlanAsync(...)`: таймаут/отмена + безопасный rollback.
+- Реальный apply v2 реализован в `Core/Bypass/BypassApplyService`: таймаут/отмена + безопасный rollback; вызывается через `BypassController.ApplyV2PlanAsync(...)`.
 - Feedback store (MVP) реализован и может влиять на ранжирование в `StandardStrategySelectorV2`.
 
 ### Target (реалистичное целевое состояние)

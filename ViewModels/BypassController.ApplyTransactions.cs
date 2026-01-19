@@ -147,7 +147,8 @@ namespace IspAudit.ViewModels
             System.Collections.Generic.IReadOnlyList<string>? candidateIpEndpoints,
             string appliedStrategyText,
             string planText,
-            string? reasoning)
+            string? reasoning,
+            string? resultStatus = null)
         {
             try
             {
@@ -201,7 +202,7 @@ namespace IspAudit.ViewModels
 
                 var result = new BypassApplyResult
                 {
-                    Status = "RECORDED",
+                    Status = string.IsNullOrWhiteSpace(resultStatus) ? "RECORDED" : resultStatus.Trim(),
                     AppliedStrategyText = appliedStrategyText ?? string.Empty,
                     PlanText = safePlanText,
                     Reasoning = safeReasoning,

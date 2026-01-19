@@ -174,7 +174,7 @@ namespace IspAudit.ViewModels
                         endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
                     }
 
-                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
+                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning, resultStatus: "APPLIED");
                     UpdateLastApplyTransactionTextForGroupKey(groupKey);
                 }
             }
@@ -243,7 +243,7 @@ namespace IspAudit.ViewModels
                         endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
                     }
 
-                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
+                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning, resultStatus: "APPLIED");
                     UpdateLastApplyTransactionTextForGroupKey(groupKey);
                 }
             }
@@ -316,7 +316,7 @@ namespace IspAudit.ViewModels
                         endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
                     }
 
-                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
+                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning, resultStatus: "APPLIED");
                     UpdateLastApplyTransactionTextForGroupKey(groupKey);
                 }
             }

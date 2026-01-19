@@ -249,6 +249,58 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> REG_ApplyTransactions_ResultStatus_Applied_IsPersisted(CancellationToken ct)
+            => RunAsync("REG-010", "REG: apply-транзакция сохраняет result.Status=APPLIED", () =>
+            {
+                try
+                {
+                    using var engine = new IspAudit.Core.Traffic.TrafficEngine();
+                    var bypass = new BypassController(engine);
+
+                    bypass.RecordApplyTransaction(
+                        initiatorHostKey: "youtube.com",
+                        groupKey: "youtube.com",
+                        candidateIpEndpoints: new[] { "1.1.1.1" },
+                        appliedStrategyText: "Drop RST",
+                        planText: "DROP_RST",
+                        reasoning: "smoke",
+                        resultStatus: "APPLIED");
+
+                    var json = bypass.TryGetLatestApplyTransactionJsonForGroupKey("youtube.com");
+                    if (string.IsNullOrWhiteSpace(json))
+                    {
+                        return new SmokeTestResult("REG-010", "REG: apply-транзакция сохраняет result.Status=APPLIED",
+                            SmokeOutcome.Fail, TimeSpan.Zero, "JSON пуст");
+                    }
+
+                    JsonNode? root;
+                    try
+                    {
+                        root = JsonNode.Parse(json);
+                    }
+                    catch (Exception ex)
+                    {
+                        return new SmokeTestResult("REG-010", "REG: apply-транзакция сохраняет result.Status=APPLIED",
+                            SmokeOutcome.Fail, TimeSpan.Zero, "JSON не парсится: " + ex.Message);
+                    }
+
+                    var status = root?["result"]?["Status"]?.ToString();
+                    if (!string.Equals(status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-010", "REG: apply-транзакция сохраняет result.Status=APPLIED",
+                            SmokeOutcome.Fail, TimeSpan.Zero, $"Ожидали result.Status=APPLIED, получили '{status ?? "(null)"}'");
+                    }
+
+                    return new SmokeTestResult("REG-010", "REG: apply-транзакция сохраняет result.Status=APPLIED",
+                        SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-010", "REG: apply-транзакция сохраняет result.Status=APPLIED",
+                        SmokeOutcome.Fail, TimeSpan.Zero, ex.Message);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> REG_PerCardRetest_Queued_DuringRun_ThenFlushed(CancellationToken ct)
             => RunAsync("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", () =>
             {
