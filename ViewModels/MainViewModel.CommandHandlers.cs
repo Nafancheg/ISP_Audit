@@ -39,6 +39,8 @@ namespace IspAudit.ViewModels
                     ClearAppliedBypassMarkers();
                     ApplyAppliedStrategyToResults(outcome.HostKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTarget(SelectedTestResult);
+
+                    Bypass.RecordApplyTransaction(outcome.HostKey, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
                 }
             }
             catch (OperationCanceledException)
@@ -94,6 +96,8 @@ namespace IspAudit.ViewModels
                     ClearAppliedBypassMarkers();
                     ApplyAppliedStrategyToResults(outcome.HostKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTarget(SelectedTestResult);
+
+                    Bypass.RecordApplyTransaction(outcome.HostKey, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
                 }
             }
             catch (OperationCanceledException)
@@ -153,6 +157,8 @@ namespace IspAudit.ViewModels
                     ClearAppliedBypassMarkers();
                     ApplyAppliedStrategyToResults(outcome.HostKey, outcome.AppliedStrategyText);
                     MarkAppliedBypassTarget(test);
+
+                    Bypass.RecordApplyTransaction(outcome.HostKey, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning);
                 }
             }
             catch (OperationCanceledException)

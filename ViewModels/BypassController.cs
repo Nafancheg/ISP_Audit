@@ -275,6 +275,8 @@ namespace IspAudit.ViewModels
                 ExportPolicySnapshot();
             }, _ => true);
 
+            InitApplyTransactionsCommands();
+
             RefreshQuicObservability(null);
         }
 
@@ -361,6 +363,8 @@ namespace IspAudit.ViewModels
             {
                 ExportPolicySnapshot();
             }, _ => true);
+
+            InitApplyTransactionsCommands();
 
             RefreshQuicObservability(null);
         }

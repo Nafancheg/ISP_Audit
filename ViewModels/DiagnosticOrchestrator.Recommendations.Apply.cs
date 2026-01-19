@@ -37,7 +37,7 @@ namespace IspAudit.ViewModels
     {
         #region Recommendations (Apply)
 
-        public sealed record V2ApplyOutcome(string HostKey, string AppliedStrategyText);
+        public sealed record V2ApplyOutcome(string HostKey, string AppliedStrategyText, string PlanText, string? Reasoning);
 
         private static bool PlanHasApplicableActions(BypassPlan plan)
             => plan.Strategies.Count > 0 || plan.DropUdp443 || plan.AllowNoSni;
@@ -179,10 +179,10 @@ namespace IspAudit.ViewModels
 
                 if (!string.IsNullOrWhiteSpace(appliedUiText))
                 {
-                    return new V2ApplyOutcome(hostKey, appliedUiText);
+                    return new V2ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning);
                 }
 
-                return new V2ApplyOutcome(hostKey, "(none)");
+                return new V2ApplyOutcome(hostKey, "(none)", planStrategies, plan.Reasoning);
             }
             catch (OperationCanceledException)
             {

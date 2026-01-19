@@ -419,6 +419,56 @@
                                     </StackPanel>
                                 </TabItem>
 
+                                <TabItem Header="Применение" FontSize="13">
+                                    <StackPanel Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                            <Button Content="💾 Экспорт транзакции" Command="{Binding Bypass.ExportSelectedApplyTransactionCommand}"
+                                                    Height="32" FontSize="12" HorizontalAlignment="Left"
+                                                    ToolTip="Сохраняет JSON выбранной транзакции применения обхода и копирует в буфер"/>
+                                            <Button Content="🧹 Очистить" Command="{Binding Bypass.ClearApplyTransactionsCommand}"
+                                                    Height="32" FontSize="12" Margin="8,0,0,0" HorizontalAlignment="Left"
+                                                    ToolTip="Очищает журнал транзакций применения (только в UI)"/>
+                                            <TextBlock Text="{Binding Bypass.ApplyTransactionsExportStatusText}" FontSize="12"
+                                                       Margin="10,0,0,0" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                       TextWrapping="Wrap"
+                                                       Visibility="{Binding Bypass.ApplyTransactionsExportStatusText, Converter={StaticResource StringToVisibilityConverter}}"/>
+                                        </StackPanel>
+
+                                        <DataGrid ItemsSource="{Binding Bypass.ApplyTransactions}"
+                                                  SelectedItem="{Binding Bypass.SelectedApplyTransaction, Mode=TwoWay}"
+                                                  AutoGenerateColumns="False"
+                                                  CanUserAddRows="False"
+                                                  CanUserDeleteRows="False"
+                                                  IsReadOnly="True"
+                                                  HeadersVisibility="Column"
+                                                  GridLinesVisibility="None"
+                                                  FontSize="12"
+                                                  Height="220"
+                                                  RowBackground="{DynamicResource MaterialDesignPaper}"
+                                                  AlternatingRowBackground="{DynamicResource MaterialDesignPaper}">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Time (UTC)" Binding="{Binding CreatedAtUtc}" Width="150"/>
+                                                <DataGridTextColumn Header="Host" Binding="{Binding InitiatorHostKey}" Width="*"/>
+                                                <DataGridTextColumn Header="Applied" Binding="{Binding AppliedStrategyText}" Width="200"/>
+                                                <DataGridTextColumn Header="Plan" Binding="{Binding PlanText}" Width="260"/>
+                                                <DataGridTextColumn Header="ACT" Binding="{Binding ActivationStatusText}" Width="110"/>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+
+                                        <TextBlock Text="JSON транзакции (для репорта)" FontWeight="SemiBold" FontSize="13" Margin="0,10,0,6"/>
+
+                                        <TextBox Style="{StaticResource ModernTextBoxStyle}"
+                                                 Text="{Binding Bypass.SelectedApplyTransactionJson, Mode=OneWay}"
+                                                 IsReadOnly="True"
+                                                 AcceptsReturn="True"
+                                                 TextWrapping="Wrap"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 Height="200"
+                                                 materialDesign:HintAssist.Hint="Выберите строку выше, чтобы увидеть JSON"/>
+                                    </StackPanel>
+                                </TabItem>
+
                                 <TabItem Header="Hostlist" FontSize="13">
                                     <StackPanel Margin="0,8,0,0">
                                         <CheckBox Content="Авто-hostlist (показывать кандидатов)"
