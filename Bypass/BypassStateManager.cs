@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -321,18 +322,45 @@ namespace IspAudit.Bypass
                     }
                     else
                     {
+                        // P0.1 Step 1: поддерживаем несколько активных целей одновременно.
+                        // Поэтому в селективном режиме собираем union по нескольким активным host.
                         var host = _outcomeTargetHost;
                         if (!string.IsNullOrWhiteSpace(host))
                         {
-                            udp443Targets = await GetOrSeedUdp443DropTargetsAsync(host, cancellationToken).ConfigureAwait(false);
+                            RememberUdp443ActiveHost(host);
+                        }
+
+                        var hosts = GetActiveUdp443HostsSnapshot(host);
+                        if (hosts.Length == 0)
+                        {
+                            _log?.Invoke("[Bypass] DROP UDP/443 включён, но цель (host) не задана — UDP/443 не будет глушиться (селективный режим)");
+                        }
+                        else
+                        {
+                            // union observed IP по активным host (cap)
+                            var union = new HashSet<uint>();
+                            foreach (var h in hosts)
+                            {
+                                if (string.IsNullOrWhiteSpace(h)) continue;
+                                var ips = await GetOrSeedUdp443DropTargetsAsync(h, cancellationToken).ConfigureAwait(false);
+                                foreach (var ip in ips)
+                                {
+                                    if (ip == 0) continue;
+                                    union.Add(ip);
+                                    if (union.Count >= 32) break;
+                                }
+                                if (union.Count >= 32) break;
+                            }
+
+                            udp443Targets = union.Count == 0 ? Array.Empty<uint>() : union.Take(32).ToArray();
                             if (udp443Targets.Length == 0)
                             {
                                 _log?.Invoke("[Bypass] DROP UDP/443 включён, но IP цели не определены — UDP/443 не будет глушиться (селективный режим)");
                             }
-                        }
-                        else
-                        {
-                            _log?.Invoke("[Bypass] DROP UDP/443 включён, но цель (host) не задана — UDP/443 не будет глушиться (селективный режим)");
+                            else if (hosts.Length > 1)
+                            {
+                                _log?.Invoke($"[Bypass] DROP UDP/443 (селективно): активных целей={hosts.Length}; IPv4 targets={udp443Targets.Length}");
+                            }
                         }
                     }
                 }

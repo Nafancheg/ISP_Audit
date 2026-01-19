@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using IspAudit.Bypass;
 using IspAudit.Utils;
 using IspAudit.ViewModels;
 
@@ -241,6 +242,59 @@ namespace TestNetworkApp.Smoke
                 }
 
                 return new SmokeTestResult("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+            }, ct);
+
+        public static Task<SmokeTestResult> REG_QuicFallback_Selective_MultiTarget_DoesNotForgetPrevious(CancellationToken ct)
+            => RunAsyncAwait("REG-005", "REG: QUIC fallback (селективно) поддерживает несколько активных целей", async _ =>
+            {
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    var baseProfile = BypassProfile.CreateDefault();
+
+                    using var engine = new IspAudit.Core.Traffic.TrafficEngine();
+                    using var tls = new TlsBypassService(
+                        engine,
+                        baseProfile,
+                        log: null,
+                        startMetricsTimer: false,
+                        useTrafficEngine: false,
+                        nowProvider: () => DateTime.UtcNow);
+
+                    var bypass = new BypassController(tls, baseProfile);
+
+                    // Включаем QUIC→TCP (DROP UDP/443) в селективном режиме.
+                    bypass.IsQuicFallbackEnabled = true;
+                    bypass.IsQuicFallbackGlobal = false;
+
+                    // Используем IPv4-строки как "host": Dns.GetHostAddressesAsync на них возвращает тот же IP.
+                    bypass.SetOutcomeTargetHost("1.1.1.1");
+                    await bypass.ApplyBypassOptionsAsync(ct).ConfigureAwait(false);
+
+                    var manager = GetPrivateField<IspAudit.Bypass.BypassStateManager>(bypass, "_stateManager");
+                    var count1 = manager.GetUdp443DropTargetIpCountSnapshot();
+                    if (count1 < 1)
+                    {
+                        return new SmokeTestResult("REG-005", "REG: QUIC fallback (селективно) поддерживает несколько активных целей", SmokeOutcome.Fail, sw.Elapsed,
+                            $"Ожидали targets>=1 после первой цели, получили {count1}");
+                    }
+
+                    bypass.SetOutcomeTargetHost("2.2.2.2");
+                    await bypass.ApplyBypassOptionsAsync(ct).ConfigureAwait(false);
+
+                    var count2 = manager.GetUdp443DropTargetIpCountSnapshot();
+                    if (count2 < 2)
+                    {
+                        return new SmokeTestResult("REG-005", "REG: QUIC fallback (селективно) поддерживает несколько активных целей", SmokeOutcome.Fail, sw.Elapsed,
+                            $"Ожидали union targets>=2 после второй цели (мульти-цель), получили {count2}");
+                    }
+
+                    return new SmokeTestResult("REG-005", "REG: QUIC fallback (селективно) поддерживает несколько активных целей", SmokeOutcome.Pass, sw.Elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-005", "REG: QUIC fallback (селективно) поддерживает несколько активных целей", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
             }, ct);
     }
 }
