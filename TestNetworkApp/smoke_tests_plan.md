@@ -1059,6 +1059,13 @@
 **Входные данные:** In-memory сценарий: два hostKey (один excluded), два apply (с разными plan tokens и endpoints)
 **Ожидаемый результат:** AttachmentCount=2, Included=1, Excluded=1, union endpoints=2, флаги OR=true, excluded не сброшен
 
+**Test ID:** `REG-014`
+**Что проверяет:** Round-trip сохранения/загрузки `%LocalAppData%\ISP_Audit\group_participation.json` через `GroupBypassAttachmentStore` (overridePath)
+**Для чего:** Регресс-гейт P0.1 Step 15: участие/пиннинг должны переживать перезапуск приложения и не зависеть от UI-level словарей
+**Критерий успеха:** После persist+reload восстанавливаются pinning `hostKey -> groupKey` и ручные excluded hostKey для группы
+**Входные данные:** In-memory store + временный путь файла (temp), pinning двух hostKey и excluded одного hostKey
+**Ожидаемый результат:** `TryGetPinnedGroupKey` возвращает ожидаемый groupKey для обоих hostKey; `IsExcluded` true только для исключённого hostKey
+
 **Test ID:** `REG-004`
 **Что проверяет:** Per-card ретест во время диагностики ставится в очередь и флашится после завершения
 **Для чего:** Регресс-гейт UX: кнопка «Ретест» не должна быть «мертвой» во время диагностики

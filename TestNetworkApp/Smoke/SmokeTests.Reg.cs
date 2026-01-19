@@ -551,6 +551,81 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> REG_GroupParticipation_Persisted_RoundTrip_ThroughStore(CancellationToken ct)
+            => RunAsyncAwait("REG-014", "REG: group_participation persist+reload через GroupBypassAttachmentStore", async _ =>
+            {
+                var sw = Stopwatch.StartNew();
+                var tempPath = Path.Combine(Path.GetTempPath(), $"isp_audit_group_participation_{Guid.NewGuid():N}.json");
+
+                try
+                {
+                    _ = ct;
+
+                    var store1 = new GroupBypassAttachmentStore();
+                    const string groupKey = "example.com";
+
+                    store1.PinHostKeyToGroupKey("a.example.com", groupKey);
+                    store1.PinHostKeyToGroupKey("b.example.com", groupKey);
+                    store1.ToggleExcluded(groupKey, "a.example.com");
+
+                    // Добавим apply-обновление, чтобы гарантировать, что наличие attachments не ломает persist.
+                    store1.UpdateAttachmentFromApply(groupKey, "b.example.com", new[] { "1.1.1.1:443" }, planText: "ALLOW_NO_SNI");
+
+                    store1.PersistToDiskBestEffort(tempPath);
+
+                    // Дадим файловой системе момент на flush в CI/медленных дисках.
+                    for (var i = 0; i < 20 && !File.Exists(tempPath); i++)
+                    {
+                        await Task.Delay(25).ConfigureAwait(false);
+                    }
+
+                    if (!File.Exists(tempPath))
+                    {
+                        return new SmokeTestResult("REG-014", "REG: group_participation persist+reload через GroupBypassAttachmentStore",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Файл не создан: {tempPath}");
+                    }
+
+                    var store2 = new GroupBypassAttachmentStore();
+                    store2.LoadFromDiskBestEffort(tempPath);
+
+                    if (!store2.TryGetPinnedGroupKey("a.example.com", out var pinnedA) || !string.Equals(pinnedA, groupKey, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-014", "REG: group_participation persist+reload через GroupBypassAttachmentStore",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Ожидали pinned groupKey='{groupKey}' для a.example.com, получили '{pinnedA}'");
+                    }
+
+                    if (!store2.TryGetPinnedGroupKey("b.example.com", out var pinnedB) || !string.Equals(pinnedB, groupKey, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-014", "REG: group_participation persist+reload через GroupBypassAttachmentStore",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Ожидали pinned groupKey='{groupKey}' для b.example.com, получили '{pinnedB}'");
+                    }
+
+                    if (!store2.IsExcluded(groupKey, "a.example.com"))
+                    {
+                        return new SmokeTestResult("REG-014", "REG: group_participation persist+reload через GroupBypassAttachmentStore",
+                            SmokeOutcome.Fail, sw.Elapsed, "Ожидали, что a.example.com останется excluded после reload");
+                    }
+
+                    if (store2.IsExcluded(groupKey, "b.example.com"))
+                    {
+                        return new SmokeTestResult("REG-014", "REG: group_participation persist+reload через GroupBypassAttachmentStore",
+                            SmokeOutcome.Fail, sw.Elapsed, "Не ожидали excluded для b.example.com после reload");
+                    }
+
+                    return new SmokeTestResult("REG-014", "REG: group_participation persist+reload через GroupBypassAttachmentStore",
+                        SmokeOutcome.Pass, sw.Elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-014", "REG: group_participation persist+reload через GroupBypassAttachmentStore",
+                        SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+                finally
+                {
+                    try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort */ }
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> REG_PerCardRetest_Queued_DuringRun_ThenFlushed(CancellationToken ct)
             => RunAsync("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", () =>
             {

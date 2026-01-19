@@ -106,6 +106,7 @@
     - Snapshot фиксирует activation/outcome, snapshot опций bypass, DoH/DNS пресет, список «активных целей» (Step 1) и policy snapshot (если доступен).
     - Gate (P0.1 Step 14): введён единый источник истины `Core/Bypass/GroupBypassAttachmentStore` для participation/pinning `hostKey -> groupKey` и детерминированного merge EffectiveGroupConfig; состояние сохраняется в `%LocalAppData%\ISP_Audit\group_participation.json` и обновляется после успешного Apply.
         - Regression: `REG-013` — union endpoints + OR assist-флаги, sticky excluded.
+        - Regression: `REG-014` — persist+reload excluded/pinning через store (round-trip).
     - Gate (P0.1 Step 12): добавлены regression smoke-тесты `REG-003` (persist+reload apply_transactions без WPF dispatcher) и `REG-004` (per-card ретест очередится во время диагностики и флашится после).
     - Gate (P0.1 Step 1 groundwork): добавлен regression smoke-тест `REG-005` (селективный QUIC fallback поддерживает несколько активных целей и не «забывает» предыдущую при применении новой).
     - Gate (P0.1 Step 1, multi-group): добавлен regression smoke-тест `REG-006` (TCP/443 TLS стратегия выбирается per-target через Decision Graph по dst_ip, чтобы несколько целей могли быть активны одновременно).

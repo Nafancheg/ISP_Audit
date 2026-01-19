@@ -155,7 +155,7 @@
       - Gate: `REG-013` — проверка union/OR и sticky excluded.
 
     - 🔜 Что дальше (после Step 14):
-      - [ ] Шаг 15 (P0.1 follow-up): добавить smoke/регресс-гейт persist+reload для `%LocalAppData%\ISP_Audit\group_participation.json` через `GroupBypassAttachmentStore` (overridePath) — `REG-014`.
+      - [x] Шаг 15 (P0.1 follow-up): добавить smoke/регресс-гейт persist+reload для `%LocalAppData%\ISP_Audit\group_participation.json` через `GroupBypassAttachmentStore` (overridePath) — `REG-014`.
       - [ ] Шаг 16 (P0.1 follow-up): при необходимости расширить snapshot участия группы в UI (детали) до «вклады/attachments по hostKey» для более подробного репорта (не блокер).
       - [ ] Переход: продолжить P0.2 Этап 5 (Semantic Groups как «пакет политик») — добавить gate на статусы ENABLED/PARTIAL/NO_TRAFFIC (например, `DPI2-045`).
 
