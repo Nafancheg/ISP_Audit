@@ -43,6 +43,7 @@ namespace IspAudit.ViewModels
         private string _bypassWarningText = "";
         private string _bypassMetricsText = "";
         private string _bypassSemanticGroupsText = "";
+        private string _bypassSemanticGroupsSummaryText = "";
         private System.Windows.Media.Brush _bypassVerdictBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
         private string _bypassVerdictText = "";
         private string _bypassPlanText = "-";
@@ -136,6 +137,22 @@ namespace IspAudit.ViewModels
                 {
                     _bypassSemanticGroupsText = value;
                     OnPropertyChanged(nameof(BypassSemanticGroupsText));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Короткая (1 строка) сводка Semantic Groups — показывается в шапке bypass-панели.
+        /// </summary>
+        public string BypassSemanticGroupsSummaryText
+        {
+            get => _bypassSemanticGroupsSummaryText;
+            private set
+            {
+                if (_bypassSemanticGroupsSummaryText != value)
+                {
+                    _bypassSemanticGroupsSummaryText = value;
+                    OnPropertyChanged(nameof(BypassSemanticGroupsSummaryText));
                 }
             }
         }

@@ -344,6 +344,7 @@ namespace IspAudit.ViewModels
         public string SelectedFragmentPresetLabel => Bypass.SelectedFragmentPresetLabel;
         public string BypassMetricsText => Bypass.BypassMetricsText;
         public string BypassSemanticGroupsText => Bypass.BypassSemanticGroupsText;
+        public string BypassSemanticGroupsSummaryText => Bypass.BypassSemanticGroupsSummaryText;
         public System.Windows.Media.Brush BypassVerdictBrush => Bypass.BypassVerdictBrush;
         public string BypassVerdictText => Bypass.BypassVerdictText;
 

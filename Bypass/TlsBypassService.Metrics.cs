@@ -39,10 +39,13 @@ namespace IspAudit.Bypass
                 var snapshot = filter.GetMetrics();
 
                 string semanticGroupsText = string.Empty;
+                string semanticGroupsSummary = string.Empty;
                 if (decisionSnapshot != null)
                 {
                     var matchedCounts = filter.GetPolicyMatchedCountsSnapshot();
-                    semanticGroupsText = BuildSemanticGroupsStatusText(decisionSnapshot, matchedCounts);
+                    var sg = BuildSemanticGroupsStatus(decisionSnapshot, matchedCounts);
+                    semanticGroupsText = sg.Details;
+                    semanticGroupsSummary = sg.Summary;
                 }
 
                 var metrics = new TlsBypassMetrics
@@ -61,7 +64,8 @@ namespace IspAudit.Bypass
                     PresetName = options.PresetName,
                     FragmentThreshold = options.AllowNoSni ? 1 : _baseProfile.TlsFragmentThreshold,
                     MinChunk = (options.FragmentSizes ?? Array.Empty<int>()).DefaultIfEmpty(0).Min(),
-                    SemanticGroupsStatusText = semanticGroupsText
+                    SemanticGroupsStatusText = semanticGroupsText,
+                    SemanticGroupsSummaryText = semanticGroupsSummary
                 };
 
                 var verdict = CalculateVerdict(metrics, options);
@@ -90,11 +94,11 @@ namespace IspAudit.Bypass
             }
         }
 
-        private static string BuildSemanticGroupsStatusText(
+        private static (string Summary, string Details) BuildSemanticGroupsStatus(
             DecisionGraphSnapshot snapshot,
             IReadOnlyDictionary<string, long> policyMatchedCounts)
         {
-            if (snapshot == null) return string.Empty;
+            if (snapshot == null) return (string.Empty, string.Empty);
 
             // MVP Stage 5.3: дефолтные группы строим из policy-id, которые создаёт BypassStateManager.
             // Это даёт пользователю видимость: есть ли трафик, который вообще попадает в policy-driven ветку.
@@ -106,6 +110,7 @@ namespace IspAudit.Bypass
             };
 
             var lines = new List<string>();
+            var summaryParts = new List<string>();
 
             foreach (var g in groups)
             {
@@ -128,14 +133,17 @@ namespace IspAudit.Bypass
 
                 var status = SemanticGroupEvaluator.EvaluateStatus(group, policyMatchedCounts);
                 lines.Add($"{g.DisplayName}: {status.Text} ({status.Details})");
+                summaryParts.Add($"{g.DisplayName}={status.Text}");
             }
 
             if (lines.Count == 0)
             {
-                return string.Empty;
+                return (string.Empty, string.Empty);
             }
 
-            return "Semantic Groups:\n" + string.Join("\n", lines);
+            var details = "Semantic Groups:\n" + string.Join("\n", lines);
+            var summary = "SG: " + string.Join("; ", summaryParts);
+            return (summary, details);
         }
 
         private TlsBypassVerdict CalculateVerdict(TlsBypassMetrics metrics, TlsBypassOptions options)

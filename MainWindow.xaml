@@ -114,9 +114,15 @@
                         <StackPanel>
                             <!-- Header -->
                             <Grid Margin="0,0,0,8">
-                                <StackPanel Orientation="Horizontal">
-                                    <materialDesign:PackIcon Kind="Tune" Width="20" Height="20" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Bypass Control" FontWeight="Bold" FontSize="13" VerticalAlignment="Center"/>
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="Tune" Width="20" Height="20" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Bypass Control" FontWeight="Bold" FontSize="13" VerticalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <TextBlock Text="{Binding BypassSemanticGroupsSummaryText}" FontSize="11" TextWrapping="Wrap" Margin="28,2,0,0"
+                                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                               Visibility="{Binding BypassSemanticGroupsSummaryText, Converter={StaticResource StringToVisibilityConverter}}"/>
                                 </StackPanel>
 
                                 <!-- Status Badge -->

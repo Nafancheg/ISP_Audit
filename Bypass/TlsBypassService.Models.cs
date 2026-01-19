@@ -152,6 +152,11 @@ namespace IspAudit.Bypass
         /// </summary>
         public string SemanticGroupsStatusText { get; init; } = string.Empty;
 
+        /// <summary>
+        /// Короткая сводка статусов Semantic Groups (одной строкой) — для UI, который пользователь видит сразу.
+        /// </summary>
+        public string SemanticGroupsSummaryText { get; init; } = string.Empty;
+
         public static TlsBypassMetrics Empty => new();
     }
 
