@@ -95,6 +95,13 @@
                             <TextBlock Text="🚫 UDP Block" FontSize="10" FontWeight="SemiBold" Foreground="#DC2626"/>
                         </StackPanel>
                     </Border>
+
+                    <!-- Semantic Groups status (P0.2 Stage 5.3) -->
+                    <Border Background="#F3F4F6" CornerRadius="4" Padding="6,2" Margin="0,0,4,4"
+                            Visibility="{Binding DataContext.BypassSemanticGroupsSummaryText, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource StringToVisibilityConverter}}">
+                        <TextBlock Text="{Binding DataContext.BypassSemanticGroupsSummaryText, RelativeSource={RelativeSource AncestorType=Window}}"
+                                   FontSize="10" FontWeight="SemiBold" Foreground="#374151" TextWrapping="Wrap"/>
+                    </Border>
                 </WrapPanel>
 
                 <!-- Status Text -->
