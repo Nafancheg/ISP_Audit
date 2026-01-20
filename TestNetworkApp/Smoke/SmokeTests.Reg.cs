@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
 using IspAudit.Core.Bypass;
+using IspAudit.Core.Traffic;
 using IspAudit.Utils;
 using IspAudit.ViewModels;
 
@@ -623,6 +624,60 @@ namespace TestNetworkApp.Smoke
                 finally
                 {
                     try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort */ }
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> REG_ObservedIps_Seeded_FromCandidateEndpoints(CancellationToken ct)
+            => RunAsync("REG-015", "REG: observed IPv4 цели засеваются из candidate endpoints (P0.2 Stage 5.4)", () =>
+            {
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    _ = ct;
+
+                    using var engine = new TrafficEngine(progress: null);
+                    using var manager = BypassStateManager.GetOrCreate(engine, baseProfile: null, log: null);
+
+                    const string host = "example.com";
+
+                    manager.SeedObservedIpv4TargetsFromCandidateEndpointsBestEffort(host, new[]
+                    {
+                        "1.2.3.4:443",
+                        "5.6.7.8:80",
+                        "bad",
+                        "[::1]:443" // IPv6 игнорируем
+                    });
+
+                    var snap = manager.GetObservedIpv4TargetsSnapshotForHost(host);
+                    if (snap.Length < 2)
+                    {
+                        return new SmokeTestResult("REG-015", "REG: observed IPv4 цели засеваются из candidate endpoints (P0.2 Stage 5.4)",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Ожидали минимум 2 IPv4 адреса, получили {snap.Length}");
+                    }
+
+                    static uint ToIpv4Int(string ip)
+                    {
+                        var bytes = IPAddress.Parse(ip).GetAddressBytes();
+                        return BinaryPrimitives.ReadUInt32BigEndian(bytes);
+                    }
+
+                    var expectedA = ToIpv4Int("1.2.3.4");
+                    var expectedB = ToIpv4Int("5.6.7.8");
+
+                    if (!snap.Contains(expectedA) || !snap.Contains(expectedB))
+                    {
+                        var observed = string.Join(", ", snap.Select(v => v.ToString()));
+                        return new SmokeTestResult("REG-015", "REG: observed IPv4 цели засеваются из candidate endpoints (P0.2 Stage 5.4)",
+                            SmokeOutcome.Fail, sw.Elapsed, $"IPv4 адреса не найдены в snapshot. observed=[{observed}]");
+                    }
+
+                    return new SmokeTestResult("REG-015", "REG: observed IPv4 цели засеваются из candidate endpoints (P0.2 Stage 5.4)",
+                        SmokeOutcome.Pass, sw.Elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-015", "REG: observed IPv4 цели засеваются из candidate endpoints (P0.2 Stage 5.4)",
+                        SmokeOutcome.Fail, sw.Elapsed, ex.Message);
                 }
             }, ct);
 

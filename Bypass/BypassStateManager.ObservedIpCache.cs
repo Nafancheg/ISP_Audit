@@ -41,6 +41,119 @@ namespace IspAudit.Bypass
             }
         }
 
+        /// <summary>
+        /// P0.2 Stage 5.4 (интеграция с P0.1): best-effort засеять observed IPv4 адреса цели из
+        /// candidate endpoints (например, из apply-transaction). Это помогает policy-driven per-target
+        /// политикам (DstIpv4Set) работать сразу, не дожидаясь DNS resolve.
+        ///
+        /// Важно:
+        /// - берём только IPv4 (DecisionGraph селективность пока только по IPv4)
+        /// - не очищаем уже наблюдённые IP, а только добавляем/обновляем TTL
+        /// </summary>
+        internal void SeedObservedIpv4TargetsFromCandidateEndpointsBestEffort(
+            string hostKey,
+            IReadOnlyList<string>? candidateIpEndpoints)
+        {
+            try
+            {
+                hostKey = (hostKey ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(hostKey)) return;
+
+                if (candidateIpEndpoints == null || candidateIpEndpoints.Count == 0) return;
+
+                var found = new List<uint>();
+                foreach (var raw in candidateIpEndpoints)
+                {
+                    var s = (raw ?? string.Empty).Trim();
+                    if (string.IsNullOrWhiteSpace(s)) continue;
+
+                    // Ожидаем формат вроде "1.2.3.4:443" (IPv4). Для безопасного best-effort:
+                    // 1) пробуем IP целиком
+                    // 2) если есть ':' — берём часть до последнего ':' и пробуем как IP
+                    if (!IPAddress.TryParse(s, out var ip))
+                    {
+                        var idx = s.LastIndexOf(':');
+                        if (idx <= 0) continue;
+                        var before = s.Substring(0, idx);
+                        if (!IPAddress.TryParse(before, out ip)) continue;
+                    }
+
+                    var v4 = TryToIpv4Int(ip);
+                    if (v4 == null) continue;
+                    var value = v4.Value;
+                    if (value == 0) continue;
+                    if (found.Contains(value)) continue;
+                    found.Add(value);
+                    if (found.Count >= Udp443DropTargetIpCap) break;
+                }
+
+                if (found.Count == 0) return;
+
+                var entry = _udp443DropObservedIpsByHost.GetOrAdd(hostKey, _ => new ObservedIpsEntry());
+                var now = NowTick();
+                var until = now + (long)Udp443DropTargetIpTtl.TotalMilliseconds;
+
+                lock (entry.Sync)
+                {
+                    PruneExpired(entry, now);
+                    foreach (var ip in found)
+                    {
+                        entry.UntilTickByIp[ip] = until;
+                    }
+
+                    // Cap.
+                    if (entry.UntilTickByIp.Count > Udp443DropTargetIpCap)
+                    {
+                        var ordered = new List<KeyValuePair<uint, long>>(entry.UntilTickByIp);
+                        ordered.Sort((a, b) => a.Value.CompareTo(b.Value));
+                        var extra = ordered.Count - Udp443DropTargetIpCap;
+                        for (var i = 0; i < extra; i++)
+                        {
+                            entry.UntilTickByIp.Remove(ordered[i].Key);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // best-effort
+            }
+        }
+
+        /// <summary>
+        /// Internal API для smoke: получить snapshot observed IPv4 целей по host.
+        /// </summary>
+        internal uint[] GetObservedIpv4TargetsSnapshotForHost(string hostKey)
+        {
+            try
+            {
+                hostKey = (hostKey ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(hostKey)) return Array.Empty<uint>();
+
+                if (!_udp443DropObservedIpsByHost.TryGetValue(hostKey, out var entry)) return Array.Empty<uint>();
+
+                var now = NowTick();
+                lock (entry.Sync)
+                {
+                    PruneExpired(entry, now);
+
+                    if (entry.UntilTickByIp.Count == 0) return Array.Empty<uint>();
+
+                    var list = new List<uint>(entry.UntilTickByIp.Count);
+                    foreach (var ip in entry.UntilTickByIp.Keys)
+                    {
+                        if (ip != 0) list.Add(ip);
+                    }
+
+                    return list.Count == 0 ? Array.Empty<uint>() : list.ToArray();
+                }
+            }
+            catch
+            {
+                return Array.Empty<uint>();
+            }
+        }
+
         private static void PruneExpired(ObservedIpsEntry entry, long nowTick)
         {
             if (entry.UntilTickByIp.Count == 0) return;

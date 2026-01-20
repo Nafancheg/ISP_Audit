@@ -172,6 +172,17 @@ namespace IspAudit.ViewModels
                 var candidateIps = candidateIpEndpoints?.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
                     ?? Array.Empty<string>();
 
+                // P0.2 Stage 5.4 (интеграция с P0.1): используем candidate endpoints как seed
+                // для observed IPv4 целей. Это помогает policy-driven per-target веткам работать сразу.
+                try
+                {
+                    _stateManager.SeedObservedIpv4TargetsFromCandidateEndpointsBestEffort(initiatorHostKey ?? string.Empty, candidateIps);
+                }
+                catch
+                {
+                    // best-effort
+                }
+
                 var expected = BuildExpectedEffects(planText ?? string.Empty, candidateIps);
                 var warnings = BuildWarnings(planText ?? string.Empty, candidateIps, activation.Text, ActivePolicies.Count);
 

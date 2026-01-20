@@ -1066,6 +1066,13 @@
 **Входные данные:** In-memory store + временный путь файла (temp), pinning двух hostKey и excluded одного hostKey
 **Ожидаемый результат:** `TryGetPinnedGroupKey` возвращает ожидаемый groupKey для обоих hostKey; `IsExcluded` true только для исключённого hostKey
 
+**Test ID:** `REG-015`
+**Что проверяет:** observed IPv4 цели засеваются из candidate endpoints (P0.2 Stage 5.4)
+**Для чего:** Per-target политики (DstIpv4Set) могут компилироваться сразу, без ожидания DNS resolve
+**Критерий успеха:** После seed из `1.2.3.4:443` и `5.6.7.8:80` snapshot содержит оба IPv4 адреса
+**Входные данные:** Вызов internal API `BypassStateManager.SeedObservedIpv4TargetsFromCandidateEndpointsBestEffort(...)`
+**Ожидаемый результат:** Snapshot содержит ожидаемые IPv4 адреса (в network-order uint)
+
 **Test ID:** `REG-004`
 **Что проверяет:** Per-card ретест во время диагностики ставится в очередь и флашится после завершения
 **Для чего:** Регресс-гейт UX: кнопка «Ретест» не должна быть «мертвой» во время диагностики

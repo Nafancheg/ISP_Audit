@@ -71,6 +71,7 @@ namespace TestNetworkApp.Smoke
                 ["REG-012"] = REG_ApplyV2Plan_IsSerialized_NoParallelApply,
                 ["REG-013"] = REG_GroupBypassAttachmentStore_DeterministicMerge_AndExcludedSticky,
                 ["REG-014"] = REG_GroupParticipation_Persisted_RoundTrip_ThroughStore,
+                ["REG-015"] = REG_ObservedIps_Seeded_FromCandidateEndpoints,
 
                 ["PIPE-005"] = Pipe_UnifiedFilter_LoopbackDropped,
                 ["PIPE-006"] = Pipe_UnifiedFilter_NoiseOnlyOnDisplay,
