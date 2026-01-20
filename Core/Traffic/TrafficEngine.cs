@@ -22,6 +22,9 @@ namespace IspAudit.Core.Traffic
         // Throttle логов от падающих фильтров: иначе можно залить UI-лог десятками тысяч строк/сек.
         private readonly ConcurrentDictionary<string, long> _lastFilterErrorLogTick = new();
 
+        // Защита от падений подписчиков метрик: обработчики могут трогать UI/коллекции.
+        private long _lastPerfHandlerErrorTick;
+
         // Performance metrics
         public event Action<double>? OnPerformanceUpdate;
         private long _totalProcessingTicks;
@@ -197,81 +200,111 @@ namespace IspAudit.Core.Traffic
                         continue;
                     }
 
-                    var startTicks = DateTime.UtcNow.Ticks;
-
-                    var packet = new InterceptedPacket(buffer, (int)readLen);
-                    var ctx = new PacketContext(addr);
-
-                    bool drop = false;
-
-                    lock (_filters)
+                    try
                     {
-                        foreach (var filter in _filters)
+                        var startTicks = DateTime.UtcNow.Ticks;
+
+                        var packet = new InterceptedPacket(buffer, (int)readLen);
+                        var ctx = new PacketContext(addr);
+
+                        bool drop = false;
+
+                        lock (_filters)
+                        {
+                            foreach (var filter in _filters)
+                            {
+                                try
+                                {
+                                    if (!filter.Process(packet, ctx, this))
+                                    {
+                                        drop = true;
+                                        break;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    // Ограничиваем частоту логов: фильтр может падать на каждом пакете.
+                                    var filterName = string.IsNullOrWhiteSpace(filter.Name) ? "<unnamed>" : filter.Name;
+                                    var nowTick = Environment.TickCount64;
+                                    var lastTick = _lastFilterErrorLogTick.GetOrAdd(filterName, 0);
+                                    var shouldLog = lastTick == 0 || (nowTick - lastTick) >= 2000;
+                                    if (shouldLog)
+                                    {
+                                        _lastFilterErrorLogTick[filterName] = nowTick;
+                                        _progress?.Report($"[TrafficEngine][ERROR] Filter error in '{filterName}' (thread {Environment.CurrentManagedThreadId}): {ex}");
+                                    }
+                                    // Safer to pass through if filter fails
+                                }
+                            }
+                        }
+
+                        if (!drop)
                         {
                             try
                             {
-                                if (!filter.Process(packet, ctx, this))
-                                {
-                                    drop = true;
-                                    break;
-                                }
+                                // Recalculate checksums if modified
+                                WinDivertNative.WinDivertHelperCalcChecksums(packet.Buffer, (uint)packet.Length, ref addr, 0);
+                                WinDivertNative.WinDivertSend(handle, packet.Buffer, (uint)packet.Length, out _, in addr);
+                            }
+                            catch (ObjectDisposedException)
+                            {
+                                // Остановка: handle мог быть закрыт между Recv и Send
+                                break;
+                            }
+                            catch (ArgumentNullException)
+                            {
+                                // Защита от гонки: не должен происходить, но лучше не падать
+                                break;
+                            }
+                        }
+
+                        var endTicks = DateTime.UtcNow.Ticks;
+                        _totalProcessingTicks += (endTicks - startTicks);
+                        _processedPacketsCount++;
+
+                        if (DateTime.UtcNow - _lastPerformanceReport > TimeSpan.FromSeconds(1))
+                        {
+                            double avgMs = 0;
+                            if (_processedPacketsCount > 0)
+                            {
+                                var avgTicks = (double)_totalProcessingTicks / _processedPacketsCount;
+                                avgMs = avgTicks / 10000.0; // 10000 ticks in 1 ms
+                            }
+
+                            // Report even if 0 packets (to show idle state)
+                            try
+                            {
+                                OnPerformanceUpdate?.Invoke(avgMs);
                             }
                             catch (Exception ex)
                             {
-                                // Ограничиваем частоту логов: фильтр может падать на каждом пакете.
-                                var filterName = string.IsNullOrWhiteSpace(filter.Name) ? "<unnamed>" : filter.Name;
+                                // Не даём подписчику уронить loop; ограничиваем частоту логов.
                                 var nowTick = Environment.TickCount64;
-                                var lastTick = _lastFilterErrorLogTick.GetOrAdd(filterName, 0);
-                                var shouldLog = lastTick == 0 || (nowTick - lastTick) >= 2000;
-                                if (shouldLog)
+                                if (_lastPerfHandlerErrorTick == 0 || (nowTick - _lastPerfHandlerErrorTick) >= 2000)
                                 {
-                                    _lastFilterErrorLogTick[filterName] = nowTick;
-                                    _progress?.Report($"[TrafficEngine][ERROR] Filter error in '{filterName}' (thread {Environment.CurrentManagedThreadId}): {ex}");
+                                    _lastPerfHandlerErrorTick = nowTick;
+                                    _progress?.Report($"[TrafficEngine][ERROR] OnPerformanceUpdate handler crashed (thread {Environment.CurrentManagedThreadId}): {ex}");
                                 }
-                                // Safer to pass through if filter fails
                             }
+
+                            _totalProcessingTicks = 0;
+                            _processedPacketsCount = 0;
+                            _lastPerformanceReport = DateTime.UtcNow;
                         }
                     }
-
-                    if (!drop)
+                    catch (OperationCanceledException)
                     {
-                        try
-                        {
-                            // Recalculate checksums if modified
-                            WinDivertNative.WinDivertHelperCalcChecksums(packet.Buffer, (uint)packet.Length, ref addr, 0);
-                            WinDivertNative.WinDivertSend(handle, packet.Buffer, (uint)packet.Length, out _, in addr);
-                        }
-                        catch (ObjectDisposedException)
-                        {
-                            // Остановка: handle мог быть закрыт между Recv и Send
-                            break;
-                        }
-                        catch (ArgumentNullException)
-                        {
-                            // Защита от гонки: не должен происходить, но лучше не падать
-                            break;
-                        }
+                        break;
                     }
-
-                    var endTicks = DateTime.UtcNow.Ticks;
-                    _totalProcessingTicks += (endTicks - startTicks);
-                    _processedPacketsCount++;
-
-                    if (DateTime.UtcNow - _lastPerformanceReport > TimeSpan.FromSeconds(1))
+                    catch (ObjectDisposedException)
                     {
-                        double avgMs = 0;
-                        if (_processedPacketsCount > 0)
-                        {
-                            var avgTicks = (double)_totalProcessingTicks / _processedPacketsCount;
-                            avgMs = avgTicks / 10000.0; // 10000 ticks in 1 ms
-                        }
-
-                        // Report even if 0 packets (to show idle state)
-                        OnPerformanceUpdate?.Invoke(avgMs);
-
-                        _totalProcessingTicks = 0;
-                        _processedPacketsCount = 0;
-                        _lastPerformanceReport = DateTime.UtcNow;
+                        // Остановка: handle мог быть закрыт параллельно.
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Не даём единичной ошибке уронить весь loop.
+                        _progress?.Report($"[TrafficEngine][ERROR] Packet processing failed (thread {Environment.CurrentManagedThreadId}): {ex}");
                     }
                 }
             }

@@ -47,7 +47,7 @@
     - [ ] Добавить regression сценарий (integration/stress): rapid apply/переключение во время активной диагностики.
     - [ ] Зафиксировать baseline hot path (latency p50/p95/p99, alloc rate, CPU) перед фиксом.
     - [x] Исправить найденный паттерн гонки: `foreach` + `TryRemove` по `_probeFlowsUntilTick` в `Core/Traffic/Filters/BypassFilter.ProbeFlows.cs` (собирать ключи на удаление отдельно, затем удалять второй фазой).
-    - [ ] Hotfix: snapshot/copy перед foreach на чтении коллекций + закрыть аналогичные места.
+    - [x] Hotfix: подписчики/единичные исключения не должны валить `TrafficEngine.Loop` (guard + per-packet catch).
     - [ ] Добавить unit/регресс тесты на concurrent read/write и «модификация во время iteration».
     - [ ] Stress: ≥1000 Apply/Rollback за минуту + проверка утечек и стабильности.
     - [ ] Проверить перф: если деградация >10% → вариант с lock; если >30% → откат и переход на immutable snapshot/Concurrent*.
