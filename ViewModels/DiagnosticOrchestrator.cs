@@ -39,6 +39,11 @@ namespace IspAudit.ViewModels
         private CancellationTokenSource? _cts;
         private CancellationTokenSource? _applyCts;
 
+        // Транзакционность Start/Cancel:
+        // Cancel может быть нажат в очень раннее окно, когда IsDiagnosticRunning уже true,
+        // но _cts ещё не создан (до инициализации сервисов). Тогда отмену нельзя терять.
+        private volatile bool _cancelRequested;
+
         // Последняя цель (hostKey), извлечённая из v2-диагноза в UI сообщениях.
         // Нужна, чтобы не применять v2-план «не к той цели», когда рекомендации обновились.
         private string _lastV2DiagnosisHostKey = "";

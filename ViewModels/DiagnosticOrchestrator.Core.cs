@@ -58,6 +58,9 @@ namespace IspAudit.ViewModels
             {
                 Log($"[Orchestrator] Старт диагностики: {targetExePath}");
 
+                // Транзакционность: новый запуск должен сбрасывать pending-cancel.
+                _cancelRequested = false;
+
                 LastRunWasUserCancelled = false;
 
                 ResetRecommendations();
@@ -79,6 +82,15 @@ namespace IspAudit.ViewModels
                 ConnectionsDiscovered = 0;
 
                 _cts = new CancellationTokenSource();
+
+                // Если Cancel был нажат до создания _cts — применяем отмену сразу.
+                if (_cancelRequested)
+                {
+                    _stopReason = "UserCancel";
+                    LastRunWasUserCancelled = true;
+                    DiagnosticStatus = "Остановка...";
+                    _cts.Cancel();
+                }
 
                 // Инициализируем фильтр шумных хостов
                 var noiseFilterPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "noise_hosts.json");
@@ -361,6 +373,7 @@ namespace IspAudit.ViewModels
             }
             finally
             {
+                _cancelRequested = false;
                 _testingPipeline?.Dispose();
                 _trafficCollector?.Dispose();
                 DetachAutoBypassTelemetry();
@@ -387,6 +400,7 @@ namespace IspAudit.ViewModels
 
             try
             {
+                _cancelRequested = false;
                 Log("[Orchestrator] Запуск ретеста проблемных целей...");
                 IsDiagnosticRunning = true;
                 DiagnosticStatus = "Ретест...";
@@ -486,6 +500,7 @@ namespace IspAudit.ViewModels
             }
             finally
             {
+                _cancelRequested = false;
                 _testingPipeline?.Dispose();
                 _testingPipeline = null;
                 IsDiagnosticRunning = false;
@@ -641,6 +656,9 @@ namespace IspAudit.ViewModels
         {
             var cancelledAnything = false;
 
+            // Всегда фиксируем запрос отмены (важно для раннего окна старта).
+            _cancelRequested = true;
+
             // Отмена ручного apply (может выполняться даже когда диагностика уже закончилась)
             if (_applyCts != null && !_applyCts.IsCancellationRequested)
             {
@@ -663,6 +681,16 @@ namespace IspAudit.ViewModels
                 // Потом останавливаем компоненты
                 _testingPipeline?.Dispose();
                 _trafficCollector?.Dispose();
+                cancelledAnything = true;
+            }
+            else if (IsDiagnosticRunning)
+            {
+                // Раннее окно: диагностика уже помечена как запущенная, но _cts ещё не создан.
+                // Не теряем отмену — RunAsync применит её сразу после создания _cts.
+                Log("[Orchestrator] Отмена запрошена (ожидание инициализации)...");
+                DiagnosticStatus = "Остановка...";
+                _stopReason = "UserCancel";
+                LastRunWasUserCancelled = true;
                 cancelledAnything = true;
             }
 
