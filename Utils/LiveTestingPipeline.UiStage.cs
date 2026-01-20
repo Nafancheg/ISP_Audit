@@ -8,6 +8,38 @@ namespace IspAudit.Utils
 {
     public partial class LiveTestingPipeline
     {
+        private static string NormalizeHostnameForDedup(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return value;
+
+            var s = value.Trim();
+
+            // Срезаем хвост на первом невалидном символе (по аналогии с UI-слоем).
+            // Разрешаем только ASCII hostname: a-z, 0-9, '.', '-'
+            int end = 0;
+            for (; end < s.Length; end++)
+            {
+                char c = s[end];
+                bool ok =
+                    (c >= 'a' && c <= 'z') ||
+                    (c >= 'A' && c <= 'Z') ||
+                    (c >= '0' && c <= '9') ||
+                    c == '.' || c == '-';
+
+                if (!ok) break;
+            }
+
+            var cleaned = end == s.Length ? s : s.Substring(0, end);
+            cleaned = cleaned.Trim('.');
+
+            if (cleaned.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+            {
+                cleaned = cleaned.Substring(4);
+            }
+
+            return string.IsNullOrWhiteSpace(cleaned) ? s : cleaned;
+        }
+
         /// <summary>
         /// Worker 3: Обновление UI (bypass применяется отдельно, не во время диагностики)
         /// </summary>
@@ -78,7 +110,8 @@ namespace IspAudit.Utils
                     {
                         // Дедуп по SNI (если есть), иначе по IP.
                         // Это уменьшает шум в логах при множественных IP одного домена.
-                        var dedupKey = !string.IsNullOrWhiteSpace(sni) && sni != "-" ? sni : host;
+                        var dedupKeyRaw = !string.IsNullOrWhiteSpace(sni) && sni != "-" ? sni : host;
+                        var dedupKey = dedupKeyRaw == host ? host : NormalizeHostnameForDedup(dedupKeyRaw);
 
                         // Контекст цели для детерминированной привязки рекомендации к карточке (UI не должен полагаться на LastUpdatedHost).
                         var context = $"host={host}:{port} SNI={(string.IsNullOrWhiteSpace(sni) ? "-" : sni)} RDNS={(string.IsNullOrWhiteSpace(rdns) ? "-" : rdns)}";

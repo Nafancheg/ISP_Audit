@@ -17,7 +17,9 @@ public sealed class BypassExecutorMvp
 
     private static readonly TimeSpan DefaultDedupInterval = TimeSpan.FromSeconds(60);
 
-    private readonly ConcurrentDictionary<string, (DateTimeOffset LastEmitUtc, string Signature)> _emitCache = new(StringComparer.Ordinal);
+    // Hostname (SNI) регистронезависим. В частности, без этого возможен "спам" одной и той же рекомендацией
+    // при разных вариантах регистра/нормализации ключа.
+    private readonly ConcurrentDictionary<string, (DateTimeOffset LastEmitUtc, string Signature)> _emitCache = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Преобразовать технический хвост вида "(v2:SilentDrop conf=78; ... )" в читаемый для пользователя.
