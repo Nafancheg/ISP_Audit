@@ -793,7 +793,6 @@
                                                 Padding="8,4"
                                                 FontSize="12"
                                                 ToolTip="{Binding StrategyIconHint}"
-                                                IsEnabled="{Binding IsAppliedBypassTarget, Converter={StaticResource InverseBoolConverter}}"
                                                 Command="{Binding DataContext.ConnectFromResultCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}"
                                                 Visibility="{Binding ShowConnectButton, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -804,7 +803,7 @@
                                                             <Setter Property="Kind" Value="LanConnect"/>
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding IsAppliedBypassTarget}" Value="True">
-                                                                    <Setter Property="Kind" Value="CheckCircle"/>
+                                                                    <Setter Property="Kind" Value="Refresh"/>
                                                                 </DataTrigger>
                                                             </Style.Triggers>
                                                         </Style>
@@ -817,7 +816,7 @@
                                                             <Setter Property="Text" Value="Подключить"/>
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding IsAppliedBypassTarget}" Value="True">
-                                                                    <Setter Property="Text" Value="Подключено"/>
+                                                                    <Setter Property="Text" Value="Обновить"/>
                                                                 </DataTrigger>
                                                             </Style.Triggers>
                                                         </Style>
@@ -829,7 +828,7 @@
                                         <Button Padding="8,4"
                                                 FontSize="12"
                                                 Margin="8,0,0,0"
-                                                ToolTip="Применить стратегию для домена (если доступно авто-обнаружение семейства)"
+                                                ToolTip="Применить стратегию для домена: если есть авто-подсказка семейства — используем её; иначе берём домен этой строки"
                                                 Command="{Binding DataContext.ConnectDomainFromResultCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}">
                                             <Button.Style>

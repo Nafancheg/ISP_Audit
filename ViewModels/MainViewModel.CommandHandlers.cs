@@ -176,7 +176,7 @@ namespace IspAudit.ViewModels
             }
         }
 
-        private async Task ApplyDomainRecommendationsAsync()
+        private async Task ApplyDomainRecommendationsAsync(string? domainOverride = null)
         {
             if (IsApplyingRecommendations)
             {
@@ -189,20 +189,30 @@ namespace IspAudit.ViewModels
                 return;
             }
 
-            if (!HasDomainSuggestion)
-            {
-                Log("[V2][APPLY] Доменная подсказка недоступна для текущей цели");
-                return;
-            }
-
             IsApplyingRecommendations = true;
             try
             {
-                var domain = Results.SuggestedDomainSuffix;
+                // Если домен задан явно (например из кнопки строки) — используем его.
+                // Иначе работаем по авто-подсказке семейства.
+                if (string.IsNullOrWhiteSpace(domainOverride) && !HasDomainSuggestion)
+                {
+                    Log("[V2][APPLY] Доменная подсказка недоступна для текущей цели");
+                    return;
+                }
+
+                var domain = string.IsNullOrWhiteSpace(domainOverride)
+                    ? Results.SuggestedDomainSuffix
+                    : domainOverride;
+
                 if (string.IsNullOrWhiteSpace(domain))
                 {
                     Log("[V2][APPLY] Доменная цель не определена");
                     return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(domainOverride))
+                {
+                    Log($"[V2][APPLY] Доменный apply: domain={domain} (override)");
                 }
 
                 var outcome = await Orchestrator.ApplyRecommendationsForDomainAsync(Bypass, domain).ConfigureAwait(false);
@@ -212,7 +222,7 @@ namespace IspAudit.ViewModels
 
                 if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
                 {
-                    var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
+                    var groupKey = ComputeApplyGroupKey(outcome.HostKey, domain);
 
                     if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
                     {
@@ -354,7 +364,22 @@ namespace IspAudit.ViewModels
             // Важно: HasDomainSuggestion вычисляется от SelectedTestResult.
             // Поэтому перед доменным Apply выставляем выбранную строку.
             SelectedTestResult = test;
-            await ApplyDomainRecommendationsAsync().ConfigureAwait(false);
+
+            var preferredHostKey = GetPreferredHostKey(test) ?? string.Empty;
+            string? domainOverride = null;
+
+            // Если строка относится к текущей авто-подсказке семейства — используем её.
+            // Иначе fallback: домен этой строки (последние 2 лейбла).
+            if (IspAudit.Utils.DomainUtils.IsHostInSuffix(preferredHostKey, Results.SuggestedDomainSuffix) && Results.CanSuggestDomainAggregation)
+            {
+                domainOverride = Results.SuggestedDomainSuffix;
+            }
+            else if (IspAudit.Utils.DomainUtils.TryGetBaseSuffix(preferredHostKey, out var baseSuffix))
+            {
+                domainOverride = baseSuffix;
+            }
+
+            await ApplyDomainRecommendationsAsync(domainOverride).ConfigureAwait(false);
         }
 
         private Task RetestFromResultAsync(TestResult? test)

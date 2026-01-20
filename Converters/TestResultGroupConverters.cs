@@ -195,8 +195,24 @@ namespace IspAudit.Converters
 
                 if (IPAddress.TryParse(hostKey, out _)) return false;
 
-                  return hostKey.Equals(suffix, StringComparison.OrdinalIgnoreCase)
-                      || hostKey.EndsWith("." + suffix, StringComparison.OrdinalIgnoreCase);
+                // 1) Классический режим: показываем кнопку только для текущей подсказки семейства.
+                if (canSuggest && !string.IsNullOrWhiteSpace(suffix))
+                {
+                    if (hostKey.Equals(suffix, StringComparison.OrdinalIgnoreCase)
+                        || hostKey.EndsWith("." + suffix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+
+                // 2) Практический fallback: если у строки есть v2 рекомендация, позволяем применить доменный режим
+                // даже без авто-подсказки (по базовому домену строки, например *.googlevideo.com → googlevideo.com).
+                if (test != null && test.ShowConnectButton)
+                {
+                    return IspAudit.Utils.DomainUtils.TryGetBaseSuffix(hostKey, out _);
+                }
+
+                return false;
             }
             catch
             {
