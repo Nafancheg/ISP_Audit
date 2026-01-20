@@ -164,6 +164,11 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 Актуализация (Refactor, 16.01.2026): LiveTestingPipeline
 - P0.3.7 (16.01.2026): `LiveTestingPipeline` декомпозирован на partial-файлы без изменения поведения: `Utils/LiveTestingPipeline.*.cs`.
 
+Актуализация (Runtime, 20.01.2026): ускорение диагностики
+- Производительность: этап тестирования (DNS/TCP/TLS) в `LiveTestingPipeline` выполняется параллельно с лимитом.
+    - Лимит задаётся через `PipelineConfig.MaxConcurrentTests`.
+    - Реализация: `TesterWorker` использует `SemaphoreSlim` и in-flight задачи, чтобы ускорять обработку при высоком входном потоке (активный браузер), не ломая `DrainAndCompleteAsync` и bounded-очереди.
+
 
 Актуализация (Runtime, 23.12.2025): контроль применения v2
 - `Cancel` отменяет не только диагностику, но и ручное применение рекомендаций (отдельный CTS для apply).
