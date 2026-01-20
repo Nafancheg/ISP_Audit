@@ -105,6 +105,7 @@
     - Формат транзакции v2 (P0.1 Step 2): добавлены секции `Request/Snapshot/Result` и список `Contributions` (вклады/изменения) при сохранении ключевых v1 полей для совместимости со старым persisted JSON.
     - Snapshot фиксирует activation/outcome, snapshot опций bypass, DoH/DNS пресет, список «активных целей» (Step 1) и policy snapshot (если доступен).
     - Gate (P0.1 Step 14): введён единый источник истины `Core/Bypass/GroupBypassAttachmentStore` для participation/pinning `hostKey -> groupKey` и детерминированного merge EffectiveGroupConfig; состояние сохраняется в `%LocalAppData%\ISP_Audit\group_participation.json` и обновляется после успешного Apply.
+        - Details: в окне «Детали применения обхода» participation snapshot включает attachments per-hostKey (excluded/endpoints/assist-флаги/updatedAtUtc) для репорта.
         - Regression: `REG-013` — union endpoints + OR assist-флаги, sticky excluded.
         - Regression: `REG-014` — persist+reload excluded/pinning через store (round-trip).
     - Gate (P0.1 Step 12): добавлены regression smoke-тесты `REG-003` (persist+reload apply_transactions без WPF dispatcher) и `REG-004` (per-card ретест очередится во время диагностики и флашится после).

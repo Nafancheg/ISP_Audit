@@ -173,6 +173,10 @@ namespace IspAudit.Core.Bypass
                     ? Array.Empty<string>()
                     : set.GetAttachmentsSnapshot().Where(a => a.Excluded).Select(a => a.HostKey).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
 
+                var attachments = set == null
+                    ? Array.Empty<GroupBypassAttachmentSet.GroupBypassAttachment>()
+                    : set.GetAttachmentsSnapshot().ToArray();
+
                 var pinnedHosts = _pinnedGroupKeyByHostKey
                     .Where(kvp => string.Equals(NormalizeKey(kvp.Value), groupKey, StringComparison.OrdinalIgnoreCase))
                     .Select(kvp => NormalizeKey(kvp.Key))
@@ -182,11 +186,26 @@ namespace IspAudit.Core.Bypass
 
                 var cfg = set?.ComputeEffectiveConfig();
 
+                var attachmentsJson = new JsonArray();
+                foreach (var a in attachments)
+                {
+                    attachmentsJson.Add(new JsonObject
+                    {
+                        ["hostKey"] = a.HostKey,
+                        ["excluded"] = a.Excluded,
+                        ["candidateIpEndpoints"] = JsonSerializer.SerializeToNode(a.CandidateIpEndpoints ?? Array.Empty<string>()),
+                        ["dropUdp443"] = a.DropUdp443,
+                        ["allowNoSni"] = a.AllowNoSni,
+                        ["updatedAtUtc"] = a.UpdatedAtUtc.ToString("u").TrimEnd()
+                    });
+                }
+
                 return new JsonObject
                 {
                     ["groupKey"] = groupKey,
                     ["pinnedHostKeys"] = JsonSerializer.SerializeToNode(pinnedHosts),
                     ["excludedHostKeys"] = JsonSerializer.SerializeToNode(excluded),
+                    ["attachments"] = attachmentsJson,
                     ["effective"] = cfg == null
                         ? null
                         : new JsonObject

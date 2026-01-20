@@ -679,6 +679,16 @@ namespace IspAudit.ViewModels
             var excludedNoise = new System.Collections.Generic.List<string>();
             var included = new System.Collections.Generic.List<string>();
 
+            JsonNode? storeSnapshot = null;
+            try
+            {
+                storeSnapshot = _groupBypassAttachmentStore.BuildParticipationSnapshotNode(normalizedGroupKey);
+            }
+            catch
+            {
+                storeSnapshot = null;
+            }
+
             try
             {
                 excludedManual.AddRange(_groupBypassAttachmentStore.GetExcludedHostsSnapshot(normalizedGroupKey));
@@ -726,15 +736,16 @@ namespace IspAudit.ViewModels
                 // ignore
             }
 
-            return JsonSerializer.SerializeToNode(new
+            return new JsonObject
             {
-                includedHostKeys = included.ToArray(),
-                excludedManualHostKeys = excludedManual.ToArray(),
-                excludedNoiseHostKeys = excludedNoise.ToArray()
-            }, new JsonSerializerOptions
-            {
-                WriteIndented = true
-            }) ?? new JsonObject();
+                // UI-срез (вычисляется от текущих результатов и NoiseHostFilter)
+                ["includedHostKeys"] = JsonSerializer.SerializeToNode(included.ToArray()),
+                ["excludedManualHostKeys"] = JsonSerializer.SerializeToNode(excludedManual.ToArray()),
+                ["excludedNoiseHostKeys"] = JsonSerializer.SerializeToNode(excludedNoise.ToArray()),
+
+                // Store-срез (SSoT): pinning/excluded + attachments + effective merge
+                ["store"] = storeSnapshot
+            };
         }
 
         private void UpdateManualParticipationMarkersForGroupKey(string groupKey)
