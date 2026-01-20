@@ -61,6 +61,51 @@
 			"problemMatcher": [
 				"$msCompile"
 			]
+		},
+		{
+			"label": "smoke strict (SmokeLauncher)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"run",
+				"-c",
+				"Debug",
+				"--project",
+				"SmokeLauncher/SmokeLauncher.csproj"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "smoke reg (non-admin)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"run",
+				"-c",
+				"Debug",
+				"--project",
+				"TestNetworkApp/TestNetworkApp.csproj",
+				"--",
+				"--smoke",
+				"reg"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "smoke ui (non-admin)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"run",
+				"-c",
+				"Debug",
+				"--project",
+				"TestNetworkApp/TestNetworkApp.csproj",
+				"--",
+				"--smoke",
+				"ui"
+			],
+			"isBackground": false
 		}
 	]
 }

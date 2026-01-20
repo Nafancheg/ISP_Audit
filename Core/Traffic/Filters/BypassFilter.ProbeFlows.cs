@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using IspAudit.Core.Traffic;
 
 namespace IspAudit.Core.Traffic.Filters
@@ -45,21 +44,13 @@ namespace IspAudit.Core.Traffic.Filters
             // Ленивая чистка: если словарь разросся (редко), удаляем просроченные записи.
             if (_probeFlowsUntilTick.Count > 64)
             {
-                List<ConnectionKey>? expiredKeys = null;
+                // Важно: для ConcurrentDictionary перечисление snapshot-safe.
+                // Удаление/добавление в процессе foreach допускается и не должно ломать enum.
                 foreach (var kv in _probeFlowsUntilTick)
                 {
                     if (now > kv.Value)
                     {
-                        expiredKeys ??= new List<ConnectionKey>();
-                        expiredKeys.Add(kv.Key);
-                    }
-                }
-
-                if (expiredKeys != null)
-                {
-                    foreach (var removalKey in expiredKeys)
-                    {
-                        _probeFlowsUntilTick.TryRemove(removalKey, out _);
+                        _probeFlowsUntilTick.TryRemove(kv.Key, out _);
                     }
                 }
             }

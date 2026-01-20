@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
@@ -17,6 +18,9 @@ namespace IspAudit.Core.Traffic
         private readonly IProgress<string>? _progress;
         private readonly object _stateLock = new();
         private bool _isStopping;
+
+        // Throttle логов от падающих фильтров: иначе можно залить UI-лог десятками тысяч строк/сек.
+        private readonly ConcurrentDictionary<string, long> _lastFilterErrorLogTick = new();
 
         // Performance metrics
         public event Action<double>? OnPerformanceUpdate;
@@ -110,7 +114,7 @@ namespace IspAudit.Core.Traffic
             }
             catch (Exception ex)
             {
-                _progress?.Report($"[TrafficEngine] Failed to start: {ex.Message}");
+                _progress?.Report($"[TrafficEngine][ERROR] Failed to start (thread {Environment.CurrentManagedThreadId}): {ex}");
                 throw;
             }
 
@@ -159,7 +163,7 @@ namespace IspAudit.Core.Traffic
                 }
                 catch (Exception ex)
                 {
-                    _progress?.Report($"[TrafficEngine] Error during stop: {ex.Message}");
+                    _progress?.Report($"[TrafficEngine][ERROR] Error during stop (thread {Environment.CurrentManagedThreadId}): {ex}");
                 }
             }
 
@@ -214,7 +218,16 @@ namespace IspAudit.Core.Traffic
                             }
                             catch (Exception ex)
                             {
-                                _progress?.Report($"[TrafficEngine][ERROR] Filter error in '{filter.Name}' (thread {Environment.CurrentManagedThreadId}): {ex}");
+                                // Ограничиваем частоту логов: фильтр может падать на каждом пакете.
+                                var filterName = string.IsNullOrWhiteSpace(filter.Name) ? "<unnamed>" : filter.Name;
+                                var nowTick = Environment.TickCount64;
+                                var lastTick = _lastFilterErrorLogTick.GetOrAdd(filterName, 0);
+                                var shouldLog = lastTick == 0 || (nowTick - lastTick) >= 2000;
+                                if (shouldLog)
+                                {
+                                    _lastFilterErrorLogTick[filterName] = nowTick;
+                                    _progress?.Report($"[TrafficEngine][ERROR] Filter error in '{filterName}' (thread {Environment.CurrentManagedThreadId}): {ex}");
+                                }
                                 // Safer to pass through if filter fails
                             }
                         }
