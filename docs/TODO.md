@@ -215,6 +215,7 @@
           - Примечание: MVP выводится в шапке (header) и на карточках, также доступен в bypass‑панели; статус основан на policy `matched_count`.
         - [ ] 5.4: Интеграция с P0.1 (Accumulative Attachment Model)
       - Gate: DPI2-045 — детерминированная оценка статуса Semantic Group по policy-matched метрикам (smoke)
+        - Примечание: гейт уже реализован и включён в `--smoke reg` план; не требуется делать повторно.
     - [x] **Этап 6**: UI таблица политик + экспорт snapshot (репорт)
       - Подзадачи:
         - [x] 6.1: UI таблица активных политик (Id, Match, Action, Scope, Priority, Matched, Applied)
