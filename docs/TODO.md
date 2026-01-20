@@ -38,7 +38,7 @@
   - Риск: часть функциональности может “молча” отключиться (цикл упал), а UI продолжит выглядеть живым.
   - Чек‑лист (из docs/plan3.md, адаптация):
     - [ ] Собрать контекст: ±100 строк лога вокруг краша, определить компонент/подсистему.
-    - [ ] Улучшить лог краша: печатать `ex.ToString()` (а не только `ex.Message`) в `Core/Traffic/TrafficEngine.cs` (в месте `Loop crashed: ...`).
+    - [x] Улучшить лог краша: печатать `ex.ToString()` (а не только `ex.Message`) в `Core/Traffic/TrafficEngine.cs` (в месте `Loop crashed: ...`).
     - [ ] Добавить stack trace для всех исключений + thread id + контекст выполнения.
     - [ ] Добавить correlation id для Apply/Retest/обновлений кэшей, чтобы связать события.
     - [ ] Составить карту «подозреваемых коллекций» и всех чтений/записей (например: udpBlockedIPs, activeTransactions, observedEndpoints).
@@ -46,7 +46,7 @@
     - [ ] Сделать воспроизводимость ≥80% (цель: краш за ~2 минуты).
     - [ ] Добавить regression сценарий (integration/stress): rapid apply/переключение во время активной диагностики.
     - [ ] Зафиксировать baseline hot path (latency p50/p95/p99, alloc rate, CPU) перед фиксом.
-    - [ ] Исправить найденный паттерн гонки: `foreach` + `TryRemove` по `_probeFlowsUntilTick` в `Core/Traffic/Filters/BypassFilter.ProbeFlows.cs` (собирать ключи на удаление отдельно, затем удалять второй фазой).
+    - [x] Исправить найденный паттерн гонки: `foreach` + `TryRemove` по `_probeFlowsUntilTick` в `Core/Traffic/Filters/BypassFilter.ProbeFlows.cs` (собирать ключи на удаление отдельно, затем удалять второй фазой).
     - [ ] Hotfix: snapshot/copy перед foreach на чтении коллекций + закрыть аналогичные места.
     - [ ] Добавить unit/регресс тесты на concurrent read/write и «модификация во время iteration».
     - [ ] Stress: ≥1000 Apply/Rollback за минуту + проверка утечек и стабильности.

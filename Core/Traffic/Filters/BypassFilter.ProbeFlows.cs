@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using IspAudit.Core.Traffic;
 
 namespace IspAudit.Core.Traffic.Filters
@@ -44,11 +45,21 @@ namespace IspAudit.Core.Traffic.Filters
             // Ленивая чистка: если словарь разросся (редко), удаляем просроченные записи.
             if (_probeFlowsUntilTick.Count > 64)
             {
+                List<ConnectionKey>? expiredKeys = null;
                 foreach (var kv in _probeFlowsUntilTick)
                 {
                     if (now > kv.Value)
                     {
-                        _probeFlowsUntilTick.TryRemove(kv.Key, out _);
+                        expiredKeys ??= new List<ConnectionKey>();
+                        expiredKeys.Add(kv.Key);
+                    }
+                }
+
+                if (expiredKeys != null)
+                {
+                    foreach (var key in expiredKeys)
+                    {
+                        _probeFlowsUntilTick.TryRemove(key, out _);
                     }
                 }
             }

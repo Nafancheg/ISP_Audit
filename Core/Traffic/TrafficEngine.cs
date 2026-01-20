@@ -214,7 +214,7 @@ namespace IspAudit.Core.Traffic
                             }
                             catch (Exception ex)
                             {
-                                _progress?.Report($"[TrafficEngine] Filter error: {ex.Message}");
+                                _progress?.Report($"[TrafficEngine][ERROR] Filter error in '{filter.Name}' (thread {Environment.CurrentManagedThreadId}): {ex}");
                                 // Safer to pass through if filter fails
                             }
                         }
@@ -265,7 +265,7 @@ namespace IspAudit.Core.Traffic
             catch (Exception ex)
             {
                 // Log unexpected loop errors
-                _progress?.Report($"[TrafficEngine] Loop crashed: {ex.Message}");
+                _progress?.Report($"[TrafficEngine][ERROR] Loop crashed (thread {Environment.CurrentManagedThreadId}): {ex}");
             }
         }
 
