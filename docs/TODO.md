@@ -223,7 +223,7 @@
         - [x] 6.1: UI таблица активных политик (Id, Match, Action, Scope, Priority, Matched, Applied)
         - [x] 6.2: Экспорт DecisionGraphSnapshot в JSON для репорта
         - [ ] 6.3: Advanced режим: ручное создание/редактирование политик (опционально)
-      - Gate: DPI2-046 — реализация готова; отдельный smoke-гейт можно добавить при необходимости
+      - Gate: DPI2-046 — экспорт policy snapshot (`PolicySnapshotJson`) детерминированен и парсится; `ActivePolicies` отражает метрики
   - **Риски и ограничения** (для учёта при реализации):
     - Overhead на lookup в Decision Graph — измерить latency на hot path
     - Память для хранения политик — ограничить количество (cap)

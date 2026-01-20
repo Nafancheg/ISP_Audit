@@ -1069,6 +1069,174 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_PolicySnapshotExport_AndActivePolicies_AreValid(CancellationToken ct)
+            => RunAsyncAwait("DPI2-046", "Policy snapshot export: JSON парсится и ActivePolicies отражает policy метрики", async innerCt =>
+            {
+                static uint ToIpv4Int(IPAddress ip)
+                {
+                    var bytes = ip.GetAddressBytes();
+                    if (bytes.Length != 4) throw new ArgumentException("Ожидали IPv4 адрес", nameof(ip));
+                    return ((uint)bytes[0] << 24) | ((uint)bytes[1] << 16) | ((uint)bytes[2] << 8) | bytes[3];
+                }
+
+                var prevGate = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_UDP443");
+                try
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_UDP443", "1");
+
+                    using var engine = new TrafficEngine();
+                    var profile = new BypassProfile
+                    {
+                        DropUdp443 = true,
+                        FragmentTlsClientHello = false,
+                        DropTcpRst = false
+                    };
+
+                    using var service = new TlsBypassService(engine, profile, _ => { }, useTrafficEngine: false, startMetricsTimer: false, nowProvider: () => DateTime.UtcNow);
+                    var filter = new IspAudit.Core.Traffic.Filters.BypassFilter(profile, logAction: null, presetName: "smoke");
+                    service.SetFilterForSmoke(filter);
+
+                    var targetIp = IPAddress.Parse("203.0.113.10");
+                    var otherIp = IPAddress.Parse("198.51.100.20");
+                    var srcIp = IPAddress.Parse("10.0.0.2");
+
+                    const string policyId = "smoke_udp443_drop_export";
+                    var snapshot = IspAudit.Core.Bypass.PolicySetCompiler.CompileOrThrow(new[]
+                    {
+                        new FlowPolicy
+                        {
+                            Id = policyId,
+                            Priority = 100,
+                            Match = new MatchCondition
+                            {
+                                Proto = FlowTransportProtocol.Udp,
+                                Port = 443,
+                                DstIpv4Set = new[] { ToIpv4Int(targetIp) }.ToImmutableHashSet()
+                            },
+                            Action = PolicyAction.DropUdp443,
+                            Scope = PolicyScope.Local
+                        }
+                    });
+
+                    service.SetDecisionGraphSnapshotForManager(snapshot);
+
+                    // Дадим один пакет, который точно матчится политикой, чтобы появились matched/applied метрики.
+                    var udpToTarget = BuildIpv4UdpPacket(
+                        srcIp,
+                        targetIp,
+                        srcPort: 50000,
+                        dstPort: 443,
+                        ttl: 64,
+                        ipId: 1,
+                        payload: new byte[] { 1, 2, 3 });
+
+                    var udpToOther = BuildIpv4UdpPacket(
+                        srcIp,
+                        otherIp,
+                        srcPort: 50001,
+                        dstPort: 443,
+                        ttl: 64,
+                        ipId: 2,
+                        payload: new byte[] { 4, 5, 6 });
+
+                    var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+                    var sender = new DummyPacketSender();
+
+                    _ = filter.Process(new InterceptedPacket(udpToTarget, udpToTarget.Length), ctx, sender);
+                    _ = filter.Process(new InterceptedPacket(udpToOther, udpToOther.Length), ctx, sender);
+
+                    var tcs = new TaskCompletionSource<TlsBypassMetrics>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    void OnMetrics(TlsBypassMetrics m)
+                    {
+                        if (!tcs.Task.IsCompleted)
+                        {
+                            tcs.TrySetResult(m);
+                        }
+                    }
+
+                    service.MetricsUpdated += OnMetrics;
+                    await service.PullMetricsOnceAsyncForSmoke().ConfigureAwait(false);
+
+                    var completed = await Task.WhenAny(tcs.Task, Task.Delay(500, innerCt)).ConfigureAwait(false);
+                    service.MetricsUpdated -= OnMetrics;
+
+                    if (completed != tcs.Task)
+                    {
+                        throw new InvalidOperationException("Не получили MetricsUpdated после PullMetricsOnceAsyncForSmoke");
+                    }
+
+                    var metrics = await tcs.Task.ConfigureAwait(false);
+
+                    if (string.IsNullOrWhiteSpace(metrics.PolicySnapshotJson))
+                    {
+                        return new SmokeTestResult("DPI2-046", "Policy snapshot export: JSON парсится и ActivePolicies отражает policy метрики", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "PolicySnapshotJson пустой (ожидали JSON со списком политик)");
+                    }
+
+                    // 1) JSON парсится и содержит нашу policy-id.
+                    using (var doc = JsonDocument.Parse(metrics.PolicySnapshotJson))
+                    {
+                        var root = doc.RootElement;
+                        if (!root.TryGetProperty("Version", out var version) || version.GetString() != "v1")
+                        {
+                            return new SmokeTestResult("DPI2-046", "Policy snapshot export: JSON парсится и ActivePolicies отражает policy метрики", SmokeOutcome.Fail, TimeSpan.Zero,
+                                "PolicySnapshotJson: отсутствует Version=v1");
+                        }
+
+                        if (!root.TryGetProperty("Policies", out var policies) || policies.ValueKind != JsonValueKind.Array)
+                        {
+                            return new SmokeTestResult("DPI2-046", "Policy snapshot export: JSON парсится и ActivePolicies отражает policy метрики", SmokeOutcome.Fail, TimeSpan.Zero,
+                                "PolicySnapshotJson: отсутствует массив Policies");
+                        }
+
+                        var found = false;
+                        foreach (var row in policies.EnumerateArray())
+                        {
+                            if (!row.TryGetProperty("Id", out var idProp)) continue;
+                            if (!string.Equals(idProp.GetString(), policyId, StringComparison.Ordinal)) continue;
+                            found = true;
+
+                            if (!row.TryGetProperty("AppliedCount", out var applied) || applied.GetInt64() <= 0)
+                            {
+                                return new SmokeTestResult("DPI2-046", "Policy snapshot export: JSON парсится и ActivePolicies отражает policy метрики", SmokeOutcome.Fail, TimeSpan.Zero,
+                                    "PolicySnapshotJson: AppliedCount для policy-id не увеличился (ожидали >0)");
+                            }
+
+                            break;
+                        }
+
+                        if (!found)
+                        {
+                            return new SmokeTestResult("DPI2-046", "Policy snapshot export: JSON парсится и ActivePolicies отражает policy метрики", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"PolicySnapshotJson: не нашли policy-id={policyId} в Policies");
+                        }
+                    }
+
+                    // 2) Таблица ActivePolicies присутствует и содержит нашу политику.
+                    var table = metrics.ActivePolicies ?? Array.Empty<ActiveFlowPolicyRow>();
+                    var rowFound = table.FirstOrDefault(r => string.Equals(r.Id, policyId, StringComparison.Ordinal));
+                    if (rowFound == null)
+                    {
+                        var observed = string.Join(", ", table.Select(r => r.Id));
+                        return new SmokeTestResult("DPI2-046", "Policy snapshot export: JSON парсится и ActivePolicies отражает policy метрики", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"ActivePolicies не содержит policy-id={policyId}. observed=[{observed}]" );
+                    }
+
+                    if (rowFound.AppliedCount <= 0)
+                    {
+                        return new SmokeTestResult("DPI2-046", "Policy snapshot export: JSON парсится и ActivePolicies отражает policy метрики", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "ActivePolicies: AppliedCount для policy-id не увеличился (ожидали >0)");
+                    }
+
+                    return new SmokeTestResult("DPI2-046", "Policy snapshot export: JSON парсится и ActivePolicies отражает policy метрики", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: snapshot экспортируется в JSON, таблица ActivePolicies отражает метрики");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_UDP443", prevGate);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_Guard_BypassStateManager_IsSingleSourceOfTruth(CancellationToken ct)
             => RunAsyncAwait("DPI2-026", "Guard: TrafficEngine/TlsBypassService только через BypassStateManager", async innerCt =>
             {
