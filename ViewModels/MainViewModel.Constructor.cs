@@ -114,7 +114,18 @@ namespace IspAudit.ViewModels
                 // Per-card ручные ретесты, запрошенные во время диагностики.
                 if (_pendingManualRetestHostKeys.Count > 0)
                 {
-                    _ = RunPendingManualRetestsAfterRunAsync();
+                    if (!Orchestrator.LastRunWasUserCancelled)
+                    {
+                        _ = RunPendingManualRetestsAfterRunAsync();
+                    }
+                    else
+                    {
+                        lock (_pendingManualRetestHostKeys)
+                        {
+                            _pendingManualRetestHostKeys.Clear();
+                        }
+                        Log("[PerCardRetest] Skip queued retests after user cancel");
+                    }
                 }
             };
             Orchestrator.PropertyChanged += (s, e) =>

@@ -399,6 +399,15 @@ namespace IspAudit.ViewModels
                 // UX: позволяем нажать кнопку, но ставим ретест в очередь после завершения.
                 if (IsRunning)
                 {
+                    // Если включён режим "без лимита времени", диагностика может не завершиться сама.
+                    // Не ставим ретест в очередь, чтобы он не стартовал неожиданно после Cancel.
+                    if (IsUnlimitedTime)
+                    {
+                        test.ActionStatusText = "Ретест недоступен при непрерывной диагностике — остановите диагностику";
+                        Log($"[PerCardRetest] Skip queue during unlimited run: {hostKey}");
+                        return Task.CompletedTask;
+                    }
+
                     lock (_pendingManualRetestHostKeys)
                     {
                         _pendingManualRetestHostKeys.Add(hostKey);
@@ -448,6 +457,13 @@ namespace IspAudit.ViewModels
                 // По UX после переподключения просим быстрый ретест. Если сейчас идёт диагностика — ставим в очередь.
                 if (IsRunning)
                 {
+                    if (IsUnlimitedTime)
+                    {
+                        test.ActionStatusText = "Переподключено; остановите диагностику для ретеста";
+                        Log($"[PerCardRetest] Skip queue after reconnect during unlimited run: {hostKey}");
+                        return;
+                    }
+
                     lock (_pendingManualRetestHostKeys)
                     {
                         _pendingManualRetestHostKeys.Add(hostKey);
