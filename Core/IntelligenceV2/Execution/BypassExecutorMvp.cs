@@ -83,6 +83,16 @@ public sealed class BypassExecutorMvp
     /// </summary>
     public bool TryBuildRecommendationLine(string hostKey, string? bypassStrategyRaw, out string line)
     {
+        return TryBuildRecommendationLine(hostKey, bypassStrategyRaw, contextSuffix: null, out line);
+    }
+
+    /// <summary>
+    /// Построить одну строку рекомендаций (1 строка на хост) + опциональный хвост контекста цели.
+    /// Пример контекста: "host=1.2.3.4:443 SNI=example.com RDNS=-".
+    /// Важно: контекст добавляется после "|", чтобы UI мог обрезать его при разборе токенов.
+    /// </summary>
+    public bool TryBuildRecommendationLine(string hostKey, string? bypassStrategyRaw, string? contextSuffix, out string line)
+    {
         line = string.Empty;
 
         var strategies = ExtractStrategyTokens(bypassStrategyRaw);
@@ -99,6 +109,16 @@ public sealed class BypassExecutorMvp
         }
 
         line = $"{V2LogPrefix} 💡 Рекомендация: {string.Join(", ", strategies)}";
+
+        if (!string.IsNullOrWhiteSpace(contextSuffix))
+        {
+            var suffix = contextSuffix.Trim();
+            if (suffix.Length > 0)
+            {
+                line += $" | {suffix}";
+            }
+        }
+
         return true;
     }
 

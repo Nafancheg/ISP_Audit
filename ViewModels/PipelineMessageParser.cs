@@ -430,29 +430,52 @@ namespace IspAudit.ViewModels
                         existing.Details += "\n" + msg;
                     }
                 }
-                else if ((msg.Contains("→ Стратегия:") || msg.Contains("💡 Рекомендация:")) && !string.IsNullOrEmpty(_ctx.LastUpdatedHost))
+                else if (msg.Contains("→ Стратегия:") || msg.Contains("💡 Рекомендация:"))
                 {
-                    var targetHostKey = _ctx.LastUpdatedHost;
-                    if (!string.IsNullOrWhiteSpace(targetHostKey) && _ctx.IsNoiseHost(targetHostKey))
-                    {
-                        // Late-resolve/rdns может перекинуть "последний хост" на шумовой паттерн.
-                        // В таких случаях пытаемся привязать рекомендацию к последнему НЕ шумовому ключу.
-                        if (!string.IsNullOrWhiteSpace(_ctx.LastUserFacingHost))
-                        {
-                            targetHostKey = _ctx.LastUserFacingHost;
-                        }
-                    }
-
-                    if (string.IsNullOrWhiteSpace(targetHostKey) || _ctx.IsNoiseHost(targetHostKey))
-                    {
-                        return;
-                    }
-
                     var isV2 = msg.TrimStart().StartsWith("[V2]", StringComparison.OrdinalIgnoreCase);
 
                     // v2 — единственный источник рекомендаций для UI.
                     // Legacy сообщения могут присутствовать в логе, но не должны менять стратегию карточки.
                     if (!isV2)
+                    {
+                        return;
+                    }
+
+                    // Пытаемся вытащить цель прямо из v2-сообщения, чтобы не полагаться на LastUpdatedHost.
+                    // Это критично при межпоточной/нестрогой упорядоченности сообщений и доменной агрегации.
+                    string? targetHostKey = null;
+
+                    // Формат от UiStage: "... | host=1.2.3.4:443 SNI=example.com RDNS=-"
+                    var hostPortToken = _ctx.ExtractToken(msg, "host");
+                    if (!string.IsNullOrWhiteSpace(hostPortToken))
+                    {
+                        var hostFromLine = hostPortToken.Split(':')[0];
+                        if (!string.IsNullOrWhiteSpace(hostFromLine))
+                        {
+                            var uiKey = _ctx.SelectUiKey(hostFromLine, msg);
+                            if (!string.IsNullOrWhiteSpace(uiKey))
+                            {
+                                targetHostKey = uiKey;
+                            }
+                        }
+                    }
+
+                    // Fallback на прошлое поведение (для обратной совместимости со старыми лог-линиями).
+                    if (string.IsNullOrWhiteSpace(targetHostKey))
+                    {
+                        targetHostKey = _ctx.LastUpdatedHost;
+                        if (!string.IsNullOrWhiteSpace(targetHostKey) && _ctx.IsNoiseHost(targetHostKey))
+                        {
+                            // Late-resolve/rdns может перекинуть "последний хост" на шумовой паттерн.
+                            // В таких случаях пытаемся привязать рекомендацию к последнему НЕ шумовому ключу.
+                            if (!string.IsNullOrWhiteSpace(_ctx.LastUserFacingHost))
+                            {
+                                targetHostKey = _ctx.LastUserFacingHost;
+                            }
+                        }
+                    }
+
+                    if (string.IsNullOrWhiteSpace(targetHostKey) || _ctx.IsNoiseHost(targetHostKey))
                     {
                         return;
                     }
@@ -465,6 +488,13 @@ namespace IspAudit.ViewModels
                     }
 
                     var strategy = raw.Trim();
+
+                    // Если после стратегий добавлен контекст цели через '|', он не должен попадать в токены.
+                    var pipeIndex = strategy.IndexOf('|');
+                    if (pipeIndex > 0)
+                    {
+                        strategy = strategy.Substring(0, pipeIndex).Trim();
+                    }
 
                     // Если в строке есть скобки с деталями (conf/фейлы/окно), отрезаем их для поля стратегии
                     var parenIndex = strategy.IndexOf('(');

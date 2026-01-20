@@ -76,7 +76,14 @@ namespace IspAudit.Utils
                     // Bypass должен применяться отдельной командой после завершения диагностики
                     if (blocked.BypassStrategy != PipelineContract.BypassNone && blocked.BypassStrategy != PipelineContract.BypassUnknown)
                     {
-                        if (_executorV2.TryBuildRecommendationLine(host, blocked.BypassStrategy, out var recommendationLine))
+                        // Дедуп по SNI (если есть), иначе по IP.
+                        // Это уменьшает шум в логах при множественных IP одного домена.
+                        var dedupKey = !string.IsNullOrWhiteSpace(sni) && sni != "-" ? sni : host;
+
+                        // Контекст цели для детерминированной привязки рекомендации к карточке (UI не должен полагаться на LastUpdatedHost).
+                        var context = $"host={host}:{port} SNI={(string.IsNullOrWhiteSpace(sni) ? "-" : sni)} RDNS={(string.IsNullOrWhiteSpace(rdns) ? "-" : rdns)}";
+
+                        if (_executorV2.TryBuildRecommendationLine(dedupKey, blocked.BypassStrategy, context, out var recommendationLine))
                         {
                             _progress?.Report(recommendationLine);
                         }

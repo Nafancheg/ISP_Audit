@@ -60,6 +60,15 @@ namespace IspAudit.ViewModels
             if (string.IsNullOrWhiteSpace(raw)) return;
 
             raw = raw.Trim();
+
+            // UI-stage может дописывать контекст цели через "| host=...".
+            // Для панели рекомендаций нам нужны только токены стратегий.
+            var pipeIndex = raw.IndexOf('|');
+            if (pipeIndex > 0)
+            {
+                raw = raw.Substring(0, pipeIndex).Trim();
+            }
+
             var paren = raw.IndexOf('(');
             if (paren > 0)
             {
