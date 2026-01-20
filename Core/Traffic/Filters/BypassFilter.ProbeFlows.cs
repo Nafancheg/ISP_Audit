@@ -57,9 +57,9 @@ namespace IspAudit.Core.Traffic.Filters
 
                 if (expiredKeys != null)
                 {
-                    foreach (var key in expiredKeys)
+                    foreach (var removalKey in expiredKeys)
                     {
-                        _probeFlowsUntilTick.TryRemove(key, out _);
+                        _probeFlowsUntilTick.TryRemove(removalKey, out _);
                     }
                 }
             }
