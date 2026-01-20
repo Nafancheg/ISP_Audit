@@ -183,6 +183,17 @@ namespace IspAudit.ViewModels
                     // best-effort
                 }
 
+                // Практическая стабилизация: сохраняем candidate endpoints в ActiveTargetPolicy,
+                // чтобы per-target политики могли компилироваться без DNS в последующих apply.
+                try
+                {
+                    _stateManager.UpdateActiveTargetCandidateEndpointsBestEffort(initiatorHostKey ?? string.Empty, candidateIps);
+                }
+                catch
+                {
+                    // best-effort
+                }
+
                 var expected = BuildExpectedEffects(planText ?? string.Empty, candidateIps);
                 var warnings = BuildWarnings(planText ?? string.Empty, candidateIps, activation.Text, ActivePolicies.Count);
 

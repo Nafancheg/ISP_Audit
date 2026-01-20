@@ -475,6 +475,11 @@ namespace IspAudit.Bypass
                                 if (!tp.HttpHostTricksEnabled) continue;
                                 if (string.IsNullOrWhiteSpace(tp.HostKey)) continue;
 
+                                // Практическая стабилизация: если у цели уже есть candidate endpoints,
+                                // используем их как seed observed IPv4, чтобы per-target политики могли
+                                // собраться без DNS resolve.
+                                SeedObservedIpv4TargetsFromCandidateEndpointsBestEffort(tp.HostKey, tp.CandidateIpEndpoints);
+
                                 var ips = await GetOrSeedUdp443DropTargetsAsync(tp.HostKey, cancellationToken).ConfigureAwait(false);
                                 if (ips.Length == 0) continue;
 
@@ -524,6 +529,10 @@ namespace IspAudit.Bypass
                             {
                                 if (tp.TlsStrategy == TlsBypassStrategy.None) continue;
                                 if (string.IsNullOrWhiteSpace(tp.HostKey)) continue;
+
+                                // Практическая стабилизация: candidate endpoints → seed observed IPv4,
+                                // чтобы DstIpv4Set не зависел только от DNS resolve.
+                                SeedObservedIpv4TargetsFromCandidateEndpointsBestEffort(tp.HostKey, tp.CandidateIpEndpoints);
 
                                 var ips = await GetOrSeedUdp443DropTargetsAsync(tp.HostKey, cancellationToken).ConfigureAwait(false);
                                 if (ips.Length == 0) continue;

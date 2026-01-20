@@ -1237,6 +1237,145 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Dpi2_PerTargetPolicy_UsesCandidateEndpointsSeed_NoDnsRequired(CancellationToken ct)
+            => RunAsyncAwait("DPI2-047", "Per-target policy: DstIpv4Set собирается из candidate endpoints (без DNS)", async innerCt =>
+            {
+                var prevGate = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443");
+                try
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443", "1");
+
+                    using var engine = new TrafficEngine(progress: null);
+                    var profile = BypassProfile.CreateDefault();
+
+                    // Smoke-safe: не трогаем WinDivert/TrafficEngine.StartAsync (требует UAC).
+                    var tls = new TlsBypassService(
+                        trafficEngine: engine,
+                        baseProfile: profile,
+                        log: null,
+                        startMetricsTimer: false,
+                        useTrafficEngine: false,
+                        nowProvider: null);
+
+                    using var manager = BypassStateManager.GetOrCreateFromService(tls, profile, log: null);
+
+                    const string host = "not-a-real-host.invalid";
+
+                    // 1) Задаём активную цель с per-target TLS стратегией.
+                    manager.RememberActiveTargetPolicy(new BypassStateManager.ActiveTargetPolicy
+                    {
+                        HostKey = host,
+                        LastAppliedUtc = DateTime.UtcNow,
+                        TlsStrategy = TlsBypassStrategy.Fragment,
+                        DropUdp443 = false,
+                        AllowNoSni = false,
+                        HttpHostTricksEnabled = false
+                    });
+
+                    // 2) Подкладываем candidate endpoints (как будто пришли из apply-транзакции/результатов тестов).
+                    manager.UpdateActiveTargetCandidateEndpointsBestEffort(host, new[]
+                    {
+                        "1.2.3.4:443",
+                        "5.6.7.8:443"
+                    });
+
+                    var active = manager.GetActiveTargetPoliciesSnapshot(host);
+                    var activeRow = active.FirstOrDefault(v => string.Equals(v.HostKey, host, StringComparison.OrdinalIgnoreCase));
+                    if (activeRow == null || activeRow.CandidateIpEndpoints.Count == 0)
+                    {
+                        return new SmokeTestResult("DPI2-047", "Per-target policy: DstIpv4Set собирается из candidate endpoints (без DNS)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "UpdateActiveTargetCandidateEndpointsBestEffort не сохранил candidate endpoints в ActiveTargetPolicy");
+                    }
+
+                    // 3) Apply: должен скомпилировать per-target policy с DstIpv4Set из cache (без DNS).
+                    var options = TlsBypassOptions.CreateDefault(profile) with { FragmentEnabled = true };
+                    await manager.ApplyTlsOptionsAsync(options, innerCt).ConfigureAwait(false);
+
+                    var observedAfter = manager.GetObservedIpv4TargetsSnapshotForHost(host);
+                    if (observedAfter.Length == 0)
+                    {
+                        return new SmokeTestResult("DPI2-047", "Per-target policy: DstIpv4Set собирается из candidate endpoints (без DNS)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "После ApplyTlsOptionsAsync observed IPv4 snapshot пустой (ожидали seed из candidate endpoints)");
+                    }
+
+                    var tcs = new TaskCompletionSource<TlsBypassMetrics>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    void OnMetrics(TlsBypassMetrics m)
+                    {
+                        if (!tcs.Task.IsCompleted)
+                        {
+                            tcs.TrySetResult(m);
+                        }
+                    }
+
+                    manager.TlsService.MetricsUpdated += OnMetrics;
+                    await manager.TlsService.PullMetricsOnceAsyncForSmoke().ConfigureAwait(false);
+                    var completed = await Task.WhenAny(tcs.Task, Task.Delay(500, innerCt)).ConfigureAwait(false);
+                    manager.TlsService.MetricsUpdated -= OnMetrics;
+
+                    if (completed != tcs.Task)
+                    {
+                        return new SmokeTestResult("DPI2-047", "Per-target policy: DstIpv4Set собирается из candidate endpoints (без DNS)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Не получили MetricsUpdated после PullMetricsOnceAsyncForSmoke");
+                    }
+
+                    var metrics = await tcs.Task.ConfigureAwait(false);
+                    if (string.IsNullOrWhiteSpace(metrics.PolicySnapshotJson))
+                    {
+                        return new SmokeTestResult("DPI2-047", "Per-target policy: DstIpv4Set собирается из candidate endpoints (без DNS)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "PolicySnapshotJson пустой (ожидали, что snapshot собран)" );
+                    }
+
+                    using var doc = JsonDocument.Parse(metrics.PolicySnapshotJson);
+                    var root = doc.RootElement;
+                    if (!root.TryGetProperty("Policies", out var policies) || policies.ValueKind != JsonValueKind.Array)
+                    {
+                        return new SmokeTestResult("DPI2-047", "Per-target policy: DstIpv4Set собирается из candidate endpoints (без DNS)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "PolicySnapshotJson: отсутствует массив Policies");
+                    }
+
+                    var foundPerTarget = false;
+                    foreach (var row in policies.EnumerateArray())
+                    {
+                        if (!row.TryGetProperty("Id", out var idProp)) continue;
+                        var id = idProp.GetString() ?? string.Empty;
+                        if (!id.StartsWith("tcp443_tls_", StringComparison.Ordinal)) continue;
+
+                        if (!row.TryGetProperty("DstIpv4SetPreview", out var preview) || preview.ValueKind != JsonValueKind.Array)
+                        {
+                            continue;
+                        }
+
+                        var hasA = false;
+                        var hasB = false;
+                        foreach (var ip in preview.EnumerateArray())
+                        {
+                            var s = ip.GetString() ?? string.Empty;
+                            if (s == "1.2.3.4") hasA = true;
+                            if (s == "5.6.7.8") hasB = true;
+                        }
+
+                        if (hasA && hasB)
+                        {
+                            foundPerTarget = true;
+                            break;
+                        }
+                    }
+
+                    if (!foundPerTarget)
+                    {
+                        return new SmokeTestResult("DPI2-047", "Per-target policy: DstIpv4Set собирается из candidate endpoints (без DNS)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Не нашли per-target tcp443_tls_* политику с DstIpv4SetPreview=[1.2.3.4, 5.6.7.8]" );
+                    }
+
+                    return new SmokeTestResult("DPI2-047", "Per-target policy: DstIpv4Set собирается из candidate endpoints (без DNS)", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: per-target DstIpv4Set берётся из candidate endpoints, без DNS" );
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443", prevGate);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> Dpi2_Guard_BypassStateManager_IsSingleSourceOfTruth(CancellationToken ct)
             => RunAsyncAwait("DPI2-026", "Guard: TrafficEngine/TlsBypassService только через BypassStateManager", async innerCt =>
             {

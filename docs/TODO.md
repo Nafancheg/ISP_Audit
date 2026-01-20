@@ -216,6 +216,7 @@
         - [x] 5.4: Интеграция с P0.1 (Accumulative Attachment Model)
           - MVP: при записи apply-транзакции seed observed IPv4 целей из `candidateIpEndpoints`, чтобы policy-driven per-target политики (DstIpv4Set) могли компилироваться сразу.
           - Regression: `REG-015`.
+          - Hardening: сохранять `candidateIpEndpoints` в ActiveTargetPolicy и использовать их как seed перед компиляцией per-target политик (уменьшает зависимость от DNS). Gate: `DPI2-047`.
       - Gate: DPI2-045 — детерминированная оценка статуса Semantic Group по policy-matched метрикам (smoke)
         - Примечание: гейт уже реализован и включён в `--smoke reg` план; не требуется делать повторно.
     - [x] **Этап 6**: UI таблица политик + экспорт snapshot (репорт)

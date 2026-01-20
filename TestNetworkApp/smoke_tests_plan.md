@@ -627,6 +627,14 @@
 - `ActivePolicies` содержит ту же policy-id и `AppliedCount > 0`
 **Входные данные:** `TlsBypassService` (smoke-seam `PullMetricsOnceAsyncForSmoke`) + `BypassFilter` + snapshot с `PolicyAction.DropUdp443` + синтетический UDP/443 трафик + `ISP_AUDIT_POLICY_DRIVEN_UDP443=1`
 **Ожидаемый результат:** Тест PASS
+
+### 5.4.8 Policy-Driven Execution Plane (Hardening)
+**Test ID:** `DPI2-047`
+**Что проверяет:** Per-target TLS политики (DstIpv4Set) собираются из candidate endpoints (seed) без зависимости от DNS resolve
+**Для чего:** Практически снизить «хаос по целям»: per-target политики должны собираться сразу после apply, даже если DNS ломается/фильтруется
+**Критерий успеха:** В `PolicySnapshotJson` присутствует per-target `tcp443_tls_*` политика с `DstIpv4SetPreview`, содержащим IP из candidate endpoints
+**Входные данные:** `BypassStateManager` + `ActiveTargetPolicy` + `UpdateActiveTargetCandidateEndpointsBestEffort(...)` + `ISP_AUDIT_POLICY_DRIVEN_TCP443=1`
+**Ожидаемый результат:** Тест PASS
 **Test ID:** `DPI2-014`
 **Что проверяет:** Ранжирование стратегий по feedback поверх basePriority
 **Для чего:** Улучшать порядок рекомендаций на основе успешности
