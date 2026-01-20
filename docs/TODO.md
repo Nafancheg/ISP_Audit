@@ -46,8 +46,9 @@
     - [ ] Сделать воспроизводимость ≥80% (цель: краш за ~2 минуты).
     - [ ] Добавить regression сценарий (integration/stress): rapid apply/переключение во время активной диагностики.
     - [ ] Зафиксировать baseline hot path (latency p50/p95/p99, alloc rate, CPU) перед фиксом.
-    - [x] Исправить найденный паттерн гонки: `foreach` + `TryRemove` по `_probeFlowsUntilTick` в `Core/Traffic/Filters/BypassFilter.ProbeFlows.cs` (собирать ключи на удаление отдельно, затем удалять второй фазой).
+    - [x] Аудит/харднинг probe-cleanup: `_probeFlowsUntilTick` в `Core/Traffic/Filters/BypassFilter.ProbeFlows.cs` хранится в `ConcurrentDictionary` (перечисление snapshot-safe), добавлены проверки и защита от лишнего шума в логах.
     - [x] Hotfix: подписчики/единичные исключения не должны валить `TrafficEngine.Loop` (guard + per-packet catch).
+    - [x] Сделать входные списки профиля фактически immutable: хранить `TlsFragmentSizes/RedirectRules/Hosts` как массивы, чтобы исключить `Collection was modified` при перечислении в hot path.
     - [ ] Добавить unit/регресс тесты на concurrent read/write и «модификация во время iteration».
     - [ ] Stress: ≥1000 Apply/Rollback за минуту + проверка утечек и стабильности.
     - [ ] Проверить перф: если деградация >10% → вариант с lock; если >30% → откат и переход на immutable snapshot/Concurrent*.

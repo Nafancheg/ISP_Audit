@@ -63,7 +63,7 @@ namespace IspAudit.Bypass
         /// Набор размеров фрагментов ClientHello (последний фрагмент = остаток).
         /// Первый элемент должен быть > 0, список должен давать хотя бы 2 фрагмента.
         /// </summary>
-        public IReadOnlyList<int> TlsFragmentSizes { get; init; } = new List<int> { 64 };
+        public IReadOnlyList<int> TlsFragmentSizes { get; init; } = new[] { 64 };
 
         /// <summary>
         /// Использовать TTL Trick (отправка копии пакета с малым TTL).
@@ -354,8 +354,8 @@ namespace IspAudit.Bypass
                         .Select(r => r.ToRule())
                         .Where(r => r != null)!
                         .Cast<BypassRedirectRule>()
-                        .ToList()
-                        ?? new List<BypassRedirectRule>()
+                        .ToArray()
+                        ?? Array.Empty<BypassRedirectRule>()
                 };
             }
             catch
@@ -408,7 +408,7 @@ namespace IspAudit.Bypass
                 TlsStrategy = TlsBypassStrategy.Fragment,
                 TlsFirstFragmentSize = 64,
                 TlsFragmentThreshold = 128,
-                TlsFragmentSizes = new List<int> { 64 },
+                TlsFragmentSizes = new[] { 64 },
                 FragmentPresetName = "Профиль",
                 AutoAdjustAggressive = false,
                 AllowNoSni = false,
@@ -427,9 +427,9 @@ namespace IspAudit.Bypass
                 .Where(v => v > 0)
                 .Select(v => Math.Max(minChunk, v))
                 .Take(4) // ограничиваем разумно, чтобы не ломать стабильность
-                .ToList();
+                .ToArray();
 
-            if (normalized is { Count: > 0 })
+            if (normalized is { Length: > 0 })
             {
                 var sum = normalized.Sum();
                 if (sum < minClientHelloSize || sum > maxTlsRecord)
@@ -446,7 +446,7 @@ namespace IspAudit.Bypass
         {
             const int minChunk = 4;
             var safeSize = Math.Max(minChunk, fallbackSize > 0 ? fallbackSize : 64);
-            return new List<int> { safeSize };
+            return new[] { safeSize };
         }
 
         private sealed class BypassProfileDocument
@@ -493,8 +493,8 @@ namespace IspAudit.Bypass
                     RedirectIp = RedirectIp!,
                     RedirectPort = RedirectPort == 0 ? Port : RedirectPort,
                     Enabled = Enabled,
-                    Hosts = Hosts?.Where(h => !string.IsNullOrWhiteSpace(h)).Select(h => h.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
-                        ?? new List<string>()
+                    Hosts = Hosts?.Where(h => !string.IsNullOrWhiteSpace(h)).Select(h => h.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+                        ?? Array.Empty<string>()
                 };
             }
         }
