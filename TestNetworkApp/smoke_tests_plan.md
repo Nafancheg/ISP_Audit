@@ -635,6 +635,13 @@
 **Критерий успеха:** В `PolicySnapshotJson` присутствует per-target `tcp443_tls_*` политика с `DstIpv4SetPreview`, содержащим IP из candidate endpoints
 **Входные данные:** `BypassStateManager` + `ActiveTargetPolicy` + `UpdateActiveTargetCandidateEndpointsBestEffort(...)` + `ISP_AUDIT_POLICY_DRIVEN_TCP443=1`
 **Ожидаемый результат:** Тест PASS
+
+**Test ID:** `DPI2-048`
+**Что проверяет:** Per-target TCP/80 HostTricks политики (DstIpv4Set) собираются из candidate endpoints (seed) без зависимости от DNS resolve
+**Для чего:** Закрыть «хаос по целям» и для TCP/80: если есть активные цели, blast-radius должен быть per-target, даже когда DNS resolve недоступен
+**Критерий успеха:** В `PolicySnapshotJson` присутствует per-target `tcp80_http_host_tricks_*` политика с `DstIpv4SetPreview`, содержащим IP из candidate endpoints
+**Входные данные:** `BypassStateManager` + `ActiveTargetPolicy(HttpHostTricksEnabled=true)` + `UpdateActiveTargetCandidateEndpointsBestEffort(...)` + `ISP_AUDIT_POLICY_DRIVEN_TCP80=1`
+**Ожидаемый результат:** Тест PASS
 **Test ID:** `DPI2-014`
 **Что проверяет:** Ранжирование стратегий по feedback поверх basePriority
 **Для чего:** Улучшать порядок рекомендаций на основе успешности

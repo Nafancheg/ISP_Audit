@@ -207,7 +207,7 @@
         - 4.3: Fallback на `TlsBypassService.CurrentStrategy` при отсутствии политики
         - 4.4: Метрики per-policy для TLS-стратегий
       - Gate: DPI2-044 — per-domain стратегии работают; fallback корректен; метрики per-policy
-    - [ ] **Этап 5**: Semantic Groups как «пакет политик» + UI статусы ENABLED/PARTIAL/NO_TRAFFIC
+    - [x] **Этап 5**: Semantic Groups как «пакет политик» + UI статусы ENABLED/PARTIAL/NO_TRAFFIC
       - Подзадачи:
         - [x] 5.1: Модель `SemanticGroup` (GroupKey, DisplayName, DomainPatterns, PolicyBundle)
         - [x] 5.2: Merge-правила для политик группы (MVP: endpoints=union для эквивалентных политик)
@@ -216,7 +216,7 @@
         - [x] 5.4: Интеграция с P0.1 (Accumulative Attachment Model)
           - MVP: при записи apply-транзакции seed observed IPv4 целей из `candidateIpEndpoints`, чтобы policy-driven per-target политики (DstIpv4Set) могли компилироваться сразу.
           - Regression: `REG-015`.
-          - Hardening: сохранять `candidateIpEndpoints` в ActiveTargetPolicy и использовать их как seed перед компиляцией per-target политик (уменьшает зависимость от DNS). Gate: `DPI2-047`.
+          - Hardening: сохранять `candidateIpEndpoints` в ActiveTargetPolicy и использовать их как seed перед компиляцией per-target политик (уменьшает зависимость от DNS). Gate: `DPI2-047`, `DPI2-048`.
       - Gate: DPI2-045 — детерминированная оценка статуса Semantic Group по policy-matched метрикам (smoke)
         - Примечание: гейт уже реализован и включён в `--smoke reg` план; не требуется делать повторно.
     - [x] **Этап 6**: UI таблица политик + экспорт snapshot (репорт)

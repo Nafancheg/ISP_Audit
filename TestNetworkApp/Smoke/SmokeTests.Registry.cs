@@ -135,6 +135,7 @@ namespace TestNetworkApp.Smoke
                 ["DPI2-045"] = Dpi2_SemanticGroups_Statuses_AreDeterministic,
                 ["DPI2-046"] = Dpi2_PolicySnapshotExport_AndActivePolicies_AreValid,
                 ["DPI2-047"] = Dpi2_PerTargetPolicy_UsesCandidateEndpointsSeed_NoDnsRequired,
+                    ["DPI2-048"] = Dpi2_PerTargetTcp80Policy_UsesCandidateEndpointsSeed_NoDnsRequired,
                 ["DPI2-019"] = Dpi2_ExecutorV2_ManualApply_MapsPlanToBypassOptions,
                 ["DPI2-020"] = Dpi2_ExecutorV2_Cancel_RollbacksToPreviousState,
                 ["DPI2-021"] = Dpi2_Pipeline_DoesNotAutoApply_BypassControllerOrTlsBypassService,
