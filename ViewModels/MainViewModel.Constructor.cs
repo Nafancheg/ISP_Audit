@@ -161,11 +161,15 @@ namespace IspAudit.ViewModels
 
                 if (e.PropertyName == nameof(Orchestrator.IsPostApplyRetestRunning)
                     || e.PropertyName == nameof(Orchestrator.PostApplyRetestStatus)
-                    || e.PropertyName == nameof(Orchestrator.EndpointBlockStatus))
+                    || e.PropertyName == nameof(Orchestrator.EndpointBlockStatus)
+                    || e.PropertyName == nameof(Orchestrator.IsApplyRunning)
+                    || e.PropertyName == nameof(Orchestrator.ApplyStatusText))
                 {
                     OnPropertyChanged(nameof(IsPostApplyRetestRunning));
                     OnPropertyChanged(nameof(PostApplyRetestStatus));
                     OnPropertyChanged(nameof(EndpointBlockStatus));
+                    OnPropertyChanged(nameof(IsApplyRunning));
+                    OnPropertyChanged(nameof(ApplyStatusText));
                 }
             };
 

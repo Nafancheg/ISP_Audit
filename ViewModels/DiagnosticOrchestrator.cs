@@ -104,6 +104,10 @@ namespace IspAudit.ViewModels
         // Reconnect-nudge: короткий TTL-блок endpoint-ов, чтобы принудить переподключение.
         private string _endpointBlockStatus = "";
 
+        // P2.3: прогресс Apply (чтобы не было ощущения "кнопка не работает").
+        private bool _isApplyRunning;
+        private string _applyStatusText = "";
+
         // Legacy (справочно): не влияет на основную рекомендацию v2
         private readonly HashSet<string> _legacyRecommendedStrategies = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _legacyManualRecommendations = new(StringComparer.OrdinalIgnoreCase);
@@ -307,6 +311,28 @@ namespace IspAudit.ViewModels
             {
                 _endpointBlockStatus = value;
                 OnPropertyChanged(nameof(EndpointBlockStatus));
+            }
+        }
+
+        public bool IsApplyRunning
+        {
+            get => _isApplyRunning;
+            private set
+            {
+                if (_isApplyRunning == value) return;
+                _isApplyRunning = value;
+                OnPropertyChanged(nameof(IsApplyRunning));
+            }
+        }
+
+        public string ApplyStatusText
+        {
+            get => _applyStatusText;
+            private set
+            {
+                if (string.Equals(_applyStatusText, value, StringComparison.Ordinal)) return;
+                _applyStatusText = value;
+                OnPropertyChanged(nameof(ApplyStatusText));
             }
         }
 

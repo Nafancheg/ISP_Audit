@@ -19,7 +19,7 @@ namespace IspAudit.ViewModels
         /// <summary>
         /// Применить v2 план рекомендаций (ТОЛЬКО вручную), с таймаутом/отменой и безопасным откатом.
         /// </summary>
-        public async Task ApplyV2PlanAsync(BypassPlan plan, TimeSpan timeout, CancellationToken cancellationToken)
+        public async Task ApplyV2PlanAsync(BypassPlan plan, TimeSpan timeout, CancellationToken cancellationToken, Action<BypassApplyPhaseTiming>? onPhaseEvent = null)
         {
             if (plan == null) throw new ArgumentNullException(nameof(plan));
 
@@ -41,7 +41,7 @@ namespace IspAudit.ViewModels
 
                 var applyService = new BypassApplyService(_stateManager, Log);
                 var applied = await applyService
-                    .ApplyV2PlanWithRollbackAsync(plan, timeout, _isDoHEnabled, SelectedDnsPreset, cancellationToken)
+                    .ApplyV2PlanWithRollbackAsync(plan, timeout, _isDoHEnabled, SelectedDnsPreset, cancellationToken, onPhaseEvent)
                     .ConfigureAwait(false);
 
                 // Синхронизируем локальное UI-состояние после успешного apply.
@@ -107,10 +107,10 @@ namespace IspAudit.ViewModels
         /// <summary>
         /// Overload: применить v2 план и одновременно задать цель для HTTPS outcome-check.
         /// </summary>
-        public Task ApplyV2PlanAsync(BypassPlan plan, string? outcomeTargetHost, TimeSpan timeout, CancellationToken cancellationToken)
+        public Task ApplyV2PlanAsync(BypassPlan plan, string? outcomeTargetHost, TimeSpan timeout, CancellationToken cancellationToken, Action<BypassApplyPhaseTiming>? onPhaseEvent = null)
         {
             SetOutcomeTargetHost(outcomeTargetHost);
-            return ApplyV2PlanAsync(plan, timeout, cancellationToken);
+            return ApplyV2PlanAsync(plan, timeout, cancellationToken, onPhaseEvent);
         }
 
 

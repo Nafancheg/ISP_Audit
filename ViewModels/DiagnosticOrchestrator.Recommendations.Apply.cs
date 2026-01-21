@@ -157,6 +157,44 @@ namespace IspAudit.ViewModels
                 return null;
             }
 
+            void UpdateApplyUi(Action action)
+            {
+                try
+                {
+                    var dispatcher = Application.Current?.Dispatcher;
+                    if (dispatcher != null && !dispatcher.CheckAccess())
+                    {
+                        dispatcher.Invoke(action);
+                    }
+                    else
+                    {
+                        action();
+                    }
+                }
+                catch
+                {
+                    // Best-effort: UI обновление не должно ломать apply.
+                }
+            }
+
+            static string FormatApplyPhaseForUi(string phase)
+            {
+                var p = (phase ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(p)) return "Применение…";
+
+                return p.ToLowerInvariant() switch
+                {
+                    "plan_build" => "Подготовка плана",
+                    "test_delay" => "Ожидание (test_delay)",
+                    "apply_tls_options" => "Применение стратегий",
+                    "apply_doh_enable" => "Включение DoH",
+                    "apply_doh_disable" => "Отключение DoH",
+                    "rollback_tls_options" => "Откат стратегий",
+                    "rollback_dns" => "Откат DNS",
+                    _ => $"Фаза: {p}"
+                };
+            }
+
             _applyCts?.Dispose();
             _applyCts = new CancellationTokenSource();
 
@@ -182,8 +220,25 @@ namespace IspAudit.ViewModels
 
             try
             {
+                UpdateApplyUi(() =>
+                {
+                    IsApplyRunning = true;
+                    ApplyStatusText = "Применение: подготовка…";
+                });
+
                 Log($"[V2][APPLY] host={hostKey}; plan={planStrategies}; before={beforeState}");
-                await bypassController.ApplyV2PlanAsync(plan, hostKey, V2ApplyTimeout, ct).ConfigureAwait(false);
+
+                void OnPhaseEvent(BypassApplyPhaseTiming e)
+                {
+                    if (!string.Equals(e.Status, "START", StringComparison.OrdinalIgnoreCase)) return;
+
+                    UpdateApplyUi(() =>
+                    {
+                        ApplyStatusText = "Применение: " + FormatApplyPhaseForUi(e.Name);
+                    });
+                }
+
+                await bypassController.ApplyV2PlanAsync(plan, hostKey, V2ApplyTimeout, ct, OnPhaseEvent).ConfigureAwait(false);
 
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[V2][APPLY] OK; after={afterState}");
@@ -257,6 +312,12 @@ namespace IspAudit.ViewModels
             }
             finally
             {
+                UpdateApplyUi(() =>
+                {
+                    IsApplyRunning = false;
+                    ApplyStatusText = string.Empty;
+                });
+
                 _applyCts?.Dispose();
                 _applyCts = null;
             }

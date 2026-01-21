@@ -139,7 +139,8 @@ namespace IspAudit.Core.Bypass
             TimeSpan timeout,
             bool currentDoHEnabled,
             string selectedDnsPreset,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            Action<BypassApplyPhaseTiming>? onPhaseEvent = null)
         {
             if (plan == null) throw new ArgumentNullException(nameof(plan));
 
@@ -165,6 +166,25 @@ namespace IspAudit.Core.Bypass
             CancellationTokenSource? timeoutCts = null;
             var tlsOptionsApplied = false;
             var dnsTouched = false;
+
+            void ReportPhaseStart(string name, string details = "")
+            {
+                try
+                {
+                    onPhaseEvent?.Invoke(new BypassApplyPhaseTiming
+                    {
+                        Name = name ?? string.Empty,
+                        Status = "START",
+                        ElapsedMs = 0,
+                        Details = details ?? string.Empty
+                    });
+                }
+                catch
+                {
+                    // Best-effort: прогресс не должен ломать apply.
+                }
+            }
+
             try
             {
                 if (timeout > TimeSpan.Zero)
@@ -178,6 +198,7 @@ namespace IspAudit.Core.Bypass
 
                 linked.Token.ThrowIfCancellationRequested();
 
+                ReportPhaseStart("plan_build", $"strategies={strategiesText}");
                 tracker.Start("plan_build", $"strategies={strategiesText}");
                 var planned = BuildPlannedState(before, plan);
                 tracker.FinalizeCurrent("OK");
@@ -189,6 +210,7 @@ namespace IspAudit.Core.Bypass
                 var testDelayMsText = Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_APPLY_DELAY_MS");
                 if (int.TryParse(testDelayMsText, out var testDelayMs) && testDelayMs > 0)
                 {
+                    ReportPhaseStart("test_delay", $"delayMs={testDelayMs}");
                     tracker.Start("test_delay", $"delayMs={testDelayMs}");
                     _log?.Invoke($"[V2][Executor] Test delay: {testDelayMs}ms");
                     await Task.Delay(testDelayMs, linked.Token).ConfigureAwait(false);
@@ -197,6 +219,7 @@ namespace IspAudit.Core.Bypass
 
                 linked.Token.ThrowIfCancellationRequested();
 
+                ReportPhaseStart("apply_tls_options");
                 tracker.Start("apply_tls_options");
                 _log?.Invoke("[V2][Executor] Applying bypass options...");
                 await _stateManager.ApplyTlsOptionsAsync(planned.PlannedOptions, linked.Token).ConfigureAwait(false);
@@ -212,6 +235,7 @@ namespace IspAudit.Core.Bypass
                 if (planned.PlannedDoHEnabled && !before.DoHEnabled)
                 {
                     linked.Token.ThrowIfCancellationRequested();
+                    ReportPhaseStart("apply_doh_enable", $"preset={planned.PlannedDnsPreset}");
                     tracker.Start("apply_doh_enable", $"preset={planned.PlannedDnsPreset}");
                     _log?.Invoke("[V2][Executor] Applying DoH (enable)");
 
@@ -236,6 +260,7 @@ namespace IspAudit.Core.Bypass
                 if (!planned.PlannedDoHEnabled && before.DoHEnabled)
                 {
                     linked.Token.ThrowIfCancellationRequested();
+                    ReportPhaseStart("apply_doh_disable");
                     tracker.Start("apply_doh_disable");
                     _log?.Invoke("[V2][Executor] Applying DoH (disable)");
 
@@ -272,7 +297,7 @@ namespace IspAudit.Core.Bypass
                 }
                 else
                 {
-                    var rollbackOk = await RestoreSnapshotAsync(before, tracker).ConfigureAwait(false);
+                    var rollbackOk = await RestoreSnapshotAsync(before, tracker, onPhaseEvent).ConfigureAwait(false);
                     rollbackStatus = rollbackOk ? "DONE" : "FAILED";
                 }
 
@@ -305,7 +330,7 @@ namespace IspAudit.Core.Bypass
                 }
                 else
                 {
-                    var rollbackOk = await RestoreSnapshotAsync(before, tracker).ConfigureAwait(false);
+                    var rollbackOk = await RestoreSnapshotAsync(before, tracker, onPhaseEvent).ConfigureAwait(false);
                     rollbackStatus = rollbackOk ? "DONE" : "FAILED";
                 }
 
@@ -329,11 +354,20 @@ namespace IspAudit.Core.Bypass
             }
         }
 
-        private async Task<bool> RestoreSnapshotAsync(BypassApplyStateSnapshot snapshot, ApplyPhaseTracker? tracker)
+        private async Task<bool> RestoreSnapshotAsync(BypassApplyStateSnapshot snapshot, ApplyPhaseTracker? tracker, Action<BypassApplyPhaseTiming>? onPhaseEvent)
         {
             var ok = true;
             try
             {
+                try
+                {
+                    onPhaseEvent?.Invoke(new BypassApplyPhaseTiming { Name = "rollback_tls_options", Status = "START", ElapsedMs = 0, Details = string.Empty });
+                }
+                catch
+                {
+                    // Best-effort.
+                }
+
                 tracker?.Start("rollback_tls_options");
                 using var op = BypassOperationContext.EnterIfNone("v2_apply_rollback");
                 await _stateManager.ApplyTlsOptionsAsync(snapshot.Options, CancellationToken.None).ConfigureAwait(false);
@@ -348,6 +382,15 @@ namespace IspAudit.Core.Bypass
 
             try
             {
+                try
+                {
+                    onPhaseEvent?.Invoke(new BypassApplyPhaseTiming { Name = "rollback_dns", Status = "START", ElapsedMs = 0, Details = string.Empty });
+                }
+                catch
+                {
+                    // Best-effort.
+                }
+
                 tracker?.Start("rollback_dns");
                 if (snapshot.DoHEnabled)
                 {
@@ -371,7 +414,7 @@ namespace IspAudit.Core.Bypass
         }
 
         private Task<bool> RestoreSnapshotAsync(BypassApplyStateSnapshot snapshot)
-            => RestoreSnapshotAsync(snapshot, tracker: null);
+            => RestoreSnapshotAsync(snapshot, tracker: null, onPhaseEvent: null);
 
         private BypassApplyPlanResult BuildPlannedState(BypassApplyStateSnapshot before, BypassPlan plan)
         {

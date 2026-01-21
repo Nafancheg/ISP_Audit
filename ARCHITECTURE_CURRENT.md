@@ -342,6 +342,7 @@ Smoke-хелперы (для детерминированных проверок
 
 3) **Исполнитель v2 (реальный apply с безопасным откатом)**
 - `BypassController.ApplyV2PlanAsync` делегирует исполнение (таймаут/отмена + безопасный rollback на snapshot состояния) в `Core/Bypass/BypassApplyService`.
+- P2.3: для UX добавлен best-effort прогресс Apply — `Core/Bypass/BypassApplyService` может репортить старт фаз через callback (phase events), а `DiagnosticOrchestrator` прокидывает это в UI (`IsApplyRunning` + `ApplyStatusText`).
 - P0.1: ручные apply-операции сериализованы (apply-gate) — параллельные вызовы `ApplyV2PlanAsync` выполняются строго последовательно, чтобы исключить гонки.
  - Оркестратор не применяет «не тот» план: если рекомендации обновились и `hostKey` изменился, apply будет заблокирован.
  - `StrategyId.AggressiveFragment` при ручном apply выбирает пресет фрагментации «Агрессивный» и включает `AutoAdjustAggressive`.

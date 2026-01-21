@@ -171,6 +171,11 @@
                                     <TextBlock Text="{Binding ManualRecommendationsText}" FontSize="12" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,0,0,4"
                                                Visibility="{Binding ManualRecommendationsText, Converter={StaticResource StringToVisibilityConverter}}"/>
 
+                                         <ProgressBar Height="3" IsIndeterminate="True" Margin="0,2,0,6"
+                                           Visibility="{Binding IsApplyRunning, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                         <TextBlock Text="{Binding ApplyStatusText}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6" Foreground="#1E40AF"
+                                             Visibility="{Binding ApplyStatusText, Converter={StaticResource StringToVisibilityConverter}}"/>
+
                                         <ProgressBar Height="3" IsIndeterminate="True" Margin="0,2,0,6"
                                              Visibility="{Binding IsPostApplyRetestRunning, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         <TextBlock Text="{Binding PostApplyRetestStatus}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6" Foreground="#1E40AF"
