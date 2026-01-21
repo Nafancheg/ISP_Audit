@@ -102,6 +102,17 @@ namespace IspAudit.Core.Traffic
         internal TrafficEngineMutationContext? GetLastMutationContextSnapshot()
             => Volatile.Read(ref _lastMutation);
 
+            private string FormatLastMutationForLog()
+            {
+                var lastMutation = GetLastMutationContextSnapshot();
+                if (lastMutation == null)
+                {
+                    return string.Empty;
+                }
+
+                return $" | lastMutation seq={lastMutation.Seq} id={lastMutation.CorrelationId} op={lastMutation.Operation} utc={lastMutation.TimestampUtc} details={lastMutation.Details}";
+            }
+
         public void RegisterFilter(IPacketFilter filter)
         {
             BypassStateManagerGuard.WarnIfBypassed(_progress, "TrafficEngine.RegisterFilter");
@@ -157,7 +168,7 @@ namespace IspAudit.Core.Traffic
             }
             catch (Exception ex)
             {
-                _progress?.Report($"[TrafficEngine][ERROR] Failed to start (thread {Environment.CurrentManagedThreadId}): {ex}");
+                _progress?.Report($"[TrafficEngine][ERROR] Failed to start (thread {Environment.CurrentManagedThreadId}): {ex}{FormatLastMutationForLog()}");
                 throw;
             }
 
@@ -344,19 +355,14 @@ namespace IspAudit.Core.Traffic
                     catch (Exception ex)
                     {
                         // Не даём единичной ошибке уронить весь loop.
-                        _progress?.Report($"[TrafficEngine][ERROR] Packet processing failed (thread {Environment.CurrentManagedThreadId}): {ex}");
+                        _progress?.Report($"[TrafficEngine][ERROR] Packet processing failed (thread {Environment.CurrentManagedThreadId}): {ex}{FormatLastMutationForLog()}");
                     }
                 }
             }
             catch (Exception ex)
             {
                 // Log unexpected loop errors
-                var lastMutation = GetLastMutationContextSnapshot();
-                var mutationText = lastMutation == null
-                    ? string.Empty
-                    : $" | lastMutation seq={lastMutation.Seq} id={lastMutation.CorrelationId} op={lastMutation.Operation} utc={lastMutation.TimestampUtc} details={lastMutation.Details}";
-
-                _progress?.Report($"[TrafficEngine][ERROR] Loop crashed (thread {Environment.CurrentManagedThreadId}): {ex}{mutationText}");
+                _progress?.Report($"[TrafficEngine][ERROR] Loop crashed (thread {Environment.CurrentManagedThreadId}): {ex}{FormatLastMutationForLog()}");
             }
         }
 
