@@ -130,7 +130,7 @@ namespace IspAudit.ViewModels
                 var outcome = await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey).ConfigureAwait(false);
 
                 // Практический UX: сразу запускаем короткий пост-Apply ретест по цели.
-                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, preferredHostKey);
+                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, preferredHostKey, txId);
 
                 if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
                 {
@@ -226,7 +226,7 @@ namespace IspAudit.ViewModels
                 var outcome = await Orchestrator.ApplyRecommendationsForDomainAsync(Bypass, domain).ConfigureAwait(false);
 
                 // Практический UX: ретестим доменную цель.
-                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, domain);
+                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, domain, txId);
 
                 if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
                 {
@@ -316,7 +316,7 @@ namespace IspAudit.ViewModels
                 var outcome = await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey).ConfigureAwait(false);
 
                 // Практический UX: ретестим именно выбранную цель.
-                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, preferredHostKey);
+                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, preferredHostKey, txId);
 
                 if (Bypass.IsBypassActive && outcome != null)
                 {
@@ -432,7 +432,8 @@ namespace IspAudit.ViewModels
                 }
 
                 test.ActionStatusText = "Ретест запущен";
-                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, hostKey);
+                var opId = Guid.NewGuid().ToString("N");
+                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, hostKey, opId);
                 return Task.CompletedTask;
             }
             catch (Exception ex)
@@ -486,7 +487,8 @@ namespace IspAudit.ViewModels
                 else
                 {
                     test.ActionStatusText = "Переподключено; ретест…";
-                    _ = Orchestrator.StartPostApplyRetestAsync(Bypass, hostKey);
+                    var opId = Guid.NewGuid().ToString("N");
+                    _ = Orchestrator.StartPostApplyRetestAsync(Bypass, hostKey, opId);
                 }
             }
             catch (Exception ex)
@@ -513,7 +515,8 @@ namespace IspAudit.ViewModels
 
                     // Step 12: не блокируем UI/OnDiagnosticComplete ожиданием ретеста.
                     // Ретест запускается асинхронно.
-                    _ = Orchestrator.StartPostApplyRetestAsync(Bypass, hostKey);
+                    var opId = Guid.NewGuid().ToString("N");
+                    _ = Orchestrator.StartPostApplyRetestAsync(Bypass, hostKey, opId);
                 }
                 catch (Exception ex)
                 {

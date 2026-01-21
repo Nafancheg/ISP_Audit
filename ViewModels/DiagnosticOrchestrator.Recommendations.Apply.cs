@@ -251,7 +251,7 @@ namespace IspAudit.ViewModels
         /// <summary>
         /// Автоматический ретест сразу после Apply (короткий прогон, чтобы увидеть практический эффект обхода).
         /// </summary>
-        public Task StartPostApplyRetestAsync(BypassController bypassController, string? preferredHostKey)
+        public Task StartPostApplyRetestAsync(BypassController bypassController, string? preferredHostKey, string? correlationId = null)
         {
             if (bypassController == null) throw new ArgumentNullException(nameof(bypassController));
 
@@ -269,6 +269,10 @@ namespace IspAudit.ViewModels
                 return Task.CompletedTask;
             }
 
+            var opId = string.IsNullOrWhiteSpace(correlationId)
+                ? Guid.NewGuid().ToString("N")
+                : correlationId.Trim();
+
             try
             {
                 _postApplyRetest.Cancellation?.Cancel();
@@ -283,10 +287,14 @@ namespace IspAudit.ViewModels
             IsPostApplyRetestRunning = true;
             PostApplyRetestStatus = $"Ретест после Apply: запуск ({hostKey})";
 
+            Log($"[PostApplyRetest][op={opId}] Start: host={hostKey}");
+
             return Task.Run(async () =>
             {
                 try
                 {
+                    using var op = BypassOperationContext.Enter(opId, "post_apply_retest", hostKey);
+
                     var effectiveTestTimeout = bypassController.IsVpnDetected
                         ? TimeSpan.FromSeconds(8)
                         : TimeSpan.FromSeconds(3);
@@ -304,6 +312,7 @@ namespace IspAudit.ViewModels
                     if (hosts.Count == 0)
                     {
                         PostApplyRetestStatus = $"Ретест после Apply: не удалось определить IP ({hostKey})";
+                        Log($"[PostApplyRetest][op={opId}] No targets resolved for host={hostKey}");
                         return;
                     }
 
@@ -318,7 +327,7 @@ namespace IspAudit.ViewModels
                                 // Важно: обновляем рекомендации/диагнозы так же, как при обычной диагностике.
                                 TrackV2DiagnosisSummary(msg);
                                 TrackRecommendation(msg, bypassController);
-                                Log($"[PostApplyRetest] {msg}");
+                                Log($"[PostApplyRetest][op={opId}] {msg}");
                                 OnPipelineMessage?.Invoke(msg);
                             });
                         }
@@ -358,14 +367,17 @@ namespace IspAudit.ViewModels
                 catch (OperationCanceledException)
                 {
                     PostApplyRetestStatus = "Ретест после Apply: отменён";
+                    Log($"[PostApplyRetest][op={opId}] Canceled: host={hostKey}");
                 }
                 catch (Exception ex)
                 {
                     PostApplyRetestStatus = $"Ретест после Apply: ошибка ({ex.Message})";
+                    Log($"[PostApplyRetest][op={opId}] Error: {ex.Message}");
                 }
                 finally
                 {
                     IsPostApplyRetestRunning = false;
+                    Log($"[PostApplyRetest][op={opId}] Done: host={hostKey}");
                 }
             }, ct);
         }

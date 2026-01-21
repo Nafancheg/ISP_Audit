@@ -94,7 +94,7 @@ graph TD
     *   P0.1 (наблюдаемость): ведёт журнал транзакций «применения обхода» и показывает его в UI (вкладка «Применение») с экспортом JSON в `artifacts/` и копированием в буфер. Последние K транзакций сохраняются в `%LocalAppData%\ISP_Audit\apply_transactions.json` и подхватываются при следующем запуске.
         *   Формат транзакции v2 (Step 2): структурные секции `Request/Snapshot/Result` + `Contributions` (вклады/изменения) при сохранении ключевых v1 полей для обратной совместимости.
         *   Snapshot включает: activation/outcome, options snapshot, DoH/DNS пресет, список активных целей (P0.1 Step 1) и policy-driven snapshot (если доступен).
-    *   P0.1 (наблюдаемость): для корреляции редких падений `TrafficEngine` добавлен `BypassOperationContext` (AsyncLocal), а `TrafficEngine` хранит последний snapshot мутации (`SetLastMutationContext`) и печатает его в `Loop crashed`.
+    *   P0.1 (наблюдаемость): для корреляции редких падений `TrafficEngine` добавлен `BypassOperationContext` (AsyncLocal) для операций Apply/Disable и ретестов (Retest/PostApplyRetest). `TrafficEngine` хранит последний snapshot мутации (`SetLastMutationContext`) и печатает его в `Loop crashed`.
     *   P0.2 Stage 6 (наблюдаемость): UI показывает таблицу активных FlowPolicy (matched/applied per-policy) и позволяет экспортировать текущий policy snapshot в JSON для репорта.
 
 Важно (runtime): QUIC fallback и режим allow-no-SNI — это явные флаги профиля/опций, а не «пресет».

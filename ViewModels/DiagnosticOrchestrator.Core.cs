@@ -390,7 +390,8 @@ namespace IspAudit.ViewModels
         /// </summary>
         public async Task RetestTargetsAsync(
             System.Collections.Generic.IEnumerable<IspAudit.Models.Target> targets,
-            BypassController bypassController)
+            BypassController bypassController,
+            string? correlationId = null)
         {
             if (IsDiagnosticRunning)
             {
@@ -398,10 +399,15 @@ namespace IspAudit.ViewModels
                 return;
             }
 
+            var opId = string.IsNullOrWhiteSpace(correlationId)
+                ? Guid.NewGuid().ToString("N")
+                : correlationId.Trim();
+
             try
             {
+                using var op = BypassOperationContext.Enter(opId, "retest_targets");
                 _cancelRequested = false;
-                Log("[Orchestrator] Запуск ретеста проблемных целей...");
+                Log($"[Orchestrator][Retest][op={opId}] Запуск ретеста проблемных целей...");
                 IsDiagnosticRunning = true;
                 DiagnosticStatus = "Ретест...";
                 _cts = new CancellationTokenSource();
@@ -415,7 +421,7 @@ namespace IspAudit.ViewModels
                         DiagnosticStatus = msg;
                         TrackV2DiagnosisSummary(msg);
                         TrackRecommendation(msg, bypassController);
-                        Log($"[Retest] {msg}");
+                        Log($"[Retest][op={opId}] {msg}");
                         OnPipelineMessage?.Invoke(msg);
                     });
                 });
@@ -491,12 +497,12 @@ namespace IspAudit.ViewModels
                 // Ждем завершения
                 await _testingPipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(15)).ConfigureAwait(false);
 
-                Log("[Orchestrator] Ретест завершен");
+                Log($"[Orchestrator][Retest][op={opId}] Ретест завершен");
                 DiagnosticStatus = "Ретест завершен";
             }
             catch (Exception ex)
             {
-                Log($"[Orchestrator] Ошибка ретеста: {ex.Message}");
+                Log($"[Orchestrator][Retest][op={opId}] Ошибка ретеста: {ex.Message}");
             }
             finally
             {

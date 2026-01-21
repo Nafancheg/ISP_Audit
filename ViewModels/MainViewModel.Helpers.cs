@@ -131,7 +131,8 @@ namespace IspAudit.ViewModels
             Log($"[AutoRetest] Bypass option changed ({propertyName}). Retesting {failedTargets.Count} failed targets...");
 
             // Запускаем ретест
-            await Orchestrator.RetestTargetsAsync(failedTargets, Bypass);
+            var opId = Guid.NewGuid().ToString("N");
+            await Orchestrator.RetestTargetsAsync(failedTargets, Bypass, opId);
         }
 
         private async Task RunPendingRetestAfterRunAsync()
@@ -148,7 +149,8 @@ namespace IspAudit.ViewModels
                 if (failedTargets.Count == 0) return;
 
                 Log($"[AutoRetest] Running scheduled retest after run (reason={_pendingRetestReason}). Targets={failedTargets.Count}");
-                await Orchestrator.RetestTargetsAsync(failedTargets, Bypass);
+                var opId = Guid.NewGuid().ToString("N");
+                await Orchestrator.RetestTargetsAsync(failedTargets, Bypass, opId);
             }
             catch (Exception ex)
             {
