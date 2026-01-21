@@ -12,6 +12,56 @@ using IspAudit.Core.Traffic;
 namespace IspAudit.Bypass
 {
     /// <summary>
+    /// AsyncLocal-контекст операции для корреляции логов между UI/apply и низким уровнем (TrafficEngine).
+    /// Best-effort: не влияет на функционал, только на наблюдаемость.
+    /// </summary>
+    internal static class BypassOperationContext
+    {
+        internal sealed record Context(string CorrelationId, string Operation, string HostKey, string GroupKey);
+
+        private static readonly AsyncLocal<Context?> Current = new();
+
+        private sealed class Scope : IDisposable
+        {
+            private readonly Context? _previous;
+
+            public Scope(Context? previous)
+            {
+                _previous = previous;
+            }
+
+            public void Dispose()
+            {
+                Current.Value = _previous;
+            }
+        }
+
+        internal static Context? Snapshot() => Current.Value;
+
+        internal static IDisposable Enter(string correlationId, string operation, string? hostKey = null, string? groupKey = null)
+        {
+            var prev = Current.Value;
+            Current.Value = new Context(
+                CorrelationId: (correlationId ?? string.Empty).Trim(),
+                Operation: string.IsNullOrWhiteSpace(operation) ? "unknown" : operation.Trim(),
+                HostKey: (hostKey ?? string.Empty).Trim(),
+                GroupKey: (groupKey ?? string.Empty).Trim());
+
+            return new Scope(prev);
+        }
+
+        internal static IDisposable EnterIfNone(string operation, string? hostKey = null, string? groupKey = null)
+        {
+            if (Current.Value != null)
+            {
+                return new Scope(Current.Value);
+            }
+
+            return Enter(Guid.NewGuid().ToString("N"), operation, hostKey, groupKey);
+        }
+    }
+
+    /// <summary>
     /// Внутренний guard: позволяет логировать попытки управлять bypass/TrafficEngine
     /// в обход единого менеджера состояния.
     /// </summary>

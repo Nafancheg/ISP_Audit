@@ -11,6 +11,13 @@ namespace IspAudit.Core.Traffic
 {
     public class TrafficEngine : IDisposable, IPacketSender, IPacketSenderEx
     {
+        internal sealed record TrafficEngineMutationContext(
+            long Seq,
+            string CorrelationId,
+            string Operation,
+            string Details,
+            string TimestampUtc);
+
         private readonly List<IPacketFilter> _filters = new();
         private WinDivertNative.SafeHandle? _handle;
         private CancellationTokenSource? _cts;
@@ -18,6 +25,9 @@ namespace IspAudit.Core.Traffic
         private readonly IProgress<string>? _progress;
         private readonly object _stateLock = new();
         private bool _isStopping;
+
+        private long _mutationSeq;
+        private TrafficEngineMutationContext? _lastMutation;
 
         // Throttle логов от падающих фильтров: иначе можно залить UI-лог десятками тысяч строк/сек.
         private readonly ConcurrentDictionary<string, long> _lastFilterErrorLogTick = new();
@@ -61,6 +71,36 @@ namespace IspAudit.Core.Traffic
         {
             _progress = progress;
         }
+
+        internal void SetLastMutationContext(string correlationId, string operation, string? details)
+        {
+            try
+            {
+                var safeCorrelationId = string.IsNullOrWhiteSpace(correlationId) ? "-" : correlationId.Trim();
+                var safeOperation = string.IsNullOrWhiteSpace(operation) ? "unknown" : operation.Trim();
+                var safeDetails = string.IsNullOrWhiteSpace(details) ? string.Empty : details.Trim();
+
+                if (safeDetails.Length > 256)
+                {
+                    safeDetails = safeDetails.Substring(0, 256);
+                }
+
+                var seq = Interlocked.Increment(ref _mutationSeq);
+                Volatile.Write(ref _lastMutation, new TrafficEngineMutationContext(
+                    Seq: seq,
+                    CorrelationId: safeCorrelationId,
+                    Operation: safeOperation,
+                    Details: safeDetails,
+                    TimestampUtc: DateTimeOffset.UtcNow.ToString("u").TrimEnd()));
+            }
+            catch
+            {
+                // best-effort: диагностика не должна ломать bypass
+            }
+        }
+
+        internal TrafficEngineMutationContext? GetLastMutationContextSnapshot()
+            => Volatile.Read(ref _lastMutation);
 
         public void RegisterFilter(IPacketFilter filter)
         {
@@ -311,7 +351,12 @@ namespace IspAudit.Core.Traffic
             catch (Exception ex)
             {
                 // Log unexpected loop errors
-                _progress?.Report($"[TrafficEngine][ERROR] Loop crashed (thread {Environment.CurrentManagedThreadId}): {ex}");
+                var lastMutation = GetLastMutationContextSnapshot();
+                var mutationText = lastMutation == null
+                    ? string.Empty
+                    : $" | lastMutation seq={lastMutation.Seq} id={lastMutation.CorrelationId} op={lastMutation.Operation} utc={lastMutation.TimestampUtc} details={lastMutation.Details}";
+
+                _progress?.Report($"[TrafficEngine][ERROR] Loop crashed (thread {Environment.CurrentManagedThreadId}): {ex}{mutationText}");
             }
         }
 

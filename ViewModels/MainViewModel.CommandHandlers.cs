@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using IspAudit.Bypass;
 using IspAudit.Models;
 using IspAudit.Utils;
 
@@ -123,6 +124,9 @@ namespace IspAudit.ViewModels
             try
             {
                 var preferredHostKey = GetPreferredHostKey(SelectedTestResult);
+                var txId = Guid.NewGuid().ToString("N");
+                using var op = BypassOperationContext.Enter(txId, "ui_apply_recommendations", preferredHostKey);
+
                 var outcome = await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey).ConfigureAwait(false);
 
                 // Практический UX: сразу запускаем короткий пост-Apply ретест по цели.
@@ -156,6 +160,7 @@ namespace IspAudit.ViewModels
                     }
 
                     Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning,
+                        transactionIdOverride: txId,
                         resultStatus: outcome.Status,
                         error: outcome.Error,
                         rollbackStatus: outcome.RollbackStatus);
@@ -215,6 +220,9 @@ namespace IspAudit.ViewModels
                     Log($"[V2][APPLY] Доменный apply: domain={domain} (override)");
                 }
 
+                var txId = Guid.NewGuid().ToString("N");
+                using var op = BypassOperationContext.Enter(txId, "ui_apply_domain", domain, domain);
+
                 var outcome = await Orchestrator.ApplyRecommendationsForDomainAsync(Bypass, domain).ConfigureAwait(false);
 
                 // Практический UX: ретестим доменную цель.
@@ -248,6 +256,7 @@ namespace IspAudit.ViewModels
                     }
 
                     Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning,
+                        transactionIdOverride: txId,
                         resultStatus: outcome.Status,
                         error: outcome.Error,
                         rollbackStatus: outcome.RollbackStatus);
@@ -301,6 +310,9 @@ namespace IspAudit.ViewModels
 
                 // Если для этой цели есть v2 план — применяем его.
                 // Если плана нет, ApplyRecommendationsAsync просто ничего не сделает (и это лучше, чем включать тумблеры вслепую).
+                var txId = Guid.NewGuid().ToString("N");
+                using var op = BypassOperationContext.Enter(txId, "ui_apply_card", preferredHostKey);
+
                 var outcome = await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey).ConfigureAwait(false);
 
                 // Практический UX: ретестим именно выбранную цель.
@@ -334,6 +346,7 @@ namespace IspAudit.ViewModels
                     }
 
                     Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning,
+                        transactionIdOverride: txId,
                         resultStatus: outcome.Status,
                         error: outcome.Error,
                         rollbackStatus: outcome.RollbackStatus);

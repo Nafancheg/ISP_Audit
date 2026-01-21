@@ -37,57 +37,57 @@ namespace IspAudit.ViewModels
 
             try
             {
+                using var op = BypassOperationContext.EnterIfNone("v2_apply");
 
-            var applyService = new BypassApplyService(_stateManager, Log);
-            var applied = await applyService
-                .ApplyV2PlanWithRollbackAsync(plan, timeout, _isDoHEnabled, SelectedDnsPreset, cancellationToken)
-                .ConfigureAwait(false);
+                var applyService = new BypassApplyService(_stateManager, Log);
+                var applied = await applyService
+                    .ApplyV2PlanWithRollbackAsync(plan, timeout, _isDoHEnabled, SelectedDnsPreset, cancellationToken)
+                    .ConfigureAwait(false);
 
-            // Синхронизируем локальное UI-состояние после успешного apply.
-            _currentOptions = applied.PlannedOptions;
+                // Синхронизируем локальное UI-состояние после успешного apply.
+                _currentOptions = applied.PlannedOptions;
 
-            if (applied.PlannedFragmentPreset != null)
-            {
-                var preset = applied.PlannedFragmentPreset;
-
-                // Если пресет создан из параметров v2 и отсутствует в списке — добавим, чтобы UI мог корректно отобразить выбранный вариант.
-                if (!FragmentPresets.Any(p => string.Equals(p.Name, preset.Name, StringComparison.OrdinalIgnoreCase)
-                    && p.Sizes.SequenceEqual(preset.Sizes)))
+                if (applied.PlannedFragmentPreset != null)
                 {
-                    FragmentPresets.Add(preset);
+                    var preset = applied.PlannedFragmentPreset;
+
+                    // Если пресет создан из параметров v2 и отсутствует в списке — добавим, чтобы UI мог корректно отобразить выбранный вариант.
+                    if (!FragmentPresets.Any(p => string.Equals(p.Name, preset.Name, StringComparison.OrdinalIgnoreCase)
+                        && p.Sizes.SequenceEqual(preset.Sizes)))
+                    {
+                        FragmentPresets.Add(preset);
+                    }
+
+                    _selectedPreset = FragmentPresets.FirstOrDefault(p => string.Equals(p.Name, preset.Name, StringComparison.OrdinalIgnoreCase)
+                        && p.Sizes.SequenceEqual(preset.Sizes)) ?? preset;
                 }
 
-                _selectedPreset = FragmentPresets.FirstOrDefault(p => string.Equals(p.Name, preset.Name, StringComparison.OrdinalIgnoreCase)
-                    && p.Sizes.SequenceEqual(preset.Sizes)) ?? preset;
-            }
+                _isDoHEnabled = applied.PlannedDoHEnabled;
+                _selectedDnsPreset = applied.PlannedDnsPreset;
 
-            _isDoHEnabled = applied.PlannedDoHEnabled;
-            _selectedDnsPreset = applied.PlannedDnsPreset;
+                Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    OnPropertyChanged(nameof(IsFragmentEnabled));
+                    OnPropertyChanged(nameof(IsDisorderEnabled));
+                    OnPropertyChanged(nameof(IsFakeEnabled));
+                    OnPropertyChanged(nameof(IsDropRstEnabled));
+                    OnPropertyChanged(nameof(IsQuicFallbackEnabled));
+                    OnPropertyChanged(nameof(IsAllowNoSniEnabled));
+                    OnPropertyChanged(nameof(IsAutoAdjustAggressive));
+                    OnPropertyChanged(nameof(SelectedFragmentPreset));
+                    OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
+                    OnPropertyChanged(nameof(IsDoHEnabled));
+                    OnPropertyChanged(nameof(IsDoHActive));
+                    OnPropertyChanged(nameof(SelectedDnsPreset));
+                    NotifyActiveStatesChanged();
+                    CheckCompatibility();
+                });
 
-            Application.Current?.Dispatcher.Invoke(() =>
-            {
-                OnPropertyChanged(nameof(IsFragmentEnabled));
-                OnPropertyChanged(nameof(IsDisorderEnabled));
-                OnPropertyChanged(nameof(IsFakeEnabled));
-                OnPropertyChanged(nameof(IsDropRstEnabled));
-                OnPropertyChanged(nameof(IsQuicFallbackEnabled));
-                OnPropertyChanged(nameof(IsAllowNoSniEnabled));
-                OnPropertyChanged(nameof(IsAutoAdjustAggressive));
-                OnPropertyChanged(nameof(SelectedFragmentPreset));
-                OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
-                OnPropertyChanged(nameof(IsDoHEnabled));
-                OnPropertyChanged(nameof(IsDoHActive));
-                OnPropertyChanged(nameof(SelectedDnsPreset));
-                NotifyActiveStatesChanged();
-                CheckCompatibility();
-            });
+                // Сохраняем параметры фрагментации/пресета и флаг авто-подстройки.
+                PersistFragmentPreset();
 
-            // Сохраняем параметры фрагментации/пресета и флаг авто-подстройки.
-            PersistFragmentPreset();
-
-            // Сохраняем assist-флаги (QUIC→TCP / No SNI) в профиль.
-            PersistAssistSettings();
-
+                // Сохраняем assist-флаги (QUIC→TCP / No SNI) в профиль.
+                PersistAssistSettings();
             }
             finally
             {

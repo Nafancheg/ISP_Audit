@@ -80,6 +80,28 @@ namespace IspAudit.Bypass
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
+                // P0.1 observability: привязываем мутации TrafficEngine к корреляционному контексту операции.
+                // Это помогает расследовать редкие падения loop (например, "Collection was modified") без репро.
+                try
+                {
+                    var op = BypassOperationContext.Snapshot();
+                    if (op != null)
+                    {
+                        TlsBypassOptions optionsSnapshotForDiag;
+                        lock (_sync)
+                        {
+                            optionsSnapshotForDiag = _options;
+                        }
+
+                        var details = $"host={op.HostKey}; group={op.GroupKey}; options={optionsSnapshotForDiag.ToReadableStrategy()}";
+                        _trafficEngine.SetLastMutationContext(op.CorrelationId, op.Operation, details);
+                    }
+                }
+                catch
+                {
+                    // best-effort
+                }
+
                 // Smoke-режим (без TrafficEngine) выполняется почти синхронно.
                 // Добавляем небольшую отменяемую задержку, чтобы детерминированно тестировать
                 // таймаут/Cancel и безопасный откат на верхнем уровне.

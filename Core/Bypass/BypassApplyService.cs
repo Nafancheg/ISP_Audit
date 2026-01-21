@@ -79,6 +79,8 @@ namespace IspAudit.Core.Bypass
 
             cancellationToken.ThrowIfCancellationRequested();
 
+            using var op = BypassOperationContext.EnterIfNone("v2_apply_service");
+
             var strategiesText = plan.Strategies.Count == 0
                 ? "(пусто)"
                 : string.Join(", ", plan.Strategies.Select(s => s.Id));
@@ -216,6 +218,7 @@ namespace IspAudit.Core.Bypass
             var ok = true;
             try
             {
+                using var op = BypassOperationContext.EnterIfNone("v2_apply_rollback");
                 await _stateManager.ApplyTlsOptionsAsync(snapshot.Options, CancellationToken.None).ConfigureAwait(false);
             }
             catch

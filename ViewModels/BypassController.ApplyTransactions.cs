@@ -148,6 +148,7 @@ namespace IspAudit.ViewModels
             string appliedStrategyText,
             string planText,
             string? reasoning,
+            string? transactionIdOverride = null,
             string? resultStatus = null,
             string? error = null,
             string? rollbackStatus = null)
@@ -241,6 +242,10 @@ namespace IspAudit.ViewModels
                 var tx = new BypassApplyTransaction
                 {
                     Version = "v2",
+
+                    TransactionId = string.IsNullOrWhiteSpace(transactionIdOverride)
+                        ? Guid.NewGuid().ToString("N")
+                        : transactionIdOverride.Trim(),
 
                     InitiatorHostKey = safeInitiator,
                     GroupKey = safeGroup,

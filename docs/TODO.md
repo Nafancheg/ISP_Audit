@@ -45,7 +45,7 @@
     - [ ] Собрать контекст: ±100 строк лога вокруг краша, определить компонент/подсистему.
     - [x] Улучшить лог краша: печатать `ex.ToString()` (а не только `ex.Message`) в `Core/Traffic/TrafficEngine.cs` (в месте `Loop crashed: ...`).
     - [x] Добавить stack trace для всех исключений + thread id + контекст выполнения.
-    - [ ] Добавить correlation id для Apply/Retest/обновлений кэшей, чтобы связать события.
+    - [x] Добавить correlation id для Apply и привязать его к crash-логам `TrafficEngine` (через `BypassOperationContext` + `TrafficEngine.SetLastMutationContext`).
     - [ ] Составить карту «подозреваемых коллекций» и всех чтений/записей (например: udpBlockedIPs, activeTransactions, observedEndpoints).
     - [ ] Описать ручной сценарий воспроизведения (точная последовательность действий).
     - [ ] Сделать воспроизводимость ≥80% (цель: краш за ~2 минуты).

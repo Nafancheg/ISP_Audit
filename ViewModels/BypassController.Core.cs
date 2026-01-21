@@ -63,6 +63,7 @@ namespace IspAudit.ViewModels
         {
             try
             {
+                using var op = BypassOperationContext.EnterIfNone("manual_apply");
                 var normalized = _currentOptions.Normalize();
                 _currentOptions = normalized;
                 await _stateManager.ApplyTlsOptionsAsync(normalized, cancellationToken).ConfigureAwait(false);
@@ -137,6 +138,7 @@ namespace IspAudit.ViewModels
             NotifyActiveStatesChanged();
             CheckCompatibility();
 
+            using var op = BypassOperationContext.EnterIfNone("manual_disable_all");
             await ApplyBypassOptionsAsync(cancellationToken).ConfigureAwait(false);
         }
 
