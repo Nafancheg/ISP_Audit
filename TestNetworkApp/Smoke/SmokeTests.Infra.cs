@@ -255,5 +255,96 @@ namespace TestNetworkApp.Smoke
                 return new SmokeTestResult("INFRA-007", "TrafficEngine: параллельный churn фильтров и обработка пакетов не падают", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: обработано пакетов={processed}");
             }, ct);
+
+        public static Task<SmokeTestResult> Infra_RapidApplyDisableDuringProcessing_DoesNotThrow(CancellationToken ct)
+            => RunAsyncAwait("INFRA-008", "TrafficEngine: rapid Apply/Disable во время обработки пакетов не падает", async innerCt =>
+            {
+                var baseProfile = BypassProfile.CreateDefault();
+
+                using var engine = new TrafficEngine(progress: null);
+                using var tls = new TlsBypassService(
+                    engine,
+                    baseProfile,
+                    log: null,
+                    startMetricsTimer: false,
+                    useTrafficEngine: true,
+                    nowProvider: () => DateTime.UtcNow);
+
+                using var manager = BypassStateManager.GetOrCreateFromService(tls, baseProfile, log: null);
+
+                var packetBytes = BuildIpv4TcpPacket(
+                    srcIp: IPAddress.Parse("192.0.2.10"),
+                    dstIp: IPAddress.Parse("93.184.216.34"),
+                    srcPort: 12345,
+                    dstPort: 443,
+                    ttl: 64,
+                    ipId: 1,
+                    seq: 1,
+                    tcpFlags: 0x02);
+
+                var packet = new InterceptedPacket(packetBytes, packetBytes.Length);
+                var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(innerCt);
+                cts.CancelAfter(TimeSpan.FromSeconds(2));
+                var token = cts.Token;
+
+                var processed = 0;
+                var applyCount = 0;
+                var disableCount = 0;
+
+                var pumpTask = Task.Run(() =>
+                {
+                    while (!token.IsCancellationRequested)
+                    {
+                        _ = engine.ProcessPacketForSmoke(packet, ctx);
+                        processed++;
+                    }
+                }, token);
+
+                // Важно: избегаем DNS/сетевых зависимостей. Поэтому DropUdp443Global=true.
+                var optionsOn = TlsBypassOptions.CreateDefault(baseProfile) with
+                {
+                    FragmentEnabled = true,
+                    DropUdp443 = true,
+                    DropUdp443Global = true,
+                    DropRstEnabled = true
+                };
+
+                while (!token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await manager.ApplyTlsOptionsAsync(optionsOn, token).ConfigureAwait(false);
+                        applyCount++;
+
+                        await manager.DisableTlsAsync("smoke_disable", token).ConfigureAwait(false);
+                        disableCount++;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                }
+
+                cts.Cancel();
+                try
+                {
+                    await pumpTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // ожидаемо
+                }
+
+                if (applyCount == 0)
+                {
+                    return new SmokeTestResult("INFRA-008", "TrafficEngine: rapid Apply/Disable во время обработки пакетов не падает", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Apply не выполнялся (ожидали хотя бы одну итерацию)");
+                }
+
+                return new SmokeTestResult("INFRA-008", "TrafficEngine: rapid Apply/Disable во время обработки пакетов не падает", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: apply={applyCount}, disable={disableCount}, processed={processed}");
+            }, ct);
     }
 }

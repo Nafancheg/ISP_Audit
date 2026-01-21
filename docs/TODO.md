@@ -50,6 +50,7 @@
     - [x] Фикс: `TrafficEngine` итерируется по snapshot массива фильтров (обновляется на Register/Remove/Clear), чтобы реэнтрантные мутации списка фильтров во время `filter.Process(...)` не могли вызвать `Collection was modified`.
     - [x] Regression smoke: `INFRA-006` — реэнтрантный фильтр (Register/Remove во время обработки) не должен ронять обработку пакета.
     - [x] Regression smoke: `INFRA-007` — конкурентный churn фильтров (параллельные Register/Remove) + обработка пакетов не должны падать.
+    - [x] Stress smoke: `INFRA-008` — rapid Apply/Disable (через `BypassStateManager`) во время активной обработки пакетов не должен приводить к падениям/зависаниям.
     - [ ] Составить карту «подозреваемых коллекций» и всех чтений/записей (например: udpBlockedIPs, activeTransactions, observedEndpoints).
       - Черновик (Core): критичный `foreach` по `_filters` в `TrafficEngine` закрыт snapshot‑подходом; в `Core/Traffic/Filters` перечисления либо по immutable snapshot, либо по `ConcurrentDictionary`.
     - [ ] Описать ручной сценарий воспроизведения (точная последовательность действий).
