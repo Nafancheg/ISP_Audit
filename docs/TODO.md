@@ -47,6 +47,8 @@
     - [x] Добавить stack trace для всех исключений + thread id + контекст выполнения.
     - [x] Добавить correlation id для Apply/Retest/PostApplyRetest и привязать Apply к crash-логам `TrafficEngine` (через `BypassOperationContext` + `TrafficEngine.SetLastMutationContext`).
     - [x] Проставлять `lastMutation` также при регистрации/удалении фильтров через `BypassStateManager.RegisterEngineFilter/RemoveEngineFilter` (например reconnect-nudge), чтобы ловить контекст мутаций вне Apply.
+    - [x] Фикс: `TrafficEngine` итерируется по snapshot массива фильтров (обновляется на Register/Remove/Clear), чтобы реэнтрантные мутации списка фильтров во время `filter.Process(...)` не могли вызвать `Collection was modified`.
+    - [x] Regression smoke: `INFRA-006` — реэнтрантный фильтр (Register/Remove во время обработки) не должен ронять обработку пакета.
     - [ ] Составить карту «подозреваемых коллекций» и всех чтений/записей (например: udpBlockedIPs, activeTransactions, observedEndpoints).
     - [ ] Описать ручной сценарий воспроизведения (точная последовательность действий).
     - [ ] Сделать воспроизводимость ≥80% (цель: краш за ~2 минуты).

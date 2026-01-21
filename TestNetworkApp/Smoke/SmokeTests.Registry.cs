@@ -15,6 +15,7 @@ namespace TestNetworkApp.Smoke
                 ["INFRA-003"] = Infra_FilterOrder,
                 ["INFRA-004"] = Infra_AdminRights,
                 ["INFRA-005"] = Infra_EncodingCp866,
+                ["INFRA-006"] = Infra_FilterListMutationDuringProcessing_DoesNotThrow,
 
                 ["UI-001"] = Ui_OrchestratorInitialized_InViewModel,
                 ["UI-002"] = Ui_StartStopCommand_CallsCancelBranch_NoGui,

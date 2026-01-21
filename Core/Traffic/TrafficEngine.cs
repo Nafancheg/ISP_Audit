@@ -19,6 +19,7 @@ namespace IspAudit.Core.Traffic
             string TimestampUtc);
 
         private readonly List<IPacketFilter> _filters = new();
+        private IPacketFilter[] _filtersSnapshot = Array.Empty<IPacketFilter>();
         private WinDivertNative.SafeHandle? _handle;
         private CancellationTokenSource? _cts;
         private Task? _loopTask;
@@ -121,6 +122,8 @@ namespace IspAudit.Core.Traffic
                 _filters.Add(filter);
                 // Sort by priority (descending)
                 _filters.Sort((a, b) => b.Priority.CompareTo(a.Priority));
+
+                RefreshFiltersSnapshot_Locked();
             }
         }
 
@@ -130,6 +133,8 @@ namespace IspAudit.Core.Traffic
             lock (_filters)
             {
                 _filters.RemoveAll(f => f.Name == filterName);
+
+                RefreshFiltersSnapshot_Locked();
             }
         }
 
@@ -139,8 +144,62 @@ namespace IspAudit.Core.Traffic
             lock (_filters)
             {
                 _filters.Clear();
+
+                RefreshFiltersSnapshot_Locked();
             }
         }
+
+        private void RefreshFiltersSnapshot_Locked()
+        {
+            try
+            {
+                // P0.1: важно, чтобы loop итерировался по snapshot.
+                // Это исключает падения вида "Collection was modified" при реэнтрантных мутациях списка фильтров.
+                Volatile.Write(ref _filtersSnapshot, _filters.ToArray());
+            }
+            catch
+            {
+                // best-effort: не ломаем обход/движок из-за диагностики/снимка
+            }
+        }
+
+        private bool ProcessFilters(InterceptedPacket packet, PacketContext ctx)
+        {
+            var snapshot = Volatile.Read(ref _filtersSnapshot);
+            var drop = false;
+
+            foreach (var filter in snapshot)
+            {
+                try
+                {
+                    if (!filter.Process(packet, ctx, this))
+                    {
+                        drop = true;
+                        break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Ограничиваем частоту логов: фильтр может падать на каждом пакете.
+                    var filterName = string.IsNullOrWhiteSpace(filter.Name) ? "<unnamed>" : filter.Name;
+                    var nowTick = Environment.TickCount64;
+                    var lastTick = _lastFilterErrorLogTick.GetOrAdd(filterName, 0);
+                    var shouldLog = lastTick == 0 || (nowTick - lastTick) >= 2000;
+                    if (shouldLog)
+                    {
+                        _lastFilterErrorLogTick[filterName] = nowTick;
+                        _progress?.Report($"[TrafficEngine][ERROR] Filter error in '{filterName}' (thread {Environment.CurrentManagedThreadId}): {ex}");
+                    }
+                    // Safer to pass through if filter fails
+                }
+            }
+
+            return drop;
+        }
+
+        // Smoke/diagnostics hook: позволяет прогонять обработку фильтров без WinDivert/админ-прав.
+        internal bool ProcessPacketForSmoke(InterceptedPacket packet, PacketContext ctx)
+            => ProcessFilters(packet, ctx);
 
         public Task StartAsync(CancellationToken cancellationToken = default)
         {
@@ -258,36 +317,7 @@ namespace IspAudit.Core.Traffic
                         var packet = new InterceptedPacket(buffer, (int)readLen);
                         var ctx = new PacketContext(addr);
 
-                        bool drop = false;
-
-                        lock (_filters)
-                        {
-                            foreach (var filter in _filters)
-                            {
-                                try
-                                {
-                                    if (!filter.Process(packet, ctx, this))
-                                    {
-                                        drop = true;
-                                        break;
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    // Ограничиваем частоту логов: фильтр может падать на каждом пакете.
-                                    var filterName = string.IsNullOrWhiteSpace(filter.Name) ? "<unnamed>" : filter.Name;
-                                    var nowTick = Environment.TickCount64;
-                                    var lastTick = _lastFilterErrorLogTick.GetOrAdd(filterName, 0);
-                                    var shouldLog = lastTick == 0 || (nowTick - lastTick) >= 2000;
-                                    if (shouldLog)
-                                    {
-                                        _lastFilterErrorLogTick[filterName] = nowTick;
-                                        _progress?.Report($"[TrafficEngine][ERROR] Filter error in '{filterName}' (thread {Environment.CurrentManagedThreadId}): {ex}");
-                                    }
-                                    // Safer to pass through if filter fails
-                                }
-                            }
-                        }
+                        var drop = ProcessFilters(packet, ctx);
 
                         if (!drop)
                         {
