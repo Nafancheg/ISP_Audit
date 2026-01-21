@@ -16,6 +16,8 @@
 
 Дополнение (21.01.2026): P0.1 — карта «подозреваемых коллекций» (возможные источники `Collection was modified`) и покрытие INFRA smoke — см. `docs/P0_1_suspect_collections.md`.
 
+Дополнение (21.01.2026): P0.1 — `TrafficEngine` сохраняет best-effort crash-report JSON в `%LocalAppData%\ISP_Audit\crash_reports\traffic_engine\` (исключение + lastMutation) для расследования редких падений.
+
 ---
 
 ## 1. Карта зависимостей проекта

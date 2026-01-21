@@ -483,6 +483,7 @@ Smoke-хелперы (для детерминированных проверок
     *   Обертка над драйвером WinDivert.
     *   Управляет загрузкой фильтров и инъекцией пакетов.
     *   Важный порядок: пассивные наблюдатели (например `TrafficMonitorFilter` для DNS/SNI/инспекций) должны выполняться **раньше** модифицирующих фильтров (`BypassFilter`), чтобы получать исходный (неизменённый) трафик.
+    *   P0.1 (диагностика): при падении loop сохраняется best-effort crash-report JSON в `%LocalAppData%\ISP_Audit\crash_reports\traffic_engine\` (исключение + `lastMutation`).
 *   **`BypassStateManager` (`Bypass/BypassStateManager.*.cs`)**:
     *   Single source of truth (SSoT) для управления `TrafficEngine` и `TlsBypassService`.
     *   Держит watchdog/crash recovery, observed IP cache для селективного `DropUdp443`, а также activation/outcome snapshots.

@@ -53,6 +53,8 @@
     - [x] Stress smoke: `INFRA-008` — rapid Apply/Disable (через `BypassStateManager`) во время активной обработки пакетов не должен приводить к падениям/зависаниям.
     - [x] Stress smoke: `INFRA-009` — конкурентные обновления decision snapshot + UDP targets во время обработки пакетов не должны приводить к падениям.
     - [x] Составить карту «подозреваемых коллекций» и всех чтений/записей: [docs/P0_1_suspect_collections.md](docs/P0_1_suspect_collections.md)
+    - [x] Strict smoke all (через `SmokeLauncher` + UAC): PASS 149/149 (FAIL=0, SKIP=0), отчёт: [artifacts/smoke_strict_20260121_122319.json](artifacts/smoke_strict_20260121_122319.json)
+    - [x] Crash report `TrafficEngine`: при падении loop сохраняется best-effort JSON в `%LocalAppData%\ISP_Audit\crash_reports\traffic_engine\` (исключение + lastMutation).
     - [ ] Описать ручной сценарий воспроизведения (точная последовательность действий).
     - [ ] Сделать воспроизводимость ≥80% (цель: краш за ~2 минуты).
     - [ ] Добавить regression сценарий (integration/stress): rapid apply/переключение во время активной диагностики.
