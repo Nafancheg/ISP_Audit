@@ -331,12 +331,63 @@ namespace IspAudit.Bypass
         public void RegisterEngineFilter(IspAudit.Core.Traffic.IPacketFilter filter)
         {
             using var scope = BypassStateManagerGuard.EnterScope();
+
+            if (filter == null)
+            {
+                _log?.Invoke("[Bypass][WARN] RegisterEngineFilter: filter is null");
+                return;
+            }
+
+            // P0.1 observability: фиксируем последнюю «мутацию» движка при регистрации фильтров.
+            // Важно для расследования редких падений loop (например, "Collection was modified").
+            try
+            {
+                var op = BypassOperationContext.Snapshot();
+                if (op != null)
+                {
+                    var safeName = (filter.Name ?? string.Empty).Trim();
+                    var details = string.IsNullOrWhiteSpace(safeName)
+                        ? "engine:RegisterFilter"
+                        : $"engine:RegisterFilter name={safeName}";
+                    _trafficEngine.SetLastMutationContext(op.CorrelationId, op.Operation, details);
+                }
+            }
+            catch
+            {
+                // best-effort
+            }
+
             _trafficEngine.RegisterFilter(filter);
         }
 
         public void RemoveEngineFilter(string filterName)
         {
             using var scope = BypassStateManagerGuard.EnterScope();
+
+            if (string.IsNullOrWhiteSpace(filterName))
+            {
+                _log?.Invoke("[Bypass][WARN] RemoveEngineFilter: filterName пуст");
+                return;
+            }
+
+            // P0.1 observability: фиксируем последнюю «мутацию» движка при удалении фильтров.
+            try
+            {
+                var op = BypassOperationContext.Snapshot();
+                if (op != null)
+                {
+                    var safeName = filterName.Trim();
+                    var details = string.IsNullOrWhiteSpace(safeName)
+                        ? "engine:RemoveFilter"
+                        : $"engine:RemoveFilter name={safeName}";
+                    _trafficEngine.SetLastMutationContext(op.CorrelationId, op.Operation, details);
+                }
+            }
+            catch
+            {
+                // best-effort
+            }
+
             _trafficEngine.RemoveFilter(filterName);
         }
 

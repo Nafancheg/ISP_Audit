@@ -46,6 +46,7 @@
     - [x] Улучшить лог краша: печатать `ex.ToString()` (а не только `ex.Message`) в `Core/Traffic/TrafficEngine.cs` (в месте `Loop crashed: ...`).
     - [x] Добавить stack trace для всех исключений + thread id + контекст выполнения.
     - [x] Добавить correlation id для Apply/Retest/PostApplyRetest и привязать Apply к crash-логам `TrafficEngine` (через `BypassOperationContext` + `TrafficEngine.SetLastMutationContext`).
+    - [x] Проставлять `lastMutation` также при регистрации/удалении фильтров через `BypassStateManager.RegisterEngineFilter/RemoveEngineFilter` (например reconnect-nudge), чтобы ловить контекст мутаций вне Apply.
     - [ ] Составить карту «подозреваемых коллекций» и всех чтений/записей (например: udpBlockedIPs, activeTransactions, observedEndpoints).
     - [ ] Описать ручной сценарий воспроизведения (точная последовательность действий).
     - [ ] Сделать воспроизводимость ≥80% (цель: краш за ~2 минуты).
