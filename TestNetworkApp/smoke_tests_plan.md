@@ -67,6 +67,13 @@
 **Входные данные:** Dummy TCP пакет + цикл Apply/Disable через `BypassStateManager` (без WinDivert)
 **Ожидаемый результат:** Обработка выполняется без исключений, тест завершается за ограниченное время
 
+**Test ID:** `INFRA-009`
+**Что проверяет:** Устойчивость к конкурентным обновлениям execution-plane данных (DecisionGraphSnapshot + UDP/443 targets) во время обработки пакетов
+**Для чего:** Закрывает класс проблем «меняем snapshot/targets, пока фильтр читает их в hot path»
+**Критерий успеха:** Частые переключения snapshot/targets параллельно `ProcessPacketForSmoke` не приводят к исключениям
+**Входные данные:** BypassFilter + reflection вызовы `SetDecisionGraphSnapshot`/`SetUdp443DropTargetIps`
+**Ожидаемый результат:** Обработка выполняется без падения
+
 ---
 
 ## 2. Core Pipeline (Конвейер обработки)

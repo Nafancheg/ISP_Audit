@@ -1,11 +1,14 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Net;
 using IspAudit.Bypass;
+using IspAudit.Core.Bypass;
+using IspAudit.Core.Models;
 using IspAudit.Core.Traffic;
 using IspAudit.Core.Traffic.Filters;
 
@@ -345,6 +348,116 @@ namespace TestNetworkApp.Smoke
 
                 return new SmokeTestResult("INFRA-008", "TrafficEngine: rapid Apply/Disable во время обработки пакетов не падает", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: apply={applyCount}, disable={disableCount}, processed={processed}");
+            }, ct);
+
+        public static Task<SmokeTestResult> Infra_ConcurrentSnapshotAndTargetsUpdateDuringProcessing_DoesNotThrow(CancellationToken ct)
+            => RunAsyncAwait("INFRA-009", "TrafficEngine: конкурентные обновления snapshot/targets во время обработки не падают", async innerCt =>
+            {
+                // Цель: проверить безопасность volatile reference-swap в BypassFilter (_decisionGraphSnapshot и _udp443DropTargetDstIps)
+                // при параллельной обработке пакетов.
+                var baseProfile = BypassProfile.CreateDefault();
+
+                using var engine = new TrafficEngine(progress: null);
+                var bypassFilter = new BypassFilter(baseProfile, logAction: null, presetName: "smoke");
+                engine.RegisterFilter(bypassFilter);
+
+                // Reflection: методы internal в IspAudit.Core.Traffic.Filters.BypassFilter
+                var t = typeof(BypassFilter);
+                var setSnapshot = t.GetMethod("SetDecisionGraphSnapshot", BindingFlags.Instance | BindingFlags.NonPublic);
+                var setTargets = t.GetMethod("SetUdp443DropTargetIps", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (setSnapshot == null || setTargets == null)
+                {
+                    return new SmokeTestResult("INFRA-009", "TrafficEngine: конкурентные обновления snapshot/targets во время обработки не падают", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Не нашли internal методы SetDecisionGraphSnapshot/SetUdp443DropTargetIps через reflection");
+                }
+
+                var snapshotA = PolicySetCompiler.CompileOrThrow(new[]
+                {
+                    new FlowPolicy
+                    {
+                        Id = "smoke_udp443_global",
+                        Priority = 100,
+                        Scope = PolicyScope.Global,
+                        Match = new MatchCondition { Proto = FlowTransportProtocol.Udp, Port = 443 },
+                        Action = PolicyAction.DropUdp443
+                    }
+                });
+
+                var snapshotB = PolicySetCompiler.CompileOrThrow(new[]
+                {
+                    new FlowPolicy
+                    {
+                        Id = "smoke_tcp80_host_tricks",
+                        Priority = 100,
+                        Scope = PolicyScope.Global,
+                        Match = new MatchCondition { Proto = FlowTransportProtocol.Tcp, Port = 80 },
+                        Action = PolicyAction.HttpHostTricks
+                    }
+                });
+
+                var packetBytes = BuildIpv4TcpPacket(
+                    srcIp: IPAddress.Parse("192.0.2.10"),
+                    dstIp: IPAddress.Parse("93.184.216.34"),
+                    srcPort: 12345,
+                    dstPort: 443,
+                    ttl: 64,
+                    ipId: 1,
+                    seq: 1,
+                    tcpFlags: 0x02);
+
+                var packet = new InterceptedPacket(packetBytes, packetBytes.Length);
+                var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(innerCt);
+                cts.CancelAfter(TimeSpan.FromSeconds(1));
+                var token = cts.Token;
+
+                var processed = 0;
+                var updates = 0;
+
+                var pumpTask = Task.Run(() =>
+                {
+                    while (!token.IsCancellationRequested)
+                    {
+                        _ = engine.ProcessPacketForSmoke(packet, ctx);
+                        processed++;
+                    }
+                }, token);
+
+                var updateTask = Task.Run(() =>
+                {
+                    // Переключаем ссылки snapshot/targets максимально часто.
+                    // Важно: передаём массив, чтобы исключить внешнюю мутацию IEnumerable.
+                    var targets1 = new uint[] { 0x01020304 };
+                    var targets2 = new uint[] { 0x0A0B0C0D, 0x01020304 };
+
+                    var i = 0;
+                    while (!token.IsCancellationRequested)
+                    {
+                        var useA = (i++ & 1) == 0;
+                        setSnapshot.Invoke(bypassFilter, new object?[] { useA ? snapshotA : snapshotB });
+                        setTargets.Invoke(bypassFilter, new object?[] { useA ? targets1 : targets2 });
+                        updates++;
+                    }
+                }, token);
+
+                try
+                {
+                    await Task.WhenAll(pumpTask, updateTask).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // ожидаемо
+                }
+
+                if (updates == 0)
+                {
+                    return new SmokeTestResult("INFRA-009", "TrafficEngine: конкурентные обновления snapshot/targets во время обработки не падают", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Не было выполнено ни одного обновления snapshot/targets");
+                }
+
+                return new SmokeTestResult("INFRA-009", "TrafficEngine: конкурентные обновления snapshot/targets во время обработки не падают", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: updates={updates}, processed={processed}");
             }, ct);
     }
 }

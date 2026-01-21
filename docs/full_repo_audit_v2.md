@@ -14,6 +14,8 @@
 
 Дополнение (19.01.2026): сохранён контекст сессии по P0.1 Step 1 (multi-group: REG-005/REG-006, per-target TCP/443 и TCP/80) — см. `docs/chat_log_2026-01-19_P0.1_Step1.md`.
 
+Дополнение (21.01.2026): P0.1 — карта «подозреваемых коллекций» (возможные источники `Collection was modified`) и покрытие INFRA smoke — см. `docs/P0_1_suspect_collections.md`.
+
 ---
 
 ## 1. Карта зависимостей проекта
