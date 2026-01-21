@@ -192,5 +192,68 @@ namespace TestNetworkApp.Smoke
                 return new SmokeTestResult("INFRA-006", "TrafficEngine: мутация списка фильтров во время обработки не падает", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: обработка устойчива к реэнтрантным Register/Remove во время foreach");
             }, ct);
+
+        public static Task<SmokeTestResult> Infra_ConcurrentFilterChurnAndProcessing_DoesNotThrow(CancellationToken ct)
+            => RunAsyncAwait("INFRA-007", "TrafficEngine: параллельный churn фильтров и обработка пакетов не падают", async innerCt =>
+            {
+                using var engine = new TrafficEngine(progress: null);
+
+                // Базовый фильтр: чтобы список не был пустым.
+                engine.RegisterFilter(new DummyPacketFilter("Stable", priority: 0));
+
+                var packetBytes = BuildIpv4TcpPacket(
+                    srcIp: IPAddress.Parse("192.0.2.10"),
+                    dstIp: IPAddress.Parse("93.184.216.34"),
+                    srcPort: 12345,
+                    dstPort: 443,
+                    ttl: 64,
+                    ipId: 1,
+                    seq: 1,
+                    tcpFlags: 0x02);
+
+                var packet = new InterceptedPacket(packetBytes, packetBytes.Length);
+                var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(innerCt);
+                cts.CancelAfter(TimeSpan.FromSeconds(1));
+                var token = cts.Token;
+
+                var churnTask = Task.Run(() =>
+                {
+                    var i = 0;
+                    while (!token.IsCancellationRequested)
+                    {
+                        // Параллельные изменения списка фильтров — типичный конкурентный сценарий.
+                        if ((i++ & 1) == 0)
+                        {
+                            engine.RegisterFilter(new DummyPacketFilter("Churn", priority: 1));
+                        }
+                        else
+                        {
+                            engine.RemoveFilter("Churn");
+                        }
+                    }
+                }, token);
+
+                var processed = 0;
+                while (!token.IsCancellationRequested)
+                {
+                    _ = engine.ProcessPacketForSmoke(packet, ctx);
+                    processed++;
+                }
+
+                cts.Cancel();
+                try
+                {
+                    await churnTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // ожидаемо
+                }
+
+                return new SmokeTestResult("INFRA-007", "TrafficEngine: параллельный churn фильтров и обработка пакетов не падают", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: обработано пакетов={processed}");
+            }, ct);
     }
 }

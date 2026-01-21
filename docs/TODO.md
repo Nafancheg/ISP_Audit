@@ -49,7 +49,9 @@
     - [x] Проставлять `lastMutation` также при регистрации/удалении фильтров через `BypassStateManager.RegisterEngineFilter/RemoveEngineFilter` (например reconnect-nudge), чтобы ловить контекст мутаций вне Apply.
     - [x] Фикс: `TrafficEngine` итерируется по snapshot массива фильтров (обновляется на Register/Remove/Clear), чтобы реэнтрантные мутации списка фильтров во время `filter.Process(...)` не могли вызвать `Collection was modified`.
     - [x] Regression smoke: `INFRA-006` — реэнтрантный фильтр (Register/Remove во время обработки) не должен ронять обработку пакета.
+    - [x] Regression smoke: `INFRA-007` — конкурентный churn фильтров (параллельные Register/Remove) + обработка пакетов не должны падать.
     - [ ] Составить карту «подозреваемых коллекций» и всех чтений/записей (например: udpBlockedIPs, activeTransactions, observedEndpoints).
+      - Черновик (Core): критичный `foreach` по `_filters` в `TrafficEngine` закрыт snapshot‑подходом; в `Core/Traffic/Filters` перечисления либо по immutable snapshot, либо по `ConcurrentDictionary`.
     - [ ] Описать ручной сценарий воспроизведения (точная последовательность действий).
     - [ ] Сделать воспроизводимость ≥80% (цель: краш за ~2 минуты).
     - [ ] Добавить regression сценарий (integration/stress): rapid apply/переключение во время активной диагностики.
