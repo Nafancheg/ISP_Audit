@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -40,7 +41,72 @@ namespace IspAudit.Core.Bypass
             string Error,
             string RollbackStatus,
             string CancelReason,
-            BypassApplyStateSnapshot Before);
+            BypassApplyStateSnapshot Before,
+            string CurrentPhase,
+            IReadOnlyList<BypassApplyPhaseTiming> Phases,
+            long TotalElapsedMs);
+
+        private sealed class ApplyPhaseTracker
+        {
+            private readonly List<BypassApplyPhaseTiming> _phases = new();
+            private readonly long _startedAt = Stopwatch.GetTimestamp();
+            private long _currentStartedAt;
+            private string _current = string.Empty;
+
+            public IReadOnlyList<BypassApplyPhaseTiming> Phases => _phases;
+            public string CurrentPhase => _current;
+
+            public void Start(string name, string details = "")
+            {
+                if (!string.IsNullOrWhiteSpace(_current))
+                {
+                    FinalizeCurrent("ABANDONED", "phase switched without finalize");
+                }
+
+                _current = name ?? string.Empty;
+                _currentStartedAt = Stopwatch.GetTimestamp();
+
+                if (!string.IsNullOrWhiteSpace(details))
+                {
+                    _phases.Add(new BypassApplyPhaseTiming
+                    {
+                        Name = _current,
+                        Status = "START",
+                        ElapsedMs = 0,
+                        Details = details
+                    });
+                }
+            }
+
+            public void FinalizeCurrent(string status, string details = "")
+            {
+                if (string.IsNullOrWhiteSpace(_current))
+                {
+                    return;
+                }
+
+                var elapsed = ElapsedMs(_currentStartedAt);
+                _phases.Add(new BypassApplyPhaseTiming
+                {
+                    Name = _current,
+                    Status = status ?? string.Empty,
+                    ElapsedMs = elapsed,
+                    Details = details ?? string.Empty
+                });
+                _current = string.Empty;
+                _currentStartedAt = 0;
+            }
+
+            public long TotalElapsedMs => ElapsedMs(_startedAt);
+
+            private static long ElapsedMs(long startedAt)
+            {
+                if (startedAt <= 0) return 0;
+                var ticks = Stopwatch.GetTimestamp() - startedAt;
+                if (ticks <= 0) return 0;
+                return (long)(ticks * 1000.0 / Stopwatch.Frequency);
+            }
+        }
 
         public sealed class BypassApplyCanceledException : OperationCanceledException
         {
@@ -95,7 +161,10 @@ namespace IspAudit.Core.Bypass
             var before = new BypassApplyStateSnapshot(optionsBefore, currentDoHEnabled, (selectedDnsPreset ?? string.Empty).Trim());
             _log?.Invoke($"[V2][Executor] Timeout={(timeout > TimeSpan.Zero ? timeout.TotalSeconds.ToString("0.##") + "s" : "none")}; before={before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
 
+            var tracker = new ApplyPhaseTracker();
             CancellationTokenSource? timeoutCts = null;
+            var tlsOptionsApplied = false;
+            var dnsTouched = false;
             try
             {
                 if (timeout > TimeSpan.Zero)
@@ -109,7 +178,9 @@ namespace IspAudit.Core.Bypass
 
                 linked.Token.ThrowIfCancellationRequested();
 
+                tracker.Start("plan_build", $"strategies={strategiesText}");
                 var planned = BuildPlannedState(before, plan);
+                tracker.FinalizeCurrent("OK");
 
                 _log?.Invoke($"[V2][Executor] Target={planned.PlannedOptions.ToReadableStrategy()}; DoH={(planned.PlannedDoHEnabled ? "on" : "off")}; DNS={planned.PlannedDnsPreset}");
 
@@ -118,15 +189,20 @@ namespace IspAudit.Core.Bypass
                 var testDelayMsText = Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_APPLY_DELAY_MS");
                 if (int.TryParse(testDelayMsText, out var testDelayMs) && testDelayMs > 0)
                 {
+                    tracker.Start("test_delay", $"delayMs={testDelayMs}");
                     _log?.Invoke($"[V2][Executor] Test delay: {testDelayMs}ms");
                     await Task.Delay(testDelayMs, linked.Token).ConfigureAwait(false);
+                    tracker.FinalizeCurrent("OK");
                 }
 
                 linked.Token.ThrowIfCancellationRequested();
 
+                tracker.Start("apply_tls_options");
                 _log?.Invoke("[V2][Executor] Applying bypass options...");
                 await _stateManager.ApplyTlsOptionsAsync(planned.PlannedOptions, linked.Token).ConfigureAwait(false);
+                tlsOptionsApplied = true;
                 _log?.Invoke("[V2][Executor] Bypass options applied");
+                tracker.FinalizeCurrent("OK");
 
                 linked.Token.ThrowIfCancellationRequested();
 
@@ -136,29 +212,40 @@ namespace IspAudit.Core.Bypass
                 if (planned.PlannedDoHEnabled && !before.DoHEnabled)
                 {
                     linked.Token.ThrowIfCancellationRequested();
+                    tracker.Start("apply_doh_enable", $"preset={planned.PlannedDnsPreset}");
                     _log?.Invoke("[V2][Executor] Applying DoH (enable)");
 
+                    dnsTouched = true;
                     var (success, error) = await FixService.ApplyDnsFixAsync(planned.PlannedDnsPreset).ConfigureAwait(false);
                     if (success)
                     {
                         dohAfter = true;
                         _log?.Invoke($"[DoH] DoH enabled: {planned.PlannedDnsPreset}");
+                        tracker.FinalizeCurrent("OK");
                     }
                     else
                     {
                         dohAfter = false;
                         _log?.Invoke($"[DoH] Failed: {error}");
+                        tracker.FinalizeCurrent("FAILED", error);
                     }
+
+                    linked.Token.ThrowIfCancellationRequested();
                 }
 
                 if (!planned.PlannedDoHEnabled && before.DoHEnabled)
                 {
                     linked.Token.ThrowIfCancellationRequested();
+                    tracker.Start("apply_doh_disable");
                     _log?.Invoke("[V2][Executor] Applying DoH (disable)");
 
+                    dnsTouched = true;
                     var (success, error) = await FixService.RestoreDnsAsync().ConfigureAwait(false);
                     dohAfter = false;
                     _log?.Invoke(success ? "[DoH] DNS settings restored." : $"[DoH] Restore failed: {error}");
+
+                    tracker.FinalizeCurrent(success ? "OK" : "FAILED", success ? string.Empty : error);
+                    linked.Token.ThrowIfCancellationRequested();
                 }
 
                 _log?.Invoke($"[V2][Executor] Apply complete: after={planned.PlannedOptions.ToReadableStrategy()}; DoH={(dohAfter ? "on" : "off")}; DNS={planned.PlannedDnsPreset}");
@@ -171,11 +258,23 @@ namespace IspAudit.Core.Bypass
                     ? "timeout"
                     : (cancellationToken.IsCancellationRequested ? "cancel" : "cancel");
 
+                var currentPhase = tracker.CurrentPhase;
+                tracker.FinalizeCurrent("CANCELED", cancelReason);
+
                 _log?.Invoke($"[V2][Executor] Apply {cancelReason} — rollback");
                 _log?.Invoke($"[V2][Executor] Rollback to: {before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
 
-                var rollbackOk = await RestoreSnapshotAsync(before).ConfigureAwait(false);
-                var rollbackStatus = rollbackOk ? "DONE" : "FAILED";
+                string rollbackStatus;
+                if (!tlsOptionsApplied && !dnsTouched)
+                {
+                    rollbackStatus = "NOT_NEEDED";
+                    _log?.Invoke("[V2][Executor] Rollback skipped: ничего не было применено");
+                }
+                else
+                {
+                    var rollbackOk = await RestoreSnapshotAsync(before, tracker).ConfigureAwait(false);
+                    rollbackStatus = rollbackOk ? "DONE" : "FAILED";
+                }
 
                 _log?.Invoke($"[V2][Executor] Rollback complete ({rollbackStatus}): after={before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
 
@@ -185,16 +284,30 @@ namespace IspAudit.Core.Bypass
                         Error: string.Empty,
                         RollbackStatus: rollbackStatus,
                         CancelReason: cancelReason,
-                        Before: before),
+                        Before: before,
+                        CurrentPhase: currentPhase,
+                        Phases: tracker.Phases,
+                        TotalElapsedMs: tracker.TotalElapsedMs),
                     cancellationToken);
             }
             catch (Exception ex)
             {
+                var currentPhase = tracker.CurrentPhase;
+                tracker.FinalizeCurrent("FAILED", ex.Message);
                 _log?.Invoke($"[V2][Executor] Apply failed: {ex.Message} — rollback");
                 _log?.Invoke($"[V2][Executor] Rollback to: {before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
 
-                var rollbackOk = await RestoreSnapshotAsync(before).ConfigureAwait(false);
-                var rollbackStatus = rollbackOk ? "DONE" : "FAILED";
+                string rollbackStatus;
+                if (!tlsOptionsApplied && !dnsTouched)
+                {
+                    rollbackStatus = "NOT_NEEDED";
+                    _log?.Invoke("[V2][Executor] Rollback skipped: ничего не было применено");
+                }
+                else
+                {
+                    var rollbackOk = await RestoreSnapshotAsync(before, tracker).ConfigureAwait(false);
+                    rollbackStatus = rollbackOk ? "DONE" : "FAILED";
+                }
 
                 _log?.Invoke($"[V2][Executor] Rollback complete ({rollbackStatus}): after={before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
 
@@ -204,7 +317,10 @@ namespace IspAudit.Core.Bypass
                         Error: ex.Message,
                         RollbackStatus: rollbackStatus,
                         CancelReason: string.Empty,
-                        Before: before),
+                        Before: before,
+                        CurrentPhase: currentPhase,
+                        Phases: tracker.Phases,
+                        TotalElapsedMs: tracker.TotalElapsedMs),
                     ex);
             }
             finally
@@ -213,22 +329,26 @@ namespace IspAudit.Core.Bypass
             }
         }
 
-        private async Task<bool> RestoreSnapshotAsync(BypassApplyStateSnapshot snapshot)
+        private async Task<bool> RestoreSnapshotAsync(BypassApplyStateSnapshot snapshot, ApplyPhaseTracker? tracker)
         {
             var ok = true;
             try
             {
+                tracker?.Start("rollback_tls_options");
                 using var op = BypassOperationContext.EnterIfNone("v2_apply_rollback");
                 await _stateManager.ApplyTlsOptionsAsync(snapshot.Options, CancellationToken.None).ConfigureAwait(false);
+                tracker?.FinalizeCurrent("OK");
             }
             catch
             {
                 // best-effort
                 ok = false;
+                tracker?.FinalizeCurrent("FAILED");
             }
 
             try
             {
+                tracker?.Start("rollback_dns");
                 if (snapshot.DoHEnabled)
                 {
                     await FixService.ApplyDnsFixAsync(snapshot.SelectedDnsPreset).ConfigureAwait(false);
@@ -237,15 +357,21 @@ namespace IspAudit.Core.Bypass
                 {
                     await FixService.RestoreDnsAsync().ConfigureAwait(false);
                 }
+
+                tracker?.FinalizeCurrent("OK");
             }
             catch
             {
                 // best-effort
                 ok = false;
+                tracker?.FinalizeCurrent("FAILED");
             }
 
             return ok;
         }
+
+        private Task<bool> RestoreSnapshotAsync(BypassApplyStateSnapshot snapshot)
+            => RestoreSnapshotAsync(snapshot, tracker: null);
 
         private BypassApplyPlanResult BuildPlannedState(BypassApplyStateSnapshot before, BypassPlan plan)
         {

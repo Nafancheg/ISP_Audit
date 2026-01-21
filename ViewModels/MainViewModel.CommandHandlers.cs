@@ -163,7 +163,11 @@ namespace IspAudit.ViewModels
                         transactionIdOverride: txId,
                         resultStatus: outcome.Status,
                         error: outcome.Error,
-                        rollbackStatus: outcome.RollbackStatus);
+                        rollbackStatus: outcome.RollbackStatus,
+                        cancelReason: outcome.CancelReason,
+                        applyCurrentPhase: outcome.ApplyCurrentPhase,
+                        applyTotalElapsedMs: outcome.ApplyTotalElapsedMs,
+                        applyPhases: outcome.ApplyPhases);
                     UpdateLastApplyTransactionTextForGroupKey(groupKey);
                 }
             }
@@ -259,7 +263,11 @@ namespace IspAudit.ViewModels
                         transactionIdOverride: txId,
                         resultStatus: outcome.Status,
                         error: outcome.Error,
-                        rollbackStatus: outcome.RollbackStatus);
+                        rollbackStatus: outcome.RollbackStatus,
+                        cancelReason: outcome.CancelReason,
+                        applyCurrentPhase: outcome.ApplyCurrentPhase,
+                        applyTotalElapsedMs: outcome.ApplyTotalElapsedMs,
+                        applyPhases: outcome.ApplyPhases);
                     UpdateLastApplyTransactionTextForGroupKey(groupKey);
                 }
             }
@@ -349,7 +357,11 @@ namespace IspAudit.ViewModels
                         transactionIdOverride: txId,
                         resultStatus: outcome.Status,
                         error: outcome.Error,
-                        rollbackStatus: outcome.RollbackStatus);
+                        rollbackStatus: outcome.RollbackStatus,
+                        cancelReason: outcome.CancelReason,
+                        applyCurrentPhase: outcome.ApplyCurrentPhase,
+                        applyTotalElapsedMs: outcome.ApplyTotalElapsedMs,
+                        applyPhases: outcome.ApplyPhases);
                     UpdateLastApplyTransactionTextForGroupKey(groupKey);
                 }
             }

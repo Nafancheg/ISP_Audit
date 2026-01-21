@@ -4,6 +4,22 @@ using System.Collections.Generic;
 namespace IspAudit.Bypass
 {
     /// <summary>
+    /// P0.2: фазовая диагностика apply. Нужна для расследования таймаутов/подвисаний:
+    /// какая стадия заняла время и где была отмена.
+    /// </summary>
+    public sealed record BypassApplyPhaseTiming
+    {
+        public string Name { get; init; } = string.Empty;
+
+        // Примеры: START / OK / FAILED / CANCELED.
+        public string Status { get; init; } = string.Empty;
+
+        public long ElapsedMs { get; init; }
+
+        public string Details { get; init; } = string.Empty;
+    }
+
+    /// <summary>
     /// P0.1 Step 2: контракт данных для транзакции применения обхода.
     ///
     /// Цель: фиксировать единый, расширяемый формат Request/Snapshot/Result и список Contributions,
@@ -54,6 +70,19 @@ namespace IspAudit.Bypass
         // Наблюдаемость: был ли откат и чем закончился (best-effort).
         // Примеры: NOT_NEEDED / DONE / FAILED.
         public string RollbackStatus { get; init; } = string.Empty;
+
+        // P0.2: если apply был отменён, почему.
+        // Примеры: timeout / cancel.
+        public string CancelReason { get; init; } = string.Empty;
+
+        // P0.2: в какой фазе apply находились в момент отмены/ошибки.
+        public string ApplyCurrentPhase { get; init; } = string.Empty;
+
+        // P0.2: суммарное время apply (best-effort).
+        public long ApplyTotalElapsedMs { get; init; }
+
+        // P0.2: список фаз и их длительностей.
+        public IReadOnlyList<BypassApplyPhaseTiming> ApplyPhases { get; init; } = Array.Empty<BypassApplyPhaseTiming>();
 
         public string AppliedStrategyText { get; init; } = string.Empty;
         public string PlanText { get; init; } = string.Empty;

@@ -151,7 +151,11 @@ namespace IspAudit.ViewModels
             string? transactionIdOverride = null,
             string? resultStatus = null,
             string? error = null,
-            string? rollbackStatus = null)
+            string? rollbackStatus = null,
+            string? cancelReason = null,
+            string? applyCurrentPhase = null,
+            long? applyTotalElapsedMs = null,
+            IReadOnlyList<BypassApplyPhaseTiming>? applyPhases = null)
         {
             try
             {
@@ -230,6 +234,10 @@ namespace IspAudit.ViewModels
                     Status = string.IsNullOrWhiteSpace(resultStatus) ? "RECORDED" : resultStatus.Trim(),
                     Error = string.IsNullOrWhiteSpace(error) ? string.Empty : error.Trim(),
                     RollbackStatus = string.IsNullOrWhiteSpace(rollbackStatus) ? string.Empty : rollbackStatus.Trim(),
+                    CancelReason = string.IsNullOrWhiteSpace(cancelReason) ? string.Empty : cancelReason.Trim(),
+                    ApplyCurrentPhase = string.IsNullOrWhiteSpace(applyCurrentPhase) ? string.Empty : applyCurrentPhase.Trim(),
+                    ApplyTotalElapsedMs = applyTotalElapsedMs.GetValueOrDefault(0),
+                    ApplyPhases = applyPhases ?? Array.Empty<BypassApplyPhaseTiming>(),
                     AppliedStrategyText = appliedStrategyText ?? string.Empty,
                     PlanText = safePlanText,
                     Reasoning = safeReasoning,

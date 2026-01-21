@@ -1127,6 +1127,13 @@
 **Входные данные:** Вызов internal API `BypassStateManager.SeedObservedIpv4TargetsFromCandidateEndpointsBestEffort(...)`
 **Ожидаемый результат:** Snapshot содержит ожидаемые IPv4 адреса (в network-order uint)
 
+**Test ID:** `REG-016`
+**Что проверяет:** ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)
+**Для чего:** P0.2 наблюдаемость: при таймауте Apply нужно понимать, на какой фазе зависло/отменилось (без ручного репро)
+**Критерий успеха:** При детерминированном таймауте `CancelReason=timeout`, а также заполнены `CurrentPhase` и список `Phases` (включая `test_delay`)
+**Входные данные:** `ISP_AUDIT_TEST_APPLY_DELAY_MS=500` и `timeout=50ms` при вызове `BypassController.ApplyV2PlanAsync`
+**Ожидаемый результат:** Бросается `BypassApplyCanceledException`, в `Execution` присутствует фазовая диагностика
+
 **Test ID:** `REG-004`
 **Что проверяет:** Per-card ретест во время диагностики ставится в очередь и флашится после завершения
 **Для чего:** Регресс-гейт UX: кнопка «Ретест» не должна быть «мертвой» во время диагностики

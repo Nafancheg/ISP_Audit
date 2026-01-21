@@ -477,6 +477,90 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> REG_ApplyV2Plan_Timeout_HasPhaseDiagnostics(CancellationToken ct)
+            => RunAsyncAwait("REG-016", "REG: ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)", async _ =>
+            {
+                var sw = Stopwatch.StartNew();
+                string? prevDelay = null;
+                try
+                {
+                    prevDelay = Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_APPLY_DELAY_MS");
+
+                    // Детерминированно создаём таймаут в test_delay фазе.
+                    const int delayMs = 500;
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_APPLY_DELAY_MS", delayMs.ToString());
+
+                    var baseProfile = BypassProfile.CreateDefault();
+
+                    using var engine = new IspAudit.Core.Traffic.TrafficEngine();
+                    using var tls = new TlsBypassService(
+                        engine,
+                        baseProfile,
+                        log: null,
+                        startMetricsTimer: false,
+                        useTrafficEngine: false,
+                        nowProvider: () => DateTime.UtcNow);
+
+                    var bypass = new BypassController(tls, baseProfile);
+
+                    var plan = new IspAudit.Core.IntelligenceV2.Contracts.BypassPlan
+                    {
+                        ForDiagnosis = IspAudit.Core.IntelligenceV2.Contracts.DiagnosisId.SilentDrop,
+                        PlanConfidence = 100,
+                        Strategies =
+                        {
+                            new IspAudit.Core.IntelligenceV2.Contracts.BypassStrategy
+                            {
+                                Id = IspAudit.Core.IntelligenceV2.Contracts.StrategyId.TlsFragment
+                            }
+                        }
+                    };
+
+                    try
+                    {
+                        await bypass.ApplyV2PlanAsync(plan, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromMilliseconds(50), cancellationToken: ct)
+                            .ConfigureAwait(false);
+
+                        return new SmokeTestResult("REG-016", "REG: ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
+                            SmokeOutcome.Fail, sw.Elapsed, "Ожидали таймаут, но apply завершился без исключения");
+                    }
+                    catch (IspAudit.Core.Bypass.BypassApplyService.BypassApplyCanceledException ce)
+                    {
+                        if (!string.Equals(ce.Execution.CancelReason, "timeout", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return new SmokeTestResult("REG-016", "REG: ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
+                                SmokeOutcome.Fail, sw.Elapsed, $"Ожидали CancelReason=timeout, получили '{ce.Execution.CancelReason}'");
+                        }
+
+                        if (ce.Execution.Phases == null || ce.Execution.Phases.Count == 0)
+                        {
+                            return new SmokeTestResult("REG-016", "REG: ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
+                                SmokeOutcome.Fail, sw.Elapsed, "Phases пуст (ожидали хотя бы plan_build/test_delay)");
+                        }
+
+                        // Должны увидеть test_delay как текущую фазу (мы таймаутим именно там).
+                        if (!string.Equals(ce.Execution.CurrentPhase, "test_delay", StringComparison.OrdinalIgnoreCase)
+                            && !ce.Execution.Phases.Any(p => string.Equals(p.Name, "test_delay", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            return new SmokeTestResult("REG-016", "REG: ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
+                                SmokeOutcome.Fail, sw.Elapsed, $"Ожидали фазу test_delay (currentPhase или phases), получили currentPhase='{ce.Execution.CurrentPhase}'");
+                        }
+
+                        return new SmokeTestResult("REG-016", "REG: ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
+                            SmokeOutcome.Pass, sw.Elapsed, "OK");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-016", "REG: ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
+                        SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_APPLY_DELAY_MS", prevDelay);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> REG_GroupBypassAttachmentStore_DeterministicMerge_AndExcludedSticky(CancellationToken ct)
             => RunAsync("REG-013", "REG: GroupBypassAttachmentStore merge (union/OR) и excluded не сбрасывается", () =>
             {

@@ -43,6 +43,12 @@ namespace IspAudit.ViewModels
             public string Status { get; init; } = "APPLIED";
             public string Error { get; init; } = string.Empty;
             public string RollbackStatus { get; init; } = string.Empty;
+
+            // P0.2: диагностика apply timeout/cancel.
+            public string CancelReason { get; init; } = string.Empty;
+            public string ApplyCurrentPhase { get; init; } = string.Empty;
+            public long ApplyTotalElapsedMs { get; init; }
+            public IReadOnlyList<BypassApplyPhaseTiming> ApplyPhases { get; init; } = Array.Empty<BypassApplyPhaseTiming>();
         }
 
         private static bool PlanHasApplicableActions(BypassPlan plan)
@@ -208,7 +214,11 @@ namespace IspAudit.ViewModels
                     return new V2ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
                     {
                         Status = ce.Execution.Status,
-                        RollbackStatus = ce.Execution.RollbackStatus
+                        RollbackStatus = ce.Execution.RollbackStatus,
+                        CancelReason = ce.Execution.CancelReason,
+                        ApplyCurrentPhase = ce.Execution.CurrentPhase,
+                        ApplyTotalElapsedMs = ce.Execution.TotalElapsedMs,
+                        ApplyPhases = ce.Execution.Phases
                     };
                 }
 
@@ -230,7 +240,11 @@ namespace IspAudit.ViewModels
                     {
                         Status = fe.Execution.Status,
                         Error = fe.Execution.Error,
-                        RollbackStatus = fe.Execution.RollbackStatus
+                        RollbackStatus = fe.Execution.RollbackStatus,
+                        CancelReason = fe.Execution.CancelReason,
+                        ApplyCurrentPhase = fe.Execution.CurrentPhase,
+                        ApplyTotalElapsedMs = fe.Execution.TotalElapsedMs,
+                        ApplyPhases = fe.Execution.Phases
                     };
                 }
 
