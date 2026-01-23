@@ -1,0 +1,21 @@
+{
+  // Ускорение VS Code в этом репозитории: меньше файлов для наблюдения/поиска.
+  // Это не влияет на сборку/рантайм приложения.
+  "files.watcherExclude": {
+    "**/.git/**": true,
+    "**/bin/**": true,
+    "**/obj/**": true,
+    "**/publish/**": true,
+    "**/artifacts/**": true
+  },
+  "search.exclude": {
+    "**/.git/**": true,
+    "**/bin/**": true,
+    "**/obj/**": true,
+    "**/publish/**": true,
+    "**/artifacts/**": true
+  },
+
+  // ESLint в этом WPF/.NET репо обычно не нужен и может держать eslintServer.js.
+  "eslint.enable": false
+}

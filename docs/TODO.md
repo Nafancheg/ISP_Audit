@@ -1,3 +1,4 @@
+- [ ] IDE: ускорение VS Code для этого репо (добавлены `.vscode/settings.json`: watcherExclude/search.exclude для `bin/obj/artifacts/publish` + отключён ESLint в workspace)
 # ISP_Audit — TODO (только невыполненное)
 
 Дата: 20.01.2026 (актуализировано)
