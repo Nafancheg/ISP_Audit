@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -406,15 +407,51 @@ namespace IspAudit.Bypass
         public async Task ApplyTlsOptionsAsync(TlsBypassOptions options, CancellationToken cancellationToken = default)
         {
             await _applyGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            Stopwatch? totalSw = null;
+            var currentPhase = "enter";
+            var corrText = "-";
+
+            const long WarnNormalizeMs = 100;
+            const long WarnUdpTargetsMs = 1500;
+            const long WarnPolicyCompileMs = 300;
+            const long WarnTlsApplyMs = 2500;
+            const long WarnPostApplyMs = 500;
+            const long WarnTotalMs = 3000;
+
+            void LogPhase(string phase, long elapsedMs, long warnThresholdMs, string details = "")
+            {
+                try
+                {
+                    var warn = elapsedMs >= warnThresholdMs ? "WARN" : "OK";
+                    var safeDetails = string.IsNullOrWhiteSpace(details) ? string.Empty : "; " + details;
+                    _log?.Invoke($"[Bypass][ApplyTlsOptions] {warn}: phase={phase}; ms={elapsedMs}; corr={corrText}{safeDetails}");
+                }
+                catch
+                {
+                    // best-effort
+                }
+            }
+
             try
             {
+                totalSw = Stopwatch.StartNew();
+
+                var op = BypassOperationContext.Snapshot();
+                var corr = op?.CorrelationId;
+                corrText = string.IsNullOrWhiteSpace(corr) ? "-" : corr;
+
+                currentPhase = "normalize";
+                var normalizeSw = Stopwatch.StartNew();
                 var normalized = options.Normalize();
+                normalizeSw.Stop();
 
                 // P0.1 Step 1: поддержка нескольких активных целей одновременно.
                 // Пользователь может применить разные v2 планы для разных hostKey; рантайм должен
                 // держать нужные «capabilities» включёнными (union), а decision graph выбирать действие по пакету.
                 var preferredHost = _outcomeTargetHost;
                 var activeTargetPolicies = GetActiveTargetPoliciesSnapshot(preferredHost);
+
+                LogPhase("normalize", normalizeSw.ElapsedMilliseconds, WarnNormalizeMs, $"anyEnabled={(normalized.IsAnyEnabled() ? "yes" : "no")}; activeTargets={activeTargetPolicies.Length}");
 
                 var effective = normalized;
                 if (activeTargetPolicies.Length > 0)
@@ -452,6 +489,9 @@ namespace IspAudit.Bypass
                     ClearActiveTargetPolicies();
                     activeTargetPolicies = Array.Empty<ActiveTargetPolicy>();
                 }
+
+                currentPhase = "udp443_targets";
+                var udpTargetsSw = Stopwatch.StartNew();
 
                 // DROP UDP/443:
                 // - global: глушим весь UDP/443 (цель не нужна)
@@ -509,8 +549,17 @@ namespace IspAudit.Bypass
                     }
                 }
 
+                udpTargetsSw.Stop();
+                LogPhase(
+                    "udp443_targets",
+                    udpTargetsSw.ElapsedMilliseconds,
+                    WarnUdpTargetsMs,
+                    $"enabled={(effective.DropUdp443 ? "yes" : "no")}; global={(effective.DropUdp443Global ? "yes" : "no")}; targets={udp443Targets.Length}");
+
                 // Policy-driven execution plane (P0.2): компилируем snapshot только при включённых gate.
                 // При gate=off не меняем runtime-поведение: фильтр использует legacy ветки.
+                currentPhase = "policy_compile";
+                var policySw = Stopwatch.StartNew();
                 DecisionGraphSnapshot? decisionSnapshot = null;
 
                 var shouldCompileSnapshot =
@@ -696,11 +745,24 @@ namespace IspAudit.Bypass
                     }
                 }
 
+                policySw.Stop();
+                LogPhase(
+                    "policy_compile",
+                    policySw.ElapsedMilliseconds,
+                    WarnPolicyCompileMs,
+                    $"shouldCompile={(shouldCompileSnapshot ? "yes" : "no")}; hasSnapshot={(decisionSnapshot != null ? "yes" : "no")}");
+
+                currentPhase = "tls_service_apply";
+                var tlsApplySw = Stopwatch.StartNew();
                 using var scope = BypassStateManagerGuard.EnterScope();
                 _tlsService.SetUdp443DropTargetIpsForManager(udp443Targets);
                 _tlsService.SetDecisionGraphSnapshotForManager(decisionSnapshot);
                 await _tlsService.ApplyAsync(effective, cancellationToken).ConfigureAwait(false);
+                tlsApplySw.Stop();
+                LogPhase("tls_service_apply", tlsApplySw.ElapsedMilliseconds, WarnTlsApplyMs, $"effective={effective.ToReadableStrategy()}");
 
+                currentPhase = "post_apply";
+                var postSw = Stopwatch.StartNew();
                 if (effective.IsAnyEnabled())
                 {
                     _lastBypassActivatedUtc = DateTime.UtcNow;
@@ -716,6 +778,25 @@ namespace IspAudit.Bypass
                     CancelOutcomeProbe();
                     _lastOutcomeSnapshot = new OutcomeStatusSnapshot(OutcomeStatus.Unknown, "UNKNOWN", "bypass отключён");
                 }
+
+                postSw.Stop();
+                LogPhase("post_apply", postSw.ElapsedMilliseconds, WarnPostApplyMs);
+
+                totalSw?.Stop();
+                LogPhase("total", totalSw?.ElapsedMilliseconds ?? 0, WarnTotalMs);
+            }
+            catch (OperationCanceledException)
+            {
+                totalSw?.Stop();
+                LogPhase("canceled", totalSw?.ElapsedMilliseconds ?? 0, warnThresholdMs: 0, $"at={currentPhase}");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                totalSw?.Stop();
+                LogPhase("failed", totalSw?.ElapsedMilliseconds ?? 0, warnThresholdMs: 0, $"at={currentPhase}; error={ex.Message}");
+                _log?.Invoke($"[Bypass][ApplyTlsOptions] FAILED; corr={corrText}; ex={ex}");
+                throw;
             }
             finally
             {

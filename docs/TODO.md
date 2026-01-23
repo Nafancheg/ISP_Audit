@@ -1,4 +1,3 @@
-- [ ] IDE: ускорение VS Code для этого репо (добавлены `.vscode/settings.json`: watcherExclude/search.exclude для `bin/obj/artifacts/publish` + отключён ESLint в workspace)
 # ISP_Audit — TODO (только невыполненное)
 
 Дата: 20.01.2026 (актуализировано)
@@ -73,9 +72,9 @@
   - Чек‑лист:
     - [x] Добавить фазовую диагностику ApplyV2Plan (фазы + длительности + текущая фаза + общая длительность) и протащить её до persist Apply-транзакций (Result).
     - [x] Regression smoke: `REG-016` — детерминированный Apply-timeout (через `ISP_AUDIT_TEST_APPLY_DELAY_MS`) должен содержать фазовую диагностику.
-    - [ ] Добавить фазовое логирование Apply в `Bypass/TlsBypassService.Engine.cs` (Preparing config → DNS resolve → Stop old filters → Start new filters → Validation) с duration.
-    - [ ] Обернуть apply на уровне `Bypass/BypassStateManager.cs`: единая точка логирования (Started/PhaseCompleted/Completed/Rollback) + correlation id.
-    - [ ] Добавить пороги/таймауты на фазы (например: Stop>3с WARNING, Start>4с ERROR) + structured events.
+    - [x] Добавить фазовое логирование Apply в `Bypass/TlsBypassService.Engine.cs` (Preparing config → DNS resolve → Stop old filters → Start new filters → Validation) с duration.
+    - [x] Обернуть apply на уровне `Bypass/BypassStateManager.cs`: единая точка логирования (Started/PhaseCompleted/Completed/Rollback) + correlation id.
+    - [x] Добавить пороги на фазы (WARN/OK) + structured events (без доп. внутренних таймаутов на фазах).
     - [ ] Собрать логи с детализацией на реальном таймауте/зависании.
     - [ ] Классифицировать причину (WinDivert stop, DNS, deadlock, connectivity check).
     - [ ] Проверить потенциальные зависания в `Core/Traffic/TrafficEngine.cs` (например `StopAsync`/`StartAsync`) и добавить диагностику/таймауты при необходимости.

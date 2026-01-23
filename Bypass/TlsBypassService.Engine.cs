@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -76,6 +77,28 @@ namespace IspAudit.Bypass
 
         private async Task ApplyInternalAsync(CancellationToken cancellationToken)
         {
+            var totalSw = Stopwatch.StartNew();
+            var currentPhase = "enter";
+
+            // Снимок корреляции: помогает сопоставить зависание/таймаут apply с транзакцией UI.
+            var opSnapshot = BypassOperationContext.Snapshot();
+            var corr = opSnapshot?.CorrelationId;
+            var corrText = string.IsNullOrWhiteSpace(corr) ? "-" : corr;
+
+            void LogPhase(string phase, long elapsedMs, long warnThresholdMs, string details = "")
+            {
+                try
+                {
+                    var warn = elapsedMs >= warnThresholdMs ? "WARN" : "OK";
+                    var safeDetails = string.IsNullOrWhiteSpace(details) ? string.Empty : "; " + details;
+                    _log?.Invoke($"[Bypass][ApplyInternal] {warn}: phase={phase}; ms={elapsedMs}; corr={corrText}{safeDetails}");
+                }
+                catch
+                {
+                    // best-effort
+                }
+            }
+
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -107,12 +130,17 @@ namespace IspAudit.Bypass
                 // таймаут/Cancel и безопасный откат на верхнем уровне.
                 if (!_useTrafficEngine)
                 {
+                    currentPhase = "smoke_delay";
                     await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken).ConfigureAwait(false);
                 }
 
                 if (_useTrafficEngine)
                 {
+                    currentPhase = "engine_remove_filter";
+                    var sw = Stopwatch.StartNew();
                     _trafficEngine.RemoveFilter("BypassFilter");
+                    sw.Stop();
+                    LogPhase("engine_remove_filter", sw.ElapsedMilliseconds, warnThresholdMs: 250, "name=BypassFilter");
                 }
 
                 TlsBypassOptions optionsSnapshot;
@@ -123,6 +151,7 @@ namespace IspAudit.Bypass
 
                 if (!optionsSnapshot.IsAnyEnabled())
                 {
+                    currentPhase = "disabled";
                     _filter = null;
                     _metricsSince = DateTime.MinValue;
                     StateChanged?.Invoke(new TlsBypassState(false, "-", "-"));
@@ -132,8 +161,17 @@ namespace IspAudit.Bypass
                     return;
                 }
 
+                currentPhase = "build_profile";
+                var profileSw = Stopwatch.StartNew();
                 var profile = BuildProfile(optionsSnapshot);
+                profileSw.Stop();
+                LogPhase("build_profile", profileSw.ElapsedMilliseconds, warnThresholdMs: 250, $"preset={optionsSnapshot.PresetName}");
+
+                currentPhase = "build_filter";
+                var filterSw = Stopwatch.StartNew();
                 var filter = new BypassFilter(profile, _log, optionsSnapshot.PresetName);
+                filterSw.Stop();
+                LogPhase("build_filter", filterSw.ElapsedMilliseconds, warnThresholdMs: 250, $"preset={optionsSnapshot.PresetName}");
 
                 // Важно: фильтр пересоздаётся при каждом Apply. Пробрасываем runtime-настройки,
                 // которые хранятся в сервисе и должны переживать пересоздание.
@@ -144,16 +182,28 @@ namespace IspAudit.Bypass
                     udp443TargetsSnapshot = _udp443DropTargetIps.Length == 0 ? Array.Empty<uint>() : _udp443DropTargetIps.ToArray();
                     decisionSnapshot = _decisionGraphSnapshot;
                 }
+                currentPhase = "configure_filter";
+                var cfgSw = Stopwatch.StartNew();
                 filter.SetUdp443DropTargetIps(udp443TargetsSnapshot);
                 filter.SetDecisionGraphSnapshot(decisionSnapshot);
+                cfgSw.Stop();
+                LogPhase("configure_filter", cfgSw.ElapsedMilliseconds, warnThresholdMs: 250, $"udp443Targets={udp443TargetsSnapshot.Length}; hasPolicySnapshot={(decisionSnapshot != null ? "yes" : "no")}");
 
                 if (_useTrafficEngine)
                 {
+                    currentPhase = "engine_register_filter";
+                    var regSw = Stopwatch.StartNew();
                     _trafficEngine.RegisterFilter(filter);
+                    regSw.Stop();
+                    LogPhase("engine_register_filter", regSw.ElapsedMilliseconds, warnThresholdMs: 250, "type=BypassFilter");
 
                     if (!_trafficEngine.IsRunning)
                     {
+                        currentPhase = "engine_start";
+                        var startSw = Stopwatch.StartNew();
                         await _trafficEngine.StartAsync(cancellationToken).ConfigureAwait(false);
+                        startSw.Stop();
+                        LogPhase("engine_start", startSw.ElapsedMilliseconds, warnThresholdMs: 1500);
                     }
                 }
 
@@ -163,17 +213,41 @@ namespace IspAudit.Bypass
                     _metricsSince = _now();
                 }
 
+                currentPhase = "finalize";
                 StateChanged?.Invoke(new TlsBypassState(true, "-", _metricsSince.ToString("HH:mm:ss")));
                 _log?.Invoke($"[Bypass] Применены опции: {optionsSnapshot.ToReadableStrategy()} | TLS chunks: {optionsSnapshot.FragmentSizesAsText()}, threshold: {profile.TlsFragmentThreshold}");
+
+                totalSw.Stop();
+                LogPhase("total", totalSw.ElapsedMilliseconds, warnThresholdMs: 3000);
             }
             catch (OperationCanceledException)
             {
+                try
+                {
+                    totalSw.Stop();
+                    LogPhase("canceled", totalSw.ElapsedMilliseconds, warnThresholdMs: 0, $"at={currentPhase}");
+                }
+                catch
+                {
+                    // best-effort
+                }
+
                 _log?.Invoke("[Bypass] Применение отменено");
                 throw;
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[Bypass] Ошибка применения опций: {ex.Message}");
+                try
+                {
+                    totalSw.Stop();
+                    LogPhase("failed", totalSw.ElapsedMilliseconds, warnThresholdMs: 0, $"at={currentPhase}; error={ex.Message}");
+                }
+                catch
+                {
+                    // best-effort
+                }
+
+                _log?.Invoke($"[Bypass] Ошибка применения опций: {ex}");
             }
         }
 
