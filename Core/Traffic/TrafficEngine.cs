@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Threading;
@@ -209,13 +210,22 @@ namespace IspAudit.Core.Traffic
                 if (IsRunning || _isStopping) return Task.CompletedTask;
             }
 
+            var swTotal = Stopwatch.StartNew();
+
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
             try
             {
                 _progress?.Report("[TrafficEngine] Opening WinDivert handle...");
+                var swOpen = Stopwatch.StartNew();
                 // Open in Active mode (no Sniff flag) to allow modification/dropping
                 _handle = WinDivertNative.Open(Filter, WinDivertNative.Layer.Network, Priority, WinDivertNative.OpenFlags.None);
+                swOpen.Stop();
+
+                if (swOpen.ElapsedMilliseconds >= 500)
+                {
+                    _progress?.Report($"[TrafficEngine][WARN] WinDivert open is slow: {swOpen.ElapsedMilliseconds}ms{FormatLastMutationForLog()}");
+                }
 
                 if (_handle.IsInvalid)
                 {
@@ -224,6 +234,12 @@ namespace IspAudit.Core.Traffic
 
                 _loopTask = Task.Run(() => Loop(_cts.Token), _cts.Token);
                 _progress?.Report("[TrafficEngine] Started.");
+
+                swTotal.Stop();
+                if (swTotal.ElapsedMilliseconds >= 1500)
+                {
+                    _progress?.Report($"[TrafficEngine][WARN] StartAsync is slow: {swTotal.ElapsedMilliseconds}ms{FormatLastMutationForLog()}");
+                }
             }
             catch (Exception ex)
             {
@@ -237,6 +253,7 @@ namespace IspAudit.Core.Traffic
         public async Task StopAsync()
         {
             BypassStateManagerGuard.WarnIfBypassed(_progress, "TrafficEngine.StopAsync");
+            var swTotal = Stopwatch.StartNew();
             Task? loopTask;
             lock (_stateLock)
             {
@@ -257,7 +274,14 @@ namespace IspAudit.Core.Traffic
             // Важно: не обнуляем _handle до завершения loop, иначе loop может передать null в WinDivertSend.
             try
             {
+                var swDispose = Stopwatch.StartNew();
                 _handle?.Dispose();
+                swDispose.Stop();
+
+                if (swDispose.ElapsedMilliseconds >= 500)
+                {
+                    _progress?.Report($"[TrafficEngine][WARN] WinDivert handle dispose is slow: {swDispose.ElapsedMilliseconds}ms{FormatLastMutationForLog()}");
+                }
             }
             catch
             {
@@ -268,6 +292,13 @@ namespace IspAudit.Core.Traffic
             {
                 try
                 {
+                    var warnDelay = Task.Delay(TimeSpan.FromSeconds(3));
+                    var first = await Task.WhenAny(loopTask, warnDelay).ConfigureAwait(false);
+                    if (first == warnDelay)
+                    {
+                        _progress?.Report($"[TrafficEngine][WARN] StopAsync taking too long (>3s){FormatLastMutationForLog()}");
+                    }
+
                     await loopTask.ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
@@ -287,6 +318,12 @@ namespace IspAudit.Core.Traffic
                 _cts?.Dispose();
                 _cts = null;
                 _isStopping = false;
+            }
+
+            swTotal.Stop();
+            if (swTotal.ElapsedMilliseconds >= 3000)
+            {
+                _progress?.Report($"[TrafficEngine][WARN] StopAsync is slow: {swTotal.ElapsedMilliseconds}ms{FormatLastMutationForLog()}");
             }
             _progress?.Report("[TrafficEngine] Stopped.");
         }
