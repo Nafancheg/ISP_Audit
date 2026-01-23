@@ -95,6 +95,10 @@ namespace IspAudit.ViewModels
         {
             if (string.IsNullOrEmpty(propertyName)) return;
 
+            // Важно: это не auto-bypass, но это авто-действие (ретест). По умолчанию отключаем,
+            // чтобы не размывать наблюдаемость и причинно-следственные связи.
+            if (!IspAudit.Config.RuntimeFlags.EnableAutoRetestOnBypassChange) return;
+
             // Проверяем, что изменилось именно свойство bypass
             if (propertyName != nameof(Bypass.IsFragmentEnabled) &&
                 propertyName != nameof(Bypass.IsDisorderEnabled) &&
@@ -139,6 +143,13 @@ namespace IspAudit.ViewModels
         {
             try
             {
+                if (!IspAudit.Config.RuntimeFlags.EnableAutoRetestOnBypassChange)
+                {
+                    _pendingRetestAfterRun = false;
+                    _pendingRetestReason = "";
+                    return;
+                }
+
                 if (!IsDone) return;
 
                 var failedTargets = Results.TestResults

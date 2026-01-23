@@ -492,9 +492,16 @@ namespace IspAudit.Core.Bypass
                         enableDoH = true;
                         break;
                     case StrategyId.QuicObfuscation:
-                        updated = updated with { DropUdp443 = true };
-                        wantQuicFallback = true;
-                        _log?.Invoke("[V2][Executor] QuicObfuscation: включаем QUIC→TCP (DROP UDP/443)");
+                        if (Config.RuntimeFlags.EnableV2AssistFlags)
+                        {
+                            updated = updated with { DropUdp443 = true };
+                            wantQuicFallback = true;
+                            _log?.Invoke("[V2][Executor] QuicObfuscation: включаем QUIC→TCP (DROP UDP/443)");
+                        }
+                        else
+                        {
+                            _log?.Invoke("[V2][Executor] QuicObfuscation: assist отключён (gate). Рекомендация не применяется автоматически.");
+                        }
                         break;
                     case StrategyId.HttpHostTricks:
                         updated = updated with { HttpHostTricksEnabled = true };
@@ -513,16 +520,30 @@ namespace IspAudit.Core.Bypass
 
             if (plan.DropUdp443)
             {
-                updated = updated with { DropUdp443 = true };
-                wantQuicFallback = true;
-                _log?.Invoke("[V2][Executor] Assist: включаем QUIC→TCP (DROP UDP/443)");
+                if (Config.RuntimeFlags.EnableV2AssistFlags)
+                {
+                    updated = updated with { DropUdp443 = true };
+                    wantQuicFallback = true;
+                    _log?.Invoke("[V2][Executor] Assist: включаем QUIC→TCP (DROP UDP/443)");
+                }
+                else
+                {
+                    _log?.Invoke("[V2][Executor] Assist: QUIC→TCP подавлен (gate). Требуется явное включение пользователем.");
+                }
             }
 
             if (plan.AllowNoSni)
             {
-                updated = updated with { AllowNoSni = true };
-                wantAllowNoSni = true;
-                _log?.Invoke("[V2][Executor] Assist: включаем No SNI (разрешить обход без SNI)");
+                if (Config.RuntimeFlags.EnableV2AssistFlags)
+                {
+                    updated = updated with { AllowNoSni = true };
+                    wantAllowNoSni = true;
+                    _log?.Invoke("[V2][Executor] Assist: включаем No SNI (разрешить обход без SNI)");
+                }
+                else
+                {
+                    _log?.Invoke("[V2][Executor] Assist: No SNI подавлен (gate). Требуется явное включение пользователем.");
+                }
             }
 
             // P0.1 Step 1: per-target политика (для decision graph).

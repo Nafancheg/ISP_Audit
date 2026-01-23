@@ -33,6 +33,38 @@ namespace IspAudit
         public bool EnableUdp { get; set; } = true;
         public bool EnableRst { get; set; } = false; // Отключено по умолчанию — сложная эвристика, мало информативна
         public bool EnableAutoBypass { get; set; } = false; // Автоматическое применение обхода блокировок
+
+        /// <summary>
+        /// Runtime-флаги (feature gates) для управления поведением без изменения UI.
+        /// По умолчанию — максимально консервативно (выключено), чтобы не было «магии».
+        /// </summary>
+        public static class RuntimeFlags
+        {
+            /// <summary>
+            /// Разрешить применять assist-флаги из v2 плана (например QUIC→TCP/No SNI) автоматически в Apply.
+            /// По умолчанию false: ассист только отображается как рекомендация, но не применяется сам.
+            /// </summary>
+            public static bool EnableV2AssistFlags => ReadBoolEnv("ISP_AUDIT_ENABLE_V2_ASSISTS", defaultValue: false);
+
+            /// <summary>
+            /// Разрешить авто-ретест после изменения тумблеров bypass в UI.
+            /// По умолчанию false: ретест должен запускаться явно пользователем.
+            /// </summary>
+            public static bool EnableAutoRetestOnBypassChange => ReadBoolEnv("ISP_AUDIT_ENABLE_AUTO_RETEST", defaultValue: false);
+        }
+
+        private static bool ReadBoolEnv(string name, bool defaultValue)
+        {
+            var raw = Environment.GetEnvironmentVariable(name);
+            if (string.IsNullOrWhiteSpace(raw)) return defaultValue;
+
+            var v = raw.Trim();
+            return v == "1"
+                || v.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || v.Equals("yes", StringComparison.OrdinalIgnoreCase)
+                || v.Equals("y", StringComparison.OrdinalIgnoreCase)
+                || v.Equals("on", StringComparison.OrdinalIgnoreCase);
+        }
         
         public static Config Default() => new Config();
 
