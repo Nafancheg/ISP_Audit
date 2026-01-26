@@ -8,7 +8,7 @@ using IspAudit.Core.Diagnostics;
 namespace IspAudit.Core.IntelligenceV2.Execution;
 
 /// <summary>
-/// MVP-исполнитель рекомендаций v2: ТОЛЬКО форматирование и логирование.
+/// MVP-исполнитель intel-рекомендаций: ТОЛЬКО форматирование и логирование.
 /// ВАЖНО: не вызывает TrafficEngine/BypassController и не применяет техники.
 /// </summary>
 public sealed class BypassExecutorMvp
@@ -34,7 +34,7 @@ public sealed class BypassExecutorMvp
         }
 
         var tail = tailWithParens.Trim();
-        if (!tail.Contains("intel:", StringComparison.OrdinalIgnoreCase) && !tail.Contains("v2:", StringComparison.OrdinalIgnoreCase))
+        if (!tail.Contains("intel:", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -47,11 +47,9 @@ public sealed class BypassExecutorMvp
         }
 
         // Ожидаемый формат: "intel:<DiagnosisId> conf=<N>; <note1>; <note2>".
-        // Для обратной совместимости также понимаем старый формат "v2:".
         var intelIndex = inner.IndexOf("intel:", StringComparison.OrdinalIgnoreCase);
-        var v2Index = intelIndex < 0 ? inner.IndexOf("v2:", StringComparison.OrdinalIgnoreCase) : -1;
-        var prefixIndex = intelIndex >= 0 ? intelIndex : v2Index;
-        var prefixLen = intelIndex >= 0 ? 6 : 3;
+        var prefixIndex = intelIndex;
+        var prefixLen = 6;
         if (prefixIndex < 0)
         {
             return false;
@@ -185,14 +183,9 @@ public sealed class BypassExecutorMvp
         }
 
         // Формат pipeline: "plan:TlsFragment + DropRst (conf=78)".
-        // Для обратной совместимости также понимаем старый префикс "v2:".
         if (raw.StartsWith("plan:", StringComparison.OrdinalIgnoreCase))
         {
             raw = raw.Substring(5);
-        }
-        else if (raw.StartsWith("v2:", StringComparison.OrdinalIgnoreCase))
-        {
-            raw = raw.Substring(3);
         }
 
         var parenIndex = raw.IndexOf('(');

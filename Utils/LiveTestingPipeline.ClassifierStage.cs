@@ -31,20 +31,20 @@ namespace IspAudit.Utils
                     // Регистрируем результат в сторе, чтобы поддерживать fail counter + time window
                     _stateStore.RegisterResult(tested);
 
-                    // v2: снимаем «сенсорные» факты без зависимости от legacy BlockageSignals.
-                    // Пока legacy-сигналы остаются для UI/AutoHostlist, но v2 контур может быть переведён отдельно.
+                    // INTEL: снимаем «сенсорные» факты без зависимости от legacy BlockageSignals.
+                    // Пока legacy-сигналы остаются для UI/AutoHostlist, но INTEL контур может быть переведён отдельно.
                     var inspection = (_stateStore as IInspectionSignalsProvider)?.GetInspectionSignalsSnapshot(tested)
                         ?? InspectionSignalsSnapshot.Empty;
 
-                    // v2: записываем факты в последовательность событий + минимальный Gate-лог.
+                    // INTEL: записываем факты в последовательность событий + минимальный Gate-лог.
                     // Окно Gate-логов использует дефолт контракта (30 сек), но сами legacy signals сняты за 60 сек.
                     _signalsAdapterV2.Observe(tested, inspection, _progress);
 
-                    // v2: строим агрегированный срез и ставим диагноз (без стратегий/обхода)
+                    // INTEL: строим агрегированный срез и ставим диагноз (без стратегий/обхода)
                     var snapshot = _signalsAdapterV2.BuildSnapshot(tested, inspection, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
                     var diagnosis = _diagnosisEngineV2.Diagnose(snapshot);
 
-                    // v2: формируем план рекомендаций строго по диагнозу.
+                    // INTEL: формируем план рекомендаций строго по диагнозу.
                     // Важно: не применять автоматически (только показать в UI/логах).
                     var plan = _strategySelectorV2.Select(diagnosis, msg => _progress?.Report(msg));
 
@@ -118,7 +118,7 @@ namespace IspAudit.Utils
                     {
                         _autoHostlist.Observe(tested, inspection, hostname);
 
-                        // v2: добавляем auto-hostlist как источник контекста (evidence/notes).
+                        // INTEL: добавляем auto-hostlist как источник контекста (evidence/notes).
                         // Важно: это не меняет диагноз напрямую, только делает хвост более информативным.
                         if (_autoHostlist.TryGetCandidateFor(tested, hostname, out var candidate))
                         {
@@ -183,8 +183,8 @@ namespace IspAudit.Utils
                         _progress?.Report($"✓ {displayHost}:{port}{latency}{namesSuffix}");
                         Interlocked.Increment(ref _statUiLogOnly);
 
-                        // v2: если селектор сформировал план действий, показываем рекомендацию и диагноз даже при OK.
-                        // Это критично для UX: иначе пользователь видит только "✓", хотя v2 уже заметил вмешательство.
+                        // INTEL: если селектор сформировал план действий, показываем рекомендацию и диагноз даже при OK.
+                        // Это критично для UX: иначе пользователь видит только "✓", хотя INTEL уже заметил вмешательство.
                         var hasPlanActionsForOk = plan.Strategies.Count > 0 || plan.DropUdp443 || plan.AllowNoSni;
                         if (publishV2Plan && hasPlanActionsForOk)
                         {

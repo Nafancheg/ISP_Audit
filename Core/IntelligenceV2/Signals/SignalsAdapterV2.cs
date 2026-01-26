@@ -11,7 +11,7 @@ using IspAudit.Utils;
 namespace IspAudit.Core.IntelligenceV2.Signals;
 
 /// <summary>
-/// Адаптер сигналов v2: принимает результаты (HostTested + InspectionSignalsSnapshot)
+/// Адаптер сигналов INTEL: принимает результаты (HostTested + InspectionSignalsSnapshot)
 /// и записывает их в последовательность событий (SignalSequence) с TTL.
 /// Дополнительно умеет построить агрегированный срез BlockageSignalsV2 по окну.
 /// </summary>

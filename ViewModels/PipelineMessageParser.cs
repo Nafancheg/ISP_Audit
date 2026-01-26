@@ -432,8 +432,7 @@ namespace IspAudit.ViewModels
                 }
                 else if (msg.Contains("→ Стратегия:") || msg.Contains("💡 Рекомендация:"))
                 {
-                    var isIntel = msg.TrimStart().StartsWith("[INTEL]", StringComparison.OrdinalIgnoreCase)
-                                 || msg.TrimStart().StartsWith("[V2]", StringComparison.OrdinalIgnoreCase); // обратная совместимость
+                    var isIntel = msg.TrimStart().StartsWith("[INTEL]", StringComparison.OrdinalIgnoreCase);
 
                     // Intel — единственный источник рекомендаций для UI.
                     // Любые legacy строки могут присутствовать в логе, но не должны менять стратегию карточки.
@@ -442,7 +441,7 @@ namespace IspAudit.ViewModels
                         return;
                     }
 
-                    // Пытаемся вытащить цель прямо из v2-сообщения, чтобы не полагаться на LastUpdatedHost.
+                    // Пытаемся вытащить цель прямо из intel-сообщения, чтобы не полагаться на LastUpdatedHost.
                     // Это критично при межпоточной/нестрогой упорядоченности сообщений и доменной агрегации.
                     string? targetHostKey = null;
 
@@ -504,7 +503,7 @@ namespace IspAudit.ViewModels
                         strategy = strategy.Substring(0, parenIndex).Trim();
                     }
 
-                    // v2 может выдавать список стратегий в одной строке (через запятую/плюс).
+                    // Intel может выдавать список стратегий в одной строке (через запятую/плюс).
                     // Для UX на карточке показываем весь список (чтобы не «терять» DROP_RST).
                     var tokens = strategy
                         .Split(new[] { ',', '+', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -657,14 +656,10 @@ namespace IspAudit.ViewModels
             if (string.IsNullOrWhiteSpace(t)) return string.Empty;
 
             // Поддерживаем enum-названия стратегий и префиксы из логов.
-            // Новый формат: "plan:<...>", старый: "v2:<...>" (обратная совместимость).
+            // Формат: "plan:<...>".
             if (t.StartsWith("plan:", StringComparison.OrdinalIgnoreCase))
             {
                 t = t.Substring(5).Trim();
-            }
-            else if (t.StartsWith("v2:", StringComparison.OrdinalIgnoreCase))
-            {
-                t = t.Substring(3).Trim();
             }
 
             t = t switch

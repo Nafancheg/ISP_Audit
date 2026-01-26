@@ -20,7 +20,7 @@ namespace IspAudit.Core.Modules
         private readonly RstInspectionService? _rstInspectionService;
         private readonly UdpInspectionService? _udpInspectionService;
 
-        // Важно для V2: чтобы накопить факты (SignalSequence) по проблемной цели,
+        // Важно для INTEL: чтобы накопить факты (SignalSequence) по проблемной цели,
         // одной попытки часто недостаточно. Но бесконечно гонять тесты тоже нельзя.
         private static readonly TimeSpan RetestCooldown = TimeSpan.FromSeconds(8);
         private const int MaxAttemptsPerTargetPerRun = 3;
@@ -30,7 +30,7 @@ namespace IspAudit.Core.Modules
         }
 
         public InMemoryBlockageStateStore(
-            TcpRetransmissionTracker retransmissionTracker, 
+            TcpRetransmissionTracker retransmissionTracker,
             HttpRedirectDetector? httpRedirectDetector = null,
             RstInspectionService? rstInspectionService = null,
             UdpInspectionService? udpInspectionService = null)

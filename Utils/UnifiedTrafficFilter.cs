@@ -59,8 +59,7 @@ namespace IspAudit.Utils
                 if (!string.IsNullOrWhiteSpace(tail)
                     && (tail.Contains("intel:", StringComparison.OrdinalIgnoreCase)
                         || tail.Contains("[INTEL]", StringComparison.OrdinalIgnoreCase)
-                        || tail.Contains("v2:", StringComparison.OrdinalIgnoreCase)
-                        || tail.Contains("[V2]", StringComparison.OrdinalIgnoreCase)))
+                        ))
                 {
                     // Для шумовых имён — дропаем, для остальных — логируем без карточки.
                     if (!string.IsNullOrEmpty(bestName) && NoiseHostFilter.Instance.IsNoiseHost(bestName))

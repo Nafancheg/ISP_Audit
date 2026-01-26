@@ -1703,7 +1703,7 @@ namespace TestNetworkApp.Smoke
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_SignalStore_Ttl_DeletesEventsOlderThan10Minutes(CancellationToken ct)
-            => RunAsync("DPI2-002", "TTL событий v2: старше 10 минут удаляются при Append", () =>
+            => RunAsync("DPI2-002", "TTL событий INTEL: старше 10 минут удаляются при Append", () =>
             {
                 var store = new InMemorySignalSequenceStore();
                 var hostKey = "203.0.113.20";
@@ -1736,22 +1736,22 @@ namespace TestNetworkApp.Smoke
 
                 if (events.Any(e => e.Reason == "old"))
                 {
-                    return new SmokeTestResult("DPI2-002", "TTL событий v2: старше 10 минут удаляются при Append", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-002", "TTL событий INTEL: старше 10 минут удаляются при Append", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали, что старое событие будет удалено, но оно осталось. events={events.Count}");
                 }
 
                 if (!events.Any(e => e.Reason == "fresh"))
                 {
-                    return new SmokeTestResult("DPI2-002", "TTL событий v2: старше 10 минут удаляются при Append", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-002", "TTL событий INTEL: старше 10 минут удаляются при Append", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что свежее событие останется, но его нет");
                 }
 
-                return new SmokeTestResult("DPI2-002", "TTL событий v2: старше 10 минут удаляются при Append", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-002", "TTL событий INTEL: старше 10 минут удаляются при Append", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: старые события удаляются только при Append (без таймеров)");
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_Aggregation_BuildSnapshot_RespectsWindow_30s_60s(CancellationToken ct)
-            => RunAsync("DPI2-003", "Агрегация v2: BuildSnapshot корректно считает окно 30s/60s", () =>
+            => RunAsync("DPI2-003", "Агрегация INTEL: BuildSnapshot корректно считает окно 30s/60s", () =>
             {
                 var store = new InMemorySignalSequenceStore();
                 var adapter = new SignalsAdapterV2(store);
@@ -1802,28 +1802,28 @@ namespace TestNetworkApp.Smoke
 
                 if (snap30.SampleSize < 5 || snap30.SampleSize > 7)
                 {
-                    return new SmokeTestResult("DPI2-003", "Агрегация v2: BuildSnapshot корректно считает окно 30s/60s", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-003", "Агрегация INTEL: BuildSnapshot корректно считает окно 30s/60s", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали ~5 событий в 30s окне, получили sampleSize={snap30.SampleSize}");
                 }
 
                 if (snap60.SampleSize < 10)
                 {
-                    return new SmokeTestResult("DPI2-003", "Агрегация v2: BuildSnapshot корректно считает окно 30s/60s", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-003", "Агрегация INTEL: BuildSnapshot корректно считает окно 30s/60s", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали >=10 событий в 60s окне, получили sampleSize={snap60.SampleSize}");
                 }
 
                 if (!snap30.HasTcpReset)
                 {
-                    return new SmokeTestResult("DPI2-003", "Агрегация v2: BuildSnapshot корректно считает окно 30s/60s", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-003", "Агрегация INTEL: BuildSnapshot корректно считает окно 30s/60s", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что HasTcpReset будет true из-за события SuspiciousRstObserved в окне");
                 }
 
-                return new SmokeTestResult("DPI2-003", "Агрегация v2: BuildSnapshot корректно считает окно 30s/60s", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-003", "Агрегация INTEL: BuildSnapshot корректно считает окно 30s/60s", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: sampleSize30={snap30.SampleSize}, sampleSize60={snap60.SampleSize}, hostKey={hostKey}");
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_Aggregation_BuildSnapshot_ExtractsRstTtlDelta_AndLatency(CancellationToken ct)
-            => RunAsync("DPI2-016", "Агрегация v2: BuildSnapshot извлекает RST TTL delta + latency", () =>
+            => RunAsync("DPI2-016", "Агрегация INTEL: BuildSnapshot извлекает RST TTL delta + latency", () =>
             {
                 var store = new InMemorySignalSequenceStore();
                 var adapter = new SignalsAdapterV2(store);
@@ -1845,23 +1845,23 @@ namespace TestNetworkApp.Smoke
 
                 if (!snap.HasTcpReset)
                 {
-                    return new SmokeTestResult("DPI2-016", "Агрегация v2: BuildSnapshot извлекает RST TTL delta + latency", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-016", "Агрегация INTEL: BuildSnapshot извлекает RST TTL delta + latency", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали HasTcpReset=true (TCP_CONNECTION_RESET + HasSuspiciousRst)");
                 }
 
                 if (snap.RstTtlDelta != 9)
                 {
-                    return new SmokeTestResult("DPI2-016", "Агрегация v2: BuildSnapshot извлекает RST TTL delta + latency", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-016", "Агрегация INTEL: BuildSnapshot извлекает RST TTL delta + latency", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали RstTtlDelta=9 (TTL=64 vs 50-55), получили {snap.RstTtlDelta}");
                 }
 
                 if (snap.RstLatency is null || Math.Abs(snap.RstLatency.Value.TotalMilliseconds - 120) > 1)
                 {
-                    return new SmokeTestResult("DPI2-016", "Агрегация v2: BuildSnapshot извлекает RST TTL delta + latency", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-016", "Агрегация INTEL: BuildSnapshot извлекает RST TTL delta + latency", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали RstLatency≈120ms, получили {snap.RstLatency}");
                 }
 
-                return new SmokeTestResult("DPI2-016", "Агрегация v2: BuildSnapshot извлекает RST TTL delta + latency", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-016", "Агрегация INTEL: BuildSnapshot извлекает RST TTL delta + latency", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: rstTtlDelta={snap.RstTtlDelta}, rstLatencyMs={(int)snap.RstLatency.Value.TotalMilliseconds}");
             }, ct);
 
@@ -1913,7 +1913,7 @@ namespace TestNetworkApp.Smoke
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_DiagnosisEngine_RstTtlDelta_FastClassifiesAsActiveDpiEdge(CancellationToken ct)
-            => RunAsync("DPI2-017", "DiagnosisEngine v2: RST TTL delta + быстрый reset => ActiveDpiEdge", () =>
+            => RunAsync("DPI2-017", "DiagnosisEngine INTEL: RST TTL delta + быстрый reset => ActiveDpiEdge", () =>
             {
                 var engine = new StandardDiagnosisEngineV2();
 
@@ -1947,22 +1947,22 @@ namespace TestNetworkApp.Smoke
 
                 if (result.DiagnosisId != DiagnosisId.ActiveDpiEdge)
                 {
-                    return new SmokeTestResult("DPI2-017", "DiagnosisEngine v2: RST TTL delta + быстрый reset => ActiveDpiEdge", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-017", "DiagnosisEngine INTEL: RST TTL delta + быстрый reset => ActiveDpiEdge", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали ActiveDpiEdge, получили {result.DiagnosisId} (conf={result.Confidence})");
                 }
 
                 if (result.Confidence < 60)
                 {
-                    return new SmokeTestResult("DPI2-017", "DiagnosisEngine v2: RST TTL delta + быстрый reset => ActiveDpiEdge", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-017", "DiagnosisEngine INTEL: RST TTL delta + быстрый reset => ActiveDpiEdge", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали confidence >= 60, получили {result.Confidence}");
                 }
 
-                return new SmokeTestResult("DPI2-017", "DiagnosisEngine v2: RST TTL delta + быстрый reset => ActiveDpiEdge", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-017", "DiagnosisEngine INTEL: RST TTL delta + быстрый reset => ActiveDpiEdge", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: {result.DiagnosisId} ({result.Confidence}%)");
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_DiagnosisEngine_RstTtlDelta_SlowClassifiesAsStatefulDpi(CancellationToken ct)
-            => RunAsync("DPI2-018", "DiagnosisEngine v2: RST TTL delta + медленный reset => StatefulDpi", () =>
+            => RunAsync("DPI2-018", "DiagnosisEngine INTEL: RST TTL delta + медленный reset => StatefulDpi", () =>
             {
                 var engine = new StandardDiagnosisEngineV2();
 
@@ -1996,22 +1996,22 @@ namespace TestNetworkApp.Smoke
 
                 if (result.DiagnosisId != DiagnosisId.StatefulDpi)
                 {
-                    return new SmokeTestResult("DPI2-018", "DiagnosisEngine v2: RST TTL delta + медленный reset => StatefulDpi", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-018", "DiagnosisEngine INTEL: RST TTL delta + медленный reset => StatefulDpi", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали StatefulDpi, получили {result.DiagnosisId} (conf={result.Confidence})");
                 }
 
                 if (result.Confidence < 60)
                 {
-                    return new SmokeTestResult("DPI2-018", "DiagnosisEngine v2: RST TTL delta + медленный reset => StatefulDpi", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-018", "DiagnosisEngine INTEL: RST TTL delta + медленный reset => StatefulDpi", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали confidence >= 60, получили {result.Confidence}");
                 }
 
-                return new SmokeTestResult("DPI2-018", "DiagnosisEngine v2: RST TTL delta + медленный reset => StatefulDpi", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-018", "DiagnosisEngine INTEL: RST TTL delta + медленный reset => StatefulDpi", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: {result.DiagnosisId} ({result.Confidence}%)");
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_Aggregation_BuildSnapshot_ExtractsRstIpIdDelta_AndSuspiciousCount(CancellationToken ct)
-            => RunAsync("DPI2-031", "Агрегация v2: BuildSnapshot извлекает RstIpIdDelta и считает устойчивость suspicious RST", () =>
+            => RunAsync("DPI2-031", "Агрегация INTEL: BuildSnapshot извлекает RstIpIdDelta и считает устойчивость suspicious RST", () =>
             {
                 var store = new InMemorySignalSequenceStore();
                 var adapter = new SignalsAdapterV2(store);
@@ -2045,22 +2045,22 @@ namespace TestNetworkApp.Smoke
 
                 if (snap.RstIpIdDelta != 5)
                 {
-                    return new SmokeTestResult("DPI2-031", "Агрегация v2: BuildSnapshot извлекает RstIpIdDelta и считает устойчивость suspicious RST", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-031", "Агрегация INTEL: BuildSnapshot извлекает RstIpIdDelta и считает устойчивость suspicious RST", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали RstIpIdDelta=5 (IPID=110 vs expected 100-120, last 105), получили {snap.RstIpIdDelta}");
                 }
 
                 if (snap.SuspiciousRstCount != 2)
                 {
-                    return new SmokeTestResult("DPI2-031", "Агрегация v2: BuildSnapshot извлекает RstIpIdDelta и считает устойчивость suspicious RST", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-031", "Агрегация INTEL: BuildSnapshot извлекает RstIpIdDelta и считает устойчивость suspicious RST", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали SuspiciousRstCount=2, получили {snap.SuspiciousRstCount}");
                 }
 
-                return new SmokeTestResult("DPI2-031", "Агрегация v2: BuildSnapshot извлекает RstIpIdDelta и считает устойчивость suspicious RST", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-031", "Агрегация INTEL: BuildSnapshot извлекает RstIpIdDelta и считает устойчивость suspicious RST", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: rstIpIdDelta={snap.RstIpIdDelta}, suspiciousRstCount={snap.SuspiciousRstCount}");
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_DiagnosisEngine_SingleRstAnomaly_IsUnknown_NotDpi(CancellationToken ct)
-            => RunAsync("DPI2-032", "DiagnosisEngine v2: single suspicious RST anomaly => Unknown (без DPI-id)", () =>
+            => RunAsync("DPI2-032", "DiagnosisEngine INTEL: single suspicious RST anomaly => Unknown (без DPI-id)", () =>
             {
                 var engine = new StandardDiagnosisEngineV2();
 
@@ -2094,28 +2094,28 @@ namespace TestNetworkApp.Smoke
 
                 if (result.DiagnosisId != DiagnosisId.Unknown)
                 {
-                    return new SmokeTestResult("DPI2-032", "DiagnosisEngine v2: single suspicious RST anomaly => Unknown (без DPI-id)", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-032", "DiagnosisEngine INTEL: single suspicious RST anomaly => Unknown (без DPI-id)", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали Unknown, получили {result.DiagnosisId} (conf={result.Confidence}, rule={result.MatchedRuleName})");
                 }
 
                 if (result.Confidence != 55)
                 {
-                    return new SmokeTestResult("DPI2-032", "DiagnosisEngine v2: single suspicious RST anomaly => Unknown (без DPI-id)", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-032", "DiagnosisEngine INTEL: single suspicious RST anomaly => Unknown (без DPI-id)", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали confidence=55 для single-anomaly, получили {result.Confidence} (rule={result.MatchedRuleName})");
                 }
 
                 if (!string.Equals(result.MatchedRuleName, "tcp-rst+single-anomaly", StringComparison.Ordinal))
                 {
-                    return new SmokeTestResult("DPI2-032", "DiagnosisEngine v2: single suspicious RST anomaly => Unknown (без DPI-id)", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-032", "DiagnosisEngine INTEL: single suspicious RST anomaly => Unknown (без DPI-id)", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали rule=tcp-rst+single-anomaly, получили {result.MatchedRuleName}");
                 }
 
-                return new SmokeTestResult("DPI2-032", "DiagnosisEngine v2: single suspicious RST anomaly => Unknown (без DPI-id)", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-032", "DiagnosisEngine INTEL: single suspicious RST anomaly => Unknown (без DPI-id)", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: {result.DiagnosisId} ({result.Confidence}%) rule={result.MatchedRuleName}");
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_DiagnosisEngine_Explanation_IsFactBased_NoStrategiesMentioned(CancellationToken ct)
-            => RunAsync("DPI2-005", "DiagnosisEngine v2: пояснение содержит факты, но не упоминает стратегии", () =>
+            => RunAsync("DPI2-005", "DiagnosisEngine INTEL: пояснение содержит факты, но не упоминает стратегии", () =>
             {
                 var engine = new StandardDiagnosisEngineV2();
 
@@ -2147,7 +2147,7 @@ namespace TestNetworkApp.Smoke
 
                 if (result.DiagnosisId != DiagnosisId.TlsInterference)
                 {
-                    return new SmokeTestResult("DPI2-005", "DiagnosisEngine v2: пояснение содержит факты, но не упоминает стратегии", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-005", "DiagnosisEngine INTEL: пояснение содержит факты, но не упоминает стратегии", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали TlsInterference, получили {result.DiagnosisId} (conf={result.Confidence})");
                 }
 
@@ -2161,17 +2161,17 @@ namespace TestNetworkApp.Smoke
 
                 if (forbidden.Any(f => text.Contains(f, StringComparison.OrdinalIgnoreCase)))
                 {
-                    return new SmokeTestResult("DPI2-005", "DiagnosisEngine v2: пояснение содержит факты, но не упоминает стратегии", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-005", "DiagnosisEngine INTEL: пояснение содержит факты, но не упоминает стратегии", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Пояснение содержит упоминание стратегий/обхода: {text}");
                 }
 
                 if (!text.Contains("TLS", StringComparison.OrdinalIgnoreCase))
                 {
-                    return new SmokeTestResult("DPI2-005", "DiagnosisEngine v2: пояснение содержит факты, но не упоминает стратегии", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-005", "DiagnosisEngine INTEL: пояснение содержит факты, но не упоминает стратегии", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали, что пояснение содержит факт про TLS, получили: {text}");
                 }
 
-                return new SmokeTestResult("DPI2-005", "DiagnosisEngine v2: пояснение содержит факты, но не упоминает стратегии", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-005", "DiagnosisEngine INTEL: пояснение содержит факты, но не упоминает стратегии", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: пояснение фактологическое и без рекомендаций");
             }, ct);
 
@@ -2270,7 +2270,7 @@ namespace TestNetworkApp.Smoke
                 if (string.IsNullOrWhiteSpace(bypassText))
                 {
                     return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
-                        "Не удалось получить текст bypass-стратегий (v2:...)");
+                        "Не удалось получить текст bypass-стратегий (plan:...)");
                 }
 
                 if (!executor.TryBuildRecommendationLine("example.com", bypassText, out var line))
@@ -2659,7 +2659,7 @@ namespace TestNetworkApp.Smoke
             {
                 var executor = new BypassExecutorMvp();
 
-                var tail = "(v2:SilentDrop conf=78; TCP: timeout; TCP: retx-rate=0.30)";
+                var tail = "(intel:SilentDrop conf=78; TCP: timeout; TCP: retx-rate=0.30)";
                 if (!executor.TryFormatDiagnosisSuffix(tail, out var formatted))
                 {
                     return new SmokeTestResult("DPI2-011", "Executor MVP форматирует компактный вывод (1 строка)", SmokeOutcome.Fail, TimeSpan.Zero,
@@ -2748,7 +2748,7 @@ namespace TestNetworkApp.Smoke
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_ExecutorV2_ManualApply_MapsPlanToBypassOptions(CancellationToken ct)
-            => RunAsync("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", () =>
+            => RunAsync("DPI2-019", "Executor INTEL: ручное применение BypassPlan включает ожидаемые опции", () =>
             {
                 // Поднимаем сервис в smoke-режиме (без TrafficEngine), чтобы не требовать админ прав и WinDivert.
                 var engine = new TrafficEngine(progress: null);
@@ -2776,40 +2776,40 @@ namespace TestNetworkApp.Smoke
 
                 if (!controller.IsFragmentEnabled)
                 {
-                    return new SmokeTestResult("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-019", "Executor INTEL: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что после ApplyV2PlanAsync будет включён TLS_FRAGMENT");
                 }
 
                 if (controller.IsDisorderEnabled)
                 {
-                    return new SmokeTestResult("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-019", "Executor INTEL: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что TLS_DISORDER будет выключен (Fragment и Disorder взаимоисключающие)");
                 }
 
                 if (!controller.IsDropRstEnabled)
                 {
-                    return new SmokeTestResult("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-019", "Executor INTEL: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что после ApplyV2PlanAsync будет включён DROP_RST");
                 }
 
                 if (!controller.IsQuicFallbackEnabled)
                 {
-                    return new SmokeTestResult("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-019", "Executor INTEL: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что после ApplyV2PlanAsync будет включён QUIC→TCP (DropUdp443)" );
                 }
 
                 if (!controller.IsAllowNoSniEnabled)
                 {
-                    return new SmokeTestResult("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-019", "Executor INTEL: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что после ApplyV2PlanAsync будет включён No SNI (AllowNoSni)" );
                 }
 
-                return new SmokeTestResult("DPI2-019", "Executor v2: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-019", "Executor INTEL: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: опции применены" );
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_ExecutorV2_TlsFragment_Params_AffectPresetAndAutoAdjust(CancellationToken ct)
-            => RunAsync("DPI2-022", "Executor v2: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", () =>
+            => RunAsync("DPI2-022", "Executor INTEL: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", () =>
             {
                 // Smoke-режим (без TrafficEngine), чтобы не требовать админ прав и WinDivert.
                 var engine = new TrafficEngine(progress: null);
@@ -2844,35 +2844,35 @@ namespace TestNetworkApp.Smoke
 
                 if (!controller.IsFragmentEnabled)
                 {
-                    return new SmokeTestResult("DPI2-022", "Executor v2: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-022", "Executor INTEL: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что после ApplyV2PlanAsync будет включён TLS_FRAGMENT");
                 }
 
                 if (!controller.IsAutoAdjustAggressive)
                 {
-                    return new SmokeTestResult("DPI2-022", "Executor v2: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-022", "Executor INTEL: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что AutoAdjustAggressive=true будет применён из параметров стратегии");
                 }
 
                 if (controller.SelectedFragmentPreset == null)
                 {
-                    return new SmokeTestResult("DPI2-022", "Executor v2: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-022", "Executor INTEL: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что SelectedFragmentPreset будет выбран");
                 }
 
                 var got = controller.SelectedFragmentPreset.Sizes.ToArray();
                 if (got.Length != 2 || got[0] != 32 || got[1] != 32)
                 {
-                    return new SmokeTestResult("DPI2-022", "Executor v2: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-022", "Executor INTEL: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали sizes=[32,32], получили [{string.Join(",", got)}]");
                 }
 
-                return new SmokeTestResult("DPI2-022", "Executor v2: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-022", "Executor INTEL: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: параметры применены" );
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_StrategySelector_PopulatesTlsFragmentParameters(CancellationToken ct)
-            => RunAsync("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", () =>
+            => RunAsync("DPI2-023", "StrategySelector INTEL: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", () =>
             {
                 var selector = new StandardStrategySelectorV2(feedbackStore: null);
 
@@ -2911,46 +2911,46 @@ namespace TestNetworkApp.Smoke
                 var fragment = plan.Strategies.FirstOrDefault(s => s.Id == StrategyId.TlsFragment);
                 if (fragment == null)
                 {
-                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-023", "StrategySelector INTEL: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что план будет содержать TlsFragment");
                 }
 
                 if (fragment.Parameters == null || fragment.Parameters.Count == 0)
                 {
-                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-023", "StrategySelector INTEL: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что у TlsFragment будут параметры");
                 }
 
                 if (!fragment.Parameters.TryGetValue("PresetName", out var presetRaw) || presetRaw is not string presetName)
                 {
-                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-023", "StrategySelector INTEL: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что параметр PresetName будет string");
                 }
 
                 if (!string.Equals(presetName, "Стандарт", StringComparison.Ordinal))
                 {
-                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-023", "StrategySelector INTEL: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали PresetName=\"Стандарт\", получили '{presetName}'");
                 }
 
                 if (!fragment.Parameters.TryGetValue("TlsFragmentSizes", out var raw) || raw is not int[] sizes)
                 {
-                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-023", "StrategySelector INTEL: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что параметр TlsFragmentSizes будет int[]");
                 }
 
                 if (sizes.Length != 1 || sizes[0] != 64)
                 {
-                    return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-023", "StrategySelector INTEL: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали sizes=[64], получили [{string.Join(",", sizes)}]");
                 }
 
-                return new SmokeTestResult("DPI2-023", "StrategySelector v2: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-023", "StrategySelector INTEL: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: PresetName и sizes присутствуют" );
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_E2E_SelectorPlan_ManualApply_UsesPlanParams(CancellationToken ct)
-            => RunAsync("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", () =>
+            => RunAsync("DPI2-024", "E2E INTEL: selector → plan → manual apply использует параметры плана", () =>
             {
                 // 1) Формируем план через селектор (это и есть e2e часть: plan должен включать параметры).
                 var selector = new StandardStrategySelectorV2(feedbackStore: null);
@@ -2989,7 +2989,7 @@ namespace TestNetworkApp.Smoke
                 var plan = selector.Select(diagnosis, warningLog: null);
                 if (plan.Strategies.Count == 0)
                 {
-                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-024", "E2E INTEL: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что селектор вернёт непустой план");
                 }
 
@@ -3004,48 +3004,48 @@ namespace TestNetworkApp.Smoke
 
                 if (!controller.IsFragmentEnabled)
                 {
-                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-024", "E2E INTEL: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что после apply будет включён TLS_FRAGMENT");
                 }
 
                 if (controller.IsDisorderEnabled)
                 {
-                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-024", "E2E INTEL: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что TLS_DISORDER будет выключен (Fragment и Disorder взаимоисключающие)");
                 }
 
                 if (!controller.IsDropRstEnabled)
                 {
-                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-024", "E2E INTEL: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что после apply будет включён DROP_RST (из плана селектора)");
                 }
 
                 if (controller.SelectedFragmentPreset == null)
                 {
-                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-024", "E2E INTEL: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что SelectedFragmentPreset будет выбран после apply");
                 }
 
                 if (!string.Equals(controller.SelectedFragmentPreset.Name, "Стандарт", StringComparison.Ordinal))
                 {
-                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-024", "E2E INTEL: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали, что пресет будет 'Стандарт' (из параметров плана), получили '{controller.SelectedFragmentPreset.Name}'");
                 }
 
                 var gotSizes = controller.SelectedFragmentPreset.Sizes.ToArray();
                 if (gotSizes.Length != 1 || gotSizes[0] != 64)
                 {
-                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-024", "E2E INTEL: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали sizes=[64] (из параметров плана), получили [{string.Join(",", gotSizes)}]");
                 }
 
                 if (controller.IsAutoAdjustAggressive)
                 {
-                    return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-024", "E2E INTEL: selector → plan → manual apply использует параметры плана", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали AutoAdjustAggressive=false (из параметров плана)");
                 }
 
-                return new SmokeTestResult("DPI2-024", "E2E v2: selector → plan → manual apply использует параметры плана", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-024", "E2E INTEL: selector → plan → manual apply использует параметры плана", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: параметры плана применены детерминированно" );
             }, ct);
 
@@ -3081,7 +3081,7 @@ namespace TestNetworkApp.Smoke
                 try
                 {
                     await controller.ApplyV2PlanAsync(plan, timeout: TimeSpan.FromSeconds(2), cancellationToken: cts.Token).ConfigureAwait(false);
-                    return new SmokeTestResult("DPI2-020", "Executor v2: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Fail, sw.Elapsed,
+                    return new SmokeTestResult("DPI2-020", "Executor INTEL: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Fail, sw.Elapsed,
                         "Ожидали OperationCanceledException, но применение завершилось без отмены");
                 }
                 catch (OperationCanceledException)
@@ -3091,37 +3091,37 @@ namespace TestNetworkApp.Smoke
 
                 if (!controller.IsFakeEnabled)
                 {
-                    return new SmokeTestResult("DPI2-020", "Executor v2: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Fail, sw.Elapsed,
+                    return new SmokeTestResult("DPI2-020", "Executor INTEL: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Fail, sw.Elapsed,
                         "Ожидали откат: Fake должен остаться включенным");
                 }
 
                 if (controller.IsFragmentEnabled || controller.IsDropRstEnabled || controller.IsDisorderEnabled)
                 {
-                    return new SmokeTestResult("DPI2-020", "Executor v2: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Fail, sw.Elapsed,
+                    return new SmokeTestResult("DPI2-020", "Executor INTEL: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Fail, sw.Elapsed,
                         "Ожидали откат: Fragment/DropRst/Disorder не должны остаться включенными после отмены");
                 }
 
-                return new SmokeTestResult("DPI2-020", "Executor v2: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Pass, sw.Elapsed,
+                return new SmokeTestResult("DPI2-020", "Executor INTEL: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Pass, sw.Elapsed,
                     "OK: откат выполнен");
             }
             catch (Exception ex)
             {
-                return new SmokeTestResult("DPI2-020", "Executor v2: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                return new SmokeTestResult("DPI2-020", "Executor INTEL: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
             }
         }
 
         public static Task<SmokeTestResult> Dpi2_Pipeline_DoesNotAutoApply_BypassControllerOrTlsBypassService(CancellationToken ct)
-            => RunAsync("DPI2-021", "Pipeline v2 не выполняет auto-apply (нет вызовов BypassController/TlsBypassService)", () =>
+            => RunAsync("DPI2-021", "Pipeline INTEL не выполняет auto-apply (нет вызовов BypassController/TlsBypassService)", () =>
             {
                 var forbiddenTypeNames = new[] { "BypassController", "TlsBypassService" };
 
                 if (IlContainsCallsToForbiddenTypes(typeof(LiveTestingPipeline), forbiddenTypeNames))
                 {
-                    return new SmokeTestResult("DPI2-021", "Pipeline v2 не выполняет auto-apply (нет вызовов BypassController/TlsBypassService)", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-021", "Pipeline INTEL не выполняет auto-apply (нет вызовов BypassController/TlsBypassService)", SmokeOutcome.Fail, TimeSpan.Zero,
                         "В IL найден вызов к запрещённым типам. Pipeline обязан только вычислять/публиковать план, без применения." );
                 }
 
-                return new SmokeTestResult("DPI2-021", "Pipeline v2 не выполняет auto-apply (нет вызовов BypassController/TlsBypassService)", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-021", "Pipeline INTEL не выполняет auto-apply (нет вызовов BypassController/TlsBypassService)", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: вызовов к BypassController/TlsBypassService не обнаружено");
             }, ct);
 

@@ -44,10 +44,7 @@ namespace IspAudit.ViewModels
             // Intel — главный источник рекомендаций. Legacy сохраняем только как справочное.
             var isIntel = msg.TrimStart().StartsWith("[INTEL]", StringComparison.OrdinalIgnoreCase)
                 || msg.Contains("plan:", StringComparison.OrdinalIgnoreCase)
-                || msg.Contains("intel:", StringComparison.OrdinalIgnoreCase)
-                // обратная совместимость со старыми логами
-                || msg.TrimStart().StartsWith("[V2]", StringComparison.OrdinalIgnoreCase)
-                || msg.Contains("v2:", StringComparison.OrdinalIgnoreCase);
+                || msg.Contains("intel:", StringComparison.OrdinalIgnoreCase);
 
             // B5: Intel — единственный источник рекомендаций.
             // Legacy строки допускаются в логах, но не должны влиять на UI рекомендации.
@@ -87,7 +84,6 @@ namespace IspAudit.ViewModels
             var normalized = raw;
             if (normalized.StartsWith("plan:", StringComparison.OrdinalIgnoreCase)) normalized = normalized.Substring(5);
             else if (normalized.StartsWith("intel:", StringComparison.OrdinalIgnoreCase)) normalized = normalized.Substring(6);
-            else if (normalized.StartsWith("v2:", StringComparison.OrdinalIgnoreCase)) normalized = normalized.Substring(3); // обратная совместимость
 
             var tokens = normalized
                 .Split(new[] { ',', '+', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -208,9 +204,7 @@ namespace IspAudit.ViewModels
             if (string.IsNullOrWhiteSpace(msg)) return;
             if (!msg.StartsWith("❌ ", StringComparison.Ordinal)) return;
             if (!msg.Contains("[INTEL]", StringComparison.OrdinalIgnoreCase)
-                && !msg.Contains("intel:", StringComparison.OrdinalIgnoreCase)
-                && !msg.Contains("[V2]", StringComparison.OrdinalIgnoreCase)
-                && !msg.Contains("v2:", StringComparison.OrdinalIgnoreCase)) return;
+                && !msg.Contains("intel:", StringComparison.OrdinalIgnoreCase)) return;
 
             try
             {
@@ -246,8 +240,8 @@ namespace IspAudit.ViewModels
                     _lastV2DiagnosisHostKey = candidateHostKey;
                 }
 
-                // Вытаскиваем компактный текст v2 в скобках (он уже пользовательский)
-                var m = Regex.Match(msg, @"\(\s*\[(?:INTEL|V2)\][^\)]*\)", RegexOptions.IgnoreCase);
+                // Вытаскиваем компактный текст intel в скобках (он уже пользовательский)
+                var m = Regex.Match(msg, @"\(\s*\[INTEL\][^\)]*\)", RegexOptions.IgnoreCase);
                 if (m.Success)
                 {
                     var tail = m.Value.Trim();

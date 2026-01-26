@@ -486,7 +486,6 @@ namespace TestNetworkApp.Smoke
                 if (string.IsNullOrWhiteSpace(found))
                 {
                     var sample = uiLines.FirstOrDefault(l => l.Contains("[INTEL]", StringComparison.OrdinalIgnoreCase))
-                        ?? uiLines.FirstOrDefault(l => l.Contains("[V2]", StringComparison.OrdinalIgnoreCase))
                         ?? uiLines.FirstOrDefault(l => l.StartsWith("❌", StringComparison.Ordinal))
                         ?? "(no ui lines)";
                     return new SmokeTestResult("PIPE-018", "Auto-hostlist добавляется в intel-хвост (evidence/notes)", SmokeOutcome.Fail, TimeSpan.Zero,

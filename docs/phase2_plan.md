@@ -663,7 +663,7 @@ public sealed class BypassPlan
 - НЕ участвует в Diagnosis Engine v2
 - Используется только для UI/логов
 
-### ⏸️ Отложено до MVP v2:
+### ⏸️ Отложено до MVP:
 - HTTP Host tricks (2.1)
 - Bad checksum (2.2) — блокер на уровне движка
 - QUIC obfuscation (2.3)
@@ -701,7 +701,7 @@ public sealed class BypassPlan
 - ✅ B2: `SignalsAdapterV2.Observe(...)` принимает `InspectionSignalsSnapshot`, legacy overload запрещён.
 - ✅ B3: Legacy state store вынесен; v2 не вызывает `GetSignals(...)`.
 - ✅ B4: `AutoHostlistService` работает от `InspectionSignalsSnapshot`.
-- ✅ B5: UI принимает только `[V2]` рекомендации.
+- ✅ B5: UI принимает только `[INTEL]` рекомендации.
 - ✅ B6: Legacy компоненты изолированы (smoke/debug-only).
 
 <details>
@@ -715,7 +715,7 @@ public sealed class BypassPlan
 
 **B4) AutoHostlistService на v2-снимок:** основной вход принимает `InspectionSignalsSnapshot`.
 
-**B5) UI без legacy-рекомендаций:** Non-[V2] сообщения не меняют `BypassStrategy`.
+**B5) UI без legacy-рекомендаций:** Non-[INTEL] сообщения не меняют `BypassStrategy`.
 
 **B6) Изоляция legacy:** `StandardBlockageClassifier` выведен из runtime (smoke/debug-only).
 
@@ -766,7 +766,7 @@ public sealed class BypassPlan
 ### B5) Отключить legacy-рекомендации в UI (не как “ускорение”, а как финальный переключатель) ✅
 
 **Что:**
-- В `TestResultsManager` и/или `DiagnosticOrchestrator` запретить обновление рекомендаций/стратегий из non-[V2] строк.
+- В `TestResultsManager` и/или `DiagnosticOrchestrator` запретить обновление рекомендаций/стратегий из non-[INTEL] строк.
 - Убрать режим “Legacy (справочно)”, оставив только v2-диагноз и v2-план.
 
 **Gate:**
@@ -811,7 +811,7 @@ public sealed class BypassPlan
 
 **19.12.2025** — Актуализация под фактическую реализацию v2 в репозитории (пути `Core/IntelligenceV2/*`, удаление псевдокода, синхронизация контрактов)
 
-**24.12.2025** — Выполнено B5: UI принимает рекомендации/стратегии только из `[V2]`-строк (legacy “справочно” отключён)
+**24.12.2025** — Выполнено B5: UI принимает рекомендации/стратегии только из `[INTEL]`-строк (legacy “справочно” отключён)
 
 **24.12.2025** — Выполнено B6: legacy компоненты изолированы (нет runtime-зависимостей, добавлены compile-time/guard rail)
 

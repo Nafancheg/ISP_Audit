@@ -28,41 +28,41 @@ namespace IspAudit.Utils
         private const bool VerboseConnectionLogging = false;
         // Ограничение на количество подробных логов для снижения шума
         private const int VerboseConnectionLogLimit = 200;
-        
+
         private readonly ConcurrentDictionary<string, ConnectionInfo> _connections = new();
         private int _rawEventsLogged;
         private DateTime _lastNewConnectionTime = DateTime.UtcNow;
         private bool _disposed;
         private bool _collecting = true; // Флаг активности сбора
 
-        // Важно для V2: чтобы накопить сигналы по заблокированным целям, иногда нужно
+        // Важно для INTEL: чтобы накопить сигналы по заблокированным целям, иногда нужно
         // повторно отправлять одну и ту же цель в pipeline. При этом нельзя спамить бесконечно.
         private static readonly TimeSpan RediscoverCooldown = TimeSpan.FromSeconds(8);
         private const int MaxRediscoveriesPerKeyPerRun = 3;
-        
+
         // Канал для передачи хостов — хранится здесь для возможности завершить при Dispose
         private System.Threading.Channels.ChannelWriter<HostDiscovered>? _activeWriter;
-        
+
         /// <summary>
         /// Событие обнаружения нового хоста (для live pipeline)
         /// </summary>
         public event Action<HostDiscovered>? OnHostDiscovered;
-        
+
         /// <summary>
         /// Событие обновления hostname (DNS резолв)
         /// </summary>
         public event Action<string, string>? OnHostnameResolved;
-        
+
         /// <summary>
         /// Количество обнаруженных уникальных соединений
         /// </summary>
         public int ConnectionsCount => _connections.Count;
-        
+
         /// <summary>
         /// Время последнего нового соединения
         /// </summary>
         public DateTime LastNewConnectionTime => _lastNewConnectionTime;
-        
+
         /// <summary>
         /// Сбрасывает таймер тишины (для продления диагностики пользователем)
         /// </summary>
@@ -70,7 +70,7 @@ namespace IspAudit.Utils
         {
             _lastNewConnectionTime = DateTime.UtcNow;
         }
-        
+
         /// <summary>
         /// Останавливает сбор новых соединений (закрывает канал).
         /// Pipeline продолжит обрабатывать уже собранные данные.
@@ -79,7 +79,7 @@ namespace IspAudit.Utils
         {
             if (!_collecting) return;
             _collecting = false;
-            
+
             _progress?.Report("[Collector] Остановка сбора (ожидание завершения тестов)");
             _activeWriter?.TryComplete();
         }
@@ -177,20 +177,20 @@ namespace IspAudit.Utils
             TimeSpan? captureTimeout = null,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            var timeoutText = captureTimeout.HasValue 
-                ? $"на {captureTimeout.Value.TotalSeconds}с" 
+            var timeoutText = captureTimeout.HasValue
+                ? $"на {captureTimeout.Value.TotalSeconds}с"
                 : "(до ручной остановки)";
             _progress?.Report($"Старт захвата трафика {timeoutText}");
 
             // Канал для передачи обнаруженных хостов (ограничен 1000, старые отбрасываются при переполнении)
             var hostChannel = System.Threading.Channels.Channel.CreateBounded<HostDiscovered>(
-                new System.Threading.Channels.BoundedChannelOptions(1000) 
-                { 
-                    FullMode = System.Threading.Channels.BoundedChannelFullMode.DropOldest 
+                new System.Threading.Channels.BoundedChannelOptions(1000)
+                {
+                    FullMode = System.Threading.Channels.BoundedChannelFullMode.DropOldest
                 });
             var writer = hostChannel.Writer;
             _activeWriter = writer;
-            
+
             // Настройка таймаута
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             if (captureTimeout.HasValue)
@@ -310,7 +310,7 @@ namespace IspAudit.Utils
                 writer.TryWrite(candidate);
                 OnHostDiscovered?.Invoke(candidate);
             }
-            
+
             // Подписка на DNS обновления — только обновляем внутренний кеш
             void OnHostnameUpdated(string ip, string hostname)
             {
@@ -343,7 +343,7 @@ namespace IspAudit.Utils
                 _dnsParser.OnHostnameUpdated -= OnHostnameUpdated;
                 _activeWriter = null;
                 writer.TryComplete();
-                
+
                 _progress?.Report($"[Collector] Завершено. Всего соединений: {_connections.Count}");
             }
         }
@@ -386,7 +386,7 @@ namespace IspAudit.Utils
                     Ports = portsUsed.Select(p => (int)p).ToList(),
                     Protocols = protocols.Select(p => p.ToString()).ToList()
                 };
-                
+
                 targets.Add(target);
                 _progress?.Report($"  • {hostname}: порты {string.Join(", ", portsUsed)} ({string.Join(", ", protocols)})");
             }
@@ -407,7 +407,7 @@ namespace IspAudit.Utils
                     Ports = new List<int>(),
                     Protocols = new List<string>()
                 });
-                
+
                 _progress?.Report($"  • {fail.Hostname} (DNS FAIL: {fail.Error})");
             }
 
@@ -443,8 +443,8 @@ namespace IspAudit.Utils
                 try
                 {
                     var entry = await System.Net.Dns.GetHostEntryAsync(
-                        conn.RemoteIp.ToString(), 
-                        System.Net.Sockets.AddressFamily.InterNetwork, 
+                        conn.RemoteIp.ToString(),
+                        System.Net.Sockets.AddressFamily.InterNetwork,
                         cancellationToken).ConfigureAwait(false);
                     if (entry.HostName != null)
                     {
@@ -463,14 +463,14 @@ namespace IspAudit.Utils
         {
             bool hasUdp = protocols.Contains(TransportProtocol.UDP);
             bool hasTcp = protocols.Contains(TransportProtocol.TCP);
-            
+
             if (ports.Contains(53) && hasUdp) return "dns";
             if ((ports.Contains(443) || ports.Contains(80)) && hasTcp) return "web";
             if (ports.Any(p => p >= 27000 && p <= 28000)) return hasUdp ? "game-udp" : "game-tcp";
             if (ports.Any(p => p >= 64000 && p <= 65000)) return hasUdp ? "voice-udp" : "voice-tcp";
             if (hasUdp && !hasTcp) return "unknown-udp";
             if (hasTcp && !hasUdp) return "unknown-tcp";
-            
+
             return "unknown";
         }
 
@@ -478,11 +478,11 @@ namespace IspAudit.Utils
         {
             if (_disposed) return;
             _disposed = true;
-            
+
             // Завершаем канал — это разблокирует ReadAllAsync
             _activeWriter?.TryComplete();
             _activeWriter = null;
-            
+
             _connections.Clear();
         }
 
