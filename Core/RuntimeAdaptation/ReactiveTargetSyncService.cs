@@ -26,6 +26,11 @@ public sealed class ReactiveTargetSyncService
     private readonly long _ttlTicks;
     private readonly int _maxAttempts;
 
+    private readonly int _maxNudgeBatch;
+    private readonly long _minNudgeIntervalTicks;
+    private long _lastNudgeTick;
+
+
     public ReactiveTargetSyncService(
         BypassStateManager stateManager,
         Action<string>? log = null,
@@ -37,6 +42,8 @@ public sealed class ReactiveTargetSyncService
         var opt = options ?? ReactiveTargetSyncOptions.Default;
         _ttlTicks = (long)(opt.EventTtl.TotalSeconds * Stopwatch.Frequency);
         _maxAttempts = opt.MaxAttempts;
+        _maxNudgeBatch = opt.MaxNudgeBatch;
+        _minNudgeIntervalTicks = (long)(opt.MinNudgeInterval.TotalSeconds * Stopwatch.Frequency);
 
         _queue = Channel.CreateBounded<string>(new BoundedChannelOptions(opt.QueueCapacity)
         {
@@ -53,6 +60,15 @@ public sealed class ReactiveTargetSyncService
         try
         {
             _cts.Cancel();
+
+            // Best-effort: не блокируем shutdown надолго.
+            try
+            {
+                _worker.Wait(TimeSpan.FromMilliseconds(200));
+            }
+            catch
+            {
+            }
         }
         catch
         {
@@ -69,12 +85,24 @@ public sealed class ReactiveTargetSyncService
         {
             var now = Stopwatch.GetTimestamp();
 
+            // Throttle: избегаем шторма при частых Start/Apply.
+            var last = Interlocked.Read(ref _lastNudgeTick);
+            if (last != 0 && now - last < _minNudgeIntervalTicks)
+            {
+                return;
+            }
+            Interlocked.Exchange(ref _lastNudgeTick, now);
+
+            var budget = _maxNudgeBatch;
             foreach (var kv in _pending)
             {
                 var key = kv.Key;
                 var ev = kv.Value;
                 _pending[key] = ev with { NextAttemptTick = now };
                 _queue.Writer.TryWrite(key);
+
+                budget--;
+                if (budget <= 0) break;
             }
         }
         catch
@@ -167,6 +195,8 @@ public sealed class ReactiveTargetSyncService
         {
             while (await _queue.Reader.WaitToReadAsync(_cts.Token).ConfigureAwait(false))
             {
+                long earliestNextAttempt = long.MaxValue;
+
                 while (_queue.Reader.TryRead(out var key))
                 {
                     if (!_pending.TryGetValue(key, out var ev))
@@ -183,9 +213,8 @@ public sealed class ReactiveTargetSyncService
 
                     if (now < ev.NextAttemptTick)
                     {
-                        // Ещё рано пытаться — возвращаем в очередь (bounded, DropOldest).
-                        _queue.Writer.TryWrite(key);
-                        await Task.Delay(15, _cts.Token).ConfigureAwait(false);
+                        // Ещё рано пытаться — не спамим очередь. Запомним ближайший дедлайн.
+                        if (ev.NextAttemptTick < earliestNextAttempt) earliestNextAttempt = ev.NextAttemptTick;
                         continue;
                     }
 
@@ -220,7 +249,24 @@ public sealed class ReactiveTargetSyncService
                     var backoffMs = ComputeBackoffMs(attempts);
                     var nextAttempt = now + (long)(backoffMs / 1000.0 * Stopwatch.Frequency);
                     _pending[key] = ev with { Attempts = attempts, NextAttemptTick = nextAttempt };
-                    _queue.Writer.TryWrite(key);
+
+                    // Следующая попытка будет сделана автоматически по таймеру ниже.
+                    if (nextAttempt < earliestNextAttempt) earliestNextAttempt = nextAttempt;
+                }
+
+                // Если очередь опустела, но есть pending с будущими попытками — "тикнем" по времени
+                // и добавим due-события обратно в очередь (bounded).
+                var tickNow = Stopwatch.GetTimestamp();
+                EnqueueDueEventsBestEffort(tickNow);
+
+                if (earliestNextAttempt != long.MaxValue)
+                {
+                    var delayTicks = earliestNextAttempt - tickNow;
+                    if (delayTicks > 0)
+                    {
+                        var delayMs = (int)Math.Min(50, Math.Max(1, delayTicks * 1000.0 / Stopwatch.Frequency));
+                        await Task.Delay(delayMs, _cts.Token).ConfigureAwait(false);
+                    }
                 }
             }
         }
@@ -230,6 +276,37 @@ public sealed class ReactiveTargetSyncService
         catch (Exception ex)
         {
             _log?.Invoke($"[ReactiveTargetSync] Worker crashed: {ex.Message}");
+        }
+    }
+
+    private void EnqueueDueEventsBestEffort(long now)
+    {
+        try
+        {
+            var budget = _maxNudgeBatch;
+            foreach (var kv in _pending)
+            {
+                if (budget <= 0) break;
+
+                var key = kv.Key;
+                var ev = kv.Value;
+
+                if (now > ev.DeadlineTick)
+                {
+                    _pending.TryRemove(key, out _);
+                    continue;
+                }
+
+                if (now >= ev.NextAttemptTick)
+                {
+                    _queue.Writer.TryWrite(key);
+                    budget--;
+                }
+            }
+        }
+        catch
+        {
+            // best-effort
         }
     }
 
@@ -262,10 +339,14 @@ public sealed record ReactiveTargetSyncContext(
 public sealed record ReactiveTargetSyncOptions(
     int QueueCapacity,
     int MaxAttempts,
-    TimeSpan EventTtl)
+    TimeSpan EventTtl,
+    int MaxNudgeBatch,
+    TimeSpan MinNudgeInterval)
 {
     public static readonly ReactiveTargetSyncOptions Default = new(
         QueueCapacity: 256,
         MaxAttempts: 30,
-        EventTtl: TimeSpan.FromSeconds(10));
+        EventTtl: TimeSpan.FromSeconds(10),
+        MaxNudgeBatch: 64,
+        MinNudgeInterval: TimeSpan.FromMilliseconds(200));
 }

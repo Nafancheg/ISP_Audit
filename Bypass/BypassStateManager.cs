@@ -914,6 +914,15 @@ namespace IspAudit.Bypass
 
             CancelOutcomeProbe();
 
+            try
+            {
+                ReactiveTargetSync.Dispose();
+            }
+            catch
+            {
+                // best-effort
+            }
+
             _tlsService.Dispose();
             _applyGate.Dispose();
         }
