@@ -20,7 +20,6 @@ using IspAudit;
 using System.Windows.Media;
 using System.Net;
 using IspAudit.ViewModels.OrchestratorState;
-using IspAudit.Core.RuntimeAdaptation;
 
 // Явно указываем WPF вместо WinForms
 using Application = System.Windows.Application;
@@ -61,8 +60,6 @@ namespace IspAudit.ViewModels
         private DnsParserService? _dnsParser;
         private PidTrackerService? _pidTracker;
 
-        // Runtime Adaptation Layer: синхронизирует execution-state по runtime-сигналам (без политики/без UI).
-        private ReactiveTargetSyncService? _reactiveTargetSync;
 
         // Новые компоненты (после рефакторинга)
         private TrafficCollector? _trafficCollector;

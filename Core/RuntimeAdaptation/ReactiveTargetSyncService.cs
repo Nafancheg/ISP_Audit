@@ -48,6 +48,40 @@ public sealed class ReactiveTargetSyncService
         _worker = Task.Run(ProcessLoopAsync);
     }
 
+    public void Dispose()
+    {
+        try
+        {
+            _cts.Cancel();
+        }
+        catch
+        {
+        }
+    }
+
+    /// <summary>
+    /// Форсирует попытку доставки всех pending событий (best-effort).
+    /// Используется как lifecycle-hook при engine restart и после Apply.
+    /// </summary>
+    public void Nudge()
+    {
+        try
+        {
+            var now = Stopwatch.GetTimestamp();
+
+            foreach (var kv in _pending)
+            {
+                var key = kv.Key;
+                var ev = kv.Value;
+                _pending[key] = ev with { NextAttemptTick = now };
+                _queue.Writer.TryWrite(key);
+            }
+        }
+        catch
+        {
+        }
+    }
+
     /// <summary>
     /// Runtime-сигнал: обнаружена UDP blockage (часто QUIC/HTTP3/DTLS). Сервис best-effort «догоняет» targets
     /// для селективного QUIC→TCP (DROP UDP/443), если он уже включён пользователем.

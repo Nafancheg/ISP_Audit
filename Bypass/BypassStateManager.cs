@@ -9,6 +9,7 @@ using System.Collections.Immutable;
 using IspAudit.Core.Bypass;
 using IspAudit.Core.Models;
 using IspAudit.Core.Traffic;
+using IspAudit.Core.RuntimeAdaptation;
 
 namespace IspAudit.Bypass
 {
@@ -222,6 +223,9 @@ namespace IspAudit.Bypass
         private readonly Action<string>? _log;
         private readonly SemaphoreSlim _applyGate = new(1, 1);
 
+        // Runtime Adaptation Layer: inbound очередь + retry-until-delivered для доставки runtime-сигналов.
+        public ReactiveTargetSyncService ReactiveTargetSync { get; }
+
         private readonly BypassSessionJournal _journal;
 
         public TrafficEngine TrafficEngine => _trafficEngine;
@@ -260,6 +264,10 @@ namespace IspAudit.Bypass
             // Важно: лог прокидываем на самый нижний уровень, чтобы любые проблемы
             // в обходе (метрики/вердикт/движок) были видны пользователю.
             _tlsService = new TlsBypassService(_trafficEngine, BaseProfile, _log);
+
+            // Важно: очередь привязана к lifecycle engine и не очищается на restart.
+            // Устаревшие события отбрасываются по TTL внутри ReactiveTargetSyncService.
+            ReactiveTargetSync = new ReactiveTargetSyncService(this, _log);
 
             // Heartbeat для watchdog.
             _tlsService.MetricsUpdated += metrics =>
@@ -303,6 +311,8 @@ namespace IspAudit.Bypass
                     _journal.TouchHeartbeat("metrics");
                 }
             };
+
+            ReactiveTargetSync = new ReactiveTargetSyncService(this, _log);
 
             BypassStateManagerGuard.EnforceManagerUsage = true;
         }
@@ -395,7 +405,22 @@ namespace IspAudit.Bypass
         public Task StartEngineAsync(CancellationToken cancellationToken = default)
         {
             using var scope = BypassStateManagerGuard.EnterScope();
-            return _trafficEngine.StartAsync(cancellationToken);
+            return StartEngineWithNudgeAsync(cancellationToken);
+        }
+
+        private async Task StartEngineWithNudgeAsync(CancellationToken cancellationToken)
+        {
+            await _trafficEngine.StartAsync(cancellationToken).ConfigureAwait(false);
+
+            // Lifecycle hook: после старта движка «дожимаем» pending runtime-события.
+            try
+            {
+                ReactiveTargetSync.Nudge();
+            }
+            catch
+            {
+                // best-effort
+            }
         }
 
         public Task StopEngineAsync()
@@ -801,6 +826,16 @@ namespace IspAudit.Bypass
             finally
             {
                 _applyGate.Release();
+
+                // Lifecycle hook: Apply завершён (успех/rollback/fail) — пробуем доставить накопленные runtime-события.
+                try
+                {
+                    ReactiveTargetSync.Nudge();
+                }
+                catch
+                {
+                    // best-effort
+                }
             }
         }
 

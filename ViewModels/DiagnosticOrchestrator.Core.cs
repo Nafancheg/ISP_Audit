@@ -283,7 +283,7 @@ namespace IspAudit.ViewModels
                                 PrimaryTargetHostKey: primaryTarget,
                                 SecondaryTargetHostKey: secondaryTarget);
 
-                            _reactiveTargetSync?.OnUdpBlockage(ip, context);
+                            _stateManager.ReactiveTargetSync.OnUdpBlockage(ip, context);
                         }
                         catch
                         {
