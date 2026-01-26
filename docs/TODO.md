@@ -42,6 +42,7 @@
     - [x] P0.x Реактивная синхронизация targets для селективного QUIC→TCP: refresh UDP/443 targets по UDP blockage (без глобального DropUdp443)
       - [x] Assist-флаги (QUIC→TCP, No-SNI) применяются при ручном Apply
       - [x] DoH из v2 плана по умолчанию не применяется (runtime gate)
+      - [x] Логика синхронизации вынесена в слой Runtime Adaptation: `ReactiveTargetSyncService`
 
 - 🔴 P0.1: TrafficEngine crash: `Collection was modified; enumeration operation may not execute`
   - Симптом: в логе появляется `Loop crashed: Collection was modified; enumeration operation may not execute.`

@@ -25,6 +25,7 @@ using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
+using IspAudit.Core.RuntimeAdaptation;
 
 namespace IspAudit.ViewModels
 {
@@ -260,57 +261,17 @@ namespace IspAudit.ViewModels
                         // Авто-ретест по каждому событию приводит к лавине перетестов и ухудшает UX.
                         Log($"[Orchestrator] UDP Blockage detected for {ip}. (no auto-retest)");
 
+                        // Runtime Adaptation Layer: публикуем сигнал, не принимая политических решений.
                         try
                         {
-                            // Важно для QUIC→TCP (DROP UDP/443): режим селективный и требует цели.
-                            // Если цель не задана, то опция может быть включена, но фактически не будет глушить UDP/443.
-                            var existingTarget = bypassController.GetOutcomeTargetHost();
+                            var context = new ReactiveTargetSyncContext(
+                                IsQuicFallbackEnabled: bypassController.IsQuicFallbackEnabled,
+                                IsQuicFallbackGlobal: bypassController.IsQuicFallbackGlobal,
+                                CurrentOutcomeTargetHost: bypassController.GetOutcomeTargetHost(),
+                                TryResolveHostFromIp: TryResolveHostFromIpBestEffort,
+                                SetOutcomeTargetHost: bypassController.SetOutcomeTargetHost);
 
-                            // Пытаемся восстановить имя по SNI/DNS кешу.
-                            var ipKey = ip.ToString();
-                            string? resolvedHost = null;
-                            if (_dnsParser != null)
-                            {
-                                _dnsParser.SniCache.TryGetValue(ipKey, out resolvedHost);
-                                if (string.IsNullOrWhiteSpace(resolvedHost))
-                                {
-                                    _dnsParser.DnsCache.TryGetValue(ipKey, out resolvedHost);
-                                }
-                            }
-
-                            var candidateTarget = !string.IsNullOrWhiteSpace(resolvedHost)
-                                ? resolvedHost!.Trim()
-                                : ipKey;
-
-                            // Быстрый путь для селективного QUIC→TCP: если пользователь уже включил DROP UDP/443,
-                            // обновляем observed targets по факту UDP blockage без полного Apply/перезапуска.
-                            if (bypassController.IsQuicFallbackEnabled && !bypassController.IsQuicFallbackGlobal)
-                            {
-                                if (!string.IsNullOrWhiteSpace(existingTarget))
-                                {
-                                    _stateManager.RefreshUdp443SelectiveTargetsFromObservedIpBestEffort(existingTarget, ip);
-                                }
-
-                                // Если кандидат отличается — тоже засеем (CDN шард/rr*-хост).
-                                if (!string.IsNullOrWhiteSpace(candidateTarget)
-                                    && !string.Equals(existingTarget, candidateTarget, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    _stateManager.RefreshUdp443SelectiveTargetsFromObservedIpBestEffort(candidateTarget, ip);
-                                }
-                            }
-
-                            // Обновляем цель по последнему UDP blockage.
-                            // Важно: иначе цель может «залипнуть» на первом событии,
-                            // а последующие QUIC блокировки (часто CDN/шарды) не смогут корректно активировать
-                            // селективный DROP UDP/443 при ручном включении тумблера.
-                            var shouldUpdateTarget = string.IsNullOrWhiteSpace(existingTarget)
-                                || !string.Equals(existingTarget, candidateTarget, StringComparison.OrdinalIgnoreCase);
-
-                            if (shouldUpdateTarget)
-                            {
-                                bypassController.SetOutcomeTargetHost(candidateTarget);
-                                Log($"[Orchestrator] Outcome target host set from UDP blockage: {ipKey} -> {candidateTarget}");
-                            }
+                            _reactiveTargetSync?.OnUdpBlockage(ip, context);
                         }
                         catch
                         {
@@ -663,6 +624,33 @@ namespace IspAudit.ViewModels
             catch (OperationCanceledException)
             {
                 // Нормальное завершение
+            }
+        }
+
+        private string? TryResolveHostFromIpBestEffort(IPAddress ip)
+        {
+            try
+            {
+                var ipKey = ip.ToString();
+                if (_dnsParser == null) return null;
+
+                if (_dnsParser.SniCache.TryGetValue(ipKey, out var resolvedHost)
+                    && !string.IsNullOrWhiteSpace(resolvedHost))
+                {
+                    return resolvedHost;
+                }
+
+                if (_dnsParser.DnsCache.TryGetValue(ipKey, out resolvedHost)
+                    && !string.IsNullOrWhiteSpace(resolvedHost))
+                {
+                    return resolvedHost;
+                }
+
+                return null;
+            }
+            catch
+            {
+                return null;
             }
         }
 

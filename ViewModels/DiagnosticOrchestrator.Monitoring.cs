@@ -19,6 +19,7 @@ using IspAudit.Windows;
 using IspAudit;
 using System.Windows.Media;
 using System.Net;
+using IspAudit.Core.RuntimeAdaptation;
 
 // Явно указываем WPF вместо WinForms
 using Application = System.Windows.Application;
@@ -92,6 +93,9 @@ namespace IspAudit.ViewModels
             // UDP Inspection Service — анализ DTLS/QUIC блокировок
             _udpInspectionService = new UdpInspectionService();
             _udpInspectionService.Attach(_trafficMonitorFilter);
+
+            // Runtime Adaptation Layer (без UI/без политики)
+            _reactiveTargetSync ??= new ReactiveTargetSyncService(_stateManager, Log);
 
             // DNS Parser (теперь умеет и SNI)
             _dnsParser = new DnsParserService(_trafficMonitorFilter, progress);
