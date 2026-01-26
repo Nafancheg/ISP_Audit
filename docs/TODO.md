@@ -43,6 +43,7 @@
       - [x] Assist-флаги (QUIC→TCP, No-SNI) применяются при ручном Apply
       - [x] DoH из v2 плана по умолчанию не применяется (runtime gate)
       - [x] Логика синхронизации вынесена в слой Runtime Adaptation: `ReactiveTargetSyncService`
+      - [x] Bounded queue + coalescing + retry-until-delivered (TTL/attempts) для защиты от stop/start и burst событий
 
 - 🔴 P0.1: TrafficEngine crash: `Collection was modified; enumeration operation may not execute`
   - Симптом: в логе появляется `Loop crashed: Collection was modified; enumeration operation may not execute.`

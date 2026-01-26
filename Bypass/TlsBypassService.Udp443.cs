@@ -12,6 +12,14 @@ namespace IspAudit.Bypass
 {
     public partial class TlsBypassService
     {
+        internal bool HasActiveFilterForManager()
+        {
+            lock (_sync)
+            {
+                return _filter != null;
+            }
+        }
+
         internal void SetFilterForSmoke(BypassFilter filter, DateTime? metricsSince = null, TlsBypassOptions? options = null)
         {
             if (filter == null) throw new ArgumentNullException(nameof(filter));
@@ -51,6 +59,15 @@ namespace IspAudit.Bypass
         /// </summary>
         internal void SetUdp443DropTargetIpsForManager(IEnumerable<uint>? dstIpInts)
         {
+            _ = TrySetUdp443DropTargetIpsForManager(dstIpInts);
+        }
+
+        /// <summary>
+        /// Для BypassStateManager: задать observed IPv4 адреса цели, к которым применять DROP UDP/443.
+        /// Возвращает true, если на момент обновления был активный filter (targets реально применены в execution plane).
+        /// </summary>
+        internal bool TrySetUdp443DropTargetIpsForManager(IEnumerable<uint>? dstIpInts)
+        {
             var snapshot = dstIpInts == null
                 ? Array.Empty<uint>()
                 : dstIpInts.Where(v => v != 0).Distinct().Take(32).ToArray();
@@ -59,6 +76,7 @@ namespace IspAudit.Bypass
             {
                 _udp443DropTargetIps = snapshot;
                 _filter?.SetUdp443DropTargetIps(_udp443DropTargetIps);
+                return _filter != null;
             }
         }
 
@@ -67,6 +85,15 @@ namespace IspAudit.Bypass
         /// Нужен для сценария, когда policy-driven UDP/443 включён, и targets обновляются без полного Apply.
         /// </summary>
         internal void RefreshUdp443PolicyTargetsForManager(IEnumerable<uint>? dstIpInts)
+        {
+            _ = TryRefreshUdp443PolicyTargetsForManager(dstIpInts);
+        }
+
+        /// <summary>
+        /// Best-effort: обновить policy-driven UDP/443 политику (DstIpv4Set) под новый набор targets.
+        /// Возвращает true, если snapshot был обновлён (DecisionGraphSnapshot пересобран).
+        /// </summary>
+        internal bool TryRefreshUdp443PolicyTargetsForManager(IEnumerable<uint>? dstIpInts)
         {
             try
             {
@@ -79,7 +106,7 @@ namespace IspAudit.Bypass
                     if (_decisionGraphSnapshot == null)
                     {
                         // Snapshot отсутствует — обновлять нечего.
-                        return;
+                        return false;
                     }
 
                     // Обновляем только селективную политику UDP/443 (если она есть), либо добавляем её.
@@ -123,11 +150,13 @@ namespace IspAudit.Bypass
 
                     _decisionGraphSnapshot = DecisionGraphSnapshot.Create(list);
                     _filter?.SetDecisionGraphSnapshot(_decisionGraphSnapshot);
+                    return true;
                 }
             }
             catch
             {
                 // best-effort
+                return false;
             }
         }
 

@@ -107,6 +107,10 @@ graph TD
 Runtime Adaptation Layer: `ReactiveTargetSyncService` принимает runtime-сигналы (например UDP blockage) и синхронизирует
 execution-state (targets/snapshots) best-effort, без UI и без принятия политических решений.
 
+Ключевой принцип слоя: не «мы попробовали», а «мы доставили или истекли». Для этого используется inbound bounded-очередь
+(coalescing по (scope, ip, type) + retry-until-delivered с TTL/лимитом попыток) — чтобы события не терялись на гонках
+Stop/Start и при burst'ах endpoint churn.
+
 - `DropUdp443` (тумблер `QUIC→TCP`) включает откат с QUIC/HTTP3 (UDP/443) на TCP/HTTPS.
 - По умолчанию это **селективный** режим: `BypassStateManager` поддерживает observed IPv4 адреса целей (TTL/cap, cold-start через DNS resolve host) и прокидывает их в `TlsBypassService`, а `BypassFilter` глушит UDP/443 (`Udp443Dropped++`) **только** для пакетов на эти IP — так уменьшаются побочные эффекты на другие приложения/сервисы. Для поддержки нескольких активных сервисов одновременно селективный список может собираться как union по нескольким недавно активным целям.
 - Чтобы уменьшить задержку между обнаружением проблем (например, UDP blockage на новом CDN endpoint) и фактическим воздействием селективного QUIC fallback, поддерживается **реактивное обновление** observed targets по runtime-сигналам (best-effort, без полного Apply/перезапуска).

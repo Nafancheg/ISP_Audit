@@ -7,6 +7,13 @@ namespace IspAudit.Bypass
 {
     public sealed partial class BypassStateManager
     {
+        internal readonly record struct ReactiveUdp443SyncResult(
+            bool AnyAttempted,
+            bool LegacyTargetsDeliveredToFilter,
+            bool PolicySnapshotUpdated,
+            bool EngineRunning,
+            int TargetCount);
+
         /// <summary>
         /// Быстрый путь для селективного QUIC→TCP (DROP UDP/443):
         /// добавляет observed IPv4 (dst) в кэш цели и обновляет runtime targets в фильтре
@@ -19,9 +26,21 @@ namespace IspAudit.Bypass
         {
             try
             {
+                _ = TrySyncUdp443SelectiveTargetsFromObservedIp(hostKey, ip);
+            }
+            catch
+            {
+                // best-effort
+            }
+        }
+
+        internal ReactiveUdp443SyncResult TrySyncUdp443SelectiveTargetsFromObservedIp(string? hostKey, IPAddress ip)
+        {
+            try
+            {
                 hostKey = (hostKey ?? string.Empty).Trim();
-                if (string.IsNullOrWhiteSpace(hostKey)) return;
-                if (ip == null) return;
+                if (string.IsNullOrWhiteSpace(hostKey)) return default;
+                if (ip == null) return default;
 
                 // Засеиваем observed IP для конкретной цели.
                 SeedObservedIpv4TargetFromIpBestEffort(hostKey, ip);
@@ -31,7 +50,7 @@ namespace IspAudit.Bypass
 
                 // Собираем union observed IPv4 по нескольким активным целям.
                 var hosts = GetActiveUdp443HostsSnapshot(hostKey);
-                if (hosts.Length == 0) return;
+                if (hosts.Length == 0) return default;
 
                 var union = new HashSet<uint>();
                 foreach (var h in hosts)
@@ -50,7 +69,7 @@ namespace IspAudit.Bypass
                     if (union.Count >= 32) break;
                 }
 
-                if (union.Count == 0) return;
+                if (union.Count == 0) return default;
 
                 var sorted = new List<uint>(union);
                 sorted.Sort();
@@ -58,19 +77,25 @@ namespace IspAudit.Bypass
 
                 using var scope = BypassStateManagerGuard.EnterScope();
 
-                // Обновляем targets в фильтре.
-                _tlsService.SetUdp443DropTargetIpsForManager(targets);
+                var engineRunning = _trafficEngine.IsRunning;
+                var legacyDelivered = _tlsService.TrySetUdp443DropTargetIpsForManager(targets);
 
-                // Если включён policy-driven путь для UDP/443 — обновляем и snapshot,
-                // иначе при gate=on targets из legacy массива будут игнорироваться.
+                var policyUpdated = false;
                 if (PolicyDrivenExecutionGates.PolicyDrivenUdp443Enabled())
                 {
-                    _tlsService.RefreshUdp443PolicyTargetsForManager(targets);
+                    policyUpdated = _tlsService.TryRefreshUdp443PolicyTargetsForManager(targets);
                 }
+
+                return new ReactiveUdp443SyncResult(
+                    AnyAttempted: true,
+                    LegacyTargetsDeliveredToFilter: legacyDelivered,
+                    PolicySnapshotUpdated: policyUpdated,
+                    EngineRunning: engineRunning,
+                    TargetCount: targets.Length);
             }
             catch
             {
-                // best-effort
+                return default;
             }
         }
     }

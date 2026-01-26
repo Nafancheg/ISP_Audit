@@ -2,6 +2,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
 using IspAudit.Bypass;
 
 namespace IspAudit.Core.RuntimeAdaptation;
@@ -12,24 +15,37 @@ namespace IspAudit.Core.RuntimeAdaptation;
 /// </summary>
 public sealed class ReactiveTargetSyncService
 {
-    private static readonly StringComparer KeyComparer = StringComparer.OrdinalIgnoreCase;
-
     private readonly BypassStateManager _stateManager;
     private readonly Action<string>? _log;
 
-    private readonly ConcurrentDictionary<string, long> _recentEvents = new(KeyComparer);
-    private readonly long _dedupWindowStopwatchTicks;
+    private readonly Channel<string> _queue;
+    private readonly ConcurrentDictionary<string, PendingEvent> _pending = new(StringComparer.OrdinalIgnoreCase);
+    private readonly CancellationTokenSource _cts = new();
+    private readonly Task _worker;
+
+    private readonly long _ttlTicks;
+    private readonly int _maxAttempts;
 
     public ReactiveTargetSyncService(
         BypassStateManager stateManager,
         Action<string>? log = null,
-        TimeSpan? dedupWindow = null)
+        ReactiveTargetSyncOptions? options = null)
     {
         _stateManager = stateManager ?? throw new ArgumentNullException(nameof(stateManager));
         _log = log;
 
-        var window = dedupWindow ?? TimeSpan.FromSeconds(2);
-        _dedupWindowStopwatchTicks = (long)(window.TotalSeconds * Stopwatch.Frequency);
+        var opt = options ?? ReactiveTargetSyncOptions.Default;
+        _ttlTicks = (long)(opt.EventTtl.TotalSeconds * Stopwatch.Frequency);
+        _maxAttempts = opt.MaxAttempts;
+
+        _queue = Channel.CreateBounded<string>(new BoundedChannelOptions(opt.QueueCapacity)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        _worker = Task.Run(ProcessLoopAsync);
     }
 
     /// <summary>
@@ -47,25 +63,10 @@ public sealed class ReactiveTargetSyncService
 
             var ipKey = ip.ToString();
 
-            // Runtime Adaptation слой не должен заниматься резолвингом или UI-целями.
-            // Он получает только "факты": какие hostKey сейчас релевантны для синхронизации.
-            var primaryTarget = context.PrimaryTargetHostKey;
-            var secondaryTarget = context.SecondaryTargetHostKey;
-
-            var dedupKey = $"udp_blockage|{primaryTarget ?? ""}|{secondaryTarget ?? ""}|{ipKey}";
-            if (IsDeduped(dedupKey)) return;
-
-            // Важно: селективный QUIC→TCP требует целей. Здесь мы не «включаем обход»,
-            // а синхронизируем execution-state под уже включённый режим.
-            if (!string.IsNullOrWhiteSpace(primaryTarget))
+            EnqueueCoalesced("udp_blockage", context.PrimaryTargetHostKey, ip);
+            if (!string.Equals(context.PrimaryTargetHostKey, context.SecondaryTargetHostKey, StringComparison.OrdinalIgnoreCase))
             {
-                _stateManager.RefreshUdp443SelectiveTargetsFromObservedIpBestEffort(primaryTarget!, ip);
-            }
-
-            if (!string.IsNullOrWhiteSpace(secondaryTarget)
-                && !string.Equals(primaryTarget, secondaryTarget, StringComparison.OrdinalIgnoreCase))
-            {
-                _stateManager.RefreshUdp443SelectiveTargetsFromObservedIpBestEffort(secondaryTarget!, ip);
+                EnqueueCoalesced("udp_blockage", context.SecondaryTargetHostKey, ip);
             }
         }
         catch (Exception ex)
@@ -97,18 +98,121 @@ public sealed class ReactiveTargetSyncService
         _ = context;
     }
 
-    private bool IsDeduped(string key)
+    private void EnqueueCoalesced(string type, string? hostKey, IPAddress ip)
     {
-        var now = Stopwatch.GetTimestamp();
-
-        if (_recentEvents.TryGetValue(key, out var last) && now - last < _dedupWindowStopwatchTicks)
+        try
         {
-            return true;
-        }
+            hostKey = (hostKey ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(hostKey)) return;
 
-        _recentEvents[key] = now;
-        return false;
+            var now = Stopwatch.GetTimestamp();
+            var key = $"{type}|{hostKey}|{ip}";
+
+            _pending.AddOrUpdate(
+                key,
+                _ => new PendingEvent(type, hostKey, ip, Attempts: 0, NextAttemptTick: now, DeadlineTick: now + _ttlTicks),
+                (_, existing) =>
+                {
+                    // Coalescing: продлеваем TTL и сбрасываем план попытки на ближайшее время.
+                    var next = now;
+                    var deadline = now + _ttlTicks;
+                    return existing with { NextAttemptTick = Math.Min(existing.NextAttemptTick, next), DeadlineTick = Math.Max(existing.DeadlineTick, deadline) };
+                });
+
+            _queue.Writer.TryWrite(key);
+        }
+        catch
+        {
+            // best-effort
+        }
     }
+
+    private async Task ProcessLoopAsync()
+    {
+        try
+        {
+            while (await _queue.Reader.WaitToReadAsync(_cts.Token).ConfigureAwait(false))
+            {
+                while (_queue.Reader.TryRead(out var key))
+                {
+                    if (!_pending.TryGetValue(key, out var ev))
+                    {
+                        continue;
+                    }
+
+                    var now = Stopwatch.GetTimestamp();
+                    if (now > ev.DeadlineTick)
+                    {
+                        _pending.TryRemove(key, out _);
+                        continue;
+                    }
+
+                    if (now < ev.NextAttemptTick)
+                    {
+                        // Ещё рано пытаться — возвращаем в очередь (bounded, DropOldest).
+                        _queue.Writer.TryWrite(key);
+                        await Task.Delay(15, _cts.Token).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    var delivered = false;
+                    try
+                    {
+                        var result = _stateManager.TrySyncUdp443SelectiveTargetsFromObservedIp(ev.HostKey, ev.Ip);
+
+                        // Критерий доставки:
+                        // - legacy: targets реально применены в active filter, или
+                        // - policy: DecisionGraphSnapshot обновлён (пересобран).
+                        delivered = result.LegacyTargetsDeliveredToFilter || result.PolicySnapshotUpdated;
+                    }
+                    catch
+                    {
+                        delivered = false;
+                    }
+
+                    if (delivered)
+                    {
+                        _pending.TryRemove(key, out _);
+                        continue;
+                    }
+
+                    var attempts = ev.Attempts + 1;
+                    if (attempts >= _maxAttempts)
+                    {
+                        _pending.TryRemove(key, out _);
+                        continue;
+                    }
+
+                    var backoffMs = ComputeBackoffMs(attempts);
+                    var nextAttempt = now + (long)(backoffMs / 1000.0 * Stopwatch.Frequency);
+                    _pending[key] = ev with { Attempts = attempts, NextAttemptTick = nextAttempt };
+                    _queue.Writer.TryWrite(key);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"[ReactiveTargetSync] Worker crashed: {ex.Message}");
+        }
+    }
+
+    private static int ComputeBackoffMs(int attempts)
+    {
+        // 1: 50ms, 2: 100ms, 3: 200ms, 4+: 400ms (cap)
+        var ms = 50 * (1 << Math.Min(attempts - 1, 3));
+        return Math.Min(ms, 400);
+    }
+
+    private readonly record struct PendingEvent(
+        string Type,
+        string HostKey,
+        IPAddress Ip,
+        int Attempts,
+        long NextAttemptTick,
+        long DeadlineTick);
 }
 
 /// <summary>
@@ -120,3 +224,14 @@ public sealed record ReactiveTargetSyncContext(
     bool IsQuicFallbackGlobal,
     string? PrimaryTargetHostKey,
     string? SecondaryTargetHostKey);
+
+public sealed record ReactiveTargetSyncOptions(
+    int QueueCapacity,
+    int MaxAttempts,
+    TimeSpan EventTtl)
+{
+    public static readonly ReactiveTargetSyncOptions Default = new(
+        QueueCapacity: 256,
+        MaxAttempts: 30,
+        EventTtl: TimeSpan.FromSeconds(10));
+}

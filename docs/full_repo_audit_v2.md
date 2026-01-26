@@ -107,7 +107,10 @@
 
     - Для компенсации задержки между runtime-сигналами (inspection) и фактическим воздействием селективного QUIC→TCP,
       используется слой `ReactiveTargetSyncService`: он принимает события (например UDP blockage) и best-effort синхронизирует
-      execution-state (targets / policy snapshot) через `BypassStateManager`, не принимая политических решений и не взаимодействуя с UI.
+        execution-state (targets / policy snapshot) через `BypassStateManager`, не принимая политических решений и не взаимодействуя с UI.
+
+    - Модель доставки: inbound bounded-очередь + coalescing по (scope, ip, type) + retry-until-delivered (TTL/лимит попыток).
+        «Доставлено» означает: legacy filter получил targets и/или обновлён DecisionGraphSnapshot (policy-driven path), а не просто "попробовали".
 
 Практика (после Apply):
 - После ручного `Apply` UI запускает короткий **пост-Apply ретест** по цели (активные TCP/TLS проверки), чтобы быстро показать, помог ли обход.
