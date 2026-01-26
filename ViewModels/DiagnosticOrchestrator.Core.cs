@@ -264,12 +264,24 @@ namespace IspAudit.ViewModels
                         // Runtime Adaptation Layer: публикуем сигнал, не принимая политических решений.
                         try
                         {
+                            // Важно: orchestrator передаёт только "факты" (hostKey из кешей),
+                            // не включает обход и не меняет режимы/цели.
+                            var primaryTarget = bypassController.GetOutcomeTargetHost();
+
+                            string? secondaryTarget = null;
+                            try
+                            {
+                                secondaryTarget = TryResolveHostFromIpBestEffort(ip);
+                            }
+                            catch
+                            {
+                            }
+
                             var context = new ReactiveTargetSyncContext(
                                 IsQuicFallbackEnabled: bypassController.IsQuicFallbackEnabled,
                                 IsQuicFallbackGlobal: bypassController.IsQuicFallbackGlobal,
-                                CurrentOutcomeTargetHost: bypassController.GetOutcomeTargetHost(),
-                                TryResolveHostFromIp: TryResolveHostFromIpBestEffort,
-                                SetOutcomeTargetHost: bypassController.SetOutcomeTargetHost);
+                                PrimaryTargetHostKey: primaryTarget,
+                                SecondaryTargetHostKey: secondaryTarget);
 
                             _reactiveTargetSync?.OnUdpBlockage(ip, context);
                         }

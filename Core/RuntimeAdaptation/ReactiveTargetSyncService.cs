@@ -46,40 +46,26 @@ public sealed class ReactiveTargetSyncService
             if (context.IsQuicFallbackGlobal) return;
 
             var ipKey = ip.ToString();
-            var existingTarget = context.CurrentOutcomeTargetHost;
 
-            var resolvedHost = context.TryResolveHostFromIp?.Invoke(ip);
-            var candidateTarget = !string.IsNullOrWhiteSpace(resolvedHost)
-                ? resolvedHost!.Trim()
-                : ipKey;
+            // Runtime Adaptation слой не должен заниматься резолвингом или UI-целями.
+            // Он получает только "факты": какие hostKey сейчас релевантны для синхронизации.
+            var primaryTarget = context.PrimaryTargetHostKey;
+            var secondaryTarget = context.SecondaryTargetHostKey;
 
-            var dedupKey = $"udp_blockage|{existingTarget ?? ""}|{candidateTarget}|{ipKey}";
+            var dedupKey = $"udp_blockage|{primaryTarget ?? ""}|{secondaryTarget ?? ""}|{ipKey}";
             if (IsDeduped(dedupKey)) return;
 
             // Важно: селективный QUIC→TCP требует целей. Здесь мы не «включаем обход»,
             // а синхронизируем execution-state под уже включённый режим.
-            if (!string.IsNullOrWhiteSpace(existingTarget))
+            if (!string.IsNullOrWhiteSpace(primaryTarget))
             {
-                _stateManager.RefreshUdp443SelectiveTargetsFromObservedIpBestEffort(existingTarget!, ip);
+                _stateManager.RefreshUdp443SelectiveTargetsFromObservedIpBestEffort(primaryTarget!, ip);
             }
 
-            if (!string.IsNullOrWhiteSpace(candidateTarget)
-                && !string.Equals(existingTarget, candidateTarget, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(secondaryTarget)
+                && !string.Equals(primaryTarget, secondaryTarget, StringComparison.OrdinalIgnoreCase))
             {
-                _stateManager.RefreshUdp443SelectiveTargetsFromObservedIpBestEffort(candidateTarget, ip);
-            }
-
-            // Best-effort: обновляем OutcomeTargetHost, чтобы UI/логика outcome не «залипали» на старой цели.
-            if (context.SetOutcomeTargetHost != null)
-            {
-                var shouldUpdateTarget = string.IsNullOrWhiteSpace(existingTarget)
-                    || !string.Equals(existingTarget, candidateTarget, StringComparison.OrdinalIgnoreCase);
-
-                if (shouldUpdateTarget)
-                {
-                    context.SetOutcomeTargetHost(candidateTarget);
-                    _log?.Invoke($"[ReactiveTargetSync] Outcome target host updated from UDP blockage: {ipKey} -> {candidateTarget}");
-                }
+                _stateManager.RefreshUdp443SelectiveTargetsFromObservedIpBestEffort(secondaryTarget!, ip);
             }
         }
         catch (Exception ex)
@@ -132,6 +118,5 @@ public sealed class ReactiveTargetSyncService
 public sealed record ReactiveTargetSyncContext(
     bool IsQuicFallbackEnabled,
     bool IsQuicFallbackGlobal,
-    string? CurrentOutcomeTargetHost,
-    Func<IPAddress, string?>? TryResolveHostFromIp,
-    Action<string>? SetOutcomeTargetHost);
+    string? PrimaryTargetHostKey,
+    string? SecondaryTargetHostKey);
