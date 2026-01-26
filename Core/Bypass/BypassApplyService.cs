@@ -489,19 +489,22 @@ namespace IspAudit.Core.Bypass
                         updated = updated with { DropRstEnabled = true };
                         break;
                     case StrategyId.UseDoh:
-                        enableDoH = true;
-                        break;
-                    case StrategyId.QuicObfuscation:
-                        if (Config.RuntimeFlags.EnableV2AssistFlags)
+                        // Важно: DoH/DNS — это системное изменение. В v2 плане это может быть рекомендация,
+                        // но по умолчанию не применяем автоматически.
+                        if (Config.RuntimeFlags.EnableV2DoHFromPlan)
                         {
-                            updated = updated with { DropUdp443 = true };
-                            wantQuicFallback = true;
-                            _log?.Invoke("[V2][Executor] QuicObfuscation: включаем QUIC→TCP (DROP UDP/443)");
+                            enableDoH = true;
+                            _log?.Invoke("[V2][Executor] UseDoh: включаем DoH (разрешено gate)");
                         }
                         else
                         {
-                            _log?.Invoke("[V2][Executor] QuicObfuscation: assist отключён (gate). Рекомендация не применяется автоматически.");
+                            _log?.Invoke("[V2][Executor] UseDoh: пропуск (по умолчанию DoH из v2 не применяется автоматически)");
                         }
+                        break;
+                    case StrategyId.QuicObfuscation:
+                        updated = updated with { DropUdp443 = true };
+                        wantQuicFallback = true;
+                        _log?.Invoke("[V2][Executor] QuicObfuscation: включаем QUIC→TCP (DROP UDP/443)");
                         break;
                     case StrategyId.HttpHostTricks:
                         updated = updated with { HttpHostTricksEnabled = true };
@@ -520,30 +523,16 @@ namespace IspAudit.Core.Bypass
 
             if (plan.DropUdp443)
             {
-                if (Config.RuntimeFlags.EnableV2AssistFlags)
-                {
-                    updated = updated with { DropUdp443 = true };
-                    wantQuicFallback = true;
-                    _log?.Invoke("[V2][Executor] Assist: включаем QUIC→TCP (DROP UDP/443)");
-                }
-                else
-                {
-                    _log?.Invoke("[V2][Executor] Assist: QUIC→TCP подавлен (gate). Требуется явное включение пользователем.");
-                }
+                updated = updated with { DropUdp443 = true };
+                wantQuicFallback = true;
+                _log?.Invoke("[V2][Executor] Assist: включаем QUIC→TCP (DROP UDP/443)");
             }
 
             if (plan.AllowNoSni)
             {
-                if (Config.RuntimeFlags.EnableV2AssistFlags)
-                {
-                    updated = updated with { AllowNoSni = true };
-                    wantAllowNoSni = true;
-                    _log?.Invoke("[V2][Executor] Assist: включаем No SNI (разрешить обход без SNI)");
-                }
-                else
-                {
-                    _log?.Invoke("[V2][Executor] Assist: No SNI подавлен (gate). Требуется явное включение пользователем.");
-                }
+                updated = updated with { AllowNoSni = true };
+                wantAllowNoSni = true;
+                _log?.Invoke("[V2][Executor] Assist: включаем No SNI (разрешить обход без SNI)");
             }
 
             // P0.1 Step 1: per-target политика (для decision graph).

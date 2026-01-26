@@ -13,10 +13,10 @@ namespace IspAudit
     {
         public List<string> Targets { get; set; } = new();
         public Dictionary<string, TargetDefinition> TargetMap { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        
+
         // Управление профилями диагностики
         public static DiagnosticProfile? ActiveProfile { get; set; }
-        
+
         // Профиль окружения: normal|vpn (влияет на классификацию/пороги)
         public string Profile { get; set; } = "normal";
 
@@ -41,10 +41,10 @@ namespace IspAudit
         public static class RuntimeFlags
         {
             /// <summary>
-            /// Разрешить применять assist-флаги из v2 плана (например QUIC→TCP/No SNI) автоматически в Apply.
-            /// По умолчанию false: ассист только отображается как рекомендация, но не применяется сам.
+            /// Разрешить применять "верхнеуровневые" системные изменения из v2 плана (DNS/DoH).
+            /// По умолчанию false: v2 может рекомендовать DoH, но применять его должен только пользователь вручную.
             /// </summary>
-            public static bool EnableV2AssistFlags => ReadBoolEnv("ISP_AUDIT_ENABLE_V2_ASSISTS", defaultValue: false);
+            public static bool EnableV2DoHFromPlan => ReadBoolEnv("ISP_AUDIT_ENABLE_V2_DOH", defaultValue: false);
 
             /// <summary>
             /// Разрешить авто-ретест после изменения тумблеров bypass в UI.
@@ -65,7 +65,7 @@ namespace IspAudit
                 || v.Equals("y", StringComparison.OrdinalIgnoreCase)
                 || v.Equals("on", StringComparison.OrdinalIgnoreCase);
         }
-        
+
         public static Config Default() => new Config();
 
         public List<TargetDefinition> ResolveTargets()
@@ -82,7 +82,7 @@ namespace IspAudit
                     {
                         continue; // Пропускаем цели не из списка
                     }
-                    
+
                     result.Add(new TargetDefinition
                     {
                         Name = profileTarget.Name,
@@ -126,7 +126,7 @@ namespace IspAudit
             {
                 // Сначала пробуем прямой путь (Default.json, Custom.json)
                 string profilePath = Path.Combine("Profiles", $"{profileName}.json");
-                
+
                 if (!File.Exists(profilePath))
                 {
                     // Если не нашли, ищем по имени профиля внутри JSON
@@ -152,7 +152,7 @@ namespace IspAudit
                         }
                     }
                 }
-                
+
                 if (!File.Exists(profilePath))
                 {
                     throw new FileNotFoundException($"Профиль '{profileName}' не найден");
@@ -160,7 +160,7 @@ namespace IspAudit
 
                 string profileJson = File.ReadAllText(profilePath);
                 var profile = System.Text.Json.JsonSerializer.Deserialize<DiagnosticProfile>(profileJson);
-                
+
                 if (profile == null)
                 {
                     throw new InvalidOperationException($"Не удалось десериализовать профиль '{profileName}'");
@@ -183,7 +183,7 @@ namespace IspAudit
         public static void SetActiveProfile(string profileName)
         {
             LoadGameProfile(profileName);
-            
+
             // Обновить Program.Targets для совместимости с GUI
             if (ActiveProfile != null && ActiveProfile.Targets.Count > 0)
             {

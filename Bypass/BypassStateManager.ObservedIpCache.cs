@@ -42,6 +42,50 @@ namespace IspAudit.Bypass
         }
 
         /// <summary>
+        /// Best-effort: засеять observed IPv4 адрес цели из одиночного IP (например, из события UDP blockage).
+        /// </summary>
+        internal void SeedObservedIpv4TargetFromIpBestEffort(string hostKey, IPAddress ip)
+        {
+            try
+            {
+                hostKey = (hostKey ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(hostKey)) return;
+                if (ip == null) return;
+
+                var v4 = TryToIpv4Int(ip);
+                if (v4 == null) return;
+                var value = v4.Value;
+                if (value == 0) return;
+
+                var entry = _udp443DropObservedIpsByHost.GetOrAdd(hostKey, _ => new ObservedIpsEntry());
+                var now = NowTick();
+                var until = now + (long)Udp443DropTargetIpTtl.TotalMilliseconds;
+
+                lock (entry.Sync)
+                {
+                    PruneExpired(entry, now);
+                    entry.UntilTickByIp[value] = until;
+
+                    // Cap.
+                    if (entry.UntilTickByIp.Count > Udp443DropTargetIpCap)
+                    {
+                        var ordered = new List<KeyValuePair<uint, long>>(entry.UntilTickByIp);
+                        ordered.Sort((a, b) => a.Value.CompareTo(b.Value));
+                        var extra = ordered.Count - Udp443DropTargetIpCap;
+                        for (var i = 0; i < extra; i++)
+                        {
+                            entry.UntilTickByIp.Remove(ordered[i].Key);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // best-effort
+            }
+        }
+
+        /// <summary>
         /// P0.2 Stage 5.4 (интеграция с P0.1): best-effort засеять observed IPv4 адреса цели из
         /// candidate endpoints (например, из apply-transaction). Это помогает policy-driven per-target
         /// политикам (DstIpv4Set) работать сразу, не дожидаясь DNS resolve.

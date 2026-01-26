@@ -282,6 +282,23 @@ namespace IspAudit.ViewModels
                                 ? resolvedHost!.Trim()
                                 : ipKey;
 
+                            // Быстрый путь для селективного QUIC→TCP: если пользователь уже включил DROP UDP/443,
+                            // обновляем observed targets по факту UDP blockage без полного Apply/перезапуска.
+                            if (bypassController.IsQuicFallbackEnabled && !bypassController.IsQuicFallbackGlobal)
+                            {
+                                if (!string.IsNullOrWhiteSpace(existingTarget))
+                                {
+                                    _stateManager.RefreshUdp443SelectiveTargetsFromObservedIpBestEffort(existingTarget, ip);
+                                }
+
+                                // Если кандидат отличается — тоже засеем (CDN шард/rr*-хост).
+                                if (!string.IsNullOrWhiteSpace(candidateTarget)
+                                    && !string.Equals(existingTarget, candidateTarget, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    _stateManager.RefreshUdp443SelectiveTargetsFromObservedIpBestEffort(candidateTarget, ip);
+                                }
+                            }
+
                             // Обновляем цель по последнему UDP blockage.
                             // Важно: иначе цель может «залипнуть» на первом событии,
                             // а последующие QUIC блокировки (часто CDN/шарды) не смогут корректно активировать
@@ -293,12 +310,6 @@ namespace IspAudit.ViewModels
                             {
                                 bypassController.SetOutcomeTargetHost(candidateTarget);
                                 Log($"[Orchestrator] Outcome target host set from UDP blockage: {ipKey} -> {candidateTarget}");
-
-                                // Если QUIC→TCP уже включён, нужно пере-применить опции, чтобы селективный UDP/443 получил цели.
-                                if (bypassController.IsQuicFallbackEnabled)
-                                {
-                                    _ = bypassController.ApplyBypassOptionsAsync();
-                                }
                             }
                         }
                         catch
