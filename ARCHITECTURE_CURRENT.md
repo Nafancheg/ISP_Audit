@@ -261,13 +261,13 @@ Dev-проверка (smoke): для воспроизводимой провер
 
 Статус (P0.3): парсинг строк pipeline вынесен в top-level сервис [ViewModels/PipelineMessageParser.cs](ViewModels/PipelineMessageParser.cs) (593) с явным контекстом (`IPipelineMessageParserContext`).
 
-UI-гейт по рекомендациям (v2-only): UI принимает рекомендации/стратегии обхода только из строк с префиксом `[V2]`. Любые legacy строки могут присутствовать в логе, но не обновляют `BypassStrategy` карточек и не попадают в панель рекомендаций.
+UI-гейт по рекомендациям (intel-only): UI принимает рекомендации/стратегии обхода только из строк с префиксом `[INTEL]` (старый префикс `[V2]` поддерживается только для обратной совместимости). Любые legacy строки могут присутствовать в логе, но не обновляют `BypassStrategy` карточек и не попадают в панель рекомендаций.
 
-Примечание (UX рекомендаций): блок «Рекомендации» в bypass-панели отображается при `HasAnyRecommendations` (есть v2-рекомендации **или** зафиксированы «ручные действия»), а кнопка apply фактически доступна только при `HasRecommendations` (есть объектный `BypassPlan` и есть что применять). Если стратегия уже включена пользователем вручную, она отображается как «ручное действие», чтобы рекомендации не «пропадали».
+Примечание (UX рекомендаций): блок «Рекомендации» в bypass-панели отображается при `HasAnyRecommendations` (есть рекомендации INTEL **или** зафиксированы «ручные действия»), а кнопка apply фактически доступна только при `HasRecommendations` (есть объектный `BypassPlan` и есть что применять). Если стратегия уже включена пользователем вручную, она отображается как «ручное действие», чтобы рекомендации не «пропадали».
 
 Важно: bypass-панель (и кнопка apply внутри неё) показывается только при запуске приложения с правами администратора.
 
-Guard на legacy в v2 пути: smoke-тест `DPI2-025` проверяет, что в v2 runtime-пути отсутствуют `GetSignals(...)`, `legacySignals.*` и любые упоминания `BlockageSignals` (grep/regex по `Core/IntelligenceV2/*` и ключевым runtime-файлам).
+Guard на legacy в intel-пути: smoke-тест `DPI2-025` проверяет, что в intel runtime-пути отсутствуют `GetSignals(...)`, `legacySignals.*` и любые упоминания `BlockageSignals` (grep/regex по `Core/IntelligenceV2/*` и ключевым runtime-файлам).
 
 Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|infra|pipe|insp|ui|bypass|dpi2|orch|cfg|err|e2e|perf|reg]`, который запускает проверки из плана смоков (без GUI). Для полного покрытия плана smoke runner прогоняет **все** Test ID из `TestNetworkApp/smoke_tests_plan.md`; если тест из плана ещё не реализован, он возвращает `FAIL` с причиной (это сделано намеренно, чтобы было 97/97 выполнено без "SKIP"). По умолчанию часть проверок, завязанных на WinDivert/среду, может падать или помечается как `SKIP` (например, если запуск не от администратора). Для «жёсткого» прогона без `SKIP` используйте `--smoke ... --no-skip` (алиас `--strict`): в этом режиме любые `SKIP` считаются `FAIL`. Для выгрузки результатов добавлен `--json <path>`. Для удобства сопровождения реализации тестов разнесены по файлам `TestNetworkApp/Smoke/SmokeTests.*.cs`, а каркас раннера/плана остаётся в `TestNetworkApp/Smoke/SmokeRunner.cs`.
 
@@ -276,7 +276,7 @@ Regression smoke (P0.1 Step 12): добавлены гейты
 *   `REG-003`: roundtrip сохранения/загрузки `%LocalAppData%\\ISP_Audit\\apply_transactions.json` в режиме без WPF (`Application.Current == null`).
 *   `REG-004`: per-card ретест ставится в очередь во время диагностики и гарантированно «флашится» после завершения прогона.
 
-Категория `dpi2` (DPI Intelligence v2) покрыта детерминированными smoke-тестами `DPI2-001..024` в `TestNetworkApp/Smoke/SmokeTests.Dpi2.cs`: проверяются адаптация legacy сигналов в TTL-store, очистка по TTL, агрегация по окнам 30s/60s, постановка диагноза, жёсткие защиты селектора (confidence/risk/unimplemented), Gate-маркеры `[V2][GATE1]`, форматирование компактного вывода с префиксом `[V2]`, отсутствие auto-apply (MVP), а также контракт параметризации и ручного применения v2-плана (TlsFragment params + e2e selector→plan→manual apply).
+Категория `dpi2` (DPI Intelligence / INTEL) покрыта детерминированными smoke-тестами `DPI2-001..024` в `TestNetworkApp/Smoke/SmokeTests.Dpi2.cs`: проверяются адаптация legacy сигналов в TTL-store, очистка по TTL, агрегация по окнам 30s/60s, постановка диагноза, жёсткие защиты селектора (confidence/risk/unimplemented), Gate-маркеры `[INTEL][GATE1]`, форматирование компактного вывода с префиксом `[INTEL]`, отсутствие auto-apply (MVP), а также контракт параметризации и ручного применения плана (TlsFragment params + e2e selector→plan→manual apply).
 
 Категория `insp` (Inspection Services) покрыта детерминированными smoke-тестами `INSP-001..005` в `TestNetworkApp/Smoke/SmokeTests.Insp.cs`: RST-инжекция по TTL и по IPID, детект QUIC Initial и сигнал «нет ответов», подсчёт ретрансмиссий и сигнал «подозрение на Drop» при доле >10%, извлечение host из HTTP 3xx Location. Для детерминизма используются синтетические IPv4/TCP/UDP пакеты из `TestNetworkApp/Smoke/SmokeTests.Packets.cs`.
 
@@ -301,35 +301,35 @@ Regression smoke (P0.1 Step 12): добавлены гейты
 *   **`LiveTestingPipeline`** (`Utils/LiveTestingPipeline.*.cs`): Асинхронный конвейер на базе `System.Threading.Channels`.
     *   Связывает этапы: Sniffing → Testing → Classification → Reporting.
     *   Использует `UnifiedTrafficFilter` для минимальной валидации (loopback) и правил отображения (не засорять UI «успешными» целями).
-    *   Выполняет гейтинг повторных тестов через `IBlockageStateStore.TryBeginHostTest(...)` (кулдаун + лимит попыток), чтобы не спамить сеть, но при этом дать V2 накопить несколько наблюдений (SignalSequence) по проблемным/заблокированным хостам.
+    *   Выполняет гейтинг повторных тестов через `IBlockageStateStore.TryBeginHostTest(...)` (кулдаун + лимит попыток), чтобы не спамить сеть, но при этом дать INTEL накопить несколько наблюдений (SignalSequence) по проблемным/заблокированным хостам.
     *   Важно: `TrafficCollector` дедупит соединения по `RemoteIp:RemotePort:Protocol`, но в runtime допускает ограниченные «повторные обнаружения» этой же цели с кулдауном/лимитом — иначе ретесты физически не дойдут до pipeline.
     *   Публикует периодический `[PipelineHealth]` лог со счётчиками этапов (enqueue/test/classify/ui), чтобы диагностировать потери данных и «затыки» очередей без привязки к сценариям.
     *   Производительность: этап Testing (DNS/TCP/TLS) выполняется параллельно, но с лимитом по количеству одновременных тестов.
         *   Лимит задаётся через `PipelineConfig.MaxConcurrentTests` и реализован в `TesterWorker` через `SemaphoreSlim` (in-flight задачи).
         *   Это ключевой рычаг ускорения live-диагностики при активном браузере (когда входной поток событий превышает скорость одного последовательного тестера).
-    *   Опционально принимает `AutoHostlistService`: на этапе Classification добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения). Auto-hostlist питается `InspectionSignalsSnapshot` (v2-only). Дополнительно, если хост стал кандидатом, этот контекст прокидывается в v2 хвост (evidence/notes) как короткая нота `autoHL hits=… score=…`.
-    *   v2 UX-гейт: событие `OnV2PlanBuilt` публикуется только для хостов, которые реально прошли фильтр отображения как проблема (`FilterAction.Process`), чтобы кнопка apply не применяла план, сформированный по шумовому/успешному хосту.
+    *   Опционально принимает `AutoHostlistService`: на этапе Classification добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения). Auto-hostlist питается `InspectionSignalsSnapshot` (intel-only). Дополнительно, если хост стал кандидатом, этот контекст прокидывается в intel-хвост (evidence/notes) как короткая нота `autoHL hits=… score=…`.
+    *   INTEL UX-гейт: событие `OnV2PlanBuilt` публикуется только для хостов, которые реально прошли фильтр отображения как проблема (`FilterAction.Process`), чтобы кнопка apply не применяла план, сформированный по шумовому/успешному хосту.
 
 Smoke-хелперы (для детерминированных проверок без WinDivert/реальной сети):
 * `DnsParserService.TryExtractSniFromTlsClientHelloPayload(...)` — извлечение SNI из TLS payload.
 * `DnsParserService.TryFeedTlsClientHelloFragmentForSmoke(...)` — проверка реассемблинга SNI на фрагментах ClientHello.
 
-### 3.2.1 DPI Intelligence v2
+### 3.2.1 DPI Intelligence (INTEL)
 
 Статус: частично реализовано.
-* Контрактный слой v2: `Core/IntelligenceV2/Contracts`.
-* Step 1 (Signals): в runtime подключён сбор фактов в TTL-store через `SignalsAdapterV2` (в `LiveTestingPipeline`, этап Classification). Факты инспекции снимаются через `IInspectionSignalsProvider` в виде `InspectionSignalsSnapshot` (v2-only).
-    * Гейтинг тестов по цели: `InMemoryBlockageStateStore.TryBeginHostTest(...)` использует кулдаун и лимит попыток, чтобы не спамить сеть, но при этом дать V2 накопить несколько наблюдений (SignalSequence) по проблемным/заблокированным хостам.
+* Контрактный слой INTEL: `Core/IntelligenceV2/Contracts` (историческое имя папки сохранено).
+* Step 1 (Signals): в runtime подключён сбор фактов в TTL-store через `SignalsAdapterV2` (в `LiveTestingPipeline`, этап Classification). Факты инспекции снимаются через `IInspectionSignalsProvider` в виде `InspectionSignalsSnapshot` (intel-only).
+    * Гейтинг тестов по цели: `InMemoryBlockageStateStore.TryBeginHostTest(...)` использует кулдаун и лимит попыток, чтобы не спамить сеть, но при этом дать INTEL накопить несколько наблюдений (SignalSequence) по проблемным/заблокированным хостам.
 * Step 2 (Diagnosis): в runtime подключена постановка диагноза через `StandardDiagnosisEngineV2` по агрегированному срезу `BlockageSignalsV2`.
 * Step 3 (Selector/Plan): в runtime подключён `StandardStrategySelectorV2`, который строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI (без auto-apply).
     * План может содержать `DeferredStrategies` — отложенные техники (если появляются новые/экспериментальные стратегии). В текущем состоянии Phase 3 стратегии `HttpHostTricks`, `QuicObfuscation` и `BadChecksum` считаются **implemented** и попадают в `plan.Strategies`.
 * Step 4 (ExecutorMvp): добавлен `Core/IntelligenceV2/Execution/BypassExecutorMvp.cs` — **только** форматирование/логирование (диагноз + уверенность + короткое объяснение + список стратегий), без вызова `TrafficEngine`/`BypassController` и без авто-применения.
-* Ручное применение v2 плана (без auto-apply): `LiveTestingPipeline` публикует объектный `BypassPlan` через событие `OnV2PlanBuilt`, `DiagnosticOrchestrator` хранит последний план и применяет его только по клику пользователя через `BypassController.ApplyV2PlanAsync(...)`. Исполнение apply/timeout/rollback вынесено в `Core/Bypass/BypassApplyService`.
-    * Защита от устаревшего плана: `DiagnosticOrchestrator.ApplyRecommendationsAsync(...)` применяет план только если `planHostKey` совпадает с последней v2-целью, извлечённой из UI‑диагноза (иначе — SKIP в лог).
+* Ручное применение плана (без auto-apply): `LiveTestingPipeline` публикует объектный `BypassPlan` через событие `OnV2PlanBuilt`, `DiagnosticOrchestrator` хранит последний план и применяет его только по клику пользователя через `BypassController.ApplyV2PlanAsync(...)`. Исполнение apply/timeout/rollback вынесено в `Core/Bypass/BypassApplyService`.
+    * Защита от устаревшего плана: `DiagnosticOrchestrator.ApplyRecommendationsAsync(...)` применяет план только если `planHostKey` совпадает с последней целью, извлечённой из UI‑диагноза (иначе — SKIP в лог).
     * Гибридный доменный режим (MVP, общий): `TestResultsManager` использует анализатор доменных семейств (без хардкода CDN), чтобы на лету замечать домены с большим числом вариативных подхостов (типичный кейс: CDN/шардинг).
         * При достаточных наблюдениях UI может схлопывать карточки подхостов в одну доменную карточку (ключ = доменный суффикс).
         * В панели рекомендаций появляется отдельная кнопка «Подключить (домен: <suffix>)».
-        * Команда вызывает `DiagnosticOrchestrator.ApplyRecommendationsForDomainAsync(..., suffix)`, который выбирает применимый v2-план из подхостов, но выставляет `OutcomeTargetHost = suffix`.
+        * Команда вызывает `DiagnosticOrchestrator.ApplyRecommendationsForDomainAsync(..., suffix)`, который выбирает применимый план из подхостов, но выставляет `OutcomeTargetHost = suffix`.
         * Каталог доменов хранится во внешнем JSON (`%LocalAppData%\ISP_Audit\domain_families.json`): можно вручную закреплять домены (pinned), а также смотреть/использовать автоматически выученные (learned).
         * Это **не** wildcard-мэтчинг в `BypassFilter`: домен используется как UX-цель/цель outcome (и как вход для резолва IP в селективном `DropUdp443`).
     * Отмена: команда `Cancel` отменяет не только диагностику, но и текущий ручной apply (через отдельный CTS).

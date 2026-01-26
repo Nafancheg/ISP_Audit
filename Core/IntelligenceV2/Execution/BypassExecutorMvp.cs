@@ -13,7 +13,7 @@ namespace IspAudit.Core.IntelligenceV2.Execution;
 /// </summary>
 public sealed class BypassExecutorMvp
 {
-    public const string V2LogPrefix = "[V2]";
+    public const string IntelLogPrefix = "[INTEL]";
 
     private static readonly TimeSpan DefaultDedupInterval = TimeSpan.FromSeconds(60);
 
@@ -22,7 +22,7 @@ public sealed class BypassExecutorMvp
     private readonly ConcurrentDictionary<string, (DateTimeOffset LastEmitUtc, string Signature)> _emitCache = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Преобразовать технический хвост вида "(v2:SilentDrop conf=78; ... )" в читаемый для пользователя.
+    /// Преобразовать технический хвост вида "(intel:SilentDrop conf=78; ... )" в читаемый для пользователя.
     /// </summary>
     public bool TryFormatDiagnosisSuffix(string? tailWithParens, out string formatted)
     {
@@ -34,7 +34,7 @@ public sealed class BypassExecutorMvp
         }
 
         var tail = tailWithParens.Trim();
-        if (!tail.Contains("v2:", StringComparison.OrdinalIgnoreCase))
+        if (!tail.Contains("intel:", StringComparison.OrdinalIgnoreCase) && !tail.Contains("v2:", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -46,14 +46,18 @@ public sealed class BypassExecutorMvp
             inner = inner.Substring(1, inner.Length - 2);
         }
 
-        // Ожидаемый формат: "v2:<DiagnosisId> conf=<N>; <note1>; <note2>"
-        var v2Index = inner.IndexOf("v2:", StringComparison.OrdinalIgnoreCase);
-        if (v2Index < 0)
+        // Ожидаемый формат: "intel:<DiagnosisId> conf=<N>; <note1>; <note2>".
+        // Для обратной совместимости также понимаем старый формат "v2:".
+        var intelIndex = inner.IndexOf("intel:", StringComparison.OrdinalIgnoreCase);
+        var v2Index = intelIndex < 0 ? inner.IndexOf("v2:", StringComparison.OrdinalIgnoreCase) : -1;
+        var prefixIndex = intelIndex >= 0 ? intelIndex : v2Index;
+        var prefixLen = intelIndex >= 0 ? 6 : 3;
+        if (prefixIndex < 0)
         {
             return false;
         }
 
-        var after = inner.Substring(v2Index + 3).Trim();
+        var after = inner.Substring(prefixIndex + prefixLen).Trim();
         if (after.Length == 0)
         {
             return false;
@@ -74,8 +78,8 @@ public sealed class BypassExecutorMvp
         }
 
         formatted = string.IsNullOrWhiteSpace(explanation)
-            ? $"({V2LogPrefix} диагноз={diagnosisId} уверенность={conf}%)"
-            : $"({V2LogPrefix} диагноз={diagnosisId} уверенность={conf}%: {explanation})";
+            ? $"({IntelLogPrefix} диагноз={diagnosisId} уверенность={conf}%)"
+            : $"({IntelLogPrefix} диагноз={diagnosisId} уверенность={conf}%: {explanation})";
 
         return true;
     }
@@ -110,7 +114,7 @@ public sealed class BypassExecutorMvp
             return false;
         }
 
-        line = $"{V2LogPrefix} 💡 Рекомендация: {string.Join(", ", strategies)}";
+        line = $"{IntelLogPrefix} 💡 Рекомендация: {string.Join(", ", strategies)}";
 
         if (!string.IsNullOrWhiteSpace(contextSuffix))
         {
@@ -180,8 +184,13 @@ public sealed class BypassExecutorMvp
             return [];
         }
 
-        // Формат pipeline: "v2:TlsFragment + DropRst (conf=78)"
-        if (raw.StartsWith("v2:", StringComparison.OrdinalIgnoreCase))
+        // Формат pipeline: "plan:TlsFragment + DropRst (conf=78)".
+        // Для обратной совместимости также понимаем старый префикс "v2:".
+        if (raw.StartsWith("plan:", StringComparison.OrdinalIgnoreCase))
+        {
+            raw = raw.Substring(5);
+        }
+        else if (raw.StartsWith("v2:", StringComparison.OrdinalIgnoreCase))
         {
             raw = raw.Substring(3);
         }

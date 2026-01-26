@@ -152,15 +152,15 @@ namespace IspAudit.Core.Bypass
                 ? "(пусто)"
                 : string.Join(", ", plan.Strategies.Select(s => s.Id));
 
-            _log?.Invoke($"[V2][Executor] Apply requested: диагноз={plan.ForDiagnosis} conf={plan.PlanConfidence}% стратегии={strategiesText}");
+            _log?.Invoke($"[APPLY][Executor] Apply requested: диагноз={plan.ForDiagnosis} conf={plan.PlanConfidence}% стратегии={strategiesText}");
             if (!string.IsNullOrWhiteSpace(plan.Reasoning))
             {
-                _log?.Invoke($"[V2][Executor] Reasoning: {plan.Reasoning}");
+                _log?.Invoke($"[APPLY][Executor] Reasoning: {plan.Reasoning}");
             }
 
             var optionsBefore = _stateManager.GetOptionsSnapshot();
             var before = new BypassApplyStateSnapshot(optionsBefore, currentDoHEnabled, (selectedDnsPreset ?? string.Empty).Trim());
-            _log?.Invoke($"[V2][Executor] Timeout={(timeout > TimeSpan.Zero ? timeout.TotalSeconds.ToString("0.##") + "s" : "none")}; before={before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
+            _log?.Invoke($"[APPLY][Executor] Timeout={(timeout > TimeSpan.Zero ? timeout.TotalSeconds.ToString("0.##") + "s" : "none")}; before={before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
 
             var tracker = new ApplyPhaseTracker();
             CancellationTokenSource? timeoutCts = null;
@@ -203,7 +203,7 @@ namespace IspAudit.Core.Bypass
                 var planned = BuildPlannedState(before, plan);
                 tracker.FinalizeCurrent("OK");
 
-                _log?.Invoke($"[V2][Executor] Target={planned.PlannedOptions.ToReadableStrategy()}; DoH={(planned.PlannedDoHEnabled ? "on" : "off")}; DNS={planned.PlannedDnsPreset}");
+                _log?.Invoke($"[APPLY][Executor] Target={planned.PlannedOptions.ToReadableStrategy()}; DoH={(planned.PlannedDoHEnabled ? "on" : "off")}; DNS={planned.PlannedDnsPreset}");
 
                 // Тестовый хук (smoke/regression): искусственная задержка, чтобы можно было
                 // детерминированно проверить сериализацию apply (P0.1 Step 13).
@@ -212,7 +212,7 @@ namespace IspAudit.Core.Bypass
                 {
                     ReportPhaseStart("test_delay", $"delayMs={testDelayMs}");
                     tracker.Start("test_delay", $"delayMs={testDelayMs}");
-                    _log?.Invoke($"[V2][Executor] Test delay: {testDelayMs}ms");
+                    _log?.Invoke($"[APPLY][Executor] Test delay: {testDelayMs}ms");
                     await Task.Delay(testDelayMs, linked.Token).ConfigureAwait(false);
                     tracker.FinalizeCurrent("OK");
                 }
@@ -221,10 +221,10 @@ namespace IspAudit.Core.Bypass
 
                 ReportPhaseStart("apply_tls_options");
                 tracker.Start("apply_tls_options");
-                _log?.Invoke("[V2][Executor] Applying bypass options...");
+                _log?.Invoke("[APPLY][Executor] Applying bypass options...");
                 await _stateManager.ApplyTlsOptionsAsync(planned.PlannedOptions, linked.Token).ConfigureAwait(false);
                 tlsOptionsApplied = true;
-                _log?.Invoke("[V2][Executor] Bypass options applied");
+                _log?.Invoke("[APPLY][Executor] Bypass options applied");
                 tracker.FinalizeCurrent("OK");
 
                 linked.Token.ThrowIfCancellationRequested();
@@ -237,7 +237,7 @@ namespace IspAudit.Core.Bypass
                     linked.Token.ThrowIfCancellationRequested();
                     ReportPhaseStart("apply_doh_enable", $"preset={planned.PlannedDnsPreset}");
                     tracker.Start("apply_doh_enable", $"preset={planned.PlannedDnsPreset}");
-                    _log?.Invoke("[V2][Executor] Applying DoH (enable)");
+                    _log?.Invoke("[APPLY][Executor] Applying DoH (enable)");
 
                     dnsTouched = true;
                     var (success, error) = await FixService.ApplyDnsFixAsync(planned.PlannedDnsPreset).ConfigureAwait(false);
@@ -262,7 +262,7 @@ namespace IspAudit.Core.Bypass
                     linked.Token.ThrowIfCancellationRequested();
                     ReportPhaseStart("apply_doh_disable");
                     tracker.Start("apply_doh_disable");
-                    _log?.Invoke("[V2][Executor] Applying DoH (disable)");
+                    _log?.Invoke("[APPLY][Executor] Applying DoH (disable)");
 
                     dnsTouched = true;
                     var (success, error) = await FixService.RestoreDnsAsync().ConfigureAwait(false);
@@ -273,7 +273,7 @@ namespace IspAudit.Core.Bypass
                     linked.Token.ThrowIfCancellationRequested();
                 }
 
-                _log?.Invoke($"[V2][Executor] Apply complete: after={planned.PlannedOptions.ToReadableStrategy()}; DoH={(dohAfter ? "on" : "off")}; DNS={planned.PlannedDnsPreset}");
+                _log?.Invoke($"[APPLY][Executor] Apply complete: after={planned.PlannedOptions.ToReadableStrategy()}; DoH={(dohAfter ? "on" : "off")}; DNS={planned.PlannedDnsPreset}");
 
                 return planned with { PlannedDoHEnabled = dohAfter };
             }
@@ -286,14 +286,14 @@ namespace IspAudit.Core.Bypass
                 var currentPhase = tracker.CurrentPhase;
                 tracker.FinalizeCurrent("CANCELED", cancelReason);
 
-                _log?.Invoke($"[V2][Executor] Apply {cancelReason} — rollback");
-                _log?.Invoke($"[V2][Executor] Rollback to: {before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
+                _log?.Invoke($"[APPLY][Executor] Apply {cancelReason} — rollback");
+                _log?.Invoke($"[APPLY][Executor] Rollback to: {before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
 
                 string rollbackStatus;
                 if (!tlsOptionsApplied && !dnsTouched)
                 {
                     rollbackStatus = "NOT_NEEDED";
-                    _log?.Invoke("[V2][Executor] Rollback skipped: ничего не было применено");
+                    _log?.Invoke("[APPLY][Executor] Rollback skipped: ничего не было применено");
                 }
                 else
                 {
@@ -301,7 +301,7 @@ namespace IspAudit.Core.Bypass
                     rollbackStatus = rollbackOk ? "DONE" : "FAILED";
                 }
 
-                _log?.Invoke($"[V2][Executor] Rollback complete ({rollbackStatus}): after={before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
+                _log?.Invoke($"[APPLY][Executor] Rollback complete ({rollbackStatus}): after={before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
 
                 throw new BypassApplyCanceledException(
                     new BypassApplyExecutionResult(
@@ -319,14 +319,14 @@ namespace IspAudit.Core.Bypass
             {
                 var currentPhase = tracker.CurrentPhase;
                 tracker.FinalizeCurrent("FAILED", ex.Message);
-                _log?.Invoke($"[V2][Executor] Apply failed: {ex.Message} — rollback");
-                _log?.Invoke($"[V2][Executor] Rollback to: {before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
+                _log?.Invoke($"[APPLY][Executor] Apply failed: {ex.Message} — rollback");
+                _log?.Invoke($"[APPLY][Executor] Rollback to: {before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
 
                 string rollbackStatus;
                 if (!tlsOptionsApplied && !dnsTouched)
                 {
                     rollbackStatus = "NOT_NEEDED";
-                    _log?.Invoke("[V2][Executor] Rollback skipped: ничего не было применено");
+                    _log?.Invoke("[APPLY][Executor] Rollback skipped: ничего не было применено");
                 }
                 else
                 {
@@ -334,7 +334,7 @@ namespace IspAudit.Core.Bypass
                     rollbackStatus = rollbackOk ? "DONE" : "FAILED";
                 }
 
-                _log?.Invoke($"[V2][Executor] Rollback complete ({rollbackStatus}): after={before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
+                _log?.Invoke($"[APPLY][Executor] Rollback complete ({rollbackStatus}): after={before.Options.ToReadableStrategy()}; DoH={(before.DoHEnabled ? "on" : "off")}; DNS={before.SelectedDnsPreset}");
 
                 throw new BypassApplyFailedException(
                     new BypassApplyExecutionResult(
@@ -446,7 +446,7 @@ namespace IspAudit.Core.Bypass
                                 {
                                     var sizes = parsed.Sizes.ToList();
                                     requestedPreset = ResolveOrCreatePresetBySizes(sizes);
-                                    _log?.Invoke($"[V2][Executor] TlsFragment param: sizes=[{string.Join(",", sizes)}] → preset='{requestedPreset.Name}'");
+                                    _log?.Invoke($"[APPLY][Executor] TlsFragment param: sizes=[{string.Join(",", sizes)}] → preset='{requestedPreset.Name}'");
                                 }
                                 else if (!string.IsNullOrWhiteSpace(parsed.PresetName))
                                 {
@@ -454,18 +454,18 @@ namespace IspAudit.Core.Bypass
                                     if (resolved != null)
                                     {
                                         requestedPreset = resolved;
-                                        _log?.Invoke($"[V2][Executor] TlsFragment param: preset='{parsed.PresetName}' → '{resolved.Name}'");
+                                        _log?.Invoke($"[APPLY][Executor] TlsFragment param: preset='{parsed.PresetName}' → '{resolved.Name}'");
                                     }
                                     else
                                     {
-                                        _log?.Invoke($"[V2][Executor] TlsFragment param: preset='{parsed.PresetName}' не распознан — пропуск");
+                                        _log?.Invoke($"[APPLY][Executor] TlsFragment param: preset='{parsed.PresetName}' не распознан — пропуск");
                                     }
                                 }
 
                                 if (parsed.AutoAdjustAggressive.HasValue)
                                 {
                                     requestedAutoAdjustAggressive = parsed.AutoAdjustAggressive.Value;
-                                    _log?.Invoke($"[V2][Executor] TlsFragment param: autoAdjustAggressive={(requestedAutoAdjustAggressive.Value ? "true" : "false")}");
+                                    _log?.Invoke($"[APPLY][Executor] TlsFragment param: autoAdjustAggressive={(requestedAutoAdjustAggressive.Value ? "true" : "false")}");
                                 }
                             }
                         }
@@ -494,29 +494,29 @@ namespace IspAudit.Core.Bypass
                         if (Config.RuntimeFlags.EnableV2DoHFromPlan)
                         {
                             enableDoH = true;
-                            _log?.Invoke("[V2][Executor] UseDoh: включаем DoH (разрешено gate)");
+                            _log?.Invoke("[APPLY][Executor] UseDoh: включаем DoH (разрешено gate)");
                         }
                         else
                         {
-                            _log?.Invoke("[V2][Executor] UseDoh: пропуск (по умолчанию DoH из v2 не применяется автоматически)");
+                            _log?.Invoke("[APPLY][Executor] UseDoh: пропуск (по умолчанию DoH из плана не применяется автоматически)");
                         }
                         break;
                     case StrategyId.QuicObfuscation:
                         updated = updated with { DropUdp443 = true };
                         wantQuicFallback = true;
-                        _log?.Invoke("[V2][Executor] QuicObfuscation: включаем QUIC→TCP (DROP UDP/443)");
+                        _log?.Invoke("[APPLY][Executor] QuicObfuscation: включаем QUIC→TCP (DROP UDP/443)");
                         break;
                     case StrategyId.HttpHostTricks:
                         updated = updated with { HttpHostTricksEnabled = true };
                         wantHttpHostTricks = true;
-                        _log?.Invoke("[V2][Executor] HttpHostTricks: включаем HTTP Host tricks");
+                        _log?.Invoke("[APPLY][Executor] HttpHostTricks: включаем HTTP Host tricks");
                         break;
                     case StrategyId.BadChecksum:
                         updated = updated with { BadChecksumEnabled = true };
-                        _log?.Invoke("[V2][Executor] BadChecksum: включаем bad checksum (только для фейковых пакетов)");
+                        _log?.Invoke("[APPLY][Executor] BadChecksum: включаем bad checksum (только для фейковых пакетов)");
                         break;
                     default:
-                        _log?.Invoke($"[V2][Executor] Стратегия {strategy.Id} не поддерживается контроллером — пропуск");
+                        _log?.Invoke($"[APPLY][Executor] Стратегия {strategy.Id} не поддерживается контроллером — пропуск");
                         break;
                 }
             }
@@ -525,14 +525,14 @@ namespace IspAudit.Core.Bypass
             {
                 updated = updated with { DropUdp443 = true };
                 wantQuicFallback = true;
-                _log?.Invoke("[V2][Executor] Assist: включаем QUIC→TCP (DROP UDP/443)");
+                _log?.Invoke("[APPLY][Executor] Assist: включаем QUIC→TCP (DROP UDP/443)");
             }
 
             if (plan.AllowNoSni)
             {
                 updated = updated with { AllowNoSni = true };
                 wantAllowNoSni = true;
-                _log?.Invoke("[V2][Executor] Assist: включаем No SNI (разрешить обход без SNI)");
+                _log?.Invoke("[APPLY][Executor] Assist: включаем No SNI (разрешить обход без SNI)");
             }
 
             // P0.1 Step 1: per-target политика (для decision graph).
@@ -651,3 +651,4 @@ namespace IspAudit.Core.Bypass
         }
     }
 }
+

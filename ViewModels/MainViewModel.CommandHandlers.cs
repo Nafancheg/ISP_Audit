@@ -173,11 +173,11 @@ namespace IspAudit.ViewModels
             }
             catch (OperationCanceledException)
             {
-                Log("[V2][APPLY] Отмена применения рекомендаций");
+                Log("[APPLY] Отмена применения рекомендаций");
             }
             catch (Exception ex)
             {
-                Log($"[V2][APPLY] Ошибка применения рекомендаций: {ex.Message}");
+                Log($"[APPLY] Ошибка применения рекомендаций: {ex.Message}");
             }
             finally
             {
@@ -194,7 +194,7 @@ namespace IspAudit.ViewModels
 
             if (!ShowBypassPanel)
             {
-                Log("[V2][APPLY] Bypass недоступен (нужны права администратора)");
+                Log("[APPLY] Bypass недоступен (нужны права администратора)");
                 return;
             }
 
@@ -205,7 +205,7 @@ namespace IspAudit.ViewModels
                 // Иначе работаем по авто-подсказке семейства.
                 if (string.IsNullOrWhiteSpace(domainOverride) && !HasDomainSuggestion)
                 {
-                    Log("[V2][APPLY] Доменная подсказка недоступна для текущей цели");
+                    Log("[APPLY] Доменная подсказка недоступна для текущей цели");
                     return;
                 }
 
@@ -215,13 +215,13 @@ namespace IspAudit.ViewModels
 
                 if (string.IsNullOrWhiteSpace(domain))
                 {
-                    Log("[V2][APPLY] Доменная цель не определена");
+                    Log("[APPLY] Доменная цель не определена");
                     return;
                 }
 
                 if (!string.IsNullOrWhiteSpace(domainOverride))
                 {
-                    Log($"[V2][APPLY] Доменный apply: domain={domain} (override)");
+                    Log($"[APPLY] Доменный apply: domain={domain} (override)");
                 }
 
                 var txId = Guid.NewGuid().ToString("N");
@@ -273,11 +273,11 @@ namespace IspAudit.ViewModels
             }
             catch (OperationCanceledException)
             {
-                Log("[V2][APPLY] Отмена применения доменной стратегии");
+                Log("[APPLY] Отмена применения доменной стратегии");
             }
             catch (Exception ex)
             {
-                Log($"[V2][APPLY] Ошибка применения доменной стратегии: {ex.Message}");
+                Log($"[APPLY] Ошибка применения доменной стратегии: {ex.Message}");
             }
             finally
             {
@@ -294,7 +294,7 @@ namespace IspAudit.ViewModels
 
             if (!ShowBypassPanel)
             {
-                Log("[V2][APPLY] Bypass недоступен (нужны права администратора)");
+                Log("[APPLY] Bypass недоступен (нужны права администратора)");
                 return;
             }
 
@@ -312,7 +312,7 @@ namespace IspAudit.ViewModels
                 var preferredHostKey = GetPreferredHostKey(test);
                 if (string.IsNullOrWhiteSpace(preferredHostKey))
                 {
-                    Log("[V2][APPLY] Нет hostKey для выбранной строки (SNI/Host/Name пуст)");
+                    Log("[APPLY] Нет hostKey для выбранной строки (SNI/Host/Name пуст)");
                     return;
                 }
 
@@ -367,11 +367,11 @@ namespace IspAudit.ViewModels
             }
             catch (OperationCanceledException)
             {
-                Log("[V2][APPLY] Отмена применения стратегии из карточки");
+                Log("[APPLY] Отмена применения стратегии из карточки");
             }
             catch (Exception ex)
             {
-                Log($"[V2][APPLY] Ошибка применения стратегии из карточки: {ex.Message}");
+                Log($"[APPLY] Ошибка применения стратегии из карточки: {ex.Message}");
             }
             finally
             {
@@ -1004,7 +1004,7 @@ namespace IspAudit.ViewModels
 
             if (!ShowBypassPanel)
             {
-                Log("[V2][APPLY] Bypass недоступен (нужны права администратора)");
+                Log("[APPLY] Bypass недоступен (нужны права администратора)");
                 return;
             }
 
@@ -1015,7 +1015,7 @@ namespace IspAudit.ViewModels
             }
             catch (Exception ex)
             {
-                Log($"[V2][APPLY] Ошибка рестарта коннекта: {ex.Message}");
+                Log($"[APPLY] Ошибка рестарта коннекта: {ex.Message}");
             }
         }
 

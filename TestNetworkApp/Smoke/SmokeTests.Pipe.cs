@@ -470,7 +470,7 @@ namespace TestNetworkApp.Smoke
                 await pipeline.EnqueueHostAsync(host).ConfigureAwait(false);
                 await pipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(6)).ConfigureAwait(false);
 
-                // Дождёмся UI-строки с хвостом [V2].
+                // Дождёмся UI-строки с хвостом [INTEL].
                 var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
                 while (DateTime.UtcNow < deadline)
                 {
@@ -485,19 +485,20 @@ namespace TestNetworkApp.Smoke
                 var found = uiLines.FirstOrDefault(l => l.Contains("autoHL", StringComparison.OrdinalIgnoreCase));
                 if (string.IsNullOrWhiteSpace(found))
                 {
-                    var sample = uiLines.FirstOrDefault(l => l.Contains("[V2]", StringComparison.OrdinalIgnoreCase))
+                    var sample = uiLines.FirstOrDefault(l => l.Contains("[INTEL]", StringComparison.OrdinalIgnoreCase))
+                        ?? uiLines.FirstOrDefault(l => l.Contains("[V2]", StringComparison.OrdinalIgnoreCase))
                         ?? uiLines.FirstOrDefault(l => l.StartsWith("❌", StringComparison.Ordinal))
                         ?? "(no ui lines)";
-                    return new SmokeTestResult("PIPE-018", "Auto-hostlist добавляется в v2 хвост (evidence/notes)", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("PIPE-018", "Auto-hostlist добавляется в intel-хвост (evidence/notes)", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Не нашли метку autoHL в UI хвосте. Пример: {sample}");
                 }
 
-                return new SmokeTestResult("PIPE-018", "Auto-hostlist добавляется в v2 хвост (evidence/notes)", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("PIPE-018", "Auto-hostlist добавляется в intel-хвост (evidence/notes)", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: {found}");
             }, ct);
 
         public static Task<SmokeTestResult> Pipe_AutoHostlist_V2Only_NoLegacyTypes(CancellationToken ct)
-            => RunAsync("PIPE-019", "Auto-hostlist v2-only: без BlockageSignals/GetSignals", () =>
+            => RunAsync("PIPE-019", "Auto-hostlist intel-only: без BlockageSignals/GetSignals", () =>
             {
                 var autoHostlist = new AutoHostlistService
                 {
@@ -973,188 +974,27 @@ namespace TestNetworkApp.Smoke
 
         public static Task<SmokeTestResult> Pipe_Classifier_FakeIpRange(CancellationToken ct)
             => RunAsync("PIPE-016", "Классификация FAKE_IP (198.18.0.0/15)", () =>
-            {
-                var classifier = new StandardBlockageClassifier();
-                var host = new HostDiscovered(
-                    Key: "198.18.0.1:443:TCP",
-                    RemoteIp: IPAddress.Parse("198.18.0.1"),
-                    RemotePort: 443,
-                    Protocol: BypassTransportProtocol.Tcp,
-                    DiscoveredAt: DateTime.UtcNow);
-
-                var tested = new HostTested(
-                    Host: host,
-                    DnsOk: true,
-                    TcpOk: true,
-                    TlsOk: true,
-                    DnsStatus: BlockageCode.StatusOk,
-                    Hostname: null,
-                    SniHostname: null,
-                    ReverseDnsHostname: null,
-                    TcpLatencyMs: 10,
-                    BlockageType: null,
-                    TestedAt: DateTime.UtcNow);
-
-                var blocked = classifier.ClassifyBlockage(tested);
-                if (BlockageCode.Normalize(blocked.TestResult.BlockageType) != BlockageCode.FakeIp)
-                {
-                    return new SmokeTestResult("PIPE-016", "Классификация FAKE_IP (198.18.0.0/15)", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"Ожидали {BlockageCode.FakeIp}, получили '{blocked.TestResult.BlockageType ?? "<null>"}'");
-                }
-
-                return new SmokeTestResult("PIPE-016", "Классификация FAKE_IP (198.18.0.0/15)", SmokeOutcome.Pass, TimeSpan.Zero,
-                    "OK: адрес из 198.18/15 помечается как FakeIp");
-            }, ct);
+                new SmokeTestResult("PIPE-016", "Классификация FAKE_IP (198.18.0.0/15)", SmokeOutcome.Skip, TimeSpan.Zero,
+                    "Legacy StandardBlockageClassifier удалён; проверка перенесена в набор dpi2 (SignalsAdapter/DiagnosisEngine)."), ct);
 
         public static Task<SmokeTestResult> Pipe_Classifier_DnsBlocked(CancellationToken ct)
             => RunAsync("PIPE-012", "Классификация DNS-блокировки", () =>
-            {
-                var classifier = new StandardBlockageClassifier();
-                var host = new HostDiscovered(
-                    Key: "203.0.113.10:443:TCP",
-                    RemoteIp: IPAddress.Parse("203.0.113.10"),
-                    RemotePort: 443,
-                    Protocol: BypassTransportProtocol.Tcp,
-                    DiscoveredAt: DateTime.UtcNow)
-                {
-                    Hostname = "blocked.example"
-                };
-
-                // В реальном StandardHostTester DNS проблема идёт через DnsStatus,
-                // а BlockageType может быть пустым. Smoke-тест фиксирует ожидаемую классификацию.
-                var tested = new HostTested(
-                    Host: host,
-                    DnsOk: false,
-                    TcpOk: false,
-                    TlsOk: false,
-                    DnsStatus: BlockageCode.DnsError,
-                    Hostname: host.Hostname,
-                    SniHostname: null,
-                    ReverseDnsHostname: null,
-                    TcpLatencyMs: 0,
-                    BlockageType: null,
-                    TestedAt: DateTime.UtcNow);
-
-                var blocked = classifier.ClassifyBlockage(tested);
-                var normalized = BlockageCode.Normalize(blocked.TestResult.BlockageType);
-
-                if (!string.Equals(normalized, BlockageCode.DnsError, StringComparison.Ordinal))
-                {
-                    return new SmokeTestResult("PIPE-012", "Классификация DNS-блокировки", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"Ожидали {BlockageCode.DnsError}, получили '{blocked.TestResult.BlockageType ?? "<null>"}'");
-                }
-
-                return new SmokeTestResult("PIPE-012", "Классификация DNS-блокировки", SmokeOutcome.Pass, TimeSpan.Zero,
-                    "OK: DnsOk=false приводит к DNS_ERROR");
-            }, ct);
+                new SmokeTestResult("PIPE-012", "Классификация DNS-блокировки", SmokeOutcome.Skip, TimeSpan.Zero,
+                    "Legacy StandardBlockageClassifier удалён; проверка перенесена в набор dpi2 (SignalsAdapter/DiagnosisEngine)."), ct);
 
         public static Task<SmokeTestResult> Pipe_Classifier_TcpTimeout(CancellationToken ct)
             => RunAsync("PIPE-013", "Классификация TCP Timeout", () =>
-            {
-                var classifier = new StandardBlockageClassifier();
-                var host = new HostDiscovered(
-                    Key: "203.0.113.10:443:TCP",
-                    RemoteIp: IPAddress.Parse("203.0.113.10"),
-                    RemotePort: 443,
-                    Protocol: BypassTransportProtocol.Tcp,
-                    DiscoveredAt: DateTime.UtcNow);
-
-                var tested = new HostTested(
-                    Host: host,
-                    DnsOk: true,
-                    TcpOk: false,
-                    TlsOk: false,
-                    DnsStatus: BlockageCode.StatusOk,
-                    Hostname: null,
-                    SniHostname: null,
-                    ReverseDnsHostname: null,
-                    TcpLatencyMs: 0,
-                    BlockageType: BlockageCode.TcpConnectTimeout,
-                    TestedAt: DateTime.UtcNow);
-
-                var blocked = classifier.ClassifyBlockage(tested);
-                if (BlockageCode.Normalize(blocked.TestResult.BlockageType) != BlockageCode.TcpConnectTimeout)
-                {
-                    return new SmokeTestResult("PIPE-013", "Классификация TCP Timeout", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"Ожидали {BlockageCode.TcpConnectTimeout}, получили '{blocked.TestResult.BlockageType ?? "<null>"}'");
-                }
-
-                return new SmokeTestResult("PIPE-013", "Классификация TCP Timeout", SmokeOutcome.Pass, TimeSpan.Zero,
-                    "OK: TCP_CONNECT_TIMEOUT классифицируется корректно");
-            }, ct);
+                new SmokeTestResult("PIPE-013", "Классификация TCP Timeout", SmokeOutcome.Skip, TimeSpan.Zero,
+                    "Legacy StandardBlockageClassifier удалён; проверка перенесена в набор dpi2 (SignalsAdapter/DiagnosisEngine)."), ct);
 
         public static Task<SmokeTestResult> Pipe_Classifier_TcpReset(CancellationToken ct)
             => RunAsync("PIPE-014", "Классификация TCP Reset", () =>
-            {
-                var classifier = new StandardBlockageClassifier();
-                var host = new HostDiscovered(
-                    Key: "203.0.113.10:443:TCP",
-                    RemoteIp: IPAddress.Parse("203.0.113.10"),
-                    RemotePort: 443,
-                    Protocol: BypassTransportProtocol.Tcp,
-                    DiscoveredAt: DateTime.UtcNow);
-
-                var tested = new HostTested(
-                    Host: host,
-                    DnsOk: true,
-                    TcpOk: false,
-                    TlsOk: false,
-                    DnsStatus: BlockageCode.StatusOk,
-                    Hostname: null,
-                    SniHostname: null,
-                    ReverseDnsHostname: null,
-                    TcpLatencyMs: 0,
-                    BlockageType: BlockageCode.TcpConnectionReset,
-                    TestedAt: DateTime.UtcNow);
-
-                var blocked = classifier.ClassifyBlockage(tested);
-                if (BlockageCode.Normalize(blocked.TestResult.BlockageType) != BlockageCode.TcpConnectionReset)
-                {
-                    return new SmokeTestResult("PIPE-014", "Классификация TCP Reset", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"Ожидали {BlockageCode.TcpConnectionReset}, получили '{blocked.TestResult.BlockageType ?? "<null>"}'");
-                }
-
-                return new SmokeTestResult("PIPE-014", "Классификация TCP Reset", SmokeOutcome.Pass, TimeSpan.Zero,
-                    "OK: TCP_CONNECTION_RESET классифицируется корректно");
-            }, ct);
+                new SmokeTestResult("PIPE-014", "Классификация TCP Reset", SmokeOutcome.Skip, TimeSpan.Zero,
+                    "Legacy StandardBlockageClassifier удалён; проверка перенесена в набор dpi2 (SignalsAdapter/DiagnosisEngine)."), ct);
 
         public static Task<SmokeTestResult> Pipe_Classifier_DpiFilter_Tls(CancellationToken ct)
             => RunAsync("PIPE-015", "Классификация DPI_FILTER (TLS-блокировка)", () =>
-            {
-                var classifier = new StandardBlockageClassifier();
-                var host = new HostDiscovered(
-                    Key: "203.0.113.10:443:TCP",
-                    RemoteIp: IPAddress.Parse("203.0.113.10"),
-                    RemotePort: 443,
-                    Protocol: BypassTransportProtocol.Tcp,
-                    DiscoveredAt: DateTime.UtcNow)
-                {
-                    Hostname = "example.com",
-                    SniHostname = "example.com",
-                };
-
-                var tested = new HostTested(
-                    Host: host,
-                    DnsOk: true,
-                    TcpOk: true,
-                    TlsOk: false,
-                    DnsStatus: BlockageCode.StatusOk,
-                    Hostname: host.Hostname,
-                    SniHostname: host.SniHostname,
-                    ReverseDnsHostname: null,
-                    TcpLatencyMs: 10,
-                    BlockageType: BlockageCode.TlsHandshakeTimeout,
-                    TestedAt: DateTime.UtcNow);
-
-                var blocked = classifier.ClassifyBlockage(tested);
-                if (BlockageCode.Normalize(blocked.TestResult.BlockageType) != BlockageCode.TlsHandshakeTimeout)
-                {
-                    return new SmokeTestResult("PIPE-015", "Классификация DPI_FILTER (TLS-блокировка)", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"Ожидали {BlockageCode.TlsHandshakeTimeout}, получили '{blocked.TestResult.BlockageType ?? "<null>"}'");
-                }
-
-                return new SmokeTestResult("PIPE-015", "Классификация DPI_FILTER (TLS-блокировка)", SmokeOutcome.Pass, TimeSpan.Zero,
-                    "OK: TLS_HANDSHAKE_TIMEOUT классифицируется корректно");
-            }, ct);
+                new SmokeTestResult("PIPE-015", "Классификация DPI_FILTER (TLS-блокировка)", SmokeOutcome.Skip, TimeSpan.Zero,
+                    "Legacy StandardBlockageClassifier удалён; проверка перенесена в набор dpi2 (SignalsAdapter/DiagnosisEngine)."), ct);
     }
 }

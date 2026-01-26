@@ -78,8 +78,8 @@ namespace IspAudit.Utils
                     string? suffix = null;
                     if (!string.IsNullOrWhiteSpace(blocked.RecommendedAction))
                     {
-                        // Ищем первую открывающую скобку – именно там StandardBlockageClassifier
-                        // дописывает агрегированные сигналы: "(фейлов за Ns: N, ретрансмиссий: M, ...)".
+                        // Ищем первую открывающую скобку – туда мы дописываем агрегированные сигналы,
+                        // например: "(diag:...; ... )".
                         var idx = blocked.RecommendedAction.IndexOf('(');
                         if (idx >= 0 && blocked.RecommendedAction.EndsWith(")", StringComparison.Ordinal))
                         {

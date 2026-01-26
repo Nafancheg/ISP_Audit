@@ -94,11 +94,11 @@ namespace TestNetworkApp
                 ConnectCallback = async (context, cancellationToken) =>
                 {
                     var entry = await System.Net.Dns.GetHostEntryAsync(context.DnsEndPoint.Host, cancellationToken);
-                    var ip = Array.Find(entry.AddressList, i => i.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) 
+                    var ip = Array.Find(entry.AddressList, i => i.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
                              ?? entry.AddressList[0];
-                    
+
                     Console.WriteLine($"[DNS] {context.DnsEndPoint.Host} -> {ip}");
-                    
+
                     var socket = new System.Net.Sockets.Socket(ip.AddressFamily, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
                     try
                     {
@@ -133,19 +133,19 @@ namespace TestNetworkApp
                 try
                 {
                     Console.Write($"[{DateTime.Now:HH:mm:ss}] {name,-15} -> ");
-                    
+
                     var response = await client.GetAsync(url);
                     var statusCode = (int)response.StatusCode;
-                    
-                    Console.ForegroundColor = statusCode >= 200 && statusCode < 300 
-                        ? ConsoleColor.Green 
+
+                    Console.ForegroundColor = statusCode >= 200 && statusCode < 300
+                        ? ConsoleColor.Green
                         : ConsoleColor.Yellow;
-                    
+
                     Console.WriteLine($"{statusCode} {response.StatusCode}");
                     Console.ResetColor();
-                    
+
                     successCount++;
-                    
+
                     // Минимальная пауза
                     await Task.Delay(50);
                 }
@@ -162,9 +162,9 @@ namespace TestNetworkApp
             Console.WriteLine("\n=== Тестирование завершено ===");
             Console.WriteLine($"Всего успешных: {successCount}");
             Console.WriteLine($"Всего ошибок: {failCount}");
-            
+
             // Автоматический выход для использования в пайплайне
-            await Task.Delay(1000); 
+            await Task.Delay(1000);
 
             return 0;
         }
@@ -226,15 +226,15 @@ namespace TestNetworkApp
                     "UI-Reducer smoke: legacy рекомендация не должна менять BypassStrategy/IsBypassStrategyFromV2");
             }
 
-            var v2Recommendation = "[V2] 💡 Рекомендация: DROP_RST";
-            Console.WriteLine($"> {v2Recommendation}");
-            mgr.ParsePipelineMessage(v2Recommendation);
+            var intelRecommendation = "[INTEL] 💡 Рекомендация: DROP_RST";
+            Console.WriteLine($"> {intelRecommendation}");
+            mgr.ParsePipelineMessage(intelRecommendation);
 
                 // В UI стратегия отображается человеко-читаемо (см. MapV2StrategyTokenForUi в TestResultsManager).
                 if (!string.Equals(youtubeCard.BypassStrategy, "Drop RST", StringComparison.OrdinalIgnoreCase) || !youtubeCard.IsBypassStrategyFromV2)
             {
                 throw new InvalidOperationException(
-                    $"UI-Reducer smoke: ожидали BypassStrategy=Drop RST (v2), получили '{youtubeCard.BypassStrategy}', IsBypassStrategyFromV2={youtubeCard.IsBypassStrategyFromV2}");
+                    $"UI-Reducer smoke: ожидали BypassStrategy=Drop RST ([INTEL]), получили '{youtubeCard.BypassStrategy}', IsBypassStrategyFromV2={youtubeCard.IsBypassStrategyFromV2}");
             }
 
             Console.WriteLine("\n--- Итоговые карточки ---");
@@ -248,7 +248,7 @@ namespace TestNetworkApp
             Console.WriteLine("\nОжидаемое поведение:");
             Console.WriteLine("- facebook.com должен существовать (миграция с IP), а статус при Pass+Fail в окне → 'Нестабильно'.");
             Console.WriteLine("- youtube.com должен быть ключом карточки, а при Fail+Pass в окне → 'Нестабильно'.");
-            Console.WriteLine("- legacy '💡 Рекомендация/→ Стратегия' не меняют BypassStrategy; v2 '[V2] ...' меняют.");
+            Console.WriteLine("- legacy '💡 Рекомендация/→ Стратегия' не меняют BypassStrategy; intel '[INTEL] ...' меняют.");
         }
 
         // Вызов из smoke-раннера без дублирования логики.

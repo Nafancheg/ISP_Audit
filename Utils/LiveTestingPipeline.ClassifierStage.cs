@@ -161,7 +161,7 @@ namespace IspAudit.Utils
                     {
                         try
                         {
-                            OnV2PlanBuilt?.Invoke(planHostKeyForPublish, plan);
+                            OnPlanBuilt?.Invoke(planHostKeyForPublish, plan);
                         }
                         catch
                         {
@@ -270,7 +270,7 @@ namespace IspAudit.Utils
             if (plan.AllowNoSni) tokens.Add("AllowNoSni");
 
             var ids = tokens.Count == 0 ? PipelineContract.BypassNone : string.Join(" + ", tokens);
-            return $"v2:{ids} (conf={plan.PlanConfidence})";
+            return $"plan:{ids} (conf={plan.PlanConfidence})";
         }
 
         private static DiagnosisResult EnrichDiagnosisWithAutoHostlist(DiagnosisResult diagnosis, AutoHostCandidate candidate)
@@ -308,7 +308,7 @@ namespace IspAudit.Utils
         private static string BuildEvidenceTail(DiagnosisResult diagnosis)
         {
             // Формат специально в круглых скобках — UiWorker вытаскивает хвост и добавляет в строку.
-            var header = $"v2:{diagnosis.DiagnosisId} conf={diagnosis.Confidence}";
+            var header = $"intel:{diagnosis.DiagnosisId} conf={diagnosis.Confidence}";
             if (diagnosis.ExplanationNotes.Count == 0)
             {
                 return $"({header})";

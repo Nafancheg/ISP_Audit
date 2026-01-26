@@ -260,7 +260,7 @@ namespace IspAudit.ViewModels
 
                 var n = Results.SuggestedDomainSubhostCount;
                 return $"Авто-обнаружение CDN/шардов: замечено {n} подхостов для *.{suffix}.\n" +
-                       "Кнопка применяет v2-план к домену (OutcomeTargetHost=домен).\n" +
+                      "Кнопка применяет план рекомендаций к домену (OutcomeTargetHost=домен).\n" +
                        $"Справочник/кэш: {IspAudit.Utils.DomainFamilyCatalog.CatalogFilePath}";
             }
         }
@@ -374,27 +374,27 @@ namespace IspAudit.ViewModels
             {
                 try
                 {
-                    if (IsApplyingRecommendations) return "Идёт применение рекомендаций v2…";
+                    if (IsApplyingRecommendations) return "Идёт применение рекомендаций…";
 
                     var preferredHostKey = GetPreferredHostKey(SelectedTestResult);
                     if (!string.IsNullOrWhiteSpace(preferredHostKey))
                     {
                         var groupKey = ComputeApplyGroupKey(preferredHostKey, Results.SuggestedDomainSuffix);
-                        return $"Применяет v2-план для выбранной строки.\nЦель: {preferredHostKey}\nГруппа: {groupKey}";
+                        return $"Применяет план рекомендаций для выбранной строки.\nЦель: {preferredHostKey}\nГруппа: {groupKey}";
                     }
 
                     // Если ничего не выбрано — orchestrator выберет сохранённую/последнюю цель.
                     var activeGroup = ActiveApplyGroupKey;
                     if (!string.IsNullOrWhiteSpace(activeGroup))
                     {
-                        return $"Применяет v2-план для последней известной цели (без выбора строки).\nТекущая активная группа: {activeGroup}";
+                        return $"Применяет план рекомендаций для последней известной цели (без выбора строки).\nТекущая активная группа: {activeGroup}";
                     }
 
-                    return "Применяет v2-план.\nСовет: выберите строку результата, чтобы явно задать цель.";
+                    return "Применяет план рекомендаций.\nСовет: выберите строку результата, чтобы явно задать цель.";
                 }
                 catch
                 {
-                    return "Применяет v2-план.";
+                    return "Применяет план рекомендаций.";
                 }
             }
         }
@@ -409,23 +409,23 @@ namespace IspAudit.ViewModels
                     var groupKey = ComputeApplyGroupKey(preferredHostKey, Results.SuggestedDomainSuffix);
                     if (!string.IsNullOrWhiteSpace(groupKey))
                     {
-                        return $"Подключить v2 (группа: {groupKey})";
+                        return $"Применить рекомендации (группа: {groupKey})";
                     }
 
-                    return $"Подключить v2 (цель: {preferredHostKey})";
+                    return $"Применить рекомендации (цель: {preferredHostKey})";
                 }
 
                 var activeGroup = ActiveApplyGroupKey;
                 if (!string.IsNullOrWhiteSpace(activeGroup))
                 {
-                    return $"Подключить v2 (активная группа: {activeGroup})";
+                    return $"Применить рекомендации (активная группа: {activeGroup})";
                 }
 
-                return "Подключить v2 (цель: авто)";
+                return "Применить рекомендации (цель: авто)";
             }
             catch
             {
-                return "Подключить v2";
+                return "Применить рекомендации";
             }
         }
 

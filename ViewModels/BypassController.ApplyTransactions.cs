@@ -249,7 +249,7 @@ namespace IspAudit.ViewModels
 
                 var tx = new BypassApplyTransaction
                 {
-                    Version = "v2",
+                    Version = "intel",
 
                     TransactionId = string.IsNullOrWhiteSpace(transactionIdOverride)
                         ? Guid.NewGuid().ToString("N")
@@ -571,7 +571,7 @@ namespace IspAudit.ViewModels
                     }
                 }
 
-                // P0.1 Step 2: v2 секции (контракт), плюс contributions.
+                // P0.1 Step 2: секции плана (контракт), плюс contributions.
                 if (tx.Request != null)
                 {
                     node["request"] = JsonSerializer.SerializeToNode(tx.Request, jsonOpts);

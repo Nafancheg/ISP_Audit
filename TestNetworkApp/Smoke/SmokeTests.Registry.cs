@@ -92,11 +92,7 @@ namespace TestNetworkApp.Smoke
                 ["PIPE-017"] = Pipe_PipelineHealth_EmitsLog_OnActivity,
                 ["PIPE-018"] = Pipe_AutoHostlist_AppendedToV2Tail,
                 ["PIPE-019"] = Pipe_AutoHostlist_V2Only_NoLegacyTypes,
-                ["PIPE-012"] = Pipe_Classifier_DnsBlocked,
-                ["PIPE-013"] = Pipe_Classifier_TcpTimeout,
-                ["PIPE-014"] = Pipe_Classifier_TcpReset,
-                ["PIPE-015"] = Pipe_Classifier_DpiFilter_Tls,
-                ["PIPE-016"] = Pipe_Classifier_FakeIpRange,
+                // PIPE-012..016: legacy-классификатор удалён (проверки перенесены в dpi2 слой).
 
                 ["INSP-001"] = Insp_RstInspection_TtlInjectionDetected,
                 ["INSP-002"] = Insp_RstInspection_IpIdAnomalyDetected,

@@ -432,11 +432,12 @@ namespace IspAudit.ViewModels
                 }
                 else if (msg.Contains("→ Стратегия:") || msg.Contains("💡 Рекомендация:"))
                 {
-                    var isV2 = msg.TrimStart().StartsWith("[V2]", StringComparison.OrdinalIgnoreCase);
+                    var isIntel = msg.TrimStart().StartsWith("[INTEL]", StringComparison.OrdinalIgnoreCase)
+                                 || msg.TrimStart().StartsWith("[V2]", StringComparison.OrdinalIgnoreCase); // обратная совместимость
 
-                    // v2 — единственный источник рекомендаций для UI.
-                    // Legacy сообщения могут присутствовать в логе, но не должны менять стратегию карточки.
-                    if (!isV2)
+                    // Intel — единственный источник рекомендаций для UI.
+                    // Любые legacy строки могут присутствовать в логе, но не должны менять стратегию карточки.
+                    if (!isIntel)
                     {
                         return;
                     }
@@ -524,7 +525,7 @@ namespace IspAudit.ViewModels
                     if (result != null)
                     {
                         result.BypassStrategy = uiStrategy;
-                        if (isV2)
+                        if (isIntel)
                         {
                             result.IsBypassStrategyFromV2 = true;
                         }
@@ -655,8 +656,13 @@ namespace IspAudit.ViewModels
             var t = token.Trim();
             if (string.IsNullOrWhiteSpace(t)) return string.Empty;
 
-            // Поддерживаем enum-названия v2 и "v2:"-префикс из логов.
-            if (t.StartsWith("v2:", StringComparison.OrdinalIgnoreCase))
+            // Поддерживаем enum-названия стратегий и префиксы из логов.
+            // Новый формат: "plan:<...>", старый: "v2:<...>" (обратная совместимость).
+            if (t.StartsWith("plan:", StringComparison.OrdinalIgnoreCase))
+            {
+                t = t.Substring(5).Trim();
+            }
+            else if (t.StartsWith("v2:", StringComparison.OrdinalIgnoreCase))
             {
                 t = t.Substring(3).Trim();
             }

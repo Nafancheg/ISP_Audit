@@ -38,7 +38,7 @@ namespace IspAudit.ViewModels
     {
         #region Recommendations (Apply)
 
-        public sealed record V2ApplyOutcome(string HostKey, string AppliedStrategyText, string PlanText, string? Reasoning)
+        public sealed record ApplyOutcome(string HostKey, string AppliedStrategyText, string PlanText, string? Reasoning)
         {
             public string Status { get; init; } = "APPLIED";
             public string Error { get; init; } = string.Empty;
@@ -54,10 +54,10 @@ namespace IspAudit.ViewModels
         private static bool PlanHasApplicableActions(BypassPlan plan)
             => plan.Strategies.Count > 0 || plan.DropUdp443 || plan.AllowNoSni;
 
-        public Task<V2ApplyOutcome?> ApplyRecommendationsAsync(BypassController bypassController)
+        public Task<ApplyOutcome?> ApplyRecommendationsAsync(BypassController bypassController)
             => ApplyRecommendationsAsync(bypassController, preferredHostKey: null);
 
-        public async Task<V2ApplyOutcome?> ApplyRecommendationsForDomainAsync(BypassController bypassController, string domainSuffix)
+        public async Task<ApplyOutcome?> ApplyRecommendationsForDomainAsync(BypassController bypassController, string domainSuffix)
         {
             if (bypassController == null) throw new ArgumentNullException(nameof(bypassController));
             if (string.IsNullOrWhiteSpace(domainSuffix)) return null;
@@ -67,7 +67,7 @@ namespace IspAudit.ViewModels
 
             // На данном этапе это управляемая "гибридная" логика:
             // - UI может предложить доменный режим (по анализу доменных семейств в UI-слое)
-            // - здесь мы берём последний применимый v2 план из поддоменов и применяем его,
+            // - здесь мы берём последний применимый план из поддоменов и применяем его,
             //   но выставляем OutcomeTargetHost именно на домен.
             var candidates = _v2PlansByHost
                 .Where(kv =>
@@ -82,11 +82,11 @@ namespace IspAudit.ViewModels
 
             if (candidates.Count == 0)
             {
-                Log($"[V2][APPLY] Domain '{domain}': нет сохранённых планов");
+                Log($"[APPLY] Domain '{domain}': нет сохранённых планов");
                 return null;
             }
 
-            // Предпочитаем план от последнего v2 (если он из этого домена), иначе берём первый применимый.
+            // Предпочитаем план от последнего сохранённого плана (если он из этого домена), иначе берём первый применимый.
             BypassPlan? plan = null;
             string? sourceHost = null;
 
@@ -112,15 +112,15 @@ namespace IspAudit.ViewModels
 
             if (plan == null || !PlanHasApplicableActions(plan))
             {
-                Log($"[V2][APPLY] Domain '{domain}': нет применимых действий в планах");
+                Log($"[APPLY] Domain '{domain}': нет применимых действий в планах");
                 return null;
             }
 
-            Log($"[V2][APPLY] Domain '{domain}': apply from '{sourceHost}'");
+            Log($"[APPLY] Domain '{domain}': apply from '{sourceHost}'");
             return await ApplyPlanInternalAsync(bypassController, domain, plan).ConfigureAwait(false);
         }
 
-        public async Task<V2ApplyOutcome?> ApplyRecommendationsAsync(BypassController bypassController, string? preferredHostKey)
+        public async Task<ApplyOutcome?> ApplyRecommendationsAsync(BypassController bypassController, string? preferredHostKey)
         {
             // 1) Пытаемся применить план для выбранной цели (если UI передал её).
             if (!string.IsNullOrWhiteSpace(preferredHostKey)
@@ -130,16 +130,16 @@ namespace IspAudit.ViewModels
                 return await ApplyPlanInternalAsync(bypassController, preferredHostKey.Trim(), preferredPlan).ConfigureAwait(false);
             }
 
-            // 2) Fallback: старый режим «последний v2 план».
+            // 2) Fallback: старый режим «последний план».
             if (_lastV2Plan == null || !PlanHasApplicableActions(_lastV2Plan)) return null;
 
             // Защита от «устаревшего» плана: применяем только если план относится
-            // к последней цели, для которой был показан v2-диагноз.
+            // к последней цели, для которой был показан диагноз (чтобы не применять план «не к той цели»).
             if (!string.IsNullOrWhiteSpace(_lastV2DiagnosisHostKey)
                 && !string.IsNullOrWhiteSpace(_lastV2PlanHostKey)
                 && !string.Equals(_lastV2PlanHostKey, _lastV2DiagnosisHostKey, StringComparison.OrdinalIgnoreCase))
             {
-                Log($"[V2][APPLY] WARN: planHost={_lastV2PlanHostKey}; lastDiagHost={_lastV2DiagnosisHostKey} (план/цель разошлись)");
+                Log($"[APPLY] WARN: planHost={_lastV2PlanHostKey}; lastDiagHost={_lastV2DiagnosisHostKey} (план/цель разошлись)");
             }
 
             var hostKey = !string.IsNullOrWhiteSpace(_lastV2PlanHostKey)
@@ -149,11 +149,11 @@ namespace IspAudit.ViewModels
             return await ApplyPlanInternalAsync(bypassController, hostKey, _lastV2Plan).ConfigureAwait(false);
         }
 
-        private async Task<V2ApplyOutcome?> ApplyPlanInternalAsync(BypassController bypassController, string hostKey, BypassPlan plan)
+        private async Task<ApplyOutcome?> ApplyPlanInternalAsync(BypassController bypassController, string hostKey, BypassPlan plan)
         {
             if (NoiseHostFilter.Instance.IsNoiseHost(hostKey))
             {
-                Log($"[V2][APPLY] Skip: шумовой хост '{hostKey}'");
+                Log($"[APPLY] Skip: шумовой хост '{hostKey}'");
                 return null;
             }
 
@@ -226,7 +226,7 @@ namespace IspAudit.ViewModels
                     ApplyStatusText = "Применение: подготовка…";
                 });
 
-                Log($"[V2][APPLY] host={hostKey}; plan={planStrategies}; before={beforeState}");
+                Log($"[APPLY] host={hostKey}; plan={planStrategies}; before={beforeState}");
 
                 void OnPhaseEvent(BypassApplyPhaseTiming e)
                 {
@@ -241,19 +241,19 @@ namespace IspAudit.ViewModels
                 await bypassController.ApplyV2PlanAsync(plan, hostKey, V2ApplyTimeout, ct, OnPhaseEvent).ConfigureAwait(false);
 
                 var afterState = BuildBypassStateSummary(bypassController);
-                Log($"[V2][APPLY] OK; after={afterState}");
+                Log($"[APPLY] OK; after={afterState}");
                 ResetRecommendations();
 
                 if (!string.IsNullOrWhiteSpace(appliedUiText))
                 {
-                    return new V2ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
+                    return new ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
                     {
                         Status = "APPLIED",
                         RollbackStatus = "NOT_NEEDED"
                     };
                 }
 
-                return new V2ApplyOutcome(hostKey, "(none)", planStrategies, plan.Reasoning)
+                return new ApplyOutcome(hostKey, "(none)", planStrategies, plan.Reasoning)
                 {
                     Status = "APPLIED",
                     RollbackStatus = "NOT_NEEDED"
@@ -262,11 +262,11 @@ namespace IspAudit.ViewModels
             catch (OperationCanceledException oce)
             {
                 var afterState = BuildBypassStateSummary(bypassController);
-                Log($"[V2][APPLY] ROLLBACK (cancel/timeout); after={afterState}");
+                Log($"[APPLY] ROLLBACK (cancel/timeout); after={afterState}");
 
                 if (oce is BypassApplyService.BypassApplyCanceledException ce)
                 {
-                    return new V2ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
+                    return new ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
                     {
                         Status = ce.Execution.Status,
                         RollbackStatus = ce.Execution.RollbackStatus,
@@ -278,7 +278,7 @@ namespace IspAudit.ViewModels
                 }
 
                 // Cancel до входа в apply/rollback (или неизвестный источник отмены).
-                return new V2ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
+                return new ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
                 {
                     Status = "CANCELED",
                     RollbackStatus = "NOT_NEEDED"
@@ -287,11 +287,11 @@ namespace IspAudit.ViewModels
             catch (Exception ex)
             {
                 var afterState = BuildBypassStateSummary(bypassController);
-                Log($"[V2][APPLY] ROLLBACK (error); after={afterState}; error={ex.Message}");
+                Log($"[APPLY] ROLLBACK (error); after={afterState}; error={ex.Message}");
 
                 if (ex is BypassApplyService.BypassApplyFailedException fe)
                 {
-                    return new V2ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
+                    return new ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
                     {
                         Status = fe.Execution.Status,
                         Error = fe.Execution.Error,
@@ -303,7 +303,7 @@ namespace IspAudit.ViewModels
                     };
                 }
 
-                return new V2ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
+                return new ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
                 {
                     Status = "FAILED",
                     Error = ex.Message,
@@ -400,7 +400,7 @@ namespace IspAudit.ViewModels
                             Application.Current?.Dispatcher.Invoke(() =>
                             {
                                 // Важно: обновляем рекомендации/диагнозы так же, как при обычной диагностике.
-                                TrackV2DiagnosisSummary(msg);
+                                TrackIntelDiagnosisSummary(msg);
                                 TrackRecommendation(msg, bypassController);
                                 Log($"[PostApplyRetest][op={opId}] {msg}");
                                 OnPipelineMessage?.Invoke(msg);
@@ -420,11 +420,11 @@ namespace IspAudit.ViewModels
                         null,
                         bypassController.AutoHostlist);
 
-                    pipeline.OnV2PlanBuilt += (k, p) =>
+                    pipeline.OnPlanBuilt += (k, p) =>
                     {
                         try
                         {
-                            Application.Current?.Dispatcher.Invoke(() => StoreV2Plan(k, p, bypassController));
+                            Application.Current?.Dispatcher.Invoke(() => StorePlan(k, p, bypassController));
                         }
                         catch
                         {
@@ -746,7 +746,7 @@ namespace IspAudit.ViewModels
             // Убираем рекомендации, если всё уже включено (актуально при ручном переключении)
             _recommendedStrategies.RemoveWhere(s => IsStrategyActive(s, bypassController));
 
-            // Важно для UX: если v2 уже диагностировал проблему/построил план,
+            // Важно для UX: если Intel-слой уже диагностировал проблему/построил план,
             // панель рекомендаций не должна «исчезать» сразу после ручного включения тумблеров.
             var hasAny = _recommendedStrategies.Count > 0
                 || _manualRecommendations.Count > 0
@@ -760,7 +760,7 @@ namespace IspAudit.ViewModels
             else if (_recommendedStrategies.Count == 0)
             {
                 var header = string.IsNullOrWhiteSpace(_lastV2DiagnosisSummary)
-                    ? "[V2] Диагноз определён"
+                    ? "[INTEL] Диагноз определён"
                     : _lastV2DiagnosisSummary;
 
                 // Если план был, но рекомендации уже включены вручную — объясняем, почему кнопка может быть не нужна.
@@ -789,14 +789,14 @@ namespace IspAudit.ViewModels
         private string BuildRecommendationPanelText()
         {
             // Пишем текст так, чтобы пользователь видел «что попробовать», а не только метрики.
-            // Важно: v2 — приоритетно; legacy — только справочно.
+            // Важно: Intel — приоритетно; legacy — только справочно.
             var strategies = string.Join(", ", _recommendedStrategies.Select(FormatStrategyTokenForUi));
 
             var header = string.IsNullOrWhiteSpace(_lastV2DiagnosisSummary)
-                ? "[V2] Диагноз определён"
+                ? "[INTEL] Диагноз определён"
                 : _lastV2DiagnosisSummary;
 
-            var applyHint = $"Что попробовать: нажмите «Применить рекомендации v2» (включит: {strategies})";
+            var applyHint = $"Что попробовать: нажмите «Применить рекомендации» (включит: {strategies})";
 
             return $"{header}\n{applyHint}";
         }

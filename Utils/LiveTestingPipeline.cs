@@ -66,23 +66,23 @@ namespace IspAudit.Utils
         private readonly IHostTester _tester;
         private readonly IBlockageStateStore _stateStore;
 
-        // DPI Intelligence v2 (Step 1): сбор событий в TTL-store
+        // DPI Intelligence (Step 1): сбор событий в TTL-store
         private readonly SignalsAdapterV2 _signalsAdapterV2;
 
-        // DPI Intelligence v2 (Step 2): постановка диагноза по агрегированным сигналам
+        // DPI Intelligence (Step 2): постановка диагноза по агрегированным сигналам
         private readonly StandardDiagnosisEngineV2 _diagnosisEngineV2;
 
-        // DPI Intelligence v2 (Step 3): выбор плана стратегий строго по DiagnosisResult
+        // DPI Intelligence (Step 3): выбор плана стратегий строго по DiagnosisResult
         private readonly StandardStrategySelectorV2 _strategySelectorV2;
 
-        // DPI Intelligence v2 (Step 4): исполнитель MVP (только логирование рекомендаций)
+        // DPI Intelligence (Step 4): исполнитель MVP (только логирование рекомендаций)
         private readonly BypassExecutorMvp _executorV2;
 
         /// <summary>
-        /// Событие: v2 план рекомендаций построен для хоста.
+        /// Событие: план рекомендаций построен для хоста.
         /// ВАЖНО: это только доставка данных в UI/оркестратор; auto-apply запрещён.
         /// </summary>
-        public event Action<string, BypassPlan>? OnV2PlanBuilt;
+        public event Action<string, BypassPlan>? OnPlanBuilt;
 
         // Автоматический сбор hostlist (опционально)
         private readonly AutoHostlistService? _autoHostlist;

@@ -1550,7 +1550,7 @@ namespace TestNetworkApp.Smoke
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_Guard_NoLegacySignalsOrGetSignals_InV2RuntimePath(CancellationToken ct)
-            => RunAsync("DPI2-025", "Guard: в v2 runtime-пути нет BlockageSignals/GetSignals", () =>
+            => RunAsync("DPI2-025", "Guard: в intel runtime-пути нет BlockageSignals/GetSignals", () =>
             {
                 static string? TryFindRepoRoot(string startDir)
                 {
@@ -1590,7 +1590,7 @@ namespace TestNetworkApp.Smoke
                 filesToCheck.Add(Path.Combine(root, "ViewModels", "DiagnosticOrchestrator.cs"));
                 filesToCheck.Add(Path.Combine(root, "ViewModels", "TestResultsManager.cs"));
 
-                // Весь v2 слой.
+                // Весь intel-слой (исторически папка называется Core/IntelligenceV2).
                 var v2Dir = Path.Combine(root, "Core", "IntelligenceV2");
                 if (Directory.Exists(v2Dir))
                 {
@@ -1604,7 +1604,7 @@ namespace TestNetworkApp.Smoke
 
                 if (filesToCheck.Count == 0)
                 {
-                    return new SmokeTestResult("DPI2-025", "Guard: в v2 runtime-пути нет BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-025", "Guard: в intel runtime-пути нет BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Не нашли файлы для проверки. root='{root}'");
                 }
 
@@ -1624,8 +1624,8 @@ namespace TestNetworkApp.Smoke
 
                     var text = File.ReadAllText(file);
 
-                    // 1) GetSignals(...) и legacySignals.* запрещены в v2 runtime-пути без исключений.
-                    // 2) Создание/вызов legacy-классификатора запрещено в runtime-пути (должно быть v2-only).
+                    // 1) GetSignals(...) и legacySignals.* запрещены в intel runtime-пути без исключений.
+                    // 2) Создание/вызов legacy-классификатора запрещено в runtime-пути (должно быть intel-only).
                     if (reGetSignalsCall.IsMatch(text) || reLegacySignals.IsMatch(text) || reNewLegacyClassifier.IsMatch(text) || reCallLegacyClassifier.IsMatch(text))
                     {
                         var rel = Path.GetRelativePath(root, file);
@@ -1644,11 +1644,11 @@ namespace TestNetworkApp.Smoke
 
                 if (offenders.Count > 0)
                 {
-                    return new SmokeTestResult("DPI2-025", "Guard: в v2 runtime-пути нет BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
-                        "Найдены следы legacy в v2 runtime-пути: " + string.Join(", ", offenders));
+                    return new SmokeTestResult("DPI2-025", "Guard: в intel runtime-пути нет BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Найдены следы legacy в intel runtime-пути: " + string.Join(", ", offenders));
                 }
 
-                return new SmokeTestResult("DPI2-025", "Guard: в v2 runtime-пути нет BlockageSignals/GetSignals", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-025", "Guard: в intel runtime-пути нет BlockageSignals/GetSignals", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: checkedFiles={filesToCheck.Count}, root='{root}'");
             }, ct);
 
@@ -2176,7 +2176,7 @@ namespace TestNetworkApp.Smoke
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_GateMarkers_Gate1_EmittedInProgressLog(CancellationToken ct)
-            => RunAsync("DPI2-006", "Gate 1→2: в логе появляется маркер [V2][GATE1]", () =>
+            => RunAsync("DPI2-006", "Gate 1→2: в логе появляется маркер [INTEL][GATE1]", () =>
             {
                 var store = new InMemorySignalSequenceStore();
                 var adapter = new SignalsAdapterV2(store);
@@ -2196,20 +2196,20 @@ namespace TestNetworkApp.Smoke
                     UdpUnansweredHandshakes: 0);
                 adapter.Observe(tested, inspection, progress);
 
-                if (!lines.Any(s => s.Contains("[V2][GATE1]", StringComparison.Ordinal)))
+                if (!lines.Any(s => s.Contains("[INTEL][GATE1]", StringComparison.Ordinal)))
                 {
-                    return new SmokeTestResult("DPI2-006", "Gate 1→2: в логе появляется маркер [V2][GATE1]", SmokeOutcome.Fail, TimeSpan.Zero,
-                        "Не нашли строку [V2][GATE1] после Observe(...). Ожидали, что 3 разных типа событий (HostTested + ретранс/редирект) достаточно для Gate 1→2");
+                    return new SmokeTestResult("DPI2-006", "Gate 1→2: в логе появляется маркер [INTEL][GATE1]", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Не нашли строку [INTEL][GATE1] после Observe(...). Ожидали, что 3 разных типа событий (HostTested + ретранс/редирект) достаточно для Gate 1→2");
                 }
 
-                var line = lines.First(s => s.Contains("[V2][GATE1]", StringComparison.Ordinal));
+                var line = lines.First(s => s.Contains("[INTEL][GATE1]", StringComparison.Ordinal));
                 if (!line.Contains("timeline=", StringComparison.Ordinal) || !line.Contains("recentCount=", StringComparison.Ordinal))
                 {
-                    return new SmokeTestResult("DPI2-006", "Gate 1→2: в логе появляется маркер [V2][GATE1]", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-006", "Gate 1→2: в логе появляется маркер [INTEL][GATE1]", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Маркер найден, но формат не совпал ожиданию (timeline/recentCount): {line}");
                 }
 
-                return new SmokeTestResult("DPI2-006", "Gate 1→2: в логе появляется маркер [V2][GATE1]", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-006", "Gate 1→2: в логе появляется маркер [INTEL][GATE1]", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: Gate 1→2 логируется");
             }, ct);
 
@@ -2279,10 +2279,10 @@ namespace TestNetworkApp.Smoke
                         $"Executor не смог построить строку рекомендации из: {bypassText}");
                 }
 
-                if (!line.Contains(BypassExecutorMvp.V2LogPrefix, StringComparison.Ordinal))
+                if (!line.Contains(BypassExecutorMvp.IntelLogPrefix, StringComparison.Ordinal))
                 {
                     return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"В строке рекомендации нет префикса {BypassExecutorMvp.V2LogPrefix}: {line}");
+                        $"В строке рекомендации нет префикса {BypassExecutorMvp.IntelLogPrefix}: {line}");
                 }
 
                 var hasFragment = line.Contains("TLS_FRAGMENT", StringComparison.Ordinal);
@@ -2679,7 +2679,7 @@ namespace TestNetworkApp.Smoke
                 }
 
                 // Также проверим, что рекомендация строится как 1 строка.
-                var bypass = "v2:TlsFragment + DropRst (conf=78)";
+                var bypass = "plan:TlsFragment + DropRst (conf=78)";
                 if (!executor.TryBuildRecommendationLine("example.com", bypass, out var line))
                 {
                     return new SmokeTestResult("DPI2-011", "Executor MVP форматирует компактный вывод (1 строка)", SmokeOutcome.Fail, TimeSpan.Zero,
@@ -2699,37 +2699,37 @@ namespace TestNetworkApp.Smoke
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_AllV2Outputs_StartWithPrefix(CancellationToken ct)
-            => RunAsync("DPI2-012", "Префикс [V2] присутствует во всех v2-выводах", () =>
+            => RunAsync("DPI2-012", "Префикс [INTEL] присутствует во всех intel-выводах", () =>
             {
                 var executor = new BypassExecutorMvp();
 
-                var tail = "(v2:SilentDrop conf=80; TCP: timeout)";
+                var tail = "(intel:SilentDrop conf=80; TCP: timeout)";
                 if (!executor.TryFormatDiagnosisSuffix(tail, out var formatted))
                 {
-                    return new SmokeTestResult("DPI2-012", "Префикс [V2] присутствует во всех v2-выводах", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-012", "Префикс [INTEL] присутствует во всех intel-выводах", SmokeOutcome.Fail, TimeSpan.Zero,
                         "TryFormatDiagnosisSuffix не смог распарсить хвост");
                 }
 
-                if (!formatted.Contains(BypassExecutorMvp.V2LogPrefix, StringComparison.Ordinal))
+                if (!formatted.Contains(BypassExecutorMvp.IntelLogPrefix, StringComparison.Ordinal))
                 {
-                    return new SmokeTestResult("DPI2-012", "Префикс [V2] присутствует во всех v2-выводах", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"Нет префикса [V2] в форматировании: {formatted}");
+                    return new SmokeTestResult("DPI2-012", "Префикс [INTEL] присутствует во всех intel-выводах", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Нет префикса [INTEL] в форматировании: {formatted}");
                 }
 
-                var bypass = "v2:TlsFragment + DropRst (conf=80)";
+                var bypass = "plan:TlsFragment + DropRst (conf=80)";
                 if (!executor.TryBuildRecommendationLine("example.com", bypass, out var line))
                 {
-                    return new SmokeTestResult("DPI2-012", "Префикс [V2] присутствует во всех v2-выводах", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-012", "Префикс [INTEL] присутствует во всех intel-выводах", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Не удалось построить строку рекомендации");
                 }
 
-                if (!line.StartsWith(BypassExecutorMvp.V2LogPrefix, StringComparison.Ordinal))
+                if (!line.StartsWith(BypassExecutorMvp.IntelLogPrefix, StringComparison.Ordinal))
                 {
-                    return new SmokeTestResult("DPI2-012", "Префикс [V2] присутствует во всех v2-выводах", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"Строка рекомендации не начинается с [V2]: {line}");
+                    return new SmokeTestResult("DPI2-012", "Префикс [INTEL] присутствует во всех intel-выводах", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Строка рекомендации не начинается с [INTEL]: {line}");
                 }
 
-                return new SmokeTestResult("DPI2-012", "Префикс [V2] присутствует во всех v2-выводах", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+                return new SmokeTestResult("DPI2-012", "Префикс [INTEL] присутствует во всех intel-выводах", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_ExecutorMvp_DoesNotCallTrafficEngineOrBypassController(CancellationToken ct)
@@ -3286,3 +3286,5 @@ namespace TestNetworkApp.Smoke
         }
     }
 }
+
+

@@ -112,7 +112,7 @@ namespace IspAudit.ViewModels
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
                         DiagnosticStatus = msg;
-                        TrackV2DiagnosisSummary(msg);
+                        TrackIntelDiagnosisSummary(msg);
                         TrackRecommendation(msg, bypassController);
                         Log($"[Pipeline] {msg}");
                         OnPipelineMessage?.Invoke(msg);
@@ -235,12 +235,12 @@ namespace IspAudit.ViewModels
                         : null,
                     bypassController.AutoHostlist);
 
-                // v2: принимаем объектный план напрямую из pipeline (auto-apply запрещён).
-                _testingPipeline.OnV2PlanBuilt += (hostKey, plan) =>
+                // Принимаем объектный план напрямую из pipeline (auto-apply запрещён).
+                _testingPipeline.OnPlanBuilt += (hostKey, plan) =>
                 {
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
-                        StoreV2Plan(hostKey, plan, bypassController);
+                        StorePlan(hostKey, plan, bypassController);
                     });
                 };
 
@@ -403,7 +403,7 @@ namespace IspAudit.ViewModels
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
                         DiagnosticStatus = msg;
-                        TrackV2DiagnosisSummary(msg);
+                        TrackIntelDiagnosisSummary(msg);
                         TrackRecommendation(msg, bypassController);
                         Log($"[Retest][op={opId}] {msg}");
                         OnPipelineMessage?.Invoke(msg);
@@ -433,11 +433,11 @@ namespace IspAudit.ViewModels
                     null, // State store новый
                     bypassController.AutoHostlist);
 
-                _testingPipeline.OnV2PlanBuilt += (hostKey, plan) =>
+                _testingPipeline.OnPlanBuilt += (hostKey, plan) =>
                 {
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
-                        StoreV2Plan(hostKey, plan, bypassController);
+                        StorePlan(hostKey, plan, bypassController);
                     });
                 };
 

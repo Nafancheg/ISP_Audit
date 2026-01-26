@@ -444,7 +444,7 @@ public sealed class SignalsAdapterV2
         }
 
         var timeline = string.Join("→", parts);
-        progress.Report($"[V2][GATE1] hostKey={hostKey} recentCount={recent.Count} timeline={timeline}");
+        progress.Report($"[INTEL][GATE1] hostKey={hostKey} recentCount={recent.Count} timeline={timeline}");
         _lastGateLogUtc[hostKey] = nowUtc;
     }
 

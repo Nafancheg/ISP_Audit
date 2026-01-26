@@ -41,13 +41,17 @@ namespace IspAudit.ViewModels
         {
             if (string.IsNullOrWhiteSpace(msg)) return;
 
-            // v2 — главный источник рекомендаций. Legacy сохраняем только как справочное.
-            var isV2 = msg.TrimStart().StartsWith("[V2]", StringComparison.OrdinalIgnoreCase)
+            // Intel — главный источник рекомендаций. Legacy сохраняем только как справочное.
+            var isIntel = msg.TrimStart().StartsWith("[INTEL]", StringComparison.OrdinalIgnoreCase)
+                || msg.Contains("plan:", StringComparison.OrdinalIgnoreCase)
+                || msg.Contains("intel:", StringComparison.OrdinalIgnoreCase)
+                // обратная совместимость со старыми логами
+                || msg.TrimStart().StartsWith("[V2]", StringComparison.OrdinalIgnoreCase)
                 || msg.Contains("v2:", StringComparison.OrdinalIgnoreCase);
 
-            // B5: v2 — единственный источник рекомендаций.
+            // B5: Intel — единственный источник рекомендаций.
             // Legacy строки допускаются в логах, но не должны влиять на UI рекомендации.
-            if (!isV2)
+            if (!isIntel)
             {
                 return;
             }
@@ -77,14 +81,13 @@ namespace IspAudit.ViewModels
 
             if (string.IsNullOrWhiteSpace(raw)) return;
 
-            // Поддержка списка стратегий в одной строке (v2 формат, чтобы не убивать UI шумом).
-            // Пример: "[V2] 💡 Рекомендация: TLS_FRAGMENT, DROP_RST"
-            // Пример: "💡 Рекомендация: v2:TlsFragment + DropRst (conf=78)"
+            // Поддержка списка стратегий в одной строке (одна строка на цель, чтобы не убивать UI шумом).
+            // Пример: "[INTEL] 💡 Рекомендация: TLS_FRAGMENT, DROP_RST"
+            // Пример: "💡 Рекомендация: plan:TlsFragment + DropRst (conf=78)"
             var normalized = raw;
-            if (normalized.StartsWith("v2:", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = normalized.Substring(3);
-            }
+            if (normalized.StartsWith("plan:", StringComparison.OrdinalIgnoreCase)) normalized = normalized.Substring(5);
+            else if (normalized.StartsWith("intel:", StringComparison.OrdinalIgnoreCase)) normalized = normalized.Substring(6);
+            else if (normalized.StartsWith("v2:", StringComparison.OrdinalIgnoreCase)) normalized = normalized.Substring(3); // обратная совместимость
 
             var tokens = normalized
                 .Split(new[] { ',', '+', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -120,7 +123,7 @@ namespace IspAudit.ViewModels
             UpdateRecommendationTexts(bypassController);
         }
 
-        private void StoreV2Plan(string hostKey, BypassPlan plan, BypassController bypassController)
+        private void StorePlan(string hostKey, BypassPlan plan, BypassController bypassController)
         {
             if (NoiseHostFilter.Instance.IsNoiseHost(hostKey))
             {
@@ -133,7 +136,7 @@ namespace IspAudit.ViewModels
             _lastV2Plan = plan;
             _lastV2PlanHostKey = hostKey;
 
-            // План сформирован для конкретной цели — «прикалываем» v2-цель к hostKey плана,
+            // План сформирован для конкретной цели — «прикалываем» цель к hostKey плана,
             // чтобы последующие сообщения по другим хостам не ломали Apply (и UX панели рекомендаций).
             _lastV2DiagnosisHostKey = hostKey;
 
@@ -182,8 +185,8 @@ namespace IspAudit.ViewModels
             }
 
             _lastV2DiagnosisSummary = string.IsNullOrWhiteSpace(hostKey)
-                ? $"([V2] диагноз={plan.ForDiagnosis} уверенность={plan.PlanConfidence}%: {plan.Reasoning})"
-                : $"([V2] диагноз={plan.ForDiagnosis} уверенность={plan.PlanConfidence}%: {plan.Reasoning}) (цель: {hostKey})";
+                ? $"([INTEL] диагноз={plan.ForDiagnosis} уверенность={plan.PlanConfidence}%: {plan.Reasoning})"
+                : $"([INTEL] диагноз={plan.ForDiagnosis} уверенность={plan.PlanConfidence}%: {plan.Reasoning}) (цель: {hostKey})";
 
             UpdateRecommendationTexts(bypassController);
         }
@@ -199,12 +202,15 @@ namespace IspAudit.ViewModels
             return msg.Substring(idx);
         }
 
-        private void TrackV2DiagnosisSummary(string msg)
+        private void TrackIntelDiagnosisSummary(string msg)
         {
-            // Берём v2 диагноз из строки карточки: "❌ ... ( [V2] диагноз=SilentDrop уверенность=78%: ... )"
+            // Берём диагноз из строки карточки: "❌ ... ( [INTEL] диагноз=SilentDrop уверенность=78%: ... )"
             if (string.IsNullOrWhiteSpace(msg)) return;
             if (!msg.StartsWith("❌ ", StringComparison.Ordinal)) return;
-            if (!msg.Contains("[V2]", StringComparison.OrdinalIgnoreCase) && !msg.Contains("v2:", StringComparison.OrdinalIgnoreCase)) return;
+            if (!msg.Contains("[INTEL]", StringComparison.OrdinalIgnoreCase)
+                && !msg.Contains("intel:", StringComparison.OrdinalIgnoreCase)
+                && !msg.Contains("[V2]", StringComparison.OrdinalIgnoreCase)
+                && !msg.Contains("v2:", StringComparison.OrdinalIgnoreCase)) return;
 
             try
             {
@@ -241,7 +247,7 @@ namespace IspAudit.ViewModels
                 }
 
                 // Вытаскиваем компактный текст v2 в скобках (он уже пользовательский)
-                var m = Regex.Match(msg, @"\(\s*\[V2\][^\)]*\)", RegexOptions.IgnoreCase);
+                var m = Regex.Match(msg, @"\(\s*\[(?:INTEL|V2)\][^\)]*\)", RegexOptions.IgnoreCase);
                 if (m.Success)
                 {
                     var tail = m.Value.Trim();

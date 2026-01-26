@@ -17,7 +17,7 @@ namespace IspAudit.ViewModels
     public partial class BypassController
     {
         /// <summary>
-        /// Применить v2 план рекомендаций (ТОЛЬКО вручную), с таймаутом/отменой и безопасным откатом.
+        /// Применить план рекомендаций (ТОЛЬКО вручную), с таймаутом/отменой и безопасным откатом.
         /// </summary>
         public async Task ApplyV2PlanAsync(BypassPlan plan, TimeSpan timeout, CancellationToken cancellationToken, Action<BypassApplyPhaseTiming>? onPhaseEvent = null)
         {
@@ -29,11 +29,11 @@ namespace IspAudit.ViewModels
             // Если пользователь (или UI) инициировал несколько apply подряд, они должны отработать строго последовательно.
             if (!await _applyV2Gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
             {
-                Log("[V2][APPLY_GATE] queued (another apply in progress)");
+                Log("[APPLY_GATE] queued (another apply in progress)");
                 await _applyV2Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            Log("[V2][APPLY_GATE] enter");
+            Log("[APPLY_GATE] enter");
 
             try
             {
@@ -51,7 +51,7 @@ namespace IspAudit.ViewModels
                 {
                     var preset = applied.PlannedFragmentPreset;
 
-                    // Если пресет создан из параметров v2 и отсутствует в списке — добавим, чтобы UI мог корректно отобразить выбранный вариант.
+                    // Если пресет создан из параметров плана и отсутствует в списке — добавим, чтобы UI мог корректно отобразить выбранный вариант.
                     if (!FragmentPresets.Any(p => string.Equals(p.Name, preset.Name, StringComparison.OrdinalIgnoreCase)
                         && p.Sizes.SequenceEqual(preset.Sizes)))
                     {
@@ -100,12 +100,12 @@ namespace IspAudit.ViewModels
                     // ignore
                 }
 
-                Log("[V2][APPLY_GATE] exit");
+                Log("[APPLY_GATE] exit");
             }
         }
 
         /// <summary>
-        /// Overload: применить v2 план и одновременно задать цель для HTTPS outcome-check.
+        /// Overload: применить план и одновременно задать цель для HTTPS outcome-check.
         /// </summary>
         public Task ApplyV2PlanAsync(BypassPlan plan, string? outcomeTargetHost, TimeSpan timeout, CancellationToken cancellationToken, Action<BypassApplyPhaseTiming>? onPhaseEvent = null)
         {
