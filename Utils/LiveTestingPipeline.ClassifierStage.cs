@@ -154,21 +154,23 @@ namespace IspAudit.Utils
                         continue; // Пропускаем только «непроблемные» шумовые хосты
                     }
 
+                    // Важно: публикуем v2-план не только для карточек (Process), но и для LogOnly,
+                    // иначе пользователь не увидит рекомендацию/Apply для «формально OK, но v2 видит вмешательство».
+                    // При этом мы всё так же публикуем ТОЛЬКО когда есть действия в плане и есть признаки проблемы.
+                    if (publishV2Plan && !string.IsNullOrWhiteSpace(planHostKeyForPublish) && decision.Action != FilterAction.Drop)
+                    {
+                        try
+                        {
+                            OnV2PlanBuilt?.Invoke(planHostKeyForPublish, plan);
+                        }
+                        catch
+                        {
+                            // Игнорируем ошибки подписчиков: пайплайн должен быть устойчив.
+                        }
+                    }
+
                     if (decision.Action == FilterAction.Process)
                     {
-                        // Важно: публикуем v2-план только для тех хостов, которые реально попали в UI как проблема.
-                        if (publishV2Plan && !string.IsNullOrWhiteSpace(planHostKeyForPublish))
-                        {
-                            try
-                            {
-                                OnV2PlanBuilt?.Invoke(planHostKeyForPublish, plan);
-                            }
-                            catch
-                            {
-                                // Игнорируем ошибки подписчиков: пайплайн должен быть устойчив.
-                            }
-                        }
-
                         // Это блокировка или проблема - отправляем в UI
                         await _bypassQueue.Writer.WriteAsync(blocked, ct).ConfigureAwait(false);
                         Interlocked.Increment(ref _statUiIssuesEnqueued);
@@ -180,6 +182,37 @@ namespace IspAudit.Utils
                         var latency = tested.TcpLatencyMs > 0 ? $" ({tested.TcpLatencyMs}ms)" : "";
                         _progress?.Report($"✓ {displayHost}:{port}{latency}{namesSuffix}");
                         Interlocked.Increment(ref _statUiLogOnly);
+
+                        // v2: если селектор сформировал план действий, показываем рекомендацию и диагноз даже при OK.
+                        // Это критично для UX: иначе пользователь видит только "✓", хотя v2 уже заметил вмешательство.
+                        var hasPlanActionsForOk = plan.Strategies.Count > 0 || plan.DropUdp443 || plan.AllowNoSni;
+                        if (publishV2Plan && hasPlanActionsForOk)
+                        {
+                            try
+                            {
+                                var rdns2 = tested.ReverseDnsHostname;
+                                var context = $"host={displayHost}:{port} SNI={(string.IsNullOrWhiteSpace(sni) ? "-" : sni)} RDNS={(string.IsNullOrWhiteSpace(rdns2) ? "-" : rdns2)}";
+
+                                // Ключ для дедуп: SNI предпочтительнее, иначе IP.
+                                var dedupKey = !string.IsNullOrWhiteSpace(sni) && sni != "-" ? sni : displayHost;
+
+                                var bypassStrategyText = BuildBypassStrategyText(plan);
+                                if (_executorV2.TryBuildRecommendationLine(dedupKey, bypassStrategyText, context, out var recommendationLine))
+                                {
+                                    _progress?.Report(recommendationLine);
+                                }
+
+                                // Дополнительно: компактная строка диагноза v2.
+                                if (_executorV2.TryFormatDiagnosisSuffix(blocked.RecommendedAction, out var formattedDiag))
+                                {
+                                    _progress?.Report(formattedDiag);
+                                }
+                            }
+                            catch
+                            {
+                                // best-effort
+                            }
+                        }
                     }
                     else if (decision.Action == FilterAction.Drop)
                     {
