@@ -2,19 +2,19 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using IspAudit.Core.IntelligenceV2.Contracts;
+using IspAudit.Core.Intelligence.Contracts;
 
-namespace IspAudit.Core.IntelligenceV2.Signals;
+namespace IspAudit.Core.Intelligence.Signals;
 
 /// <summary>
-/// In-memory хранилище последовательностей событий v2 (SignalSequence) с TTL.
+/// In-memory хранилище последовательностей событий INTEL (SignalSequence) с TTL.
 /// Потокобезопасность: отдельная блокировка на каждый HostKey.
 /// Важно: очистка по TTL выполняется строго при Append(...), без таймеров.
 /// </summary>
 public sealed class InMemorySignalSequenceStore
 {
     // Защита от роста памяти: ограничиваем число событий на хост.
-    // Важно: это не часть "контракта" v2, а реализация in-memory store.
+    // Важно: это не часть контракта INTEL, а реализация in-memory store.
     private const int MaxEventsPerHost = 100;
 
     private sealed class SequenceBucket
@@ -45,7 +45,7 @@ public sealed class InMemorySignalSequenceStore
         }
 
         var nowUtc = DateTimeOffset.UtcNow;
-        var cutoffUtc = nowUtc - IntelligenceV2ContractDefaults.EventTtl;
+            var cutoffUtc = nowUtc - IntelligenceContractDefaults.EventTtl;
 
         var bucket = _buckets.GetOrAdd(signalEvent.HostKey, hk => new SequenceBucket(hk, nowUtc));
         lock (bucket.Gate)

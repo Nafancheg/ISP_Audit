@@ -220,21 +220,21 @@ namespace TestNetworkApp
             Console.WriteLine($"> {legacyRecommendation}");
             mgr.ParsePipelineMessage(legacyRecommendation);
 
-            if (!string.IsNullOrWhiteSpace(youtubeCard.BypassStrategy) || youtubeCard.IsBypassStrategyFromV2)
+                if (!string.IsNullOrWhiteSpace(youtubeCard.BypassStrategy) || youtubeCard.IsBypassStrategyFromIntel)
             {
                 throw new InvalidOperationException(
-                    "UI-Reducer smoke: legacy рекомендация не должна менять BypassStrategy/IsBypassStrategyFromV2");
+                    "UI-Reducer smoke: legacy рекомендация не должна менять BypassStrategy/IsBypassStrategyFromIntel");
             }
 
             var intelRecommendation = "[INTEL] 💡 Рекомендация: DROP_RST";
             Console.WriteLine($"> {intelRecommendation}");
             mgr.ParsePipelineMessage(intelRecommendation);
 
-                // В UI стратегия отображается человеко-читаемо (см. MapV2StrategyTokenForUi в TestResultsManager).
-                if (!string.Equals(youtubeCard.BypassStrategy, "Drop RST", StringComparison.OrdinalIgnoreCase) || !youtubeCard.IsBypassStrategyFromV2)
+            // В UI стратегия отображается человеко-читаемо (см. MapIntelStrategyTokenForUi в PipelineMessageParser).
+            if (!string.Equals(youtubeCard.BypassStrategy, "Drop RST", StringComparison.OrdinalIgnoreCase) || !youtubeCard.IsBypassStrategyFromIntel)
             {
                 throw new InvalidOperationException(
-                    $"UI-Reducer smoke: ожидали BypassStrategy=Drop RST ([INTEL]), получили '{youtubeCard.BypassStrategy}', IsBypassStrategyFromV2={youtubeCard.IsBypassStrategyFromV2}");
+                    $"UI-Reducer smoke: ожидали BypassStrategy=Drop RST ([INTEL]), получили '{youtubeCard.BypassStrategy}', IsBypassStrategyFromIntel={youtubeCard.IsBypassStrategyFromIntel}");
             }
 
             Console.WriteLine("\n--- Итоговые карточки ---");

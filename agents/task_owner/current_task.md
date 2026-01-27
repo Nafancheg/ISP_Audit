@@ -10,7 +10,7 @@
 ## Цель (MVP)
 Внедрить объяснимый слой DPI Intelligence (INTEL):
 - собирать факты как временные события (последовательность),
-- агрегировать в `BlockageSignalsV2`,
+- агрегировать в `BlockageSignals`,
 - получать `DiagnosisResult` (диагноз + confidence + объяснение),
 - формировать `BypassPlan` (рекомендации стратегий) детерминированно,
 - в MVP не применять обход автоматически (только рекомендации; ручное применение возможно только по явному действию пользователя).
@@ -27,7 +27,7 @@
 - Async: `ConfigureAwait(false)` в библиотечном коде/тестах, не блокировать async, поддерживать `CancellationToken`.
 
 ## Definition of Done
-- В коде существует слой INTEL с границами: SignalsAdapterV2 → DiagnosisEngineV2 → StrategySelectorV2 → ExecutorMvp (логирование).
+- В коде существует слой INTEL с границами: SignalsAdapter → StandardDiagnosisEngine → StandardStrategySelector → ExecutorMvp (логирование).
 - В UI/логах видны: `DiagnosisId`, `Confidence`, краткое объяснение и рекомендации (если confidence достаточно).
 - Рекомендации детерминированы; при слабом диагнозе (низкая уверенность/Unknown) рекомендации не показываются.
 - Legacy не удаляется первым шагом, но используется только справочно и не управляет рекомендациями INTEL.
@@ -49,17 +49,17 @@
 **Вход**: agents/task_owner/current_task.md
 
 **Выход**: agents/research_agent/findings.md со структурой:
-- Точки интеграции v2 в пайплайн: где брать `HostTested`, где удобнее всего наблюдать сигналы, где формировать UI-вывод.
+- Точки интеграции INTEL в пайплайн: где брать `HostTested`, где удобнее всего наблюдать сигналы, где формировать UI-вывод.
 - Доступность данных для MVP-диагнозов (DnsHijack/SilentDrop) и риски “Unknown”.
 - Риски производительности/шума UI и рекомендации по компактному логированию.
-- Что оставить от legacy (только справочно) и как не дать ему «перебивать» v2.
+- Что оставить от legacy (только справочно) и как не дать ему «перебивать» INTEL.
 
 ## [2] [BLUE] Planning Agent
 **Статус**: TODO
 
 **Вход**: current_task.md, findings.md
 
-**Выход**: agents/planning_agent/plan.md — детальные подзадачи Step 0–5 DPI Intelligence v2, включая gates и обязательное обновление ARCHITECTURE_CURRENT.md и docs/full_repo_audit_v2.md при добавлении новых слоёв.
+**Выход**: agents/planning_agent/plan.md — детальные подзадачи Step 0–5 DPI Intelligence (INTEL), включая gates и обязательное обновление ARCHITECTURE_CURRENT.md и docs/full_repo_audit_intel.md при добавлении новых слоёв.
 
 ## [3] [GREEN] Coding Agent
 **Статус**: TODO
@@ -78,4 +78,5 @@
 
 ## Заметки
 - MSFS 2024 валидируется как сценарий (не список доменов).
-- Карточки/старый вывод могут быть шумными; приоритет — объяснимые рекомендации v2 и стабильность.
+- Карточки/старый вывод могут быть шумными; приоритет — объяснимые рекомендации INTEL и стабильность.
+

@@ -320,8 +320,7 @@ namespace IspAudit.Bypass
         public TlsBypassOptions GetOptionsSnapshot() => _tlsService.GetOptionsSnapshot();
 
         /// <summary>
-        /// Задать цель для outcome-check (обычно — hostKey последнего v2 плана/диагноза).
-        /// Если цель не задана, outcome остаётся UNKNOWN.
+        /// Получить количество observed IPv4 адресов цели для QUIC fallback (DROP UDP/443).
         /// </summary>
         public int GetUdp443DropTargetIpCountSnapshot()
         {
@@ -471,7 +470,7 @@ namespace IspAudit.Bypass
                 normalizeSw.Stop();
 
                 // P0.1 Step 1: поддержка нескольких активных целей одновременно.
-                // Пользователь может применить разные v2 планы для разных hostKey; рантайм должен
+                // Пользователь может применить разные INTEL-планы для разных hostKey; рантайм должен
                 // держать нужные «capabilities» включёнными (union), а decision graph выбирать действие по пакету.
                 var preferredHost = _outcomeTargetHost;
                 var activeTargetPolicies = GetActiveTargetPoliciesSnapshot(preferredHost);

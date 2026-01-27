@@ -231,7 +231,7 @@ namespace IspAudit.ViewModels
             ConnectFromResultCommand = new RelayCommand(async param => await ConnectFromResultAsync(param as IspAudit.Models.TestResult),
                 param => ShowBypassPanel && !IsApplyingRecommendations);
 
-            // Доменное применение v2 плана из конкретной строки результата.
+            // Доменное применение INTEL-плана из конкретной строки результата.
             // UX: если строка относится к SuggestedDomainSuffix, даём кнопку "Подключить домен" прямо в таблице.
             ConnectDomainFromResultCommand = new RelayCommand(async param => await ConnectDomainFromResultAsync(param as IspAudit.Models.TestResult),
                 param => ShowBypassPanel && !IsApplyingRecommendations);

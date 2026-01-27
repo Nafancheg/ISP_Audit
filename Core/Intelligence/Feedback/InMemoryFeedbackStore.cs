@@ -2,18 +2,18 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace IspAudit.Core.IntelligenceV2.Feedback;
+namespace IspAudit.Core.Intelligence.Feedback;
 
 /// <summary>
 /// In-memory реализация feedback store.
 /// Важно: никаких таймеров — очистка делается только при вызове <see cref="Prune"/>.
 /// </summary>
-public sealed class InMemoryFeedbackStoreV2 : IFeedbackStoreV2
+public sealed class InMemoryFeedbackStore : IFeedbackStore
 {
     private readonly object _lock = new();
     private readonly Dictionary<FeedbackKey, StrategyFeedbackStats> _stats = new();
 
-    public InMemoryFeedbackStoreV2(FeedbackStoreOptions? options = null)
+    public InMemoryFeedbackStore(FeedbackStoreOptions? options = null)
     {
         Options = options ?? new FeedbackStoreOptions();
     }

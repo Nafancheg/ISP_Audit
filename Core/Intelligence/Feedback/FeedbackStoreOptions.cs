@@ -1,6 +1,6 @@
 using System;
 
-namespace IspAudit.Core.IntelligenceV2.Feedback;
+namespace IspAudit.Core.Intelligence.Feedback;
 
 /// <summary>
 /// Опции для feedback store и ранжирования.

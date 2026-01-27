@@ -1,9 +1,7 @@
-using System;
-
-namespace IspAudit.Core.IntelligenceV2.Contracts;
+namespace IspAudit.Core.Intelligence.Contracts;
 
 /// <summary>
-/// Тип события (факта) в потоке сигналов v2.
+/// Тип события (факта) в потоке сигналов INTEL.
 /// Это часть контракта: значения должны быть стабильны, т.к. на них завязаны адаптер и агрегация.
 /// </summary>
 public enum SignalEventType

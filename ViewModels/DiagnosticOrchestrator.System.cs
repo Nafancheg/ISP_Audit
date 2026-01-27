@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
-using IspAudit.Core.IntelligenceV2.Contracts;
+using IspAudit.Core.Intelligence.Contracts;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
 using IspAudit.Core.Modules;

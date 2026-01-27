@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 
-namespace IspAudit.Core.IntelligenceV2.Execution;
+namespace IspAudit.Core.Intelligence.Execution;
 
 /// <summary>
-/// Парсер параметров стратегии TlsFragment из v2 BypassPlan.
+/// Парсер параметров стратегии TlsFragment из INTEL BypassPlan.
 /// Важно: класс не зависит от WPF/VM и остаётся детерминированным.
 /// </summary>
 public static class TlsFragmentPlanParamsParser

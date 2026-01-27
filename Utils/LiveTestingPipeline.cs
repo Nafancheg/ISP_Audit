@@ -7,11 +7,11 @@ using System.Threading.Tasks;
 using IspAudit.Bypass;
 using IspAudit.Core.Diagnostics;
 using IspAudit.Core.Interfaces;
-using IspAudit.Core.IntelligenceV2.Diagnosis;
-using IspAudit.Core.IntelligenceV2.Contracts;
-using IspAudit.Core.IntelligenceV2.Execution;
-using IspAudit.Core.IntelligenceV2.Signals;
-using IspAudit.Core.IntelligenceV2.Strategies;
+using IspAudit.Core.Intelligence.Contracts;
+using IspAudit.Core.Intelligence.Diagnosis;
+using IspAudit.Core.Intelligence.Execution;
+using IspAudit.Core.Intelligence.Signals;
+using IspAudit.Core.Intelligence.Strategies;
 using IspAudit.Core.Models;
 using IspAudit.Core.Modules;
 using IspAudit.Core.Traffic;
@@ -67,16 +67,16 @@ namespace IspAudit.Utils
         private readonly IBlockageStateStore _stateStore;
 
         // DPI Intelligence (Step 1): сбор событий в TTL-store
-        private readonly SignalsAdapterV2 _signalsAdapterV2;
+        private readonly SignalsAdapter _signalsAdapter;
 
         // DPI Intelligence (Step 2): постановка диагноза по агрегированным сигналам
-        private readonly StandardDiagnosisEngineV2 _diagnosisEngineV2;
+        private readonly StandardDiagnosisEngine _diagnosisEngine;
 
         // DPI Intelligence (Step 3): выбор плана стратегий строго по DiagnosisResult
-        private readonly StandardStrategySelectorV2 _strategySelectorV2;
+        private readonly StandardStrategySelector _strategySelector;
 
         // DPI Intelligence (Step 4): исполнитель MVP (только логирование рекомендаций)
-        private readonly BypassExecutorMvp _executorV2;
+        private readonly BypassExecutorMvp _executor;
 
         /// <summary>
         /// Событие: план рекомендаций построен для хоста.
@@ -117,17 +117,17 @@ namespace IspAudit.Utils
 
             _tester = tester ?? new StandardHostTester(progress, dnsParser?.DnsCache, config.TestTimeout);
 
-            // v2 store/adapter (без диагнозов/стратегий на этом шаге)
-            _signalsAdapterV2 = new SignalsAdapterV2(new InMemorySignalSequenceStore());
+            // INTEL: store/adapter (без диагнозов/стратегий на этом шаге)
+            _signalsAdapter = new SignalsAdapter(new InMemorySignalSequenceStore());
 
-            // v2 diagnosis (стратегий/параметров обхода тут нет)
-            _diagnosisEngineV2 = new StandardDiagnosisEngineV2();
+            // INTEL: diagnosis (стратегий/параметров обхода тут нет)
+            _diagnosisEngine = new StandardDiagnosisEngine();
 
-            // v2 selector (план стратегий по диагнозу)
-            _strategySelectorV2 = new StandardStrategySelectorV2();
+            // INTEL: selector (план стратегий по диагнозу)
+            _strategySelector = new StandardStrategySelector();
 
-            // v2 executor (только форматирование/логирование)
-            _executorV2 = new BypassExecutorMvp();
+            // INTEL: executor (только форматирование/логирование)
+            _executor = new BypassExecutorMvp();
 
             // Создаем bounded каналы для передачи данных между воркерами (защита от OOM)
             var channelOptions = new BoundedChannelOptions(1000) { FullMode = BoundedChannelFullMode.DropOldest };

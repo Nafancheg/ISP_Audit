@@ -5,14 +5,14 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
-using IspAudit.Core.IntelligenceV2.Contracts;
-using IspAudit.Core.IntelligenceV2.Execution;
+using IspAudit.Core.Intelligence.Contracts;
+using IspAudit.Core.Intelligence.Execution;
 using IspAudit.Utils;
 
 namespace IspAudit.Core.Bypass
 {
     /// <summary>
-    /// Сервис применения v2 bypass-плана.
+    /// Сервис применения INTEL bypass-плана.
     /// Выносит apply/rollback/timeout из ViewModel-слоя, не имеет зависимостей от WPF.
     /// </summary>
     public sealed class BypassApplyService
@@ -131,10 +131,10 @@ namespace IspAudit.Core.Bypass
         }
 
         /// <summary>
-        /// Применить v2 план с таймаутом/отменой и безопасным откатом.
+        /// Применить INTEL-план с таймаутом/отменой и безопасным откатом.
         /// На ошибке/отмене выполняет rollback и пробрасывает исключение дальше.
         /// </summary>
-        public async Task<BypassApplyPlanResult> ApplyV2PlanWithRollbackAsync(
+        public async Task<BypassApplyPlanResult> ApplyIntelPlanWithRollbackAsync(
             BypassPlan plan,
             TimeSpan timeout,
             bool currentDoHEnabled,
@@ -146,7 +146,7 @@ namespace IspAudit.Core.Bypass
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            using var op = BypassOperationContext.EnterIfNone("v2_apply_service");
+            using var op = BypassOperationContext.EnterIfNone("intel_apply_service");
 
             var strategiesText = plan.Strategies.Count == 0
                 ? "(пусто)"
@@ -369,7 +369,7 @@ namespace IspAudit.Core.Bypass
                 }
 
                 tracker?.Start("rollback_tls_options");
-                using var op = BypassOperationContext.EnterIfNone("v2_apply_rollback");
+                using var op = BypassOperationContext.EnterIfNone("intel_apply_rollback");
                 await _stateManager.ApplyTlsOptionsAsync(snapshot.Options, CancellationToken.None).ConfigureAwait(false);
                 tracker?.FinalizeCurrent("OK");
             }
@@ -489,9 +489,9 @@ namespace IspAudit.Core.Bypass
                         updated = updated with { DropRstEnabled = true };
                         break;
                     case StrategyId.UseDoh:
-                        // Важно: DoH/DNS — это системное изменение. В v2 плане это может быть рекомендация,
+                        // Важно: DoH/DNS — это системное изменение. В INTEL-плане это может быть рекомендация,
                         // но по умолчанию не применяем автоматически.
-                        if (Config.RuntimeFlags.EnableV2DoHFromPlan)
+                        if (Config.RuntimeFlags.EnableIntelDoHFromPlan)
                         {
                             enableDoH = true;
                             _log?.Invoke("[APPLY][Executor] UseDoh: включаем DoH (разрешено gate)");
@@ -638,7 +638,7 @@ namespace IspAudit.Core.Bypass
                 return existing;
             }
 
-            return new TlsFragmentPreset("План v2", normalized, "Сгенерировано из параметров стратегии v2");
+            return new TlsFragmentPreset("План INTEL", normalized, "Сгенерировано из параметров стратегии INTEL");
         }
 
         private static List<int> NormalizeFragmentSizes(IEnumerable<int> input)

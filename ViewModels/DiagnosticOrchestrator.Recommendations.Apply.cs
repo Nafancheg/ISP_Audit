@@ -10,7 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
 using IspAudit.Core.Bypass;
-using IspAudit.Core.IntelligenceV2.Contracts;
+using IspAudit.Core.Intelligence.Contracts;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
 using IspAudit.Core.Modules;
@@ -69,7 +69,7 @@ namespace IspAudit.ViewModels
             // - UI может предложить доменный режим (по анализу доменных семейств в UI-слое)
             // - здесь мы берём последний применимый план из поддоменов и применяем его,
             //   но выставляем OutcomeTargetHost именно на домен.
-            var candidates = _v2PlansByHost
+            var candidates = _intelPlansByHost
                 .Where(kv =>
                 {
                     var k = kv.Key;
@@ -90,14 +90,14 @@ namespace IspAudit.ViewModels
             BypassPlan? plan = null;
             string? sourceHost = null;
 
-            if (!string.IsNullOrWhiteSpace(_lastV2PlanHostKey)
-                && (_lastV2PlanHostKey.Equals(domain, StringComparison.OrdinalIgnoreCase)
-                    || _lastV2PlanHostKey.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase))
-                && _v2PlansByHost.TryGetValue(_lastV2PlanHostKey, out var lastPlan)
+            if (!string.IsNullOrWhiteSpace(_lastIntelPlanHostKey)
+                && (_lastIntelPlanHostKey.Equals(domain, StringComparison.OrdinalIgnoreCase)
+                    || _lastIntelPlanHostKey.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase))
+                && _intelPlansByHost.TryGetValue(_lastIntelPlanHostKey, out var lastPlan)
                 && PlanHasApplicableActions(lastPlan))
             {
                 plan = lastPlan;
-                sourceHost = _lastV2PlanHostKey;
+                sourceHost = _lastIntelPlanHostKey;
             }
             else
             {
@@ -124,29 +124,29 @@ namespace IspAudit.ViewModels
         {
             // 1) Пытаемся применить план для выбранной цели (если UI передал её).
             if (!string.IsNullOrWhiteSpace(preferredHostKey)
-                && _v2PlansByHost.TryGetValue(preferredHostKey.Trim(), out var preferredPlan)
+                && _intelPlansByHost.TryGetValue(preferredHostKey.Trim(), out var preferredPlan)
                 && PlanHasApplicableActions(preferredPlan))
             {
                 return await ApplyPlanInternalAsync(bypassController, preferredHostKey.Trim(), preferredPlan).ConfigureAwait(false);
             }
 
             // 2) Fallback: старый режим «последний план».
-            if (_lastV2Plan == null || !PlanHasApplicableActions(_lastV2Plan)) return null;
+            if (_lastIntelPlan == null || !PlanHasApplicableActions(_lastIntelPlan)) return null;
 
             // Защита от «устаревшего» плана: применяем только если план относится
             // к последней цели, для которой был показан диагноз (чтобы не применять план «не к той цели»).
-            if (!string.IsNullOrWhiteSpace(_lastV2DiagnosisHostKey)
-                && !string.IsNullOrWhiteSpace(_lastV2PlanHostKey)
-                && !string.Equals(_lastV2PlanHostKey, _lastV2DiagnosisHostKey, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(_lastIntelDiagnosisHostKey)
+                && !string.IsNullOrWhiteSpace(_lastIntelPlanHostKey)
+                && !string.Equals(_lastIntelPlanHostKey, _lastIntelDiagnosisHostKey, StringComparison.OrdinalIgnoreCase))
             {
-                Log($"[APPLY] WARN: planHost={_lastV2PlanHostKey}; lastDiagHost={_lastV2DiagnosisHostKey} (план/цель разошлись)");
+                Log($"[APPLY] WARN: planHost={_lastIntelPlanHostKey}; lastDiagHost={_lastIntelDiagnosisHostKey} (план/цель разошлись)");
             }
 
-            var hostKey = !string.IsNullOrWhiteSpace(_lastV2PlanHostKey)
-                ? _lastV2PlanHostKey
-                : _lastV2DiagnosisHostKey;
+            var hostKey = !string.IsNullOrWhiteSpace(_lastIntelPlanHostKey)
+                ? _lastIntelPlanHostKey
+                : _lastIntelDiagnosisHostKey;
 
-            return await ApplyPlanInternalAsync(bypassController, hostKey, _lastV2Plan).ConfigureAwait(false);
+            return await ApplyPlanInternalAsync(bypassController, hostKey, _lastIntelPlan).ConfigureAwait(false);
         }
 
         private async Task<ApplyOutcome?> ApplyPlanInternalAsync(BypassController bypassController, string hostKey, BypassPlan plan)
@@ -238,7 +238,7 @@ namespace IspAudit.ViewModels
                     });
                 }
 
-                await bypassController.ApplyV2PlanAsync(plan, hostKey, V2ApplyTimeout, ct, OnPhaseEvent).ConfigureAwait(false);
+                await bypassController.ApplyIntelPlanAsync(plan, hostKey, IntelApplyTimeout, ct, OnPhaseEvent).ConfigureAwait(false);
 
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[APPLY] OK; after={afterState}");
@@ -542,8 +542,8 @@ namespace IspAudit.ViewModels
         private string ResolveBestHostKeyForApply(string? preferredHostKey)
         {
             if (!string.IsNullOrWhiteSpace(preferredHostKey)) return preferredHostKey.Trim();
-            if (!string.IsNullOrWhiteSpace(_lastV2PlanHostKey)) return _lastV2PlanHostKey.Trim();
-            if (!string.IsNullOrWhiteSpace(_lastV2DiagnosisHostKey)) return _lastV2DiagnosisHostKey.Trim();
+            if (!string.IsNullOrWhiteSpace(_lastIntelPlanHostKey)) return _lastIntelPlanHostKey.Trim();
+            if (!string.IsNullOrWhiteSpace(_lastIntelDiagnosisHostKey)) return _lastIntelDiagnosisHostKey.Trim();
             return string.Empty;
         }
 
@@ -731,10 +731,10 @@ namespace IspAudit.ViewModels
             _manualRecommendations.Clear();
             _legacyRecommendedStrategies.Clear();
             _legacyManualRecommendations.Clear();
-            _lastV2DiagnosisSummary = "";
-            _lastV2DiagnosisHostKey = "";
-            _lastV2Plan = null;
-            _lastV2PlanHostKey = "";
+            _lastIntelDiagnosisSummary = "";
+            _lastIntelDiagnosisHostKey = "";
+            _lastIntelPlan = null;
+            _lastIntelPlanHostKey = "";
             RecommendedStrategiesText = "Нет рекомендаций";
             ManualRecommendationsText = "";
             OnPropertyChanged(nameof(HasRecommendations));
@@ -750,8 +750,8 @@ namespace IspAudit.ViewModels
             // панель рекомендаций не должна «исчезать» сразу после ручного включения тумблеров.
             var hasAny = _recommendedStrategies.Count > 0
                 || _manualRecommendations.Count > 0
-                || _lastV2Plan != null
-                || !string.IsNullOrWhiteSpace(_lastV2DiagnosisSummary);
+                || _lastIntelPlan != null
+                || !string.IsNullOrWhiteSpace(_lastIntelDiagnosisSummary);
 
             if (!hasAny)
             {
@@ -759,12 +759,12 @@ namespace IspAudit.ViewModels
             }
             else if (_recommendedStrategies.Count == 0)
             {
-                var header = string.IsNullOrWhiteSpace(_lastV2DiagnosisSummary)
+                var header = string.IsNullOrWhiteSpace(_lastIntelDiagnosisSummary)
                     ? "[INTEL] Диагноз определён"
-                    : _lastV2DiagnosisSummary;
+                    : _lastIntelDiagnosisSummary;
 
                 // Если план был, но рекомендации уже включены вручную — объясняем, почему кнопка может быть не нужна.
-                RecommendedStrategiesText = _lastV2Plan != null
+                RecommendedStrategiesText = _lastIntelPlan != null
                     ? $"{header}\nРекомендации уже применены (вручную или ранее)"
                     : $"{header}\nАвтоматических рекомендаций нет";
             }
@@ -792,9 +792,9 @@ namespace IspAudit.ViewModels
             // Важно: Intel — приоритетно; legacy — только справочно.
             var strategies = string.Join(", ", _recommendedStrategies.Select(FormatStrategyTokenForUi));
 
-            var header = string.IsNullOrWhiteSpace(_lastV2DiagnosisSummary)
+            var header = string.IsNullOrWhiteSpace(_lastIntelDiagnosisSummary)
                 ? "[INTEL] Диагноз определён"
-                : _lastV2DiagnosisSummary;
+                : _lastIntelDiagnosisSummary;
 
             var applyHint = $"Что попробовать: нажмите «Применить рекомендации» (включит: {strategies})";
 

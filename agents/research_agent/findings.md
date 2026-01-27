@@ -9,7 +9,7 @@
 - [Utils/LiveTestingPipeline.cs](Utils/LiveTestingPipeline.cs) — выдаёт рекомендации стратегий (TLS_FRAGMENT/DISORDER/FAKE/FAKE_FRAGMENT, DROP_RST, DOH), не включает их автоматически.
 - [Core/Modules/StandardBlockageClassifier.cs](Core/Modules/StandardBlockageClassifier.cs) и [Bypass/StrategyMapping.cs](Bypass/StrategyMapping.cs) — формируют рекомендации/фильтруют активные стратегии.
 - [Core/Modules/StandardHostTester.cs](Core/Modules/StandardHostTester.cs) — TLS проверяется только при наличии hostname; для IP-only TLS считается OK → возможен «нет фрагментаций».
-- Документация: [docs/phase2_plan.md](docs/phase2_plan.md), [ARCHITECTURE_CURRENT.md](ARCHITECTURE_CURRENT.md), [docs/full_repo_audit_v2.md](docs/full_repo_audit_v2.md) — описывают 2.6 как выполненный и план переноса в сервис, но текущее состояние и разрыв UI/Service не отражены.
+- Документация: [docs/phase2_plan.md](docs/phase2_plan.md), [ARCHITECTURE_CURRENT.md](ARCHITECTURE_CURRENT.md), [docs/full_repo_audit_intel.md](docs/full_repo_audit_intel.md) — описывают 2.6 как выполненный и план переноса в сервис, но текущее состояние и разрыв UI/Service не отражены.
 
 ## Текущая реализация
 - **Сервисный слой (пока отдельно):** TlsBypassService строит профиль из TlsBypassOptions, регистрирует BypassFilter в TrafficEngine, каждые 2с тянет метрики и вычисляет вердикт по ratio RST/фрагментаций (шум до 5 RST). Поддерживает AutoAdjust для пресета «Агрессивный» (сжимает мин-чанк до 4 при ранних RST, затем усиливает после 30с «зелёного»). События MetricsUpdated/VerdictChanged/StateChanged есть, но сервис нигде не создаётся.
@@ -18,7 +18,7 @@
 - **Автокоррекция в UI:** опциональный флаг «Автокоррекция агрессивного» дублирует логику сервиса: при RST>2x фрагментов (5–20) ставит мин-чанк=4; при зелёном >30с уменьшает мин-чанк на 4 (не ниже 4) и повторно применяет фильтр. Состояние хранится в контроллере.
 - **Применение стратегий:** BypassFilter фрагментирует только ClientHello на 443 с payload ≥ threshold; отправляет сегменты в прямом/обратном порядке, Fake снижает seq на 10000 для первого пакета нового соединения, TTL Trick отправляет копию с малым TTL. Метрики: TlsHandled, ClientHellosFragmented, RstDropped, RstDroppedRelevant (только для соединений, где применён bypass), LastFragmentPlan.
 - **Рекомендации/автовключение:** LiveTestingPipeline/StandardBlockageClassifier предлагают TLS_* и DROP_RST, но не применяют; активные стратегии из BypassController исключаются из рекомендаций. DiagnosticOrchestrator при enableAutoBypass вызывает EnablePreemptiveBypassAsync → включает TLS_DISORDER+DROP_RST до старта тестов, без явного статуса «успех/неуспех».
-- **Документация:** phase2_plan п.2.6 помечен «выполнено» с описанием будущего вынесения в сервис и метрик/вердикта; ARCHITECTURE_CURRENT описывает BypassController и метрики, но не фиксирует наличие TlsBypassService и дублирование; full_repo_audit_v2 содержит устаревшие риски (async void в InitializeOnStartup, dnsOk=true), которые уже не совпадают с кодом.
+- **Документация:** phase2_plan п.2.6 помечен «выполнено» с описанием будущего вынесения в сервис и метрик/вердикта; ARCHITECTURE_CURRENT описывает BypassController и метрики, но не фиксирует наличие TlsBypassService и дублирование; full_repo_audit_intel содержит устаревшие риски (async void в InitializeOnStartup, dnsOk=true), которые уже не совпадают с кодом.
 
 ## Риски и зависимости
 - **Разрыв архитектуры/доков:** сервисный слой TlsBypassService создан, но не используется; UI продолжает прямое управление через BypassController → планы/архдоки несоответствуют, поддержка дублируется.
@@ -29,7 +29,7 @@
 - **Детекция TLS ограничена hostname:** StandardHostTester пропускает TLS handshake без hostname (tlsOk=tcpOk) → часть трафика может не давать сигналов, что снижает шансы увидеть фрагментации/ratio.
 
 ## Рекомендации для Planning Agent
-- Зафиксировать в документации фактическое состояние: UI использует BypassController, TlsBypassService не интегрирован; обновить docs/phase2_plan.md (п.2.6), ARCHITECTURE_CURRENT.md, docs/full_repo_audit_v2.md с указанием дублирования и планом миграции или консолидировать один подход.
+- Зафиксировать в документации фактическое состояние: UI использует BypassController, TlsBypassService не интегрирован; обновить docs/phase2_plan.md (п.2.6), ARCHITECTURE_CURRENT.md, docs/full_repo_audit_intel.md с указанием дублирования и планом миграции или консолидировать один подход.
 - Решить целевой путь: либо подключить TlsBypassService (события метрик/вердикта, хранение опций, единая автокоррекция) и сделать BypassController тонким прокси, либо удалить сервис и оставить одну реализацию. Минимизировать дублирование метрик/автокоррекции.
 - Добавить явный UX-вердикт и next steps: состояния «нет TLS данных/короткий ClientHello», «обход работает/не работает», подсказки «снизить threshold/сменить пресет/выключить DROP_RST»; сократить шум карточки до итогового вердикта + кратких действий.
 - Пересмотреть преэмптивное включение: показывать в UI активированный режим и его результат (фрагментации/RST), дать быстрый откат; возможно запускать после первых детекций, а не сразу.

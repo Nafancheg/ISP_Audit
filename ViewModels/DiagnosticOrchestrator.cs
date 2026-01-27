@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
-using IspAudit.Core.IntelligenceV2.Contracts;
+using IspAudit.Core.Intelligence.Contracts;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
 using IspAudit.Core.Modules;
@@ -44,9 +44,9 @@ namespace IspAudit.ViewModels
         // но _cts ещё не создан (до инициализации сервисов). Тогда отмену нельзя терять.
         private volatile bool _cancelRequested;
 
-        // Последняя цель (hostKey), извлечённая из v2-диагноза в UI сообщениях.
-        // Нужна, чтобы не применять v2-план «не к той цели», когда рекомендации обновились.
-        private string _lastV2DiagnosisHostKey = "";
+        // Последняя цель (hostKey), извлечённая из INTEL-диагноза в UI сообщениях.
+        // Нужна, чтобы не применять INTEL-план «не к той цели», когда рекомендации обновились.
+        private string _lastIntelDiagnosisHostKey = "";
 
         // Мониторинговые сервисы
         private ConnectionMonitorService? _connectionMonitor;
@@ -109,22 +109,22 @@ namespace IspAudit.ViewModels
         private bool _isApplyRunning;
         private string _applyStatusText = "";
 
-        // Legacy (справочно): не влияет на основную рекомендацию v2
+        // Legacy (справочно): не влияет на основную рекомендацию INTEL
         private readonly HashSet<string> _legacyRecommendedStrategies = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _legacyManualRecommendations = new(StringComparer.OrdinalIgnoreCase);
 
-        // Последний v2 диагноз (для панели рекомендаций)
-        private string _lastV2DiagnosisSummary = "";
+        // Последний INTEL-диагноз (для панели рекомендаций)
+        private string _lastIntelDiagnosisSummary = "";
 
-        // Последний v2 план (объектно, без парсинга строк) для ручного применения.
-        private BypassPlan? _lastV2Plan;
-        private string _lastV2PlanHostKey = "";
+        // Последний INTEL-план (объектно, без парсинга строк) для ручного применения.
+        private BypassPlan? _lastIntelPlan;
+        private string _lastIntelPlanHostKey = "";
 
-        // Планы v2 храним по целям, чтобы Apply мог работать по выбранному хосту,
+        // Планы INTEL храним по целям, чтобы Apply мог работать по выбранному хосту,
         // а не по «последнему сообщению в логе».
-        private readonly ConcurrentDictionary<string, BypassPlan> _v2PlansByHost =
+        private readonly ConcurrentDictionary<string, BypassPlan> _intelPlansByHost =
             new(StringComparer.OrdinalIgnoreCase);
-        private static readonly TimeSpan V2ApplyTimeout = TimeSpan.FromSeconds(8);
+        private static readonly TimeSpan IntelApplyTimeout = TimeSpan.FromSeconds(8);
 
         private static readonly HashSet<string> ServiceStrategies = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -255,12 +255,12 @@ namespace IspAudit.ViewModels
             }
         }
 
-        public bool HasRecommendations => _lastV2Plan != null;
+        public bool HasRecommendations => _lastIntelPlan != null;
 
         public bool HasAnyRecommendations => _recommendedStrategies.Count > 0
             || _manualRecommendations.Count > 0
-            || _lastV2Plan != null
-            || !string.IsNullOrWhiteSpace(_lastV2DiagnosisSummary);
+            || _lastIntelPlan != null
+            || !string.IsNullOrWhiteSpace(_lastIntelDiagnosisSummary);
 
         public string RecommendedStrategiesText
         {

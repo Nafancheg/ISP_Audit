@@ -5,23 +5,23 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace IspAudit.Core.IntelligenceV2.Feedback;
+namespace IspAudit.Core.Intelligence.Feedback;
 
 /// <summary>
 /// Feedback store с сохранением в JSON файл.
 /// MVP: простая реализация без фоновых задач и без сложной синхронизации.
 /// </summary>
-public sealed class JsonFileFeedbackStoreV2 : IFeedbackStoreV2
+public sealed class JsonFileFeedbackStore : IFeedbackStore
 {
-    private readonly InMemoryFeedbackStoreV2 _inner;
+    private readonly InMemoryFeedbackStore _inner;
     private readonly object _fileLock = new();
 
-    public JsonFileFeedbackStoreV2(string filePath, FeedbackStoreOptions? options = null)
+    public JsonFileFeedbackStore(string filePath, FeedbackStoreOptions? options = null)
     {
         if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentException("filePath is required", nameof(filePath));
 
         FilePath = filePath;
-        _inner = new InMemoryFeedbackStoreV2(options);
+        _inner = new InMemoryFeedbackStore(options);
 
         TryLoadFromDisk();
         _inner.Prune(DateTimeOffset.UtcNow);

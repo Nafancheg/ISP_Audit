@@ -9,8 +9,8 @@ using System.Collections.ObjectModel;
 using System.Threading;
 using System.IO;
 using IspAudit.Bypass;
-using IspAudit.Core.IntelligenceV2.Contracts;
-using IspAudit.Core.IntelligenceV2.Execution;
+using IspAudit.Core.Intelligence.Contracts;
+using IspAudit.Core.Intelligence.Execution;
 using IspAudit.Core.Traffic;
 using IspAudit.Utils;
 using IspAudit.Wpf;
@@ -31,9 +31,9 @@ namespace IspAudit.ViewModels
         private TlsBypassOptions _currentOptions;
         private TlsFragmentPreset? _selectedPreset;
 
-        // P0.1 Step 13: сериализация ручных apply-операций (v2), чтобы исключить гонки.
-        // Важно: это gate только для операций ApplyV2PlanAsync (ручное применение плана).
-        private readonly SemaphoreSlim _applyV2Gate = new(1, 1);
+        // P0.1 Step 13: сериализация ручных apply-операций (INTEL), чтобы исключить гонки.
+        // Важно: это gate только для операций ApplyIntelPlanAsync (ручное применение плана).
+        private readonly SemaphoreSlim _applyIntelGate = new(1, 1);
 
         private readonly AutoHostlistService _autoHostlist;
         private bool _isAutoHostlistEnabled;

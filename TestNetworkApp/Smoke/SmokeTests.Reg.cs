@@ -191,8 +191,8 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
-        public static Task<SmokeTestResult> REG_ApplyTransactions_ContractV2_HasRequestSnapshotResultContributions(CancellationToken ct)
-            => RunAsync("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)", () =>
+        public static Task<SmokeTestResult> REG_ApplyTransactions_Contract_HasRequestSnapshotResultContributions(CancellationToken ct)
+            => RunAsync("REG-009", "REG: apply-транзакция содержит контракт (request/snapshot/result/contributions)", () =>
             {
                 try
                 {
@@ -210,7 +210,7 @@ namespace TestNetworkApp.Smoke
                     var json = bypass.TryGetLatestApplyTransactionJsonForGroupKey("youtube.com");
                     if (string.IsNullOrWhiteSpace(json))
                     {
-                        return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)",
+                        return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит контракт (request/snapshot/result/contributions)",
                             SmokeOutcome.Fail, TimeSpan.Zero, "JSON пуст");
                     }
 
@@ -221,32 +221,32 @@ namespace TestNetworkApp.Smoke
                     }
                     catch (Exception ex)
                     {
-                        return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)",
+                        return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит контракт (request/snapshot/result/contributions)",
                             SmokeOutcome.Fail, TimeSpan.Zero, "JSON не парсится: " + ex.Message);
                     }
 
                     if (root == null)
                     {
-                        return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)",
+                        return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит контракт (request/snapshot/result/contributions)",
                             SmokeOutcome.Fail, TimeSpan.Zero, "JSON root=null");
                     }
 
-                    // v2 секции
-                    if (root["request"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет секции request");
-                    if (root["snapshot"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет секции snapshot");
-                    if (root["result"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет секции result");
-                    if (root["contributions"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет секции contributions");
+                    // Секции контракта.
+                    if (root["request"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет секции request");
+                    if (root["snapshot"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет секции snapshot");
+                    if (root["result"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет секции result");
+                    if (root["contributions"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет секции contributions");
 
                     // Обратная совместимость: старые ключи остаются.
-                    if (root["candidateIpEndpoints"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет candidateIpEndpoints (ожидали обратную совместимость)");
-                    if (root["activationStatus"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет activationStatus (ожидали обратную совместимость)");
+                    if (root["candidateIpEndpoints"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет candidateIpEndpoints (ожидали обратную совместимость)");
+                    if (root["activationStatus"] == null) return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит контракт (request/snapshot/result/contributions)", SmokeOutcome.Fail, TimeSpan.Zero, "Нет activationStatus (ожидали обратную совместимость)");
 
-                    return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)",
+                    return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит контракт (request/snapshot/result/contributions)",
                         SmokeOutcome.Pass, TimeSpan.Zero, "OK");
                 }
                 catch (Exception ex)
                 {
-                    return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит v2 контракт (request/snapshot/result/contributions)",
+                    return new SmokeTestResult("REG-009", "REG: apply-транзакция содержит контракт (request/snapshot/result/contributions)",
                         SmokeOutcome.Fail, TimeSpan.Zero, ex.Message);
                 }
             }, ct);
@@ -414,8 +414,8 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
-        public static Task<SmokeTestResult> REG_ApplyV2Plan_IsSerialized_NoParallelApply(CancellationToken ct)
-            => RunAsyncAwait("REG-012", "REG: ApplyV2PlanAsync сериализован (нет параллельного apply)", async _ =>
+        public static Task<SmokeTestResult> REG_ApplyIntelPlan_IsSerialized_NoParallelApply(CancellationToken ct)
+            => RunAsyncAwait("REG-012", "REG: ApplyIntelPlanAsync сериализован (нет параллельного apply)", async _ =>
             {
                 var sw = Stopwatch.StartNew();
                 string? prevDelay = null;
@@ -439,37 +439,37 @@ namespace TestNetworkApp.Smoke
 
                     var bypass = new BypassController(tls, baseProfile);
 
-                    var plan = new IspAudit.Core.IntelligenceV2.Contracts.BypassPlan
+                    var plan = new IspAudit.Core.Intelligence.Contracts.BypassPlan
                     {
-                        ForDiagnosis = IspAudit.Core.IntelligenceV2.Contracts.DiagnosisId.SilentDrop,
+                        ForDiagnosis = IspAudit.Core.Intelligence.Contracts.DiagnosisId.SilentDrop,
                         PlanConfidence = 100,
                         Strategies =
                         {
-                            new IspAudit.Core.IntelligenceV2.Contracts.BypassStrategy
+                            new IspAudit.Core.Intelligence.Contracts.BypassStrategy
                             {
-                                Id = IspAudit.Core.IntelligenceV2.Contracts.StrategyId.TlsFragment
+                                Id = IspAudit.Core.Intelligence.Contracts.StrategyId.TlsFragment
                             }
                         }
                     };
 
                     // Запускаем два apply конкурентно. Если gate работает — они должны выполниться строго последовательно.
-                    var t1 = bypass.ApplyV2PlanAsync(plan, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(3), cancellationToken: ct);
-                    var t2 = bypass.ApplyV2PlanAsync(plan, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(3), cancellationToken: ct);
+                    var t1 = bypass.ApplyIntelPlanAsync(plan, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(3), cancellationToken: ct);
+                    var t2 = bypass.ApplyIntelPlanAsync(plan, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(3), cancellationToken: ct);
                     await Task.WhenAll(t1, t2).ConfigureAwait(false);
 
                     var elapsed = sw.Elapsed;
                     var expectedMin = TimeSpan.FromMilliseconds(delayMs * 2 - 50);
                     if (elapsed < expectedMin)
                     {
-                        return new SmokeTestResult("REG-012", "REG: ApplyV2PlanAsync сериализован (нет параллельного apply)", SmokeOutcome.Fail, elapsed,
+                        return new SmokeTestResult("REG-012", "REG: ApplyIntelPlanAsync сериализован (нет параллельного apply)", SmokeOutcome.Fail, elapsed,
                             $"Ожидали последовательное выполнение: elapsed={elapsed.TotalMilliseconds:0}ms < {expectedMin.TotalMilliseconds:0}ms (delayMs={delayMs})");
                     }
 
-                    return new SmokeTestResult("REG-012", "REG: ApplyV2PlanAsync сериализован (нет параллельного apply)", SmokeOutcome.Pass, elapsed, "OK");
+                    return new SmokeTestResult("REG-012", "REG: ApplyIntelPlanAsync сериализован (нет параллельного apply)", SmokeOutcome.Pass, elapsed, "OK");
                 }
                 catch (Exception ex)
                 {
-                    return new SmokeTestResult("REG-012", "REG: ApplyV2PlanAsync сериализован (нет параллельного apply)", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                    return new SmokeTestResult("REG-012", "REG: ApplyIntelPlanAsync сериализован (нет параллельного apply)", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
                 }
                 finally
                 {
@@ -477,8 +477,8 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
-        public static Task<SmokeTestResult> REG_ApplyV2Plan_Timeout_HasPhaseDiagnostics(CancellationToken ct)
-            => RunAsyncAwait("REG-016", "REG: ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)", async _ =>
+        public static Task<SmokeTestResult> REG_ApplyIntelPlan_Timeout_HasPhaseDiagnostics(CancellationToken ct)
+            => RunAsyncAwait("REG-016", "REG: ApplyIntelPlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)", async _ =>
             {
                 var sw = Stopwatch.StartNew();
                 string? prevDelay = null;
@@ -503,38 +503,38 @@ namespace TestNetworkApp.Smoke
 
                     var bypass = new BypassController(tls, baseProfile);
 
-                    var plan = new IspAudit.Core.IntelligenceV2.Contracts.BypassPlan
+                    var plan = new IspAudit.Core.Intelligence.Contracts.BypassPlan
                     {
-                        ForDiagnosis = IspAudit.Core.IntelligenceV2.Contracts.DiagnosisId.SilentDrop,
+                        ForDiagnosis = IspAudit.Core.Intelligence.Contracts.DiagnosisId.SilentDrop,
                         PlanConfidence = 100,
                         Strategies =
                         {
-                            new IspAudit.Core.IntelligenceV2.Contracts.BypassStrategy
+                            new IspAudit.Core.Intelligence.Contracts.BypassStrategy
                             {
-                                Id = IspAudit.Core.IntelligenceV2.Contracts.StrategyId.TlsFragment
+                                Id = IspAudit.Core.Intelligence.Contracts.StrategyId.TlsFragment
                             }
                         }
                     };
 
                     try
                     {
-                        await bypass.ApplyV2PlanAsync(plan, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromMilliseconds(50), cancellationToken: ct)
+                        await bypass.ApplyIntelPlanAsync(plan, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromMilliseconds(50), cancellationToken: ct)
                             .ConfigureAwait(false);
 
-                        return new SmokeTestResult("REG-016", "REG: ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
+                        return new SmokeTestResult("REG-016", "REG: ApplyIntelPlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
                             SmokeOutcome.Fail, sw.Elapsed, "Ожидали таймаут, но apply завершился без исключения");
                     }
                     catch (IspAudit.Core.Bypass.BypassApplyService.BypassApplyCanceledException ce)
                     {
                         if (!string.Equals(ce.Execution.CancelReason, "timeout", StringComparison.OrdinalIgnoreCase))
                         {
-                            return new SmokeTestResult("REG-016", "REG: ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
+                            return new SmokeTestResult("REG-016", "REG: ApplyIntelPlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
                                 SmokeOutcome.Fail, sw.Elapsed, $"Ожидали CancelReason=timeout, получили '{ce.Execution.CancelReason}'");
                         }
 
                         if (ce.Execution.Phases == null || ce.Execution.Phases.Count == 0)
                         {
-                            return new SmokeTestResult("REG-016", "REG: ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
+                            return new SmokeTestResult("REG-016", "REG: ApplyIntelPlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
                                 SmokeOutcome.Fail, sw.Elapsed, "Phases пуст (ожидали хотя бы plan_build/test_delay)");
                         }
 
@@ -542,17 +542,17 @@ namespace TestNetworkApp.Smoke
                         if (!string.Equals(ce.Execution.CurrentPhase, "test_delay", StringComparison.OrdinalIgnoreCase)
                             && !ce.Execution.Phases.Any(p => string.Equals(p.Name, "test_delay", StringComparison.OrdinalIgnoreCase)))
                         {
-                            return new SmokeTestResult("REG-016", "REG: ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
+                            return new SmokeTestResult("REG-016", "REG: ApplyIntelPlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
                                 SmokeOutcome.Fail, sw.Elapsed, $"Ожидали фазу test_delay (currentPhase или phases), получили currentPhase='{ce.Execution.CurrentPhase}'");
                         }
 
-                        return new SmokeTestResult("REG-016", "REG: ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
+                        return new SmokeTestResult("REG-016", "REG: ApplyIntelPlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
                             SmokeOutcome.Pass, sw.Elapsed, "OK");
                     }
                 }
                 catch (Exception ex)
                 {
-                    return new SmokeTestResult("REG-016", "REG: ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
+                    return new SmokeTestResult("REG-016", "REG: ApplyIntelPlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)",
                         SmokeOutcome.Fail, sw.Elapsed, ex.Message);
                 }
                 finally
@@ -900,35 +900,35 @@ namespace TestNetworkApp.Smoke
                     var bypass = new BypassController(tls, baseProfile);
 
                     // 1) Цель A: Fragment
-                    var planA = new IspAudit.Core.IntelligenceV2.Contracts.BypassPlan
+                    var planA = new IspAudit.Core.Intelligence.Contracts.BypassPlan
                     {
-                        ForDiagnosis = IspAudit.Core.IntelligenceV2.Contracts.DiagnosisId.SilentDrop,
+                        ForDiagnosis = IspAudit.Core.Intelligence.Contracts.DiagnosisId.SilentDrop,
                         PlanConfidence = 100,
                         Strategies =
                         {
-                            new IspAudit.Core.IntelligenceV2.Contracts.BypassStrategy
+                            new IspAudit.Core.Intelligence.Contracts.BypassStrategy
                             {
-                                Id = IspAudit.Core.IntelligenceV2.Contracts.StrategyId.TlsFragment
+                                Id = IspAudit.Core.Intelligence.Contracts.StrategyId.TlsFragment
                             }
                         }
                     };
 
                     // 2) Цель B: Disorder
-                    var planB = new IspAudit.Core.IntelligenceV2.Contracts.BypassPlan
+                    var planB = new IspAudit.Core.Intelligence.Contracts.BypassPlan
                     {
-                        ForDiagnosis = IspAudit.Core.IntelligenceV2.Contracts.DiagnosisId.SilentDrop,
+                        ForDiagnosis = IspAudit.Core.Intelligence.Contracts.DiagnosisId.SilentDrop,
                         PlanConfidence = 100,
                         Strategies =
                         {
-                            new IspAudit.Core.IntelligenceV2.Contracts.BypassStrategy
+                            new IspAudit.Core.Intelligence.Contracts.BypassStrategy
                             {
-                                Id = IspAudit.Core.IntelligenceV2.Contracts.StrategyId.TlsDisorder
+                                Id = IspAudit.Core.Intelligence.Contracts.StrategyId.TlsDisorder
                             }
                         }
                     };
 
-                    await bypass.ApplyV2PlanAsync(planA, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
-                    await bypass.ApplyV2PlanAsync(planB, outcomeTargetHost: "2.2.2.2", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
+                    await bypass.ApplyIntelPlanAsync(planA, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
+                    await bypass.ApplyIntelPlanAsync(planB, outcomeTargetHost: "2.2.2.2", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
 
                     var manager = GetPrivateField<IspAudit.Bypass.BypassStateManager>(bypass, "_stateManager");
                     var tlsService = GetPrivateField<IspAudit.Bypass.TlsBypassService>(manager, "_tlsService");
@@ -1011,23 +1011,23 @@ namespace TestNetworkApp.Smoke
 
                     var bypass = new BypassController(tls, baseProfile);
 
-                    static IspAudit.Core.IntelligenceV2.Contracts.BypassPlan CreateHostTricksPlan()
+                    static IspAudit.Core.Intelligence.Contracts.BypassPlan CreateHostTricksPlan()
                         => new()
                         {
-                            ForDiagnosis = IspAudit.Core.IntelligenceV2.Contracts.DiagnosisId.SilentDrop,
+                            ForDiagnosis = IspAudit.Core.Intelligence.Contracts.DiagnosisId.SilentDrop,
                             PlanConfidence = 100,
                             Strategies =
                             {
-                                new IspAudit.Core.IntelligenceV2.Contracts.BypassStrategy
+                                new IspAudit.Core.Intelligence.Contracts.BypassStrategy
                                 {
-                                    Id = IspAudit.Core.IntelligenceV2.Contracts.StrategyId.HttpHostTricks
+                                    Id = IspAudit.Core.Intelligence.Contracts.StrategyId.HttpHostTricks
                                 }
                             }
                         };
 
                     // Важно: используем IPv4-строки как "host": Dns.GetHostAddressesAsync на них возвращает тот же IP.
-                    await bypass.ApplyV2PlanAsync(CreateHostTricksPlan(), outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
-                    await bypass.ApplyV2PlanAsync(CreateHostTricksPlan(), outcomeTargetHost: "2.2.2.2", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
+                    await bypass.ApplyIntelPlanAsync(CreateHostTricksPlan(), outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
+                    await bypass.ApplyIntelPlanAsync(CreateHostTricksPlan(), outcomeTargetHost: "2.2.2.2", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
 
                     var manager = GetPrivateField<IspAudit.Bypass.BypassStateManager>(bypass, "_stateManager");
                     var tlsService = GetPrivateField<IspAudit.Bypass.TlsBypassService>(manager, "_tlsService");
@@ -1127,37 +1127,37 @@ namespace TestNetworkApp.Smoke
 
                     var bypass = new BypassController(tls, baseProfile);
 
-                    var planFragment = new IspAudit.Core.IntelligenceV2.Contracts.BypassPlan
+                    var planFragment = new IspAudit.Core.Intelligence.Contracts.BypassPlan
                     {
-                        ForDiagnosis = IspAudit.Core.IntelligenceV2.Contracts.DiagnosisId.SilentDrop,
+                        ForDiagnosis = IspAudit.Core.Intelligence.Contracts.DiagnosisId.SilentDrop,
                         PlanConfidence = 100,
                         Strategies =
                         {
-                            new IspAudit.Core.IntelligenceV2.Contracts.BypassStrategy
+                            new IspAudit.Core.Intelligence.Contracts.BypassStrategy
                             {
-                                Id = IspAudit.Core.IntelligenceV2.Contracts.StrategyId.TlsFragment
+                                Id = IspAudit.Core.Intelligence.Contracts.StrategyId.TlsFragment
                             }
                         }
                     };
 
-                    var planDisorder = new IspAudit.Core.IntelligenceV2.Contracts.BypassPlan
+                    var planDisorder = new IspAudit.Core.Intelligence.Contracts.BypassPlan
                     {
-                        ForDiagnosis = IspAudit.Core.IntelligenceV2.Contracts.DiagnosisId.SilentDrop,
+                        ForDiagnosis = IspAudit.Core.Intelligence.Contracts.DiagnosisId.SilentDrop,
                         PlanConfidence = 100,
                         Strategies =
                         {
-                            new IspAudit.Core.IntelligenceV2.Contracts.BypassStrategy
+                            new IspAudit.Core.Intelligence.Contracts.BypassStrategy
                             {
-                                Id = IspAudit.Core.IntelligenceV2.Contracts.StrategyId.TlsDisorder
+                                Id = IspAudit.Core.Intelligence.Contracts.StrategyId.TlsDisorder
                             }
                         }
                     };
 
                     // 1) Применяем Fragment к цели A
-                    await bypass.ApplyV2PlanAsync(planFragment, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
+                    await bypass.ApplyIntelPlanAsync(planFragment, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
 
                     // 2) Применяем Disorder к цели B — важно, чтобы Fragment не «выключился» в effective options
-                    await bypass.ApplyV2PlanAsync(planDisorder, outcomeTargetHost: "2.2.2.2", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
+                    await bypass.ApplyIntelPlanAsync(planDisorder, outcomeTargetHost: "2.2.2.2", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct).ConfigureAwait(false);
 
                     var manager = GetPrivateField<IspAudit.Bypass.BypassStateManager>(bypass, "_stateManager");
                     var options = manager.GetOptionsSnapshot();

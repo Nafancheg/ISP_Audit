@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using IspAudit.Core.IntelligenceV2.Contracts;
+using IspAudit.Core.Intelligence.Contracts;
 
-namespace IspAudit.Core.IntelligenceV2.Signals;
+namespace IspAudit.Core.Intelligence.Signals;
 
 public static class SignalSequenceExtensions
 {

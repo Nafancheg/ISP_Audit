@@ -2,7 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Net;
 using IspAudit.Core.Interfaces;
-using IspAudit.Core.IntelligenceV2.Signals;
+using IspAudit.Core.Intelligence.Signals;
 using IspAudit.Core.Models;
 
 namespace IspAudit.Core.Modules

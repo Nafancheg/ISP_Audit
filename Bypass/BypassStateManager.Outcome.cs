@@ -16,7 +16,7 @@ namespace IspAudit.Bypass
         private Func<string, CancellationToken, Task<OutcomeStatusSnapshot>>? _outcomeProbeOverrideForSmoke;
 
         /// <summary>
-        /// Задать цель для outcome-check (обычно — hostKey последнего v2 плана/диагноза).
+        /// Задать цель для outcome-check (обычно — hostKey последнего INTEL-плана/диагноза).
         /// Если цель не задана, outcome остаётся UNKNOWN.
         /// </summary>
         public void SetOutcomeTargetHost(string? host)

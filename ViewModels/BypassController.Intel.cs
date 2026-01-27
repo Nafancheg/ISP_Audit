@@ -6,8 +6,8 @@ using System.Threading.Tasks;
 using IspAudit.Bypass;
 using IspAudit.Core.Bypass;
 using IspAudit.Core.Traffic;
-using IspAudit.Core.IntelligenceV2.Contracts;
-using IspAudit.Core.IntelligenceV2.Execution;
+using IspAudit.Core.Intelligence.Contracts;
+using IspAudit.Core.Intelligence.Execution;
 
 // Явно указываем WPF Application вместо WinForms
 using Application = System.Windows.Application;
@@ -19,7 +19,7 @@ namespace IspAudit.ViewModels
         /// <summary>
         /// Применить план рекомендаций (ТОЛЬКО вручную), с таймаутом/отменой и безопасным откатом.
         /// </summary>
-        public async Task ApplyV2PlanAsync(BypassPlan plan, TimeSpan timeout, CancellationToken cancellationToken, Action<BypassApplyPhaseTiming>? onPhaseEvent = null)
+        public async Task ApplyIntelPlanAsync(BypassPlan plan, TimeSpan timeout, CancellationToken cancellationToken, Action<BypassApplyPhaseTiming>? onPhaseEvent = null)
         {
             if (plan == null) throw new ArgumentNullException(nameof(plan));
 
@@ -27,21 +27,21 @@ namespace IspAudit.ViewModels
 
             // P0.1 Step 13: сериализуем все ручные apply-операции.
             // Если пользователь (или UI) инициировал несколько apply подряд, они должны отработать строго последовательно.
-            if (!await _applyV2Gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+            if (!await _applyIntelGate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
             {
                 Log("[APPLY_GATE] queued (another apply in progress)");
-                await _applyV2Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                await _applyIntelGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             }
 
             Log("[APPLY_GATE] enter");
 
             try
             {
-                using var op = BypassOperationContext.EnterIfNone("v2_apply");
+                using var op = BypassOperationContext.EnterIfNone("intel_apply");
 
                 var applyService = new BypassApplyService(_stateManager, Log);
                 var applied = await applyService
-                    .ApplyV2PlanWithRollbackAsync(plan, timeout, _isDoHEnabled, SelectedDnsPreset, cancellationToken, onPhaseEvent)
+                    .ApplyIntelPlanWithRollbackAsync(plan, timeout, _isDoHEnabled, SelectedDnsPreset, cancellationToken, onPhaseEvent)
                     .ConfigureAwait(false);
 
                 // Синхронизируем локальное UI-состояние после успешного apply.
@@ -93,7 +93,7 @@ namespace IspAudit.ViewModels
             {
                 try
                 {
-                    _applyV2Gate.Release();
+                    _applyIntelGate.Release();
                 }
                 catch
                 {
@@ -107,10 +107,10 @@ namespace IspAudit.ViewModels
         /// <summary>
         /// Overload: применить план и одновременно задать цель для HTTPS outcome-check.
         /// </summary>
-        public Task ApplyV2PlanAsync(BypassPlan plan, string? outcomeTargetHost, TimeSpan timeout, CancellationToken cancellationToken, Action<BypassApplyPhaseTiming>? onPhaseEvent = null)
+        public Task ApplyIntelPlanAsync(BypassPlan plan, string? outcomeTargetHost, TimeSpan timeout, CancellationToken cancellationToken, Action<BypassApplyPhaseTiming>? onPhaseEvent = null)
         {
             SetOutcomeTargetHost(outcomeTargetHost);
-            return ApplyV2PlanAsync(plan, timeout, cancellationToken, onPhaseEvent);
+            return ApplyIntelPlanAsync(plan, timeout, cancellationToken, onPhaseEvent);
         }
 
 

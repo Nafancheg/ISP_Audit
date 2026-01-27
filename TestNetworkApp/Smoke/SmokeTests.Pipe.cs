@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 using IspAudit.Bypass;
 using IspAudit.Core.Diagnostics;
 using IspAudit.Core.Interfaces;
-using IspAudit.Core.IntelligenceV2.Signals;
+using IspAudit.Core.Intelligence.Signals;
 using IspAudit.Core.Models;
 using IspAudit.Core.Modules;
 using IspAudit.Core.Traffic.Filters;
@@ -396,8 +396,8 @@ namespace TestNetworkApp.Smoke
             }
         }
 
-        public static Task<SmokeTestResult> Pipe_AutoHostlist_AppendedToV2Tail(CancellationToken ct)
-            => RunAsyncAwait("PIPE-018", "Auto-hostlist добавляется в v2 хвост (evidence/notes)", async _ =>
+        public static Task<SmokeTestResult> Pipe_AutoHostlist_AppendedToIntelTail(CancellationToken ct)
+            => RunAsyncAwait("PIPE-018", "Auto-hostlist добавляется в INTEL хвост (evidence/notes)", async _ =>
             {
                 var uiLines = new List<string>();
                 IProgress<string> progress = new InlineProgress(msg =>
@@ -496,7 +496,7 @@ namespace TestNetworkApp.Smoke
                     $"OK: {found}");
             }, ct);
 
-        public static Task<SmokeTestResult> Pipe_AutoHostlist_V2Only_NoLegacyTypes(CancellationToken ct)
+        public static Task<SmokeTestResult> Pipe_AutoHostlist_IntelOnly_NoLegacyTypes(CancellationToken ct)
             => RunAsync("PIPE-019", "Auto-hostlist intel-only: без BlockageSignals/GetSignals", () =>
             {
                 var autoHostlist = new AutoHostlistService
@@ -537,11 +537,11 @@ namespace TestNetworkApp.Smoke
                 autoHostlist.Observe(testedIp, inspection, hostname: null);
                 if (autoHostlist.VisibleCount != 0)
                 {
-                    return new SmokeTestResult("PIPE-019", "Auto-hostlist v2-only: без BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("PIPE-019", "Auto-hostlist intel-only: без BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали, что голый IP не попадёт в hostlist, но VisibleCount != 0");
                 }
 
-                // 2) Добавление домена работает на v2 snapshot без legacy типов.
+                // 2) Добавление домена работает на INTEL snapshot без legacy типов.
                 var testedDomain = testedIp with
                 {
                     Hostname = "example.com",
@@ -553,17 +553,17 @@ namespace TestNetworkApp.Smoke
                 var snapshot = autoHostlist.GetSnapshot();
                 if (snapshot.Count == 0)
                 {
-                    return new SmokeTestResult("PIPE-019", "Auto-hostlist v2-only: без BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
-                        "Ожидали, что домен попадёт в hostlist на v2 inspection signals, но snapshot пуст");
+                    return new SmokeTestResult("PIPE-019", "Auto-hostlist intel-only: без BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что домен попадёт в hostlist на INTEL inspection signals, но snapshot пуст");
                 }
 
                 if (!snapshot.Any(c => string.Equals(c.Host, "example.com", StringComparison.OrdinalIgnoreCase)))
                 {
-                    return new SmokeTestResult("PIPE-019", "Auto-hostlist v2-only: без BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("PIPE-019", "Auto-hostlist intel-only: без BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали candidate example.com, получили: {string.Join(", ", snapshot.Select(s => s.Host))}");
                 }
 
-                return new SmokeTestResult("PIPE-019", "Auto-hostlist v2-only: без BlockageSignals/GetSignals", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("PIPE-019", "Auto-hostlist intel-only: без BlockageSignals/GetSignals", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: candidates={snapshot.Count}");
             }, ct);
 
@@ -580,14 +580,14 @@ namespace TestNetworkApp.Smoke
 
             public void RegisterResult(HostTested tested)
             {
-                // Для этого smoke-теста state-store используется только как источник v2 inspection snapshot.
+                // Для этого smoke-теста state-store используется только как источник INTEL inspection snapshot.
             }
 
             public FailWindowStats GetFailStats(HostTested tested, TimeSpan window)
                 => new(FailCount: 0, HardFailCount: 0, LastFailAt: null, Window: window);
 
             public BlockageSignals GetSignals(HostTested tested, TimeSpan window)
-                => throw new NotSupportedException("Legacy GetSignals не должен вызываться в v2-only smoke PIPE-018");
+                => throw new NotSupportedException("Legacy GetSignals не должен вызываться в intel-only smoke PIPE-018");
 
             public InspectionSignalsSnapshot GetInspectionSignalsSnapshot(HostTested tested) => _snapshot;
         }

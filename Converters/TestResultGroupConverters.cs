@@ -205,7 +205,7 @@ namespace IspAudit.Converters
                     }
                 }
 
-                // 2) Практический fallback: если у строки есть v2 рекомендация, позволяем применить доменный режим
+                // 2) Практический fallback: если у строки есть рекомендация INTEL, позволяем применить доменный режим
                 // даже без авто-подсказки (по базовому домену строки, например *.googlevideo.com → googlevideo.com).
                 if (test != null && test.ShowConnectButton)
                 {

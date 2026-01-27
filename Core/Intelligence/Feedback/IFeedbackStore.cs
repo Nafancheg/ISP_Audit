@@ -1,7 +1,7 @@
 using System;
-using IspAudit.Core.IntelligenceV2.Contracts;
+using IspAudit.Core.Intelligence.Contracts;
 
-namespace IspAudit.Core.IntelligenceV2.Feedback;
+namespace IspAudit.Core.Intelligence.Feedback;
 
 /// <summary>
 /// Исход одного применения стратегии (для обучения ранжирования).
@@ -36,7 +36,7 @@ public sealed class StrategyFeedbackStats
 /// Хранилище обратной связи для ранжирования стратегий.
 /// MVP: in-memory + (опционально) сохранение в файл.
 /// </summary>
-public interface IFeedbackStoreV2
+public interface IFeedbackStore
 {
     bool TryGetStats(FeedbackKey key, out StrategyFeedbackStats stats);
 

@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 
-namespace IspAudit.Core.IntelligenceV2.Contracts;
+namespace IspAudit.Core.Intelligence.Contracts;
 
 /// <summary>
-/// Идентификатор диагноза v2.
+/// Идентификатор диагноза INTEL.
 /// </summary>
 public enum DiagnosisId
 {
@@ -61,7 +61,7 @@ public enum DiagnosisId
 }
 
 /// <summary>
-/// Результат интерпретации <see cref="BlockageSignalsV2"/>.
+/// Результат интерпретации <see cref="BlockageSignals"/>.
 /// </summary>
 public sealed class DiagnosisResult
 {
@@ -93,7 +93,7 @@ public sealed class DiagnosisResult
     /// <summary>
     /// Входные сигналы, по которым был поставлен диагноз.
     /// </summary>
-    public required BlockageSignalsV2 InputSignals { get; init; }
+    public required BlockageSignals InputSignals { get; init; }
 
     /// <summary>
     /// Время постановки диагноза (UTC).

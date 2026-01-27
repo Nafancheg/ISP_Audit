@@ -1,11 +1,11 @@
-using IspAudit.Core.IntelligenceV2.Signals;
+using IspAudit.Core.Intelligence.Signals;
 using IspAudit.Core.Models;
 
 namespace IspAudit.Core.Interfaces;
 
 /// <summary>
 /// Источник «сырых» инспекционных сигналов (RST/HTTP redirect/UDP handshake/ретрансмиссии)
-/// для v2 контура, без зависимости от legacy агрегатов/типов.
+/// для контура INTEL, без зависимости от legacy агрегатов/типов.
 /// </summary>
 public interface IInspectionSignalsProvider
 {

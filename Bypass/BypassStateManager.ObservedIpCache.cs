@@ -10,7 +10,7 @@ namespace IspAudit.Bypass
 {
     public sealed partial class BypassStateManager
     {
-        // 2.V2.17: селективный QUIC fallback (DROP UDP/443) — храним observed IPv4 адреса цели по host.
+        // 2.17: селективный QUIC fallback (DROP UDP/443) — храним observed IPv4 адреса цели по host.
         // TTL/cap нужны, чтобы:
         // - не раздувать состояние
         // - автоматически обновляться при смене IP у цели

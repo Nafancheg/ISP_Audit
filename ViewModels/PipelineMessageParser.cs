@@ -507,7 +507,7 @@ namespace IspAudit.ViewModels
                     // Для UX на карточке показываем весь список (чтобы не «терять» DROP_RST).
                     var tokens = strategy
                         .Split(new[] { ',', '+', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                        .Select(MapV2StrategyTokenForUi)
+                        .Select(MapIntelStrategyTokenForUi)
                         .Where(t => !string.IsNullOrWhiteSpace(t))
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToList();
@@ -526,7 +526,7 @@ namespace IspAudit.ViewModels
                         result.BypassStrategy = uiStrategy;
                         if (isIntel)
                         {
-                            result.IsBypassStrategyFromV2 = true;
+                            result.IsBypassStrategyFromIntel = true;
                         }
 
                         if (uiStrategy.Equals("ROUTER_REDIRECT", StringComparison.OrdinalIgnoreCase))
@@ -650,7 +650,7 @@ namespace IspAudit.ViewModels
             }
         }
 
-        private static string MapV2StrategyTokenForUi(string token)
+        private static string MapIntelStrategyTokenForUi(string token)
         {
             var t = token.Trim();
             if (string.IsNullOrWhiteSpace(t)) return string.Empty;

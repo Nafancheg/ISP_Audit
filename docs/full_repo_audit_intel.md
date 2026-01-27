@@ -1,6 +1,6 @@
 # Полный аудит репозитория ISP_Audit (INTEL)
 
-Примечание: имя файла историческое (`full_repo_audit_v2.md`). В пользовательском UX и в логах проекта не используется маркировка V1/V2; основной префикс рекомендаций — `[INTEL]`.
+Примечание: имя файла историческое (`full_repo_audit_intel.md`). В пользовательском UX и в логах проекта не используется маркировка V1/INTEL; основной префикс рекомендаций — `[INTEL]`.
 
 **Дата**: 09.12.2025 (обновлено 10.12.2025, 17.12.2025, 15.01.2026, 16.01.2026)
 **Версия проекта**: .NET 9, WPF
@@ -56,7 +56,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                     CORE LAYER                                  │
 │  ├── Core/Modules/StandardHostTester                            │
-│  ├── Core/IntelligenceV2/Diagnosis/StandardDiagnosisEngineV2     │
+│  ├── Core/Intelligence/Diagnosis/StandardDiagnosisEngine     │
 │  ├── Core/Modules/InMemoryBlockageStateStore                    │
 │  ├── Core/Modules/TcpRetransmissionTracker                     │
 │  ├── Core/Modules/HttpRedirectDetector                         │
@@ -101,7 +101,7 @@
 - Практика (стабильность SNI): SNI-кеш по IP ведётся по принципу **first-wins**, чтобы результаты не «плавали» между прогонами из-за смены SNI для одного IP. Разрешена замена только для случая **шум → не шум** (через `NoiseHostFilter`).
 - Метрика `Udp443Dropped` отображается в bypass-панели и помогает однозначно проверить, что QUIC действительно глушится.
 - Дополнительно есть явный assist-флаг `AllowNoSni` (тумблер `No SNI`): разрешает применять TLS-обход даже при отсутствии распознанного SNI (ECH/ESNI/фрагментация ClientHello).
-- В INTEL-контуре assist-флаги могут попадать в рекомендацию как токены `DROP_UDP_443` / `ALLOW_NO_SNI` и применяются при ручном `ApplyV2PlanAsync`.
+- В INTEL-контуре assist-флаги могут попадать в рекомендацию как токены `DROP_UDP_443` / `ALLOW_NO_SNI` и применяются при ручном `ApplyIntelPlanAsync`.
     Важно: DNS/DoH считается "верхнеуровневым" системным изменением и по умолчанию **не применяется автоматически** из рекомендаций
     (только явное действие пользователя или инженерный режим через runtime feature gate).
 
@@ -144,26 +144,26 @@
 UX: режим `QUIC→TCP` выбирается через контекстное меню на тумблере (`Селективно (по цели)` / `Глобально (весь UDP/443)`).
 
 Актуализация (Design Phase, 16.12.2025):
-- Введён дизайн-план “DPI Intelligence v2” в docs/phase2_plan.md: слой между диагностикой и обходом.
+- Введён дизайн-план “DPI Intelligence INTEL” в docs/phase2_plan.md: слой между диагностикой и обходом.
 - Ключевое отличие: сигналы рассматриваются как **цепочки событий во времени** (не разовый снимок), правила диагнозов внедряются поэтапно (сначала только по доступным данным).
 - В MVP запрещён auto-apply: допускается только ручное применение рекомендаций пользователем.
 
 Актуализация (Runtime, 16.12.2025):
-- Step 1 v2 Signals подключён: `SignalsAdapterV2` пишет события в `InMemorySignalSequenceStore` на этапе Classification в `LiveTestingPipeline`. Инспекционные факты берутся через `IInspectionSignalsProvider` в виде `InspectionSignalsSnapshot` (v2-only, без legacy типов).
+- Step 1 INTEL Signals подключён: `SignalsAdapter` пишет события в `InMemorySignalSequenceStore` на этапе Classification в `LiveTestingPipeline`. Инспекционные факты берутся через `IInspectionSignalsProvider` в виде `InspectionSignalsSnapshot` (INTEL-only, без legacy типов).
     - Есть защиты от роста памяти: debounce одинаковых событий и cap числа событий на HostKey (in-memory store).
-    - Политика DoH в v2 рекомендациях: DoH рекомендуется как low-risk при `DnsHijack` (чисто DNS) и также используется в multi-layer сценариях.
-- Step 2 v2 Diagnosis подключён: `StandardDiagnosisEngineV2` ставит диагноз по `BlockageSignalsV2` и возвращает пояснения, основанные на фактах (DNS fail, TCP/TLS timeout, TLS auth failure, retx-rate, HTTP redirect, RST TTL/IPID delta + latency) без привязки к стратегиям/обходу. Для RST-кейсов DPI-id (`ActiveDpiEdge/StatefulDpi`) выдаётся только при устойчивости улик (`SuspiciousRstCount >= 2`), чтобы не создавать ложную уверенность по единичному событию. Для TLS-only кейсов добавлен консервативный диагноз `TlsInterference`, чтобы селектор мог сформировать план TLS-стратегий.
-- Step 3 v2 Selector подключён: `StandardStrategySelectorV2` строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI-лога (без auto-apply).
-    - План может включать `DeferredStrategies` — отложенные техники (если появляются новые/экспериментальные стратегии). В текущем состоянии Phase 3 стратегии `HttpHostTricks`, `QuicObfuscation` и `BadChecksum` считаются implemented: попадают в `plan.Strategies` и реально применяются при ручном `ApplyV2PlanAsync`.
+    - Политика DoH в INTEL рекомендациях: DoH рекомендуется как low-risk при `DnsHijack` (чисто DNS) и также используется в multi-layer сценариях.
+- Step 2 INTEL Diagnosis подключён: `StandardDiagnosisEngine` ставит диагноз по `BlockageSignals` и возвращает пояснения, основанные на фактах (DNS fail, TCP/TLS timeout, TLS auth failure, retx-rate, HTTP redirect, RST TTL/IPID delta + latency) без привязки к стратегиям/обходу. Для RST-кейсов DPI-id (`ActiveDpiEdge/StatefulDpi`) выдаётся только при устойчивости улик (`SuspiciousRstCount >= 2`), чтобы не создавать ложную уверенность по единичному событию. Для TLS-only кейсов добавлен консервативный диагноз `TlsInterference`, чтобы селектор мог сформировать план TLS-стратегий.
+- Step 3 INTEL Selector подключён: `StandardStrategySelector` строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI-лога (без auto-apply).
+    - План может включать `DeferredStrategies` — отложенные техники (если появляются новые/экспериментальные стратегии). В текущем состоянии Phase 3 стратегии `HttpHostTricks`, `QuicObfuscation` и `BadChecksum` считаются implemented: попадают в `plan.Strategies` и реально применяются при ручном `ApplyIntelPlanAsync`.
     - Реализация Phase 3 в рантайме:
         - `QuicObfuscation` → включает assist-флаг `DropUdp443` (QUIC→TCP fallback).
         - `HttpHostTricks` → `BypassFilter` режет HTTP `Host:` по границе TCP сегментов (исходящий TCP/80) и дропает оригинал.
         - `BadChecksum` → для фейковых TCP пакетов используется расширенный send без пересчёта checksum и со сбросом checksum-флагов адреса.
-- Step 4 v2 Executor (MVP) подключён: `BypassExecutorMvp` формирует компактный, читаемый пользователем вывод (диагноз + уверенность + 1 короткое объяснение + список стратегий) и **не** применяет обход.
-- Реальный executor v2 (ручной apply, без auto-apply): `LiveTestingPipeline` публикует объектный `BypassPlan` через `OnV2PlanBuilt`, `DiagnosticOrchestrator` хранит последний план и применяет его только по клику пользователя через `BypassController.ApplyV2PlanAsync(...)`, который делегирует apply/timeout/rollback в `Core/Bypass/BypassApplyService`.
-- UX-гейт для корректности: `OnV2PlanBuilt` публикуется только для хостов, которые реально прошли фильтр отображения как проблема (попали в UI как issue), чтобы кнопка apply не применяла план, построенный по шумовому/успешному хосту.
+- Step 4 INTEL Executor (MVP) подключён: `BypassExecutorMvp` формирует компактный, читаемый пользователем вывод (диагноз + уверенность + 1 короткое объяснение + список стратегий) и **не** применяет обход.
+- Реальный executor INTEL (ручной apply, без auto-apply): `LiveTestingPipeline` публикует объектный `BypassPlan` через `OnPlanBuilt`, `DiagnosticOrchestrator` хранит последний план и применяет его только по клику пользователя через `BypassController.ApplyIntelPlanAsync(...)`, который делегирует apply/timeout/rollback в `Core/Bypass/BypassApplyService`.
+- UX-гейт для корректности: `OnPlanBuilt` публикуется только для хостов, которые реально прошли фильтр отображения как проблема (попали в UI как issue), чтобы кнопка apply не применяла план, построенный по шумовому/успешному хосту.
 
-Актуализация (Runtime, 29.12.2025): Bypass State Manager (2.V2.12)
+Актуализация (Runtime, 29.12.2025): Bypass State Manager (2.INTEL.12)
 - Введён `BypassStateManager` как single source of truth для управления `TrafficEngine` и `TlsBypassService`.
 - P0.3.4 (15.01.2026): `BypassStateManager` декомпозирован на partial-файлы без изменения поведения: `Bypass/BypassStateManager.*.cs`.
 - P0.3.5 (16.01.2026): `TlsBypassService` декомпозирован на partial-файлы без изменения поведения: `Bypass/TlsBypassService.*.cs`.
@@ -189,23 +189,23 @@ UX: режим `QUIC→TCP` выбирается через контекстно
     - Реализация: `TesterWorker` использует `SemaphoreSlim` и in-flight задачи, чтобы ускорять обработку при высоком входном потоке (активный браузер), не ломая `DrainAndCompleteAsync` и bounded-очереди.
 
 
-Актуализация (Runtime, 23.12.2025): контроль применения v2
+Актуализация (Runtime, 23.12.2025): контроль применения INTEL
 - `Cancel` отменяет не только диагностику, но и ручное применение рекомендаций (отдельный CTS для apply).
-- Защита от устаревшего плана: apply пропускается, если `planHostKey` не совпадает с последней v2‑целью, извлечённой из текста v2‑диагноза в UI.
+- Защита от устаревшего плана: apply пропускается, если `planHostKey` не совпадает с последней INTEL‑целью, извлечённой из текста INTEL‑диагноза в UI.
 - UX-гейт кнопки apply: блок «Рекомендации» отображается при `HasAnyRecommendations`, но команда apply активна только при `HasRecommendations` (есть план и есть что применять). Если пользователь уже включил стратегию вручную, она показывается как «ручное действие», чтобы рекомендации не исчезали.
 - Важно: bypass-панель в UI скрыта без прав администратора, поэтому кнопка apply также недоступна без elevation.
 - Ручной apply поддерживает `AggressiveFragment`: выбирается пресет фрагментации «Агрессивный» и включается `AutoAdjustAggressive`.
-- Ручной apply поддерживает параметры `TlsFragment` (например, `TlsFragmentSizes`, `PresetName`, `AutoAdjustAggressive`); парсинг вынесен в `Core/IntelligenceV2/Execution/TlsFragmentPlanParamsParser.cs`.
+- Ручной apply поддерживает параметры `TlsFragment` (например, `TlsFragmentSizes`, `PresetName`, `AutoAdjustAggressive`); парсинг вынесен в `Core/Intelligence/Execution/TlsFragmentPlanParamsParser.cs`.
 - Добавлен smoke-тест `DPI2-022`: параметры `TlsFragment` влияют на пресет и флаг `AutoAdjustAggressive`.
-- Детерминизм: `StandardStrategySelectorV2` задаёт `TlsFragmentSizes` в `BypassPlan` (иначе executor зависел бы от текущего выбранного пресета пользователя).
-- Добавлен smoke-тест `DPI2-023`: селектор v2 кладёт `TlsFragmentSizes` в план.
-- Добавлен smoke-тест `DPI2-024`: e2e проверка `selector → plan → ApplyV2PlanAsync` (manual apply использует параметры плана детерминированно).
+- Детерминизм: `StandardStrategySelector` задаёт `TlsFragmentSizes` в `BypassPlan` (иначе executor зависел бы от текущего выбранного пресета пользователя).
+- Добавлен smoke-тест `DPI2-023`: селектор INTEL кладёт `TlsFragmentSizes` в план.
+- Добавлен smoke-тест `DPI2-024`: e2e проверка `selector → plan → ApplyIntelPlanAsync` (manual apply использует параметры плана детерминированно).
 - Для контроля Gate 1→2 в UI-логе используются строки с префиксом `[INTEL][GATE1]` (не чаще 1 раза в минуту на HostKey).
 
 Актуализация (Runtime, 13.01.2026): гибридный доменный UX (общий) + внешний справочник
 - Боль (типичный кейс: YouTube/CDN): сервис «лечится» через множество подхостов, поэтому ручной apply по одному хосту создаёт UX-хаос (много карточек/целей).
 - Добавлен общий механизм «доменных семейств» (без хардкода конкретных CDN): UI на лету замечает домены, у которых появляется много вариативных подхостов, и может предложить доменную цель (suffix).
-- Доменное применение выполняется через `DiagnosticOrchestrator.ApplyRecommendationsForDomainAsync(..., suffix)`: метод выбирает применимый v2-план из подхостов, но выставляет `OutcomeTargetHost` на домен.
+- Доменное применение выполняется через `DiagnosticOrchestrator.ApplyRecommendationsForDomainAsync(..., suffix)`: метод выбирает применимый INTEL-план из подхостов, но выставляет `OutcomeTargetHost` на домен.
 - Внешний каталог доменов: `%LocalAppData%\ISP_Audit\domain_families.json`.
     - `PinnedDomains`: ручной «справочник» (можно закреплять домены, чтобы подсказка включалась быстрее).
     - `LearnedDomains`: автокэш доменов, которые система «выучила» по наблюдениям.
@@ -213,16 +213,16 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 
 ---
 
-## Навигация по состоянию v2 (As‑Is / Target / Roadmap)
+## Навигация по состоянию INTEL (As‑Is / Target / Roadmap)
 
 Чтобы не терять контроль над направлением разработки, фиксируем три вещи:
 
 ### As‑Is (реально есть в репозитории)
-- v2 контур подключён в рантайм: Signals → Diagnosis → Selector → Plan.
+- INTEL контур подключён в рантайм: Signals → Diagnosis → Selector → Plan.
 - Auto-apply запрещён: применяется только по ручному действию пользователя (manual apply).
-- Реальный apply v2 реализован в `Core/Bypass/BypassApplyService`: таймаут/отмена + безопасный rollback; вызывается через `BypassController.ApplyV2PlanAsync(...)`.
-- P0.1: `ApplyV2PlanAsync` защищён apply-gate (сериализация) — параллельные apply выполняются последовательно, чтобы исключить гонки.
-- Feedback store (MVP) реализован и может влиять на ранжирование в `StandardStrategySelectorV2`.
+- Реальный apply INTEL реализован в `Core/Bypass/BypassApplyService`: таймаут/отмена + безопасный rollback; вызывается через `BypassController.ApplyIntelPlanAsync(...)`.
+- P0.1: `ApplyIntelPlanAsync` защищён apply-gate (сериализация) — параллельные apply выполняются последовательно, чтобы исключить гонки.
+- Feedback store (MVP) реализован и может влиять на ранжирование в `StandardStrategySelector`.
 
 ### Target (реалистичное целевое состояние)
 - Рекомендации непротиворечивы и исполнимы: один режим TLS-обхода за раз.
@@ -254,7 +254,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 
 Актуализация (Dev, 15.01.2026): правило декомпозиции и старт P0.3
 - Практическое правило сопровождения: при росте файла до 500–700+ строк делаем вынос (сначала `partial`, потом отдельные сервисы), чтобы не смешивать слои и упростить поддержку.
-- Старт P0.3: `BypassController` вынесен в partial-файлы (без изменения поведения): `ViewModels/BypassController.*.cs` (Internal/Metrics/Startup/Core/DnsDoh/Observability/V2).
+- Старт P0.3: `BypassController` вынесен в partial-файлы (без изменения поведения): `ViewModels/BypassController.*.cs` (Internal/Metrics/Startup/Core/DnsDoh/Observability/INTEL).
 - P0.3 (продолжение): `DiagnosticOrchestrator` вынесен в partial-файлы (без изменения поведения): `ViewModels/DiagnosticOrchestrator.*.cs` (Core/Private + базовый файл).
 
 Актуализация (Dev, 16.01.2026): старт 4.3 (после partial)
@@ -262,8 +262,8 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 
 Актуализация (Runtime, 17.12.2025):
 - Добавлен `Core/Diagnostics/BlockageCode.cs` — единая точка нормализации кодов проблем (`BlockageType`) и поддержки legacy алиасов.
-- В местах, где раньше сравнивались строки (`TLS_DPI`, `TCP_TIMEOUT`, `TCP_RST`, `TLS_TIMEOUT` и др.), используется `BlockageCode.Normalize/ContainsCode`, чтобы алиасы не расползались по слоям (UI/legacy/v2).
-- Добавлен `Core/Diagnostics/PipelineContract.cs` — единая точка контрактных строк пайплайна (`BypassNone`/`BypassUnknown`) вместо «магических» `"NONE"`/`"UNKNOWN"` в слоях legacy/v2/UI.
+- В местах, где раньше сравнивались строки (`TLS_DPI`, `TCP_TIMEOUT`, `TCP_RST`, `TLS_TIMEOUT` и др.), используется `BlockageCode.Normalize/ContainsCode`, чтобы алиасы не расползались по слоям (UI/legacy/INTEL).
+- Добавлен `Core/Diagnostics/PipelineContract.cs` — единая точка контрактных строк пайплайна (`BypassNone`/`BypassUnknown`) вместо «магических» `"NONE"`/`"UNKNOWN"` в слоях legacy/INTEL/UI.
 - Добавлен периодический health-лог пайплайна (`[PipelineHealth] ...`) с агрегированными счётчиками этапов (enqueue/test/classify/ui) для диагностики потерь данных и узких мест (рост очередей, drop в bounded channels, несходимость enq/deq).
 - Уточнено правило noise-фильтрации: `NoiseHostFilter` не должен отбрасывать исходные сигналы (включая SNI) до тестирования/диагностики; «noise» применяется только как правило отображения успешных (OK) результатов, чтобы не терять потенциально важные факты.
 
@@ -275,8 +275,8 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Нереализованные стратегии: warning + skip (без исключений), без падения пайплайна.
 
 Актуализация (Dev, 22.12.2025): feedback store + ранжирование в StrategySelector
-- Добавлен `Core/IntelligenceV2/Feedback/*`: MVP-хранилище обратной связи (in-memory) + опциональная файловая реализация `JsonFileFeedbackStoreV2`.
-- `StandardStrategySelectorV2` умеет (опционально) добавлять вес по успешности **поверх** hardcoded `BasePriority`.
+- Добавлен `Core/Intelligence/Feedback/*`: MVP-хранилище обратной связи (in-memory) + опциональная файловая реализация `JsonFileFeedbackStore`.
+- `StandardStrategySelector` умеет (опционально) добавлять вес по успешности **поверх** hardcoded `BasePriority`.
 - Gate: при отсутствии данных поведение полностью как раньше; одинаковый вход + одинаковый feedback → одинаковый план.
 
 Примечание (UI/идентификация хостов): карточки результатов привязаны к **человеко‑понятному ключу** (в первую очередь SNI/hostname, если он известен). IP сохраняется как технический атрибут (`FallbackIp`) и может использоваться для корреляции, но не должен быть главным «лицом» карточки для пользователя.
@@ -321,7 +321,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
     - `TryExtractSniFromTlsClientHelloPayload(...)`
     - `TryFeedTlsClientHelloFragmentForSmoke(...)`
 
-Актуализация (Dev, 18.12.2025): реализованы smoke-тесты DPI Intelligence v2 (категория `dpi2`)
+Актуализация (Dev, 18.12.2025): реализованы smoke-тесты DPI Intelligence INTEL (категория `dpi2`)
 - Добавлен файл `TestNetworkApp/Smoke/SmokeTests.Dpi2.cs` и регистрации в реестре.
 - Покрыты тесты `DPI2-001..013`: адаптация legacy сигналов в TTL-store, TTL-очистка при `Append`, агрегация по окнам 30/60 секунд, DiagnosisEngine (фактологическое объяснение без упоминания стратегий), Gate-маркеры `[INTEL][GATE1]`, правила StrategySelector (confidence/risk/unimplemented warning+skip), Executor MVP (компактный 1-строчный вывод с префиксом `[INTEL]` и без auto-apply).
 
@@ -510,7 +510,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 | `CLAUDE.md` | Упоминает `DnsTest`, `TcpTest` и др. как активные |
 | `.github/copilot-instructions.md` | Ссылки на несуществующий `AuditRunner`, `ReportWriter` |
 
-> ✅ `ARCHITECTURE_V2.md` удалён (10.12.2025), актуальный — `ARCHITECTURE_CURRENT.md`
+> ✅ Предыдущий архитектурный документ удалён (10.12.2025), актуальный — `ARCHITECTURE_CURRENT.md`
 
 ---
 
@@ -742,7 +742,7 @@ Program.cs
 - NoiseHostFilter.Instance (singleton)
 
 Примечание (16.12.2025):
-- Добавлен контрактный слой DPI Intelligence (INTEL): `Core/IntelligenceV2/Contracts` (модели Signals/Diagnosis/Strategy).
+- Добавлен контрактный слой DPI Intelligence (INTEL): `Core/Intelligence/Contracts` (модели Signals/Diagnosis/Strategy).
 - Это контракты (DTO/enum/константы), без зависимостей на UI/Bypass/WinDivert; подключение в runtime будет выполняться в следующих шагах (SignalsAdapter → Diagnosis → Selector → Executor).
 ```
 
@@ -837,7 +837,7 @@ Program.cs
 - **Архитектура**: `TlsBypassService` — единый источник опций/пресетов, сам регистрирует `BypassFilter`, публикует `MetricsUpdated/VerdictChanged/StateChanged`; `BypassController` стал прокси без таймера (тумблеры + сохранение пресета/автокоррекции).
 - **Профиль**: `bypass_profile.json` расширен TTL-настройками (`ttlTrick`/`ttlTrickValue`) и флагом `autoTtl`; сохранение пресета в UI обновляет только поля фрагментации (чтобы не перетирать TTL/redirect rules).
 - **AutoTTL**: при включенном `autoTtl` сервис перебирает небольшой набор TTL (2..8) по метрикам bypass и сохраняет лучший TTL обратно в `bypass_profile.json`.
-- **Auto-hostlist (кандидаты)**: добавлен `AutoHostlistService`; `LiveTestingPipeline` на этапе классификации передаёт `InspectionSignalsSnapshot` (ретрансмиссии/HTTP-редиректы/RST/UDP) только если Auto-hostlist включён, и пополняет список кандидатов, который показывается в UI (включается/выключается тумблером). Дополнительно, если текущий хост стал кандидатом, контекст auto-hostlist прокидывается в v2 хвост (evidence/notes) как короткая нота `autoHL hits=… score=…` для UI/QA. Legacy `BlockageSignals` при этом не читаются.
+- **Auto-hostlist (кандидаты)**: добавлен `AutoHostlistService`; `LiveTestingPipeline` на этапе классификации передаёт `InspectionSignalsSnapshot` (ретрансмиссии/HTTP-редиректы/RST/UDP) только если Auto-hostlist включён, и пополняет список кандидатов, который показывается в UI (включается/выключается тумблером). Дополнительно, если текущий хост стал кандидатом, контекст auto-hostlist прокидывается в INTEL хвост (evidence/notes) как короткая нота `autoHL hits=… score=…` для UI/QA. Legacy `BlockageSignals` при этом не читаются.
 - **Метрики**: сервис считает ClientHello (все/короткие/не 443), фрагментации, релевантные RST, план фрагментов, активный пресет, порог и минимальный чанк, время начала; UI читает только события сервиса (план + таймстамп в badge).
 - **Вердикты/UX**: добавлены статусы «нет TLS 443», «TLS не на 443», «ClientHello короче threshold», «обход активен, но не применён», «мало данных»; карточка не шумит на серые статусы, tooltip даёт next steps (снизить threshold/сменить пресет/включить Drop RST).
 - **Автокоррекция**: флаг `AutoAdjustAggressive` (только пресет «Агрессивный»); ранний всплеск RST -> минимальный чанк=4; зелёный >30с -> лёгкое усиление (не ниже 4); переприменение опций делает сервис.
@@ -845,3 +845,4 @@ Program.cs
 - **Примечание (SNI vs bypass)**: `TrafficMonitorFilter` должен обрабатывать пакет до `BypassFilter`, чтобы парсер SNI видел исходный (нефрагментированный/непереставленный) ClientHello; для естественной TCP-сегментации ClientHello в `DnsParserService` используется минимальный реассемблинг первых байт потока.
 - **Примечание (SNI vs PID)**: WinDivert Network Layer не даёт PID, поэтому оркестратор гейтит SNI-триггеры через корреляцию remote endpoint → PID по событиям `ConnectionMonitorService` и списку `PidTrackerService.TrackedPids`. Для Steam/attach есть короткий буфер (несколько секунд), чтобы SNI, пришедший до появления PID, мог быть обработан позже.
 - **UX-фидбек**: статус auto-bypass и вердикт сервиса показываются в оркестраторе; карточка окрашивается по цвету вердикта (зелёный не считается проблемой); badge включает план фрагментации + активный пресет.
+

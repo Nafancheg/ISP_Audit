@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
-using IspAudit.Core.IntelligenceV2.Contracts;
+using IspAudit.Core.Intelligence.Contracts;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
 using IspAudit.Core.Modules;
@@ -127,14 +127,14 @@ namespace IspAudit.ViewModels
                 return;
             }
 
-            _v2PlansByHost[hostKey] = plan;
+            _intelPlansByHost[hostKey] = plan;
 
-            _lastV2Plan = plan;
-            _lastV2PlanHostKey = hostKey;
+            _lastIntelPlan = plan;
+            _lastIntelPlanHostKey = hostKey;
 
             // План сформирован для конкретной цели — «прикалываем» цель к hostKey плана,
             // чтобы последующие сообщения по другим хостам не ломали Apply (и UX панели рекомендаций).
-            _lastV2DiagnosisHostKey = hostKey;
+            _lastIntelDiagnosisHostKey = hostKey;
 
             // Токены нужны только для текста панели. Реальное применение идёт по объектному plan.
             _recommendedStrategies.Clear();
@@ -180,7 +180,7 @@ namespace IspAudit.ViewModels
                 }
             }
 
-            _lastV2DiagnosisSummary = string.IsNullOrWhiteSpace(hostKey)
+            _lastIntelDiagnosisSummary = string.IsNullOrWhiteSpace(hostKey)
                 ? $"([INTEL] диагноз={plan.ForDiagnosis} уверенность={plan.PlanConfidence}%: {plan.Reasoning})"
                 : $"([INTEL] диагноз={plan.ForDiagnosis} уверенность={plan.PlanConfidence}%: {plan.Reasoning}) (цель: {hostKey})";
 
@@ -227,17 +227,17 @@ namespace IspAudit.ViewModels
 
                 // Если план уже построен, не позволяем сообщениям по другим хостам «перетереть» цель,
                 // иначе кнопка Apply может начать вести себя как "ничего не происходит".
-                if (_lastV2Plan != null
-                    && !string.IsNullOrWhiteSpace(_lastV2PlanHostKey)
+                if (_lastIntelPlan != null
+                    && !string.IsNullOrWhiteSpace(_lastIntelPlanHostKey)
                     && !string.IsNullOrWhiteSpace(candidateHostKey)
-                    && !string.Equals(candidateHostKey, _lastV2PlanHostKey, StringComparison.OrdinalIgnoreCase))
+                    && !string.Equals(candidateHostKey, _lastIntelPlanHostKey, StringComparison.OrdinalIgnoreCase))
                 {
                     return;
                 }
 
                 if (!string.IsNullOrWhiteSpace(candidateHostKey))
                 {
-                    _lastV2DiagnosisHostKey = candidateHostKey;
+                    _lastIntelDiagnosisHostKey = candidateHostKey;
                 }
 
                 // Вытаскиваем компактный текст intel в скобках (он уже пользовательский)
@@ -245,9 +245,9 @@ namespace IspAudit.ViewModels
                 if (m.Success)
                 {
                     var tail = m.Value.Trim();
-                    _lastV2DiagnosisSummary = string.IsNullOrWhiteSpace(_lastV2DiagnosisHostKey)
+                    _lastIntelDiagnosisSummary = string.IsNullOrWhiteSpace(_lastIntelDiagnosisHostKey)
                         ? $"{tail}"
-                        : $"{tail} (цель: {_lastV2DiagnosisHostKey})";
+                        : $"{tail} (цель: {_lastIntelDiagnosisHostKey})";
                 }
             }
             catch
@@ -293,7 +293,7 @@ namespace IspAudit.ViewModels
             var t = token.Trim();
             if (string.IsNullOrWhiteSpace(t)) return string.Empty;
 
-            // Поддерживаем как legacy-строки, так и enum-названия v2.
+            // Поддерживаем как legacy-строки, так и enum-названия INTEL.
             return t switch
             {
                 "TlsFragment" => "TLS_FRAGMENT",

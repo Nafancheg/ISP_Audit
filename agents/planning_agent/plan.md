@@ -1,15 +1,15 @@
-# План — DPI Intelligence v2 (Phase 2) — MVP Signals → Diagnosis → Strategy (без авто-применения)
+# План — DPI Intelligence INTEL (Phase 2) — MVP Signals → Diagnosis → Strategy (без авто-применения)
 
 Дата: 16.12.2025 | Ветка: feature/phase2-tls-fragment-params
 
 ## Контекст и жёсткие ограничения
 - MVP покрывает Step 0–5 из задачи (контракт → SignalsAdapter → DiagnosisEngine (2 диагноза) → StrategySelector → ExecutorMvp (логирование) → интеграция UI/оркестратор).
-- Legacy-диагностику/маппинги не удаляем первым шагом, но не инвестируем в развитие; **v2 становится источником рекомендаций**.
+- Legacy-диагностику/маппинги не удаляем первым шагом, но не инвестируем в развитие; **INTEL становится источником рекомендаций**.
 - В MVP **запрещено авто-применение обхода**: только рекомендации + допускается использование уже существующей ручной кнопки (если она уже в UI).
-- При добавлении новых компонентов/классов обязательно обновлять документацию: ARCHITECTURE_CURRENT.md и docs/full_repo_audit_v2.md.
+- При добавлении новых компонентов/классов обязательно обновлять документацию: ARCHITECTURE_CURRENT.md и docs/full_repo_audit_intel.md.
 
 ## Цели и критерии приёмки (DoD уровня фичи)
-- В коде существует слой v2 с границами: SignalsAdapter → DiagnosisEngine → StrategySelector → ExecutorMvp.
+- В коде существует слой INTEL с границами: SignalsAdapter → DiagnosisEngine → StrategySelector → ExecutorMvp.
 - В UI/логах отображаются: диагноз (id), уверенность, краткое объяснение, список рекомендаций (план стратегий).
 - Рекомендации детерминированы и объяснимы; legacy остаётся как «справочно», но не управляет рекомендациями.
 - При отсутствии уверенности/неизвестном диагнозе: рекомендации не предлагаются.
@@ -19,13 +19,13 @@
 
 ## WBS / Подзадачи (сгруппировано по компонентам/файлам)
 
-### Step 0 — Контракт v2 (модели/интерфейсы)
+### Step 0 — Контракт INTEL (модели/интерфейсы)
 
 #### 0.1 Ввести базовые типы сигналов и последовательности
 - Цель: зафиксировать минимальный контракт `SignalEvent`/`SignalSequence`, TTL и агрегационные окна.
 - Файлы:
-	- Core/IntelligenceV2/Contracts/SignalsContract.cs
-	- Core/IntelligenceV2/Contracts/SignalEventType.cs
+	- Core/Intelligence/Contracts/SignalsContract.cs
+	- Core/Intelligence/Contracts/SignalEventType.cs
 - Критерий готовности:
 	- Контракт компилируется, не тянет зависимости на UI/Bypass.
 	- Есть поля для HostKey, TimestampUtc, Type, Metadata/Reason.
@@ -34,12 +34,12 @@
 	- Ошибка выбора HostKey (IP vs IP:Port:Proto) приведёт к «несклеиваемым» цепочкам.
 
 #### 0.2 Ввести агрегированный снимок сигналов и контракт диагноза
-- Цель: определить `BlockageSignalsV2` и `DiagnosisResult` так, чтобы DiagnosisEngine был «слеп» к параметрам стратегий.
+- Цель: определить `BlockageSignals` и `DiagnosisResult` так, чтобы DiagnosisEngine был «слеп» к параметрам стратегий.
 - Файлы:
-	- Core/IntelligenceV2/Contracts/BlockageSignalsV2.cs
-	- Core/IntelligenceV2/Contracts/DiagnosisContract.cs
+	- Core/Intelligence/Contracts/BlockageSignals.cs
+	- Core/Intelligence/Contracts/DiagnosisContract.cs
 - Критерий готовности:
-	- `BlockageSignalsV2` покрывает нужные факты для 2 диагнозов MVP (DNS failure / подозрение fake IP как флаг, TCP timeout, retx rate, источники/надёжность).
+	- `BlockageSignals` покрывает нужные факты для 2 диагнозов MVP (DNS failure / подозрение fake IP как флаг, TCP timeout, retx rate, источники/надёжность).
 	- `DiagnosisResult` содержит: `DiagnosisId`, `Confidence` (0–100), `ExplanationNotes` (короткий список строк), `Evidence` (минимально).
 - Риски:
 	- Недостаток данных для fake-ip ветки DnsHijack (требует доп. источника).
@@ -47,8 +47,8 @@
 #### 0.3 Ввести контракт стратегии/плана и ограничения по риску
 - Цель: определить `BypassPlan`/`BypassStrategy`/`RiskLevel` и правила фильтрации (High запрещён при confidence < 70).
 - Файлы:
-	- Core/IntelligenceV2/Contracts/StrategyContract.cs
-	- Core/IntelligenceV2/Contracts/StrategyId.cs
+	- Core/Intelligence/Contracts/StrategyContract.cs
+	- Core/Intelligence/Contracts/StrategyId.cs
 - Критерий готовности:
 	- Контракт не зависит от реального исполнения bypass.
 	- Закодировано правило (как минимум в виде констант/примечаний для StrategySelector): `RiskLevel.High` нельзя выдавать при `confidence < 70`.
@@ -58,13 +58,13 @@
 
 ---
 
-### Step 1 — SignalsAdapter (сбор фактов → BlockageSignalsV2)
+### Step 1 — SignalsAdapter (сбор фактов → BlockageSignals)
 
 #### 1.1 In-memory store для SignalSequence (TTL + очистка при Append)
-- Цель: хранить временную последовательность фактов v2 с TTL 10 минут и быстрым доступом по HostKey.
+- Цель: хранить временную последовательность фактов INTEL с TTL 10 минут и быстрым доступом по HostKey.
 - Файлы:
-	- Core/IntelligenceV2/Signals/InMemorySignalSequenceStore.cs
-	- Core/IntelligenceV2/Signals/SignalSequenceExtensions.cs
+	- Core/Intelligence/Signals/InMemorySignalSequenceStore.cs
+	- Core/Intelligence/Signals/SignalSequenceExtensions.cs
 - Критерий готовности:
 	- `Append(...)` делает очистку по TTL.
 	- Потокобезопасность (ConcurrentDictionary + минимальные блокировки).
@@ -72,26 +72,26 @@
 - Риски:
 	- Рост памяти при большом количестве HostKey (нужно предусмотреть очистку пустых/старых ключей).
 
-#### 1.2 SignalsAdapter: построение BlockageSignalsV2 из HostTested + сенсоров
-- Цель: сделать единую точку агрегации (окно 30/60 сек), которая «смотрит» в существующие данные, но отдаёт только `BlockageSignalsV2`.
+#### 1.2 SignalsAdapter: построение BlockageSignals из HostTested + сенсоров
+- Цель: сделать единую точку агрегации (окно 30/60 сек), которая «смотрит» в существующие данные, но отдаёт только `BlockageSignals`.
 - Файлы:
-	- Core/IntelligenceV2/Signals/SignalsAdapterV2.cs
+	- Core/Intelligence/Signals/SignalsAdapter.cs
 	- Core/Modules/InMemoryBlockageStateStore.cs
 - Критерий готовности:
-	- Adapter принимает минимальный вход (HostTested + ссылки на state/sensors или адаптер к ним) и возвращает `BlockageSignalsV2`.
+	- Adapter принимает минимальный вход (HostTested + ссылки на state/sensors или адаптер к ним) и возвращает `BlockageSignals`.
 	- HostKey непустой в 100% случаев; выбран и зафиксирован алгоритм HostKey (в MVP допускается ip-only, если иначе сенсоры не склеиваются).
 	- TTL/окна применяются последовательно.
 - Риски:
-	- Смешивание ролей stateStore (legacy) и v2 store (нужно держать границы: stateStore как источник фактов, v2 store как хранилище последовательности).
+	- Смешивание ролей stateStore (legacy) и INTEL store (нужно держать границы: stateStore как источник фактов, INTEL store как хранилище последовательности).
 
 ---
 
 ### Step 2 — DiagnosisEngine (только 2 диагноза в MVP)
 
-#### 2.1 DiagnosisEngineV2: правила для DnsHijack
-- Цель: интерпретировать `BlockageSignalsV2` → `DiagnosisResult(DnsHijack)` по фактам DNS failure/подозрение fake IP.
+#### 2.1 StandardDiagnosisEngine: правила для DnsHijack
+- Цель: интерпретировать `BlockageSignals` → `DiagnosisResult(DnsHijack)` по фактам DNS failure/подозрение fake IP.
 - Файлы:
-	- Core/IntelligenceV2/Diagnosis/DiagnosisEngineV2.cs
+	- Core/Intelligence/Diagnosis/StandardDiagnosisEngine.cs
 	- Core/Modules/StandardHostTester.cs
 - Критерий готовности:
 	- Для DNS failure выставляется диагноз с `Confidence > 30` и понятным `ExplanationNotes`.
@@ -100,10 +100,10 @@
 - Риски:
 	- Данные о fake IP могут отсутствовать (придётся ограничиться DNS failure, без ложных утверждений).
 
-#### 2.2 DiagnosisEngineV2: правила для SilentDrop
-- Цель: интерпретировать `BlockageSignalsV2` → `DiagnosisResult(SilentDrop)` по TCP timeout + высокой доле ретрансмиссий.
+#### 2.2 StandardDiagnosisEngine: правила для SilentDrop
+- Цель: интерпретировать `BlockageSignals` → `DiagnosisResult(SilentDrop)` по TCP timeout + высокой доле ретрансмиссий.
 - Файлы:
-	- Core/IntelligenceV2/Diagnosis/DiagnosisEngineV2.cs
+	- Core/Intelligence/Diagnosis/StandardDiagnosisEngine.cs
 	- Core/Modules/TcpRetransmissionTracker.cs
 - Критерий готовности:
 	- Логика: при наличии timeout и retxRate выше порога выставляется диагноз; в объяснении указывается расчёт/факты.
@@ -115,10 +115,10 @@
 
 ### Step 3 — StrategySelector (DiagnosisResult → BypassPlan)
 
-#### 3.1 StrategySelectorV2: детерминированный маппинг (hardcoded)
+#### 3.1 StandardStrategySelector: детерминированный маппинг (hardcoded)
 - Цель: вернуть план стратегий по диагнозу, без чтения сенсоров/сигналов.
 - Файлы:
-	- Core/IntelligenceV2/Strategy/StrategySelectorV2.cs
+	- Core/Intelligence/Strategies/StandardStrategySelector.cs
 	- Bypass/StrategyMapping.cs
 - Критерий готовности:
 	- `Unknown/NoBlockage` → пустой план.
@@ -126,16 +126,16 @@
 	- `RiskLevel.High` не появляется при `Confidence < 70`.
 	- План стабилен (одинаковый вход → одинаковый выход).
 - Риски:
-	- Конфликт терминологии и ожиданий UI (legacy стратегия/BlockageType vs v2 StrategyId).
+	- Конфликт терминологии и ожиданий UI (legacy стратегия/BlockageType vs INTEL StrategyId).
 
 ---
 
 ### Step 4 — ExecutorMvp (только логирование рекомендаций)
 
 #### 4.1 ExecutorMvp: единый формат вывода рекомендаций (минимум шума)
-- Цель: логировать v2-диагноз/объяснение/план так, чтобы UI мог показать это без создания новых экранов.
+- Цель: логировать INTEL-диагноз/объяснение/план так, чтобы UI мог показать это без создания новых экранов.
 - Файлы:
-	- Core/IntelligenceV2/Execution/BypassExecutorMvp.cs
+	- Core/Intelligence/Execution/BypassExecutorMvp.cs
 	- ViewModels/DiagnosticOrchestrator.cs
 - Критерий готовности:
 	- Executor **не вызывает** apply/enable bypass (ни напрямую, ни через контроллер).
@@ -146,27 +146,27 @@
 
 ---
 
-### Step 5 — Интеграция в пайплайн + UI (v2 приоритетно, legacy справочно)
+### Step 5 — Интеграция в пайплайн + UI (INTEL приоритетно, legacy справочно)
 
-#### 5.1 Встраивание v2 цепочки в LiveTestingPipeline (минимальный риск MVP)
+#### 5.1 Встраивание INTEL цепочки в LiveTestingPipeline (минимальный риск MVP)
 - Цель: подключить цепочку `Append → Snapshot → Diagnose → Select → Execute(log)` в точке, где уже есть HostTested и доступ к сигналам.
 - Файлы:
 	- Utils/LiveTestingPipeline.cs
 	- Core/Modules/StandardBlockageClassifier.cs
 - Критерий готовности:
-	- В ClassifierWorker (или эквиваленте) на каждый HostTested строится snapshot v2 и при необходимости эмитятся рекомендации.
+	- В ClassifierWorker (или эквиваленте) на каждый HostTested строится snapshot INTEL и при необходимости эмитятся рекомендации.
 	- Legacy classifier продолжает работать для справочного вывода/совместимости, но не формирует «главные» рекомендации.
 - Риски:
-	- Дублирование логов (legacy + v2) и рост шума; нужен приоритет/фильтр в выводе.
+	- Дублирование логов (legacy + INTEL) и рост шума; нужен приоритет/фильтр в выводе.
 
-#### 5.2 Подхват v2 рекомендаций в UI без нового UX
-- Цель: показывать v2-объяснение и стратегии в существующей панели рекомендаций, не добавляя новые страницы/карточки.
+#### 5.2 Подхват INTEL рекомендаций в UI без нового UX
+- Цель: показывать INTEL-объяснение и стратегии в существующей панели рекомендаций, не добавляя новые страницы/карточки.
 - Файлы:
 	- ViewModels/MainViewModel.*.cs
 	- ViewModels/TestResultsManager.cs
 - Критерий готовности:
-	- Панель рекомендаций отображает v2 текст (диагноз/уверенность/почему/что пробовать).
-	- Legacy информация (если показывается) маркируется как legacy и не «перебивает» v2.
+	- Панель рекомендаций отображает INTEL текст (диагноз/уверенность/почему/что пробовать).
+	- Legacy информация (если показывается) маркируется как legacy и не «перебивает» INTEL.
 	- Никаких автозапусков Apply: рекомендации только информируют.
 - Риски:
 	- Парсер строк в TestResultsManager может не распознать новый формат — потребуется аккуратное расширение без ломания текущих паттернов.
@@ -184,7 +184,7 @@
 - Как проверить на практике:
 	- `dotnet build -c Debug`.
 	- Запустить GUI и выполнить 2–3 минуты диагностики на «обычных» целях (браузер/фоновые сервисы).
-	- В логах прогресса (UI) или debug-output убедиться, что v2 фиксирует события и не падает.
+	- В логах прогресса (UI) или debug-output убедиться, что INTEL фиксирует события и не падает.
 
 ### Gate 2→3 (DiagnosisEngine → StrategySelector)
 - Что должно быть:
@@ -205,7 +205,7 @@
 	- `RiskLevel.High` не появляется при `Confidence < 70`.
 	- План детерминирован (повторный прогон на одинаковых сигналах даёт тот же набор StrategyId).
 - Как проверить на практике:
-	- Запустить диагностику дважды на одном и том же наборе сценариев; сравнить выводимый v2 план (должен совпадать при близких сигналах).
+	- Запустить диагностику дважды на одном и том же наборе сценариев; сравнить выводимый INTEL план (должен совпадать при близких сигналах).
 
 ### Gate 4→5 (ExecutorMvp → UI интеграция)
 - Что должно быть:
@@ -218,26 +218,26 @@
 
 ### Финальный gate (MVP готов к ручному прогону MSFS 2024)
 - Что должно быть:
-	- v2 рекомендации отображаются и приоритетнее legacy.
+	- INTEL рекомендации отображаются и приоритетнее legacy.
 	- Нет заметных регрессий по отзывчивости GUI (учитывая Dispatcher.Invoke на прогресс).
 	- В сценариях «рабочие» не выдаются агрессивные/High рекомендации.
 - Как проверить на практике (MSFS 2024 = сценарий, не домены):
 	- Steam: запуск MSFS 2024.
 	- Время до главного меню/загрузки мира не деградирует относительно baseline.
 	- Доступность сервисов внутри игры (мир/карьера/погода/карта и т.д.) подтверждается вручную.
-	- Если игра не работает: v2 должен выдавать понятный диагноз/объяснение и рекомендации, но **не включать** обход автоматически.
+	- Если игра не работает: INTEL должен выдавать понятный диагноз/объяснение и рекомендации, но **не включать** обход автоматически.
 
 ---
 
 ## Документация (обязательные обновления при добавлении новых компонентов)
 
-#### D.1 Зафиксировать новые слои v2 в архитектуре
-- Цель: отразить появление DPI Intelligence v2 и новые границы слоёв.
+#### D.1 Зафиксировать новые слои INTEL в архитектуре
+- Цель: отразить появление DPI Intelligence INTEL и новые границы слоёв.
 - Файлы:
 	- ARCHITECTURE_CURRENT.md
-	- docs/full_repo_audit_v2.md
+	- docs/full_repo_audit_intel.md
 - Критерий готовности:
-	- В документах описаны: где вызывается v2 цепочка (пайплайн), какие входы/выходы, и что legacy остаётся справочно.
+	- В документах описаны: где вызывается INTEL цепочка (пайплайн), какие входы/выходы, и что legacy остаётся справочно.
 - Риски:
 	- Документация разъедется с фактическими точками интеграции (особенно если интеграция пойдёт через pipeline, а не через orchestrator callback).
 
@@ -245,3 +245,4 @@
 
 ## Порядок выполнения (оптимальный для минимального риска)
 1) Step 0 (контракт) → 2) Step 1 (store + adapter) → 3) Step 2 (2 диагноза) → 4) Step 3 (selector) → 5) Step 4 (executor log) → 6) Step 5 (интеграция пайплайн + UI) → 7) Документация + QA gates.
+

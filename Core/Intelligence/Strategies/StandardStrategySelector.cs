@@ -2,27 +2,27 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using IspAudit.Core.IntelligenceV2.Contracts;
-using IspAudit.Core.IntelligenceV2.Feedback;
+using IspAudit.Core.Intelligence.Contracts;
+using IspAudit.Core.Intelligence.Feedback;
 
-namespace IspAudit.Core.IntelligenceV2.Strategies;
+namespace IspAudit.Core.Intelligence.Strategies;
 
 /// <summary>
-/// Минимальный селектор стратегий v2 (MVP).
+/// Минимальный селектор стратегий INTEL (MVP).
 /// ВАЖНО: решение принимает строго по <see cref="DiagnosisResult"/> (id + confidence),
 /// но может использовать минимальные факты из InputSignals для assist-рекомендаций (QUIC fallback / allow-no-SNI).
 /// </summary>
-public sealed class StandardStrategySelectorV2
+public sealed class StandardStrategySelector
 {
-    private readonly IFeedbackStoreV2? _feedbackStore;
+    private readonly IFeedbackStore? _feedbackStore;
     private readonly FeedbackStoreOptions _feedbackOptions;
 
-    public StandardStrategySelectorV2()
+    public StandardStrategySelector()
         : this(feedbackStore: null, feedbackOptions: null)
     {
     }
 
-    public StandardStrategySelectorV2(IFeedbackStoreV2? feedbackStore, FeedbackStoreOptions? feedbackOptions = null)
+    public StandardStrategySelector(IFeedbackStore? feedbackStore, FeedbackStoreOptions? feedbackOptions = null)
     {
         _feedbackStore = feedbackStore;
         _feedbackOptions = feedbackOptions ?? new FeedbackStoreOptions();
@@ -93,7 +93,7 @@ public sealed class StandardStrategySelectorV2
                     continue;
                 }
 
-                EmitWarning(warningLog, $"[IntelligenceV2][Selector] Стратегия {candidate.Id} не реализована — пропуск.");
+                EmitWarning(warningLog, $"[INTEL][Selector] Стратегия {candidate.Id} не реализована — пропуск.");
                 continue;
             }
 
@@ -158,8 +158,8 @@ public sealed class StandardStrategySelectorV2
         var anyFeedbackApplied = ranked.Any(r => r.FeedbackBoost != 0);
 
         var reasoning = anyFeedbackApplied
-            ? "план сформирован по диагнозу v2 (feedback)"
-            : "план сформирован по диагноза v2 (MVP)";
+            ? "план сформирован по диагнозу INTEL (feedback)"
+            : "план сформирован по диагнозу INTEL (MVP)";
 
         if (recommendDropUdp443)
         {
@@ -293,7 +293,7 @@ public sealed class StandardStrategySelectorV2
             ],
 
             // MVP/практика: при "чисто DNS" диагнозе даём низкорисковую рекомендацию DoH.
-            // Это не авто-применение: пользователь включает DoH вручную или через Apply v2.
+            // Это не авто-применение: пользователь включает DoH вручную или через Apply INTEL.
             DiagnosisId.DnsHijack =>
             [
                 new StrategyTemplate(StrategyId.UseDoh, BasePriority: 80, Risk: RiskLevel.Low, Parameters: new Dictionary<string, object?>()),

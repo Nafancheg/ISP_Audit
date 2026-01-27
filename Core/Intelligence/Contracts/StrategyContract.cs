@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace IspAudit.Core.IntelligenceV2.Contracts;
+namespace IspAudit.Core.Intelligence.Contracts;
 
 /// <summary>
 /// Уровень риска стратегии. Используется только для фильтрации/ранжирования.
@@ -14,7 +14,7 @@ public enum RiskLevel
 }
 
 /// <summary>
-/// Ограничения и пороги контракта стратегий v2.
+/// Ограничения и пороги контракта стратегий INTEL.
 /// </summary>
 public static class StrategyContractConstraints
 {

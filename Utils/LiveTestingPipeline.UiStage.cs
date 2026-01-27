@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Core.Diagnostics;
-using IspAudit.Core.IntelligenceV2.Execution;
+using IspAudit.Core.Intelligence.Execution;
 
 namespace IspAudit.Utils
 {
@@ -86,7 +86,7 @@ namespace IspAudit.Utils
                             var tail = blocked.RecommendedAction.Substring(idx).Trim();
                             if (!string.IsNullOrEmpty(tail))
                             {
-                                if (_executorV2.TryFormatDiagnosisSuffix(tail, out var formattedTail))
+                                if (_executor.TryFormatDiagnosisSuffix(tail, out var formattedTail))
                                 {
                                     suffix = formattedTail;
                                 }
@@ -116,7 +116,7 @@ namespace IspAudit.Utils
                         // Контекст цели для детерминированной привязки рекомендации к карточке (UI не должен полагаться на LastUpdatedHost).
                         var context = $"host={host}:{port} SNI={(string.IsNullOrWhiteSpace(sni) ? "-" : sni)} RDNS={(string.IsNullOrWhiteSpace(rdns) ? "-" : rdns)}";
 
-                        if (_executorV2.TryBuildRecommendationLine(dedupKey, blocked.BypassStrategy, context, out var recommendationLine))
+                        if (_executor.TryBuildRecommendationLine(dedupKey, blocked.BypassStrategy, context, out var recommendationLine))
                         {
                             _progress?.Report(recommendationLine);
                         }

@@ -192,11 +192,11 @@ namespace IspAudit.ViewModels
                         if (!string.IsNullOrWhiteSpace(src.BypassStrategy) && string.IsNullOrWhiteSpace(domainCard.BypassStrategy))
                         {
                             domainCard.BypassStrategy = src.BypassStrategy;
-                            domainCard.IsBypassStrategyFromV2 = src.IsBypassStrategyFromV2;
+                            domainCard.IsBypassStrategyFromIntel = src.IsBypassStrategyFromIntel;
                         }
-                        else if (src.IsBypassStrategyFromV2)
+                        else if (src.IsBypassStrategyFromIntel)
                         {
-                            domainCard.IsBypassStrategyFromV2 = true;
+                            domainCard.IsBypassStrategyFromIntel = true;
                         }
 
                         if (!string.IsNullOrWhiteSpace(src.AppliedBypassStrategy) && string.IsNullOrWhiteSpace(domainCard.AppliedBypassStrategy))

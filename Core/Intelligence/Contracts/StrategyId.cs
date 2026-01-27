@@ -1,4 +1,4 @@
-namespace IspAudit.Core.IntelligenceV2.Contracts;
+namespace IspAudit.Core.Intelligence.Contracts;
 
 /// <summary>
 /// Идентификатор стратегии обхода (логический). Контракт не привязан к реализации байпаса.

@@ -5,11 +5,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Core.Interfaces;
 using IspAudit.Core.Diagnostics;
-using IspAudit.Core.IntelligenceV2.Contracts;
-using IspAudit.Core.IntelligenceV2.Diagnosis;
-using IspAudit.Core.IntelligenceV2.Execution;
-using IspAudit.Core.IntelligenceV2.Signals;
-using IspAudit.Core.IntelligenceV2.Strategies;
+using IspAudit.Core.Intelligence.Contracts;
+using IspAudit.Core.Intelligence.Diagnosis;
+using IspAudit.Core.Intelligence.Execution;
+using IspAudit.Core.Intelligence.Signals;
+using IspAudit.Core.Intelligence.Strategies;
 using IspAudit.Core.Models;
 using IspAudit.Core.Modules;
 
@@ -38,19 +38,19 @@ namespace IspAudit.Utils
 
                     // INTEL: записываем факты в последовательность событий + минимальный Gate-лог.
                     // Окно Gate-логов использует дефолт контракта (30 сек), но сами legacy signals сняты за 60 сек.
-                    _signalsAdapterV2.Observe(tested, inspection, _progress);
+                    _signalsAdapter.Observe(tested, inspection, _progress);
 
                     // INTEL: строим агрегированный срез и ставим диагноз (без стратегий/обхода)
-                    var snapshot = _signalsAdapterV2.BuildSnapshot(tested, inspection, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
-                    var diagnosis = _diagnosisEngineV2.Diagnose(snapshot);
+                    var snapshot = _signalsAdapter.BuildSnapshot(tested, inspection, IntelligenceContractDefaults.DefaultAggregationWindow);
+                    var diagnosis = _diagnosisEngine.Diagnose(snapshot);
 
                     // INTEL: формируем план рекомендаций строго по диагнозу.
                     // Важно: не применять автоматически (только показать в UI/логах).
-                    var plan = _strategySelectorV2.Select(diagnosis, msg => _progress?.Report(msg));
+                    var plan = _strategySelector.Select(diagnosis, msg => _progress?.Report(msg));
 
-                    // Готовим v2-план для UI/оркестратора, но публикуем ТОЛЬКО если хост реально попал в UI как проблема.
+                    // Готовим INTEL-план для UI/оркестратора, но публикуем ТОЛЬКО если хост реально попал в UI как проблема.
                     // Иначе "последний план" будет перетираться шумом/успешными хостами, и Apply применит не то.
-                    var publishV2Plan = false;
+                    var publishIntelPlan = false;
                     var planHostKeyForPublish = string.Empty;
                     try
                     {
@@ -84,12 +84,12 @@ namespace IspAudit.Utils
                                     : tested.Host.RemoteIp?.ToString() ?? tested.Host.Key;
                             }
 
-                            publishV2Plan = true;
+                            publishIntelPlan = true;
                         }
                     }
                     catch
                     {
-                        publishV2Plan = false;
+                        publishIntelPlan = false;
                         planHostKeyForPublish = string.Empty;
                     }
 
@@ -154,10 +154,10 @@ namespace IspAudit.Utils
                         continue; // Пропускаем только «непроблемные» шумовые хосты
                     }
 
-                    // Важно: публикуем v2-план не только для карточек (Process), но и для LogOnly,
-                    // иначе пользователь не увидит рекомендацию/Apply для «формально OK, но v2 видит вмешательство».
+                    // Важно: публикуем INTEL-план не только для карточек (Process), но и для LogOnly,
+                    // иначе пользователь не увидит рекомендацию/Apply для «формально OK, но INTEL видит вмешательство».
                     // При этом мы всё так же публикуем ТОЛЬКО когда есть действия в плане и есть признаки проблемы.
-                    if (publishV2Plan && !string.IsNullOrWhiteSpace(planHostKeyForPublish) && decision.Action != FilterAction.Drop)
+                    if (publishIntelPlan && !string.IsNullOrWhiteSpace(planHostKeyForPublish) && decision.Action != FilterAction.Drop)
                     {
                         try
                         {
@@ -186,7 +186,7 @@ namespace IspAudit.Utils
                         // INTEL: если селектор сформировал план действий, показываем рекомендацию и диагноз даже при OK.
                         // Это критично для UX: иначе пользователь видит только "✓", хотя INTEL уже заметил вмешательство.
                         var hasPlanActionsForOk = plan.Strategies.Count > 0 || plan.DropUdp443 || plan.AllowNoSni;
-                        if (publishV2Plan && hasPlanActionsForOk)
+                        if (publishIntelPlan && hasPlanActionsForOk)
                         {
                             try
                             {
@@ -197,13 +197,13 @@ namespace IspAudit.Utils
                                 var dedupKey = !string.IsNullOrWhiteSpace(sni) && sni != "-" ? sni : displayHost;
 
                                 var bypassStrategyText = BuildBypassStrategyText(plan);
-                                if (_executorV2.TryBuildRecommendationLine(dedupKey, bypassStrategyText, context, out var recommendationLine))
+                                if (_executor.TryBuildRecommendationLine(dedupKey, bypassStrategyText, context, out var recommendationLine))
                                 {
                                     _progress?.Report(recommendationLine);
                                 }
 
-                                // Дополнительно: компактная строка диагноза v2.
-                                if (_executorV2.TryFormatDiagnosisSuffix(blocked.RecommendedAction, out var formattedDiag))
+                                // Дополнительно: компактная строка INTEL-диагноза.
+                                if (_executor.TryFormatDiagnosisSuffix(blocked.RecommendedAction, out var formattedDiag))
                                 {
                                     _progress?.Report(formattedDiag);
                                 }
@@ -249,7 +249,7 @@ namespace IspAudit.Utils
                     return new HostBlocked(tested, PipelineContract.BypassNone, BlockageCode.StatusOk);
                 }
 
-                // Если v2 увидел флаги, но тесты формально OK — не делаем уверенных выводов.
+                // Если INTEL увидел флаги, но тесты формально OK — не делаем уверенных выводов.
                 return new HostBlocked(tested, PipelineContract.BypassNone, BuildEvidenceTail(diagnosis));
             }
 

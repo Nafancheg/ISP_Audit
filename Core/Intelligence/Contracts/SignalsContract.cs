@@ -1,13 +1,13 @@
 using System;
 using System.Collections.Generic;
 
-namespace IspAudit.Core.IntelligenceV2.Contracts;
+namespace IspAudit.Core.Intelligence.Contracts;
 
 /// <summary>
-/// Общие константы контракта DPI Intelligence v2.
-/// Важно: это именно контракт. Значения фиксированы и используются всеми слоями v2.
+/// Общие константы контракта DPI Intelligence.
+/// Важно: это именно контракт. Значения фиксированы и используются всеми слоями INTEL.
 /// </summary>
-public static class IntelligenceV2ContractDefaults
+public static class IntelligenceContractDefaults
 {
     /// <summary>
     /// TTL для событий в <see cref="SignalSequence"/>.
@@ -16,7 +16,7 @@ public static class IntelligenceV2ContractDefaults
     public const int EventTtlMinutes = 10;
 
     /// <summary>
-    /// Окно агрегации по умолчанию для построения <c>BlockageSignalsV2</c>.
+    /// Окно агрегации по умолчанию для построения <c>BlockageSignals</c>.
     /// </summary>
     public const int DefaultAggregationWindowSeconds = 30;
 
@@ -42,7 +42,7 @@ public static class IntelligenceV2ContractDefaults
 }
 
 /// <summary>
-/// Событие (факт) в потоке сигналов v2.
+/// Событие (факт) в потоке сигналов INTEL.
 /// Это «сырой» слой фактов: без интерпретации, диагнозов и стратегий.
 /// </summary>
 public sealed class SignalEvent

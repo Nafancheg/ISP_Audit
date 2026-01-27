@@ -1,10 +1,10 @@
 using System;
 
-namespace IspAudit.Core.IntelligenceV2.Signals;
+namespace IspAudit.Core.Intelligence.Signals;
 
 /// <summary>
 /// Снимок сигналов «инспекции трафика» (RST/HTTP redirect/UDP handshake/ретрансмиссии),
-/// пригодный для v2 контура без зависимости от legacy агрегатов/типов.
+/// пригодный для контура INTEL без зависимости от legacy агрегатов/типов.
 /// </summary>
 public readonly record struct InspectionSignalsSnapshot(
     int Retransmissions,

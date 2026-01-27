@@ -15,18 +15,19 @@ using System.Threading.Tasks;
 using IspAudit.Bypass;
 using IspAudit.Core.Bypass;
 using IspAudit.Core.Diagnostics;
-using IspAudit.Core.IntelligenceV2.Contracts;
-using IspAudit.Core.IntelligenceV2.Diagnosis;
-using IspAudit.Core.IntelligenceV2.Execution;
-using IspAudit.Core.IntelligenceV2.Feedback;
-using IspAudit.Core.IntelligenceV2.Signals;
-using IspAudit.Core.IntelligenceV2.Strategies;
+using IspAudit.Core.Intelligence.Contracts;
+using IspAudit.Core.Intelligence.Diagnosis;
+using IspAudit.Core.Intelligence.Execution;
+using IspAudit.Core.Intelligence.Feedback;
+using IspAudit.Core.Intelligence.Signals;
+using IspAudit.Core.Intelligence.Strategies;
 using IspAudit.Core.Models;
 using IspAudit.Core.Traffic;
 using IspAudit.Utils;
 using IspAudit.ViewModels;
 
 using BypassTransportProtocol = IspAudit.Bypass.TransportProtocol;
+using IntelBlockageSignals = IspAudit.Core.Intelligence.Contracts.BlockageSignals;
 
 namespace TestNetworkApp.Smoke
 {
@@ -1549,7 +1550,7 @@ namespace TestNetworkApp.Smoke
                     "OK: direct calls blocked, manager calls allowed");
             }, ct);
 
-        public static Task<SmokeTestResult> Dpi2_Guard_NoLegacySignalsOrGetSignals_InV2RuntimePath(CancellationToken ct)
+        public static Task<SmokeTestResult> Dpi2_Guard_NoLegacySignalsOrGetSignals_InIntelRuntimePath(CancellationToken ct)
             => RunAsync("DPI2-025", "Guard: в intel runtime-пути нет BlockageSignals/GetSignals", () =>
             {
                 static string? TryFindRepoRoot(string startDir)
@@ -1590,11 +1591,11 @@ namespace TestNetworkApp.Smoke
                 filesToCheck.Add(Path.Combine(root, "ViewModels", "DiagnosticOrchestrator.cs"));
                 filesToCheck.Add(Path.Combine(root, "ViewModels", "TestResultsManager.cs"));
 
-                // Весь intel-слой (исторически папка называется Core/IntelligenceV2).
-                var v2Dir = Path.Combine(root, "Core", "IntelligenceV2");
-                if (Directory.Exists(v2Dir))
+                // Весь INTEL-слой.
+                var intelDir = Path.Combine(root, "Core", "Intelligence");
+                if (Directory.Exists(intelDir))
                 {
-                    filesToCheck.AddRange(Directory.GetFiles(v2Dir, "*.cs", SearchOption.AllDirectories));
+                    filesToCheck.AddRange(Directory.GetFiles(intelDir, "*.cs", SearchOption.AllDirectories));
                 }
 
                 filesToCheck = filesToCheck
@@ -1614,7 +1615,7 @@ namespace TestNetworkApp.Smoke
                 var reNewLegacyClassifier = new Regex(@"\bnew\s+StandardBlockageClassifier\b", RegexOptions.Compiled);
                 var reCallLegacyClassifier = new Regex(@"\bStandardBlockageClassifier\s*\.\s*ClassifyBlockage\s*\(", RegexOptions.Compiled);
 
-                // Полное вычищение legacy/bridge: в v2 слое не должно быть ссылок на BlockageSignals вообще.
+                // Полное вычищение legacy/bridge: в INTEL-слое не должно быть ссылок на BlockageSignals вообще.
                 var allowedBlockageSignalsFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                 var offenders = new List<string>();
@@ -1633,9 +1634,9 @@ namespace TestNetworkApp.Smoke
                         continue;
                     }
 
-                    // 2) BlockageSignals в v2 слое запрещён полностью.
-                    var isInV2Layer = file.StartsWith(v2Dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-                    if (isInV2Layer && !allowedBlockageSignalsFiles.Contains(file) && reBlockageSignals.IsMatch(text))
+                    // 2) BlockageSignals в INTEL-слое запрещён полностью.
+                    var isInIntelLayer = file.StartsWith(intelDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+                    if (isInIntelLayer && !allowedBlockageSignalsFiles.Contains(file) && reBlockageSignals.IsMatch(text))
                     {
                         var rel = Path.GetRelativePath(root, file);
                         offenders.Add(rel.Replace('\\', '/'));
@@ -1664,10 +1665,10 @@ namespace TestNetworkApp.Smoke
         }
 
         public static Task<SmokeTestResult> Dpi2_SignalsAdapter_Observe_AdaptsLegacySignals_ToTtlStore(CancellationToken ct)
-            => RunAsync("DPI2-001", "SignalsAdapterV2 пишет inspection сигналы в TTL-store", () =>
+            => RunAsync("DPI2-001", "SignalsAdapter пишет inspection сигналы в TTL-store", () =>
             {
                 var store = new InMemorySignalSequenceStore();
-                var adapter = new SignalsAdapterV2(store);
+                var adapter = new SignalsAdapter(store);
 
                 var tested = CreateHostTested(
                     remoteIp: IPAddress.Parse("203.0.113.10"),
@@ -1683,22 +1684,22 @@ namespace TestNetworkApp.Smoke
                     UdpUnansweredHandshakes: 0);
                 adapter.Observe(tested, inspection);
 
-                var hostKey = SignalsAdapterV2.BuildStableHostKey(tested);
+                var hostKey = SignalsAdapter.BuildStableHostKey(tested);
                 var events = store.ReadWindow(hostKey, DateTimeOffset.UtcNow - TimeSpan.FromMinutes(1), DateTimeOffset.UtcNow + TimeSpan.FromSeconds(1));
 
                 if (!events.Any(e => e.Type == SignalEventType.HostTested))
                 {
-                    return new SmokeTestResult("DPI2-001", "SignalsAdapterV2 адаптирует legacy сигналы и пишет в TTL-store", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-001", "SignalsAdapter адаптирует legacy сигналы и пишет в TTL-store", SmokeOutcome.Fail, TimeSpan.Zero,
                         "В сторе нет события HostTested после Observe(...)");
                 }
 
                 if (!events.Any(e => e.Type == SignalEventType.SuspiciousRstObserved))
                 {
-                    return new SmokeTestResult("DPI2-001", "SignalsAdapterV2 пишет inspection сигналы в TTL-store", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-001", "SignalsAdapter пишет inspection сигналы в TTL-store", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали событие SuspiciousRstObserved из inspection snapshot, но его нет");
                 }
 
-                return new SmokeTestResult("DPI2-001", "SignalsAdapterV2 пишет inspection сигналы в TTL-store", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-001", "SignalsAdapter пишет inspection сигналы в TTL-store", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: events={events.Count}, hostKey={hostKey}");
             }, ct);
 
@@ -1712,7 +1713,7 @@ namespace TestNetworkApp.Smoke
                 {
                     HostKey = hostKey,
                     Type = SignalEventType.HostTested,
-                    ObservedAtUtc = DateTimeOffset.UtcNow - IntelligenceV2ContractDefaults.EventTtl - TimeSpan.FromMinutes(1),
+                    ObservedAtUtc = DateTimeOffset.UtcNow - IntelligenceContractDefaults.EventTtl - TimeSpan.FromMinutes(1),
                     Source = "Smoke",
                     Value = null,
                     Reason = "old"
@@ -1754,10 +1755,10 @@ namespace TestNetworkApp.Smoke
             => RunAsync("DPI2-003", "Агрегация INTEL: BuildSnapshot корректно считает окно 30s/60s", () =>
             {
                 var store = new InMemorySignalSequenceStore();
-                var adapter = new SignalsAdapterV2(store);
+                var adapter = new SignalsAdapter(store);
 
                 var tested = CreateHostTested(remoteIp: IPAddress.Parse("203.0.113.30"), blockageType: BlockageCode.TcpConnectTimeout);
-                var hostKey = SignalsAdapterV2.BuildStableHostKey(tested);
+                var hostKey = SignalsAdapter.BuildStableHostKey(tested);
 
                 var now = DateTimeOffset.UtcNow;
 
@@ -1797,8 +1798,8 @@ namespace TestNetworkApp.Smoke
                     HasSuspiciousRst: false,
                     SuspiciousRstDetails: null,
                     UdpUnansweredHandshakes: 0);
-                var snap30 = adapter.BuildSnapshot(tested, inspection, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
-                var snap60 = adapter.BuildSnapshot(tested, inspection, IntelligenceV2ContractDefaults.ExtendedAggregationWindow);
+                var snap30 = adapter.BuildSnapshot(tested, inspection, IntelligenceContractDefaults.DefaultAggregationWindow);
+                var snap60 = adapter.BuildSnapshot(tested, inspection, IntelligenceContractDefaults.ExtendedAggregationWindow);
 
                 if (snap30.SampleSize < 5 || snap30.SampleSize > 7)
                 {
@@ -1826,7 +1827,7 @@ namespace TestNetworkApp.Smoke
             => RunAsync("DPI2-016", "Агрегация INTEL: BuildSnapshot извлекает RST TTL delta + latency", () =>
             {
                 var store = new InMemorySignalSequenceStore();
-                var adapter = new SignalsAdapterV2(store);
+                var adapter = new SignalsAdapter(store);
 
                 var tested = CreateHostTested(remoteIp: IPAddress.Parse("203.0.113.31"), blockageType: BlockageCode.TcpConnectionReset) with
                 {
@@ -1841,7 +1842,7 @@ namespace TestNetworkApp.Smoke
                     HasSuspiciousRst: true,
                     SuspiciousRstDetails: "TTL=64 (обычный=50-55)",
                     UdpUnansweredHandshakes: 0);
-                var snap = adapter.BuildSnapshot(tested, inspection, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
+                var snap = adapter.BuildSnapshot(tested, inspection, IntelligenceContractDefaults.DefaultAggregationWindow);
 
                 if (!snap.HasTcpReset)
                 {
@@ -1866,11 +1867,11 @@ namespace TestNetworkApp.Smoke
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_DiagnosisEngine_ProducesDiagnosis_WithConfidenceAtLeast50(CancellationToken ct)
-            => RunAsync("DPI2-004", "DiagnosisEngine v2 формирует диагноз с confidence >= 50", () =>
+            => RunAsync("DPI2-004", "DiagnosisEngine INTEL формирует диагноз с confidence >= 50", () =>
             {
-                var engine = new StandardDiagnosisEngineV2();
+                var engine = new StandardDiagnosisEngine();
 
-                var signals = new BlockageSignalsV2
+                var signals = new IntelBlockageSignals
                 {
                     HostKey = "203.0.113.40",
                     CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -1898,26 +1899,26 @@ namespace TestNetworkApp.Smoke
 
                 if (result.Confidence < 50)
                 {
-                    return new SmokeTestResult("DPI2-004", "DiagnosisEngine v2 формирует диагноз с confidence >= 50", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-004", "DiagnosisEngine INTEL формирует диагноз с confidence >= 50", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали confidence >= 50, получили {result.Confidence} (diagnosis={result.DiagnosisId})");
                 }
 
                 if (result.DiagnosisId != DiagnosisId.SilentDrop)
                 {
-                    return new SmokeTestResult("DPI2-004", "DiagnosisEngine v2 формирует диагноз с confidence >= 50", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-004", "DiagnosisEngine INTEL формирует диагноз с confidence >= 50", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали DiagnosisId.SilentDrop для timeout+high retx-rate, получили {result.DiagnosisId}");
                 }
 
-                return new SmokeTestResult("DPI2-004", "DiagnosisEngine v2 формирует диагноз с confidence >= 50", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-004", "DiagnosisEngine INTEL формирует диагноз с confidence >= 50", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: {result.DiagnosisId} ({result.Confidence}%)");
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_DiagnosisEngine_RstTtlDelta_FastClassifiesAsActiveDpiEdge(CancellationToken ct)
             => RunAsync("DPI2-017", "DiagnosisEngine INTEL: RST TTL delta + быстрый reset => ActiveDpiEdge", () =>
             {
-                var engine = new StandardDiagnosisEngineV2();
+                var engine = new StandardDiagnosisEngine();
 
-                var signals = new BlockageSignalsV2
+                var signals = new IntelBlockageSignals
                 {
                     HostKey = "203.0.113.41",
                     CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -1964,9 +1965,9 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Dpi2_DiagnosisEngine_RstTtlDelta_SlowClassifiesAsStatefulDpi(CancellationToken ct)
             => RunAsync("DPI2-018", "DiagnosisEngine INTEL: RST TTL delta + медленный reset => StatefulDpi", () =>
             {
-                var engine = new StandardDiagnosisEngineV2();
+                var engine = new StandardDiagnosisEngine();
 
-                var signals = new BlockageSignalsV2
+                var signals = new IntelBlockageSignals
                 {
                     HostKey = "203.0.113.42",
                     CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -2014,10 +2015,10 @@ namespace TestNetworkApp.Smoke
             => RunAsync("DPI2-031", "Агрегация INTEL: BuildSnapshot извлекает RstIpIdDelta и считает устойчивость suspicious RST", () =>
             {
                 var store = new InMemorySignalSequenceStore();
-                var adapter = new SignalsAdapterV2(store);
+                var adapter = new SignalsAdapter(store);
 
                 var tested = CreateHostTested(remoteIp: IPAddress.Parse("203.0.113.33"), blockageType: BlockageCode.TcpConnectionReset);
-                var hostKey = SignalsAdapterV2.BuildStableHostKey(tested);
+                var hostKey = SignalsAdapter.BuildStableHostKey(tested);
 
                 var now = DateTimeOffset.UtcNow;
                 store.Append(new SignalEvent
@@ -2041,7 +2042,7 @@ namespace TestNetworkApp.Smoke
                     Metadata = null
                 });
 
-                var snap = adapter.BuildSnapshot(tested, InspectionSignalsSnapshot.Empty, IntelligenceV2ContractDefaults.DefaultAggregationWindow);
+                var snap = adapter.BuildSnapshot(tested, InspectionSignalsSnapshot.Empty, IntelligenceContractDefaults.DefaultAggregationWindow);
 
                 if (snap.RstIpIdDelta != 5)
                 {
@@ -2062,9 +2063,9 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Dpi2_DiagnosisEngine_SingleRstAnomaly_IsUnknown_NotDpi(CancellationToken ct)
             => RunAsync("DPI2-032", "DiagnosisEngine INTEL: single suspicious RST anomaly => Unknown (без DPI-id)", () =>
             {
-                var engine = new StandardDiagnosisEngineV2();
+                var engine = new StandardDiagnosisEngine();
 
-                var signals = new BlockageSignalsV2
+                var signals = new IntelBlockageSignals
                 {
                     HostKey = "203.0.113.44",
                     CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -2117,9 +2118,9 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Dpi2_DiagnosisEngine_Explanation_IsFactBased_NoStrategiesMentioned(CancellationToken ct)
             => RunAsync("DPI2-005", "DiagnosisEngine INTEL: пояснение содержит факты, но не упоминает стратегии", () =>
             {
-                var engine = new StandardDiagnosisEngineV2();
+                var engine = new StandardDiagnosisEngine();
 
-                var signals = new BlockageSignalsV2
+                var signals = new IntelBlockageSignals
                 {
                     HostKey = "203.0.113.50",
                     CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -2179,7 +2180,7 @@ namespace TestNetworkApp.Smoke
             => RunAsync("DPI2-006", "Gate 1→2: в логе появляется маркер [INTEL][GATE1]", () =>
             {
                 var store = new InMemorySignalSequenceStore();
-                var adapter = new SignalsAdapterV2(store);
+                var adapter = new SignalsAdapter(store);
 
                 var tested = CreateHostTested(remoteIp: IPAddress.Parse("203.0.113.60"), blockageType: BlockageCode.TcpConnectionReset);
 
@@ -2229,9 +2230,9 @@ namespace TestNetworkApp.Smoke
         }
 
         public static Task<SmokeTestResult> Dpi2_StrategySelector_BuildsPlan_AndExecutorFormatsRecommendation(CancellationToken ct)
-            => RunAsync("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", () =>
+            => RunAsync("DPI2-007", "StrategySelector INTEL формирует план и даёт INTEL-рекомендацию", () =>
             {
-                var selector = new StandardStrategySelectorV2();
+                var selector = new StandardStrategySelector();
                 var executor = new BypassExecutorMvp();
 
                 var diagnosis = new DiagnosisResult
@@ -2241,7 +2242,7 @@ namespace TestNetworkApp.Smoke
                     MatchedRuleName = "smoke",
                     ExplanationNotes = new[] { "TLS: timeout" },
                     Evidence = new Dictionary<string, string>(),
-                    InputSignals = new BlockageSignalsV2
+                    InputSignals = new IntelBlockageSignals
                     {
                         HostKey = "example.com",
                         CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -2262,26 +2263,26 @@ namespace TestNetworkApp.Smoke
                 var plan = selector.Select(diagnosis);
                 if (plan.Strategies.Count == 0)
                 {
-                    return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-007", "StrategySelector INTEL формирует план и даёт INTEL-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Ожидали непустой план стратегий для ActiveDpiEdge/conf=80");
                 }
 
                 var bypassText = InvokePrivateBuildBypassStrategyText(plan);
                 if (string.IsNullOrWhiteSpace(bypassText))
                 {
-                    return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-007", "StrategySelector INTEL формирует план и даёт INTEL-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Не удалось получить текст bypass-стратегий (plan:...)");
                 }
 
                 if (!executor.TryBuildRecommendationLine("example.com", bypassText, out var line))
                 {
-                    return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-007", "StrategySelector INTEL формирует план и даёт INTEL-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Executor не смог построить строку рекомендации из: {bypassText}");
                 }
 
                 if (!line.Contains(BypassExecutorMvp.IntelLogPrefix, StringComparison.Ordinal))
                 {
-                    return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-007", "StrategySelector INTEL формирует план и даёт INTEL-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"В строке рекомендации нет префикса {BypassExecutorMvp.IntelLogPrefix}: {line}");
                 }
 
@@ -2289,36 +2290,36 @@ namespace TestNetworkApp.Smoke
                 var hasDisorder = line.Contains("TLS_DISORDER", StringComparison.Ordinal);
                 if (!hasFragment && !hasDisorder)
                 {
-                    return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-007", "StrategySelector INTEL формирует план и даёт INTEL-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали одну TLS-стратегию (TLS_FRAGMENT или TLS_DISORDER), но не нашли ни одной: {line}");
                 }
 
                 if (hasFragment && hasDisorder)
                 {
-                    return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-007", "StrategySelector INTEL формирует план и даёт INTEL-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали, что селектор выберет ровно одну TLS-стратегию, но нашли обе: {line}");
                 }
 
                 if (!plan.DropUdp443 || !line.Contains("DROP_UDP_443", StringComparison.Ordinal))
                 {
-                    return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-007", "StrategySelector INTEL формирует план и даёт INTEL-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали assist DropUdp443 и токен DROP_UDP_443 в строке рекомендации: plan.DropUdp443={plan.DropUdp443}, line={line}");
                 }
 
                 if (!plan.AllowNoSni || !line.Contains("ALLOW_NO_SNI", StringComparison.Ordinal))
                 {
-                    return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-007", "StrategySelector INTEL формирует план и даёт INTEL-рекомендацию", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали assist AllowNoSni и токен ALLOW_NO_SNI в строке рекомендации: plan.AllowNoSni={plan.AllowNoSni}, line={line}");
                 }
 
-                return new SmokeTestResult("DPI2-007", "StrategySelector v2 формирует план и даёт v2-рекомендацию", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-007", "StrategySelector INTEL формирует план и даёт INTEL-рекомендацию", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: {line}");
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_StrategySelector_HighRiskBlocked_WhenConfidenceBelow70(CancellationToken ct)
             => RunAsync("DPI2-008", "High-risk стратегии запрещены при confidence < 70", () =>
             {
-                var selector = new StandardStrategySelectorV2();
+                var selector = new StandardStrategySelector();
 
                 var diagnosis = new DiagnosisResult
                 {
@@ -2327,7 +2328,7 @@ namespace TestNetworkApp.Smoke
                     MatchedRuleName = "smoke",
                     ExplanationNotes = Array.Empty<string>(),
                     Evidence = new Dictionary<string, string>(),
-                    InputSignals = new BlockageSignalsV2
+                    InputSignals = new IntelBlockageSignals
                     {
                         HostKey = "example.com",
                         CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -2353,7 +2354,7 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Dpi2_StrategySelector_EmptyPlan_WhenConfidenceBelow50(CancellationToken ct)
             => RunAsync("DPI2-009", "Пустой план при confidence < 50", () =>
             {
-                var selector = new StandardStrategySelectorV2();
+                var selector = new StandardStrategySelector();
 
                 var diagnosis = new DiagnosisResult
                 {
@@ -2362,7 +2363,7 @@ namespace TestNetworkApp.Smoke
                     MatchedRuleName = "smoke",
                     ExplanationNotes = Array.Empty<string>(),
                     Evidence = new Dictionary<string, string>(),
-                    InputSignals = new BlockageSignalsV2
+                    InputSignals = new IntelBlockageSignals
                     {
                         HostKey = "example.com",
                         CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -2387,7 +2388,7 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Dpi2_StrategySelector_DnsHijack_RecommendsUseDohOnly(CancellationToken ct)
             => RunAsync("DPI2-034", "DnsHijack → UseDoh (low-risk), без TLS/assist", () =>
             {
-                var selector = new StandardStrategySelectorV2();
+                var selector = new StandardStrategySelector();
 
                 var diagnosis = new DiagnosisResult
                 {
@@ -2396,7 +2397,7 @@ namespace TestNetworkApp.Smoke
                     MatchedRuleName = "smoke",
                     ExplanationNotes = Array.Empty<string>(),
                     Evidence = new Dictionary<string, string>(),
-                    InputSignals = new BlockageSignalsV2
+                    InputSignals = new IntelBlockageSignals
                     {
                         HostKey = "example.com",
                         CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -2433,7 +2434,7 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Dpi2_StrategySelector_WarnsAndSkips_UnimplementedStrategies(CancellationToken ct)
             => RunAsync("DPI2-010", "Warning при нереализованных стратегиях (warning + skip)", () =>
             {
-                var selector = new StandardStrategySelectorV2();
+                var selector = new StandardStrategySelector();
 
                 var warnings = new List<string>();
 
@@ -2444,7 +2445,7 @@ namespace TestNetworkApp.Smoke
                     MatchedRuleName = "smoke",
                     ExplanationNotes = Array.Empty<string>(),
                     Evidence = new Dictionary<string, string>(),
-                    InputSignals = new BlockageSignalsV2
+                    InputSignals = new IntelBlockageSignals
                     {
                         HostKey = "example.com",
                         CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -2476,7 +2477,7 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Dpi2_StrategySelector_Phase3Strategies_AreImplemented(CancellationToken ct)
             => RunAsync("DPI2-033", "Phase 3: HttpHostTricks/QuicObfuscation/BadChecksum реализованы (не deferred)", () =>
             {
-                var selector = new StandardStrategySelectorV2();
+                var selector = new StandardStrategySelector();
 
                 var diagnosis = new DiagnosisResult
                 {
@@ -2485,7 +2486,7 @@ namespace TestNetworkApp.Smoke
                     MatchedRuleName = "smoke",
                     ExplanationNotes = Array.Empty<string>(),
                     Evidence = new Dictionary<string, string>(),
-                    InputSignals = new BlockageSignalsV2
+                    InputSignals = new IntelBlockageSignals
                     {
                         HostKey = "example.com",
                         CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -2541,8 +2542,8 @@ namespace TestNetworkApp.Smoke
                     EntryTtl = TimeSpan.FromDays(30)
                 };
 
-                var store = new InMemoryFeedbackStoreV2(options);
-                var selector = new StandardStrategySelectorV2(store, options);
+                var store = new InMemoryFeedbackStore(options);
+                var selector = new StandardStrategySelector(store, options);
 
                 var now = DateTimeOffset.UtcNow;
                 for (var i = 0; i < 5; i++)
@@ -2558,7 +2559,7 @@ namespace TestNetworkApp.Smoke
                     MatchedRuleName = "smoke",
                     ExplanationNotes = Array.Empty<string>(),
                     Evidence = new Dictionary<string, string>(),
-                    InputSignals = new BlockageSignalsV2
+                    InputSignals = new IntelBlockageSignals
                     {
                         HostKey = "example.com",
                         CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -2609,8 +2610,8 @@ namespace TestNetworkApp.Smoke
                     EntryTtl = TimeSpan.FromDays(30)
                 };
 
-                var store = new InMemoryFeedbackStoreV2(options);
-                var selector = new StandardStrategySelectorV2(store, options);
+                var store = new InMemoryFeedbackStore(options);
+                var selector = new StandardStrategySelector(store, options);
 
                 var now = DateTimeOffset.UtcNow;
                 for (var i = 0; i < 4; i++)
@@ -2625,7 +2626,7 @@ namespace TestNetworkApp.Smoke
                     MatchedRuleName = "smoke",
                     ExplanationNotes = Array.Empty<string>(),
                     Evidence = new Dictionary<string, string>(),
-                    InputSignals = new BlockageSignalsV2
+                    InputSignals = new IntelBlockageSignals
                     {
                         HostKey = "example.com",
                         CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -2698,7 +2699,7 @@ namespace TestNetworkApp.Smoke
                     $"OK: {formatted} | {line}");
             }, ct);
 
-        public static Task<SmokeTestResult> Dpi2_AllV2Outputs_StartWithPrefix(CancellationToken ct)
+        public static Task<SmokeTestResult> Dpi2_AllIntelOutputs_StartWithPrefix(CancellationToken ct)
             => RunAsync("DPI2-012", "Префикс [INTEL] присутствует во всех intel-выводах", () =>
             {
                 var executor = new BypassExecutorMvp();
@@ -2747,7 +2748,7 @@ namespace TestNetworkApp.Smoke
                     "OK: вызовов к TrafficEngine/BypassController не обнаружено");
             }, ct);
 
-        public static Task<SmokeTestResult> Dpi2_ExecutorV2_ManualApply_MapsPlanToBypassOptions(CancellationToken ct)
+        public static Task<SmokeTestResult> Dpi2_ExecutorIntel_ManualApply_MapsPlanToBypassOptions(CancellationToken ct)
             => RunAsync("DPI2-019", "Executor INTEL: ручное применение BypassPlan включает ожидаемые опции", () =>
             {
                 // Поднимаем сервис в smoke-режиме (без TrafficEngine), чтобы не требовать админ прав и WinDivert.
@@ -2771,13 +2772,13 @@ namespace TestNetworkApp.Smoke
                     }
                 };
 
-                controller.ApplyV2PlanAsync(plan, timeout: TimeSpan.FromSeconds(2), cancellationToken: CancellationToken.None)
+                controller.ApplyIntelPlanAsync(plan, timeout: TimeSpan.FromSeconds(2), cancellationToken: CancellationToken.None)
                     .GetAwaiter().GetResult();
 
                 if (!controller.IsFragmentEnabled)
                 {
                     return new SmokeTestResult("DPI2-019", "Executor INTEL: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
-                        "Ожидали, что после ApplyV2PlanAsync будет включён TLS_FRAGMENT");
+                        "Ожидали, что после ApplyIntelPlanAsync будет включён TLS_FRAGMENT");
                 }
 
                 if (controller.IsDisorderEnabled)
@@ -2789,26 +2790,26 @@ namespace TestNetworkApp.Smoke
                 if (!controller.IsDropRstEnabled)
                 {
                     return new SmokeTestResult("DPI2-019", "Executor INTEL: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
-                        "Ожидали, что после ApplyV2PlanAsync будет включён DROP_RST");
+                        "Ожидали, что после ApplyIntelPlanAsync будет включён DROP_RST");
                 }
 
                 if (!controller.IsQuicFallbackEnabled)
                 {
                     return new SmokeTestResult("DPI2-019", "Executor INTEL: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
-                        "Ожидали, что после ApplyV2PlanAsync будет включён QUIC→TCP (DropUdp443)" );
+                        "Ожидали, что после ApplyIntelPlanAsync будет включён QUIC→TCP (DropUdp443)" );
                 }
 
                 if (!controller.IsAllowNoSniEnabled)
                 {
                     return new SmokeTestResult("DPI2-019", "Executor INTEL: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Fail, TimeSpan.Zero,
-                        "Ожидали, что после ApplyV2PlanAsync будет включён No SNI (AllowNoSni)" );
+                        "Ожидали, что после ApplyIntelPlanAsync будет включён No SNI (AllowNoSni)" );
                 }
 
                 return new SmokeTestResult("DPI2-019", "Executor INTEL: ручное применение BypassPlan включает ожидаемые опции", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: опции применены" );
             }, ct);
 
-        public static Task<SmokeTestResult> Dpi2_ExecutorV2_TlsFragment_Params_AffectPresetAndAutoAdjust(CancellationToken ct)
+        public static Task<SmokeTestResult> Dpi2_ExecutorIntel_TlsFragment_Params_AffectPresetAndAutoAdjust(CancellationToken ct)
             => RunAsync("DPI2-022", "Executor INTEL: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", () =>
             {
                 // Smoke-режим (без TrafficEngine), чтобы не требовать админ прав и WinDivert.
@@ -2839,13 +2840,13 @@ namespace TestNetworkApp.Smoke
                     }
                 };
 
-                controller.ApplyV2PlanAsync(plan, timeout: TimeSpan.FromSeconds(2), cancellationToken: CancellationToken.None)
+                controller.ApplyIntelPlanAsync(plan, timeout: TimeSpan.FromSeconds(2), cancellationToken: CancellationToken.None)
                     .GetAwaiter().GetResult();
 
                 if (!controller.IsFragmentEnabled)
                 {
                     return new SmokeTestResult("DPI2-022", "Executor INTEL: параметры TlsFragment (sizes/autoAdjust) влияют на пресет и опции", SmokeOutcome.Fail, TimeSpan.Zero,
-                        "Ожидали, что после ApplyV2PlanAsync будет включён TLS_FRAGMENT");
+                        "Ожидали, что после ApplyIntelPlanAsync будет включён TLS_FRAGMENT");
                 }
 
                 if (!controller.IsAutoAdjustAggressive)
@@ -2874,14 +2875,14 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Dpi2_StrategySelector_PopulatesTlsFragmentParameters(CancellationToken ct)
             => RunAsync("DPI2-023", "StrategySelector INTEL: TlsFragment содержит параметры (PresetName/TlsFragmentSizes) в плане", () =>
             {
-                var selector = new StandardStrategySelectorV2(feedbackStore: null);
+                var selector = new StandardStrategySelector(feedbackStore: null);
 
                 var diagnosis = new DiagnosisResult
                 {
                     DiagnosisId = DiagnosisId.SilentDrop,
                     Confidence = 80,
                     ExplanationNotes = new[] { "smoke" },
-                    InputSignals = new BlockageSignalsV2
+                    InputSignals = new IntelBlockageSignals
                     {
                         HostKey = "203.0.113.99",
                         CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -2953,14 +2954,14 @@ namespace TestNetworkApp.Smoke
             => RunAsync("DPI2-024", "E2E INTEL: selector → plan → manual apply использует параметры плана", () =>
             {
                 // 1) Формируем план через селектор (это и есть e2e часть: plan должен включать параметры).
-                var selector = new StandardStrategySelectorV2(feedbackStore: null);
+                var selector = new StandardStrategySelector(feedbackStore: null);
 
                 var diagnosis = new DiagnosisResult
                 {
                     DiagnosisId = DiagnosisId.SilentDrop,
                     Confidence = 80,
                     ExplanationNotes = new[] { "smoke-e2e" },
-                    InputSignals = new BlockageSignalsV2
+                    InputSignals = new IntelBlockageSignals
                     {
                         HostKey = "203.0.113.98",
                         CapturedAtUtc = DateTimeOffset.UtcNow,
@@ -2999,7 +3000,7 @@ namespace TestNetworkApp.Smoke
                 var tlsService = new TlsBypassService(engine, baseProfile, log: null, startMetricsTimer: false, useTrafficEngine: false, nowProvider: () => DateTime.Now);
                 var controller = new BypassController(tlsService, baseProfile);
 
-                controller.ApplyV2PlanAsync(plan, timeout: TimeSpan.FromSeconds(2), cancellationToken: CancellationToken.None)
+                controller.ApplyIntelPlanAsync(plan, timeout: TimeSpan.FromSeconds(2), cancellationToken: CancellationToken.None)
                     .GetAwaiter().GetResult();
 
                 if (!controller.IsFragmentEnabled)
@@ -3049,7 +3050,7 @@ namespace TestNetworkApp.Smoke
                     "OK: параметры плана применены детерминированно" );
             }, ct);
 
-        public static async Task<SmokeTestResult> Dpi2_ExecutorV2_Cancel_RollbacksToPreviousState(CancellationToken ct)
+        public static async Task<SmokeTestResult> Dpi2_ExecutorIntel_Cancel_RollbacksToPreviousState(CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();
             try
@@ -3080,7 +3081,7 @@ namespace TestNetworkApp.Smoke
 
                 try
                 {
-                    await controller.ApplyV2PlanAsync(plan, timeout: TimeSpan.FromSeconds(2), cancellationToken: cts.Token).ConfigureAwait(false);
+                    await controller.ApplyIntelPlanAsync(plan, timeout: TimeSpan.FromSeconds(2), cancellationToken: cts.Token).ConfigureAwait(false);
                     return new SmokeTestResult("DPI2-020", "Executor INTEL: отмена/таймаут приводит к безопасному откату", SmokeOutcome.Fail, sw.Elapsed,
                         "Ожидали OperationCanceledException, но применение завершилось без отмены");
                 }

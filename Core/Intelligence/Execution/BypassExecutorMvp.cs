@@ -5,7 +5,7 @@ using System.Globalization;
 using System.Linq;
 using IspAudit.Core.Diagnostics;
 
-namespace IspAudit.Core.IntelligenceV2.Execution;
+namespace IspAudit.Core.Intelligence.Execution;
 
 /// <summary>
 /// MVP-исполнитель intel-рекомендаций: ТОЛЬКО форматирование и логирование.

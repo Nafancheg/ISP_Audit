@@ -2,7 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using IspAudit.Core.IntelligenceV2.Signals;
+using IspAudit.Core.Intelligence.Signals;
 using IspAudit.Core.Models;
 
 namespace IspAudit.Utils
@@ -49,7 +49,7 @@ namespace IspAudit.Utils
         }
 
         /// <summary>
-        /// Наблюдать результат теста и инспекционные сигналы (v2, без legacy типов).
+        /// Наблюдать результат теста и инспекционные сигналы (INTEL, без legacy типов).
         /// </summary>
         public void Observe(HostTested tested, InspectionSignalsSnapshot signals, string? hostname)
         {
@@ -138,7 +138,7 @@ namespace IspAudit.Utils
 
         /// <summary>
         /// Попытаться получить текущего кандидата auto-hostlist для данного результата теста.
-        /// Используется для добавления контекста в v2 evidence/notes без линейного обхода snapshot.
+        /// Используется для добавления контекста в INTEL evidence/notes без линейного обхода snapshot.
         /// </summary>
         public bool TryGetCandidateFor(HostTested tested, string? hostname, out AutoHostCandidate candidate)
         {

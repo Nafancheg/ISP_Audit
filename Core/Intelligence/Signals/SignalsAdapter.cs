@@ -4,18 +4,18 @@ using System.Collections.Generic;
 using System.Net;
 using System.Text.RegularExpressions;
 using IspAudit.Core.Diagnostics;
-using IspAudit.Core.IntelligenceV2.Contracts;
+using IspAudit.Core.Intelligence.Contracts;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
 
-namespace IspAudit.Core.IntelligenceV2.Signals;
+namespace IspAudit.Core.Intelligence.Signals;
 
 /// <summary>
 /// Адаптер сигналов INTEL: принимает результаты (HostTested + InspectionSignalsSnapshot)
 /// и записывает их в последовательность событий (SignalSequence) с TTL.
-/// Дополнительно умеет построить агрегированный срез BlockageSignalsV2 по окну.
+/// Дополнительно умеет построить агрегированный срез BlockageSignals по окну.
 /// </summary>
-public sealed class SignalsAdapterV2
+public sealed class SignalsAdapter
 {
     private readonly InMemorySignalSequenceStore _store;
 
@@ -42,7 +42,7 @@ public sealed class SignalsAdapterV2
     // Простейший анти-спам для событий одного типа
     private static readonly TimeSpan SameTypeDebounce = TimeSpan.FromSeconds(5);
 
-    public SignalsAdapterV2(InMemorySignalSequenceStore store)
+    public SignalsAdapter(InMemorySignalSequenceStore store)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
     }
@@ -83,7 +83,7 @@ public sealed class SignalsAdapterV2
         TryReportGate1To2(hostKey, tsUtc, progress);
     }
 
-    public BlockageSignalsV2 BuildSnapshot(HostTested tested, InspectionSignalsSnapshot inspectionSignals, TimeSpan window)
+    public IspAudit.Core.Intelligence.Contracts.BlockageSignals BuildSnapshot(HostTested tested, InspectionSignalsSnapshot inspectionSignals, TimeSpan window)
     {
         var hostKey = BuildStableHostKey(tested);
         var capturedAtUtc = DateTimeOffset.UtcNow;
@@ -167,11 +167,11 @@ public sealed class SignalsAdapterV2
         if (hasTcpReset && tested.TcpLatencyMs is int latencyMs && latencyMs > 0)
         {
             // Это приблизительная метрика (время попытки TCP connect до reset/исключения).
-            // Для v2 достаточно как сигнал "быстро" vs "медленно".
+            // Для INTEL достаточно как сигнал "быстро" vs "медленно".
             rstLatency = TimeSpan.FromMilliseconds(latencyMs);
         }
 
-        return new BlockageSignalsV2
+        return new IspAudit.Core.Intelligence.Contracts.BlockageSignals
         {
             HostKey = hostKey,
             CapturedAtUtc = capturedAtUtc,
@@ -392,7 +392,7 @@ public sealed class SignalsAdapterV2
             return;
         }
 
-        var fromUtc = nowUtc - IntelligenceV2ContractDefaults.DefaultAggregationWindow;
+        var fromUtc = nowUtc - IntelligenceContractDefaults.DefaultAggregationWindow;
         var recent = _store.ReadWindow(hostKey, fromUtc, nowUtc);
 
         // Для Gate 1→2 нам важно качество цепочки, иначе диагностика будет работать по шуму.

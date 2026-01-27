@@ -37,7 +37,7 @@
 
 ## 3) Вне Traffic (смежные кандидаты)
 
-- [Core/IntelligenceV2/Signals/InMemorySignalSequenceStore.cs](../Core/IntelligenceV2/Signals/InMemorySignalSequenceStore.cs)
+- [Core/Intelligence/Signals/InMemorySignalSequenceStore.cs](../Core/Intelligence/Signals/InMemorySignalSequenceStore.cs)
   - `ConcurrentDictionary<string, SequenceBucket> _buckets`
     - Перечисление snapshot-safe, а мутации `Sequence.Events` защищены per-host lock (`bucket.Gate`).
 

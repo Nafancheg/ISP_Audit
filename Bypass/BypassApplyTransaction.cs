@@ -56,7 +56,7 @@ namespace IspAudit.Bypass
         public string PlanText { get; init; } = string.Empty;
 
         /// <summary>
-        /// Reasoning из v2 плана (best-effort).
+        /// Reasoning из INTEL-плана (best-effort).
         /// </summary>
         public string Reasoning { get; init; } = string.Empty;
 

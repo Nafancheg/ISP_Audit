@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
-using IspAudit.Core.IntelligenceV2.Contracts;
+using IspAudit.Core.Intelligence.Contracts;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
 using IspAudit.Core.Modules;
@@ -80,7 +80,7 @@ namespace IspAudit.ViewModels
             {
                 AutoBypassMetrics =
                     $"Hello@443: {metrics.ClientHellosObserved}; <thr: {metrics.ClientHellosShort}; !=443: {metrics.ClientHellosNon443}; Frag: {metrics.ClientHellosFragmented}; RST: {metrics.RstDroppedRelevant}; План: {metrics.Plan}; Пресет: {metrics.PresetName}; с {metrics.Since}";
-                // Для v2 дополнительно выводим, что QUIC реально глушится.
+                // Для INTEL дополнительно выводим, что QUIC реально глушится.
                 if (metrics.Udp443Dropped > 0)
                 {
                     AutoBypassMetrics += $"; UDP443 drop: {metrics.Udp443Dropped}";

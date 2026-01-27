@@ -155,16 +155,16 @@ namespace IspAudit.Models
 
         /// <summary>
         /// Источник рекомендации по стратегии обхода.
-        /// Нужен, чтобы legacy-логика не «перебивала» рекомендации v2.
+        /// Нужен, чтобы legacy-логика не «перебивала» рекомендации INTEL.
         /// </summary>
-        private bool _isBypassStrategyFromV2;
-        public bool IsBypassStrategyFromV2
+        private bool _isBypassStrategyFromIntel;
+        public bool IsBypassStrategyFromIntel
         {
-            get => _isBypassStrategyFromV2;
+            get => _isBypassStrategyFromIntel;
             set
             {
-                _isBypassStrategyFromV2 = value;
-                OnPropertyChanged(nameof(IsBypassStrategyFromV2));
+                _isBypassStrategyFromIntel = value;
+                OnPropertyChanged(nameof(IsBypassStrategyFromIntel));
                 OnPropertyChanged(nameof(ShowConnectButton));
                 OnPropertyChanged(nameof(StrategyIconNames));
                 OnPropertyChanged(nameof(StrategyIconHint));
@@ -274,7 +274,7 @@ namespace IspAudit.Models
         }
 
         public bool ShowConnectButton
-            => IsBypassStrategyFromV2 &&
+            => IsBypassStrategyFromIntel &&
                !string.IsNullOrWhiteSpace(BypassStrategy) &&
                !string.Equals(BypassStrategy, PipelineContract.BypassNone, StringComparison.OrdinalIgnoreCase) &&
                !string.Equals(BypassStrategy, PipelineContract.BypassUnknown, StringComparison.OrdinalIgnoreCase);

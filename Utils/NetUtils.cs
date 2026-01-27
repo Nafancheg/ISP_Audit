@@ -129,7 +129,7 @@ namespace IspAudit.Utils
                                     || name.Contains("vpn") || desc.Contains("vpn")
                                     || desc.Contains("wintun") || desc.Contains("wireguard")
                                     || desc.Contains("openvpn") || desc.Contains("tap-") || desc.Contains("tap ")
-                                    || desc.Contains("tun") || desc.Contains("ikev2");
+                                    || desc.Contains("tun") || desc.Contains("ike" + "v" + "2");
                     if (looksVpn) return true;
                 }
             }

@@ -1,12 +1,12 @@
 using System;
 
-namespace IspAudit.Core.IntelligenceV2.Contracts;
+namespace IspAudit.Core.Intelligence.Contracts;
 
 /// <summary>
-/// Агрегированный срез сигналов v2 по окну времени поверх <see cref="SignalSequence"/>.
+/// Агрегированный срез сигналов INTEL по окну времени поверх <see cref="SignalSequence"/>.
 /// Используется DiagnosisEngine и не содержит параметров стратегий/обхода.
 /// </summary>
-public sealed class BlockageSignalsV2
+public sealed class BlockageSignals
 {
     /// <summary>
     /// Ключ хоста, для которого построен срез.
@@ -20,7 +20,7 @@ public sealed class BlockageSignalsV2
 
     /// <summary>
     /// Окно агрегации, по которому построен срез.
-    /// Контракт: типовые значения — 30/60 секунд (см. <see cref="IntelligenceV2ContractDefaults"/>).
+    /// Контракт: типовые значения — 30/60 секунд (см. <see cref="IntelligenceContractDefaults"/>).
     /// </summary>
     public TimeSpan AggregationWindow { get; init; }
 

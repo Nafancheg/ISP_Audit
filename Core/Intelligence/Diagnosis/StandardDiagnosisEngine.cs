@@ -1,16 +1,16 @@
 using System;
 using System.Collections.Generic;
-using IspAudit.Core.IntelligenceV2.Contracts;
+using IspAudit.Core.Intelligence.Contracts;
 
-namespace IspAudit.Core.IntelligenceV2.Diagnosis;
+namespace IspAudit.Core.Intelligence.Diagnosis;
 
 /// <summary>
-/// Минимальный Diagnosis Engine v2.
-/// Важно: работает только по <see cref="BlockageSignalsV2"/> и не знает ничего про стратегии/обход.
+/// Минимальный Diagnosis Engine INTEL.
+/// Важно: работает только по <see cref="BlockageSignals"/> и не знает ничего про стратегии/обход.
 /// </summary>
-public sealed class StandardDiagnosisEngineV2
+public sealed class StandardDiagnosisEngine
 {
-    public DiagnosisResult Diagnose(BlockageSignalsV2 signals)
+    public DiagnosisResult Diagnose(BlockageSignals signals)
     {
         if (signals is null) throw new ArgumentNullException(nameof(signals));
 

@@ -316,7 +316,7 @@ namespace IspAudit.ViewModels
                     return;
                 }
 
-                // Если для этой цели есть v2 план — применяем его.
+                // Если для этой цели есть INTEL-план — применяем его.
                 // Если плана нет, ApplyRecommendationsAsync просто ничего не сделает (и это лучше, чем включать тумблеры вслепую).
                 var txId = Guid.NewGuid().ToString("N");
                 using var op = BypassOperationContext.Enter(txId, "ui_apply_card", preferredHostKey);

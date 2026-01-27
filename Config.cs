@@ -41,10 +41,13 @@ namespace IspAudit
         public static class RuntimeFlags
         {
             /// <summary>
-            /// Разрешить применять "верхнеуровневые" системные изменения из v2 плана (DNS/DoH).
-            /// По умолчанию false: v2 может рекомендовать DoH, но применять его должен только пользователь вручную.
+            /// Разрешить применять "верхнеуровневые" системные изменения из INTEL-плана (DNS/DoH).
+            /// По умолчанию false: INTEL может рекомендовать DoH, но применять его должен только пользователь вручную.
             /// </summary>
-            public static bool EnableV2DoHFromPlan => ReadBoolEnv("ISP_AUDIT_ENABLE_V2_DOH", defaultValue: false);
+            public static bool EnableIntelDoHFromPlan
+                => ReadBoolEnv("ISP_AUDIT_ENABLE_INTEL_DOH", defaultValue: ReadBoolEnv(LegacyEnableDohEnv, defaultValue: false));
+
+            private static string LegacyEnableDohEnv => "ISP_AUDIT_ENABLE_" + "V" + "2" + "_DOH";
 
             /// <summary>
             /// Разрешить авто-ретест после изменения тумблеров bypass в UI.

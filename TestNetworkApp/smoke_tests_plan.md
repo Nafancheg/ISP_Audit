@@ -361,11 +361,11 @@ Legacy-классификатор удалён. Классификацию и ф
 
 ### 5.1 Signals Collection
 **Test ID:** `DPI2-001`
-**Что проверяет:** Адаптация legacy сигналов в SignalsAdapterV2
+**Что проверяет:** Адаптация legacy сигналов в SignalsAdapter
 **Для чего:** Преобразование legacy `BlockageSignals` в INTEL-формат
 **Критерий успеха:** События добавляются в TTL-store
 **Входные данные:** `BlockageSignals` с `BlockageType = TCP_RESET`
-**Ожидаемый результат:** `SignalsAdapterV2.Observe()` создаёт `SignalEvent` и добавляет в store
+**Ожидаемый результат:** `SignalsAdapter.Observe()` создаёт `SignalEvent` и добавляет в store
 
 **Test ID:** `DPI2-002`
 **Что проверяет:** TTL событий (10 минут)
@@ -376,7 +376,7 @@ Legacy-классификатор удалён. Классификацию и ф
 
 **Test ID:** `DPI2-003`
 **Что проверяет:** Агрегация событий по окну (30s default, 60s extended)
-**Для чего:** Построение среза `BlockageSignalsV2` для диагностики
+**Для чего:** Построение среза `BlockageSignals` для диагностики
 **Критерий успеха:** Агрегированные признаки считаются корректно
 **Входные данные:** 10 событий за 25 секунд (timeout/rst/retx)
 **Ожидаемый результат:** `BuildAggregatedSignals()` возвращает срез с правильными счётчиками
@@ -390,11 +390,11 @@ Legacy-классификатор удалён. Классификацию и ф
 
 ### 5.2 Diagnosis Engine
 **Test ID:** `DPI2-004`
-**Что проверяет:** Постановка диагноза по `BlockageSignalsV2`
+**Что проверяет:** Постановка диагноза по `BlockageSignals`
 **Для чего:** Определение типа блокировки и уверенности
 **Критерий успеха:** Диагноз с `confidence >= 50` формируется
-**Входные данные:** `BlockageSignalsV2` с высоким retx-rate и timeout
-**Ожидаемый результат:** `StandardDiagnosisEngineV2.Diagnose()` возвращает `DiagnosisId.SilentDrop`, `confidence > 50`
+**Входные данные:** `BlockageSignals` с высоким retx-rate и timeout
+**Ожидаемый результат:** `StandardDiagnosisEngine.Diagnose()` возвращает `DiagnosisId.SilentDrop`, `confidence > 50`
 
 **Test ID:** `DPI2-005`
 **Что проверяет:** Формирование пояснения (без упоминания стратегий)
@@ -407,7 +407,7 @@ Legacy-классификатор удалён. Классификацию и ф
 **Что проверяет:** Gate 1→2 маркеры в логе `[INTEL][GATE1]`
 **Для чего:** Проверка корректности перехода от сбора к диагностике
 **Критерий успеха:** Маркеры появляются в UI-логе при каждом переходе
-**Входные данные:** Успешное построение `BlockageSignalsV2`
+**Входные данные:** Успешное построение `BlockageSignals`
 **Ожидаемый результат:** Строка `[INTEL][GATE1] hostKey=example.com recentCount=5 timeline=...`
 
 **Test ID:** `DPI2-017`
@@ -506,7 +506,7 @@ Legacy-классификатор удалён. Классификацию и ф
 **Test ID:** `DPI2-025`
 **Что проверяет:** Guard: в intel runtime-пути нет legacy `GetSignals(...)`/`BlockageSignals`
 **Для чего:** Не допустить незаметного возврата legacy источника фактов в INTEL-цепочку
-**Критерий успеха:** В `Core/IntelligenceV2/*` и ключевых runtime-файлах нет вызовов `GetSignals(...)` и упоминаний `BlockageSignals`
+**Критерий успеха:** В `Core/Intelligence/*` и ключевых runtime-файлах нет вызовов `GetSignals(...)` и упоминаний `BlockageSignals`
 **Входные данные:** Чтение исходников (grep/regex по набору файлов)
 **Ожидаемый результат:** Тест PASS, список нарушителей пуст
 
@@ -689,10 +689,10 @@ Legacy-классификатор удалён. Классификацию и ф
 **Ожидаемый результат:** `plan.Strategies[].Parameters` содержит `PresetName="Стандарт"` и `TlsFragmentSizes=[64]`
 
 **Test ID:** `DPI2-024`
-**Что проверяет:** E2E цепочку `selector → plan → ApplyV2PlanAsync` (параметры из плана реально применяются)
+**Что проверяет:** E2E цепочку `selector → plan → ApplyIntelPlanAsync` (параметры из плана реально применяются)
 **Для чего:** Самый важный функциональный контракт: рекомендации должны быть исполнимы и детерминированы
 **Критерий успеха:** После apply включены ожидаемые флаги и выбран ожидаемый пресет/размеры из параметров плана
-**Входные данные:** `DiagnosisResult(SilentDrop, confidence=80)` → `StandardStrategySelectorV2.Select(...)`
+**Входные данные:** `DiagnosisResult(SilentDrop, confidence=80)` → `StandardStrategySelector.Select(...)`
 **Ожидаемый результат:** `IsFragmentEnabled=true`, `IsDropRstEnabled=true`, `SelectedFragmentPreset.Name=="Стандарт"`, sizes `[64]`, `AutoAdjustAggressive=false`
 
 ---
@@ -1070,8 +1070,8 @@ Legacy-классификатор удалён. Классификацию и ф
 **Test ID:** `REG-012`
 **Что проверяет:** Операции ручного применения плана сериализованы (нет параллельного apply)
 **Для чего:** Исключить гонки и частично применённые состояния при двойном клике/нескольких apply-командах подряд
-**Критерий успеха:** Два конкурентных вызова `BypassController.ApplyV2PlanAsync` выполняются последовательно (по времени выполнения при тестовой задержке)
-**Входные данные:** Два `ApplyV2PlanAsync` в `Task.WhenAll` при `ISP_AUDIT_TEST_APPLY_DELAY_MS=250`
+**Критерий успеха:** Два конкурентных вызова `BypassController.ApplyIntelPlanAsync` выполняются последовательно (по времени выполнения при тестовой задержке)
+**Входные данные:** Два `ApplyIntelPlanAsync` в `Task.WhenAll` при `ISP_AUDIT_TEST_APPLY_DELAY_MS=250`
 **Ожидаемый результат:** Время выполнения >= ~500ms (с допуском)
 
 **Test ID:** `REG-013`
@@ -1096,10 +1096,10 @@ Legacy-классификатор удалён. Классификацию и ф
 **Ожидаемый результат:** Snapshot содержит ожидаемые IPv4 адреса (в network-order uint)
 
 **Test ID:** `REG-016`
-**Что проверяет:** ApplyV2PlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)
+**Что проверяет:** ApplyIntelPlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)
 **Для чего:** P0.2 наблюдаемость: при таймауте Apply нужно понимать, на какой фазе зависло/отменилось (без ручного репро)
 **Критерий успеха:** При детерминированном таймауте `CancelReason=timeout`, а также заполнены `CurrentPhase` и список `Phases` (включая `test_delay`)
-**Входные данные:** `ISP_AUDIT_TEST_APPLY_DELAY_MS=500` и `timeout=50ms` при вызове `BypassController.ApplyV2PlanAsync`
+**Входные данные:** `ISP_AUDIT_TEST_APPLY_DELAY_MS=500` и `timeout=50ms` при вызове `BypassController.ApplyIntelPlanAsync`
 **Ожидаемый результат:** Бросается `BypassApplyCanceledException`, в `Execution` присутствует фазовая диагностика
 
 **Test ID:** `REG-004`
