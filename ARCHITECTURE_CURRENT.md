@@ -335,7 +335,10 @@ Smoke-хелперы (для детерминированных проверок
         * Это **не** wildcard-мэтчинг в `BypassFilter`: домен используется как UX-цель/цель outcome (и как вход для резолва IP в селективном `DropUdp443`).
     * Отмена: команда `Cancel` отменяет не только диагностику, но и текущий ручной apply (через отдельный CTS).
 * Step 5 (Feedback/Rerank): добавлен слой обратной связи `Core/Intelligence/Feedback/*`. В рантайме по умолчанию включён `JsonFileFeedbackStore` (persist: `state\\feedback_store.json`) и инжектится в `StandardStrategySelector`.
-    * Запись outcome выполняется best-effort после Post-Apply ретеста: если по target IP есть хотя бы один `❌` → `Failure`, иначе если есть `✓` → `Success`.
+    * Запись outcome выполняется best-effort после Post-Apply ретеста:
+        * Если в логах ретеста виден `SNI=...`, совпадающий с `hostKey`, outcome считается по этим (SNI-matched) записям; иначе — по всем target IP.
+        * Если одновременно есть и `✓`, и `❌` по цели → outcome считается неоднозначным (`Unknown`) и **не записывается**.
+        * При `DropUdp443` outcome также записывается как `StrategyId.QuicObfuscation` (т.к. это фактическая реализация техники в MVP).
 
 ---
 

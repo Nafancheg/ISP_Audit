@@ -285,7 +285,10 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 Актуализация (Dev, 22.12.2025): feedback store + ранжирование в StrategySelector
 - Добавлен `Core/Intelligence/Feedback/*`: хранилище обратной связи (in-memory) + файловая реализация `JsonFileFeedbackStore`.
     - В рантайме store включён по умолчанию (persist: `state\\feedback_store.json`) и инжектится в `StandardStrategySelector`.
-    - Запись исхода выполняется best-effort после Post-Apply ретеста (по строкам `✓/❌` для target IP): `Success`/`Failure`.
+    - Запись исхода выполняется best-effort после Post-Apply ретеста (по строкам `✓/❌`):
+        - если виден `SNI=...`, совпадающий с `hostKey`, outcome считается по SNI-matched строкам; иначе по target IP;
+        - если одновременно есть `✓` и `❌` по цели → outcome неоднозначный (`Unknown`) и не пишется;
+        - при `DropUdp443` outcome также пишется для `StrategyId.QuicObfuscation`.
 - `StandardStrategySelector` умеет (опционально) добавлять вес по успешности **поверх** hardcoded `BasePriority`.
 - Gate: при отсутствии данных поведение полностью как раньше; одинаковый вход + одинаковый feedback → одинаковый план.
 

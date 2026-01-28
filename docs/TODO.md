@@ -50,7 +50,7 @@
     - [x] Regression smoke: `REG-017` — H3 fail-only → QuicInterference и assist DropUdp443; при TLS timeout DropUdp443 не рекомендуется.
     - [x] INTEL: HttpRedirect → план обхода (минимум: `HttpHostTricks`). Regression smoke: `REG-018`.
     - [x] INTEL: справочник blockpage-hosts вынесен во внешний JSON `state\\blockpage_hosts.json` (configurable). Regression smoke: `REG-019`.
-    - [x] INTEL: feedback store подключён в рантайме (persist: `state\\feedback_store.json`), результат записывается после Post-Apply ретеста (✓/❌ по target IP).
+    - [x] INTEL: feedback store подключён в рантайме (persist: `state\\feedback_store.json`), результат записывается после Post-Apply ретеста (✓/❌ по target IP, при наличии SNI — приоритетно по SNI-match). Если по цели одновременно есть ✓ и ❌ → outcome считается неоднозначным и в store не пишется. При `DropUdp443` outcome также записывается для `StrategyId.QuicObfuscation`.
     - [x] Отключить AutoRetest по изменению тумблеров bypass по умолчанию (для чистой наблюдаемости).
     - [x] P0.x Реактивная синхронизация targets для селективного QUIC→TCP: refresh UDP/443 targets по UDP blockage (без глобального DropUdp443)
       - [x] Assist-флаги (QUIC→TCP, No-SNI) применяются при ручном Apply
