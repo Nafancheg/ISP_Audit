@@ -82,9 +82,7 @@ public sealed class StandardStrategySelector
                     {
                         Id = candidate.Id,
                         Risk = candidate.Risk,
-                        Reason = candidate.Id == StrategyId.BadChecksum
-                            ? "отложено: блокер на уровне движка"
-                            : "отложено: техника ещё не реализована"
+                        Reason = "отложено: техника помечена как deferred (не применяется автоматически)"
                     });
                     continue;
                 }
@@ -377,7 +375,10 @@ public sealed class StandardStrategySelector
                     }),
                 new StrategyTemplate(StrategyId.DropRst, BasePriority: 50, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
 
-                // Отложенные техники: показываем как deferred (без применения).
+                // Phase 3 техники (implemented): попадают в plan.Strategies и применяются при ручном ApplyIntelPlanAsync.
+                // Примечания:
+                // - QuicObfuscation в рантайме маппится на QUIC→TCP fallback (DROP UDP/443).
+                // - BadChecksum влияет только на фейковые пакеты.
                 new StrategyTemplate(StrategyId.HttpHostTricks, BasePriority: 10, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
                 new StrategyTemplate(StrategyId.QuicObfuscation, BasePriority: 5, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
                 new StrategyTemplate(StrategyId.BadChecksum, BasePriority: 1, Risk: RiskLevel.High, Parameters: new Dictionary<string, object?>()),
