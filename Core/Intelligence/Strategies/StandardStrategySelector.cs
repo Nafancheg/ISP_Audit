@@ -140,13 +140,18 @@ public sealed class StandardStrategySelector
         ordered = KeepOnlyOneTlsModeStrategy(ordered);
 
         // Assist-рекомендации (MVP):
-        // - DropUdp443: если есть признаки QUIC/UDP активности, а мы рекомендуем TLS-обход (который работает только на TCP).
+        // - DropUdp443: если есть признаки QUIC/UDP активности, и требуется/выбран TLS-обход (он работает только на TCP).
+        //   ВАЖНО: если уже есть TLS timeout на TCP/443, то QUIC→TCP не является приоритетным лечением
+        //   (это не устраняет TLS проблему) — тогда не навязываем DropUdp443, чтобы не путать пользователя.
         // - AllowNoSni: если SNI часто отсутствует в HostTested, а мы рекомендуем TLS-обход.
         var hasTlsBypassStrategy = ordered.Any(s => s.Id is StrategyId.TlsFragment or StrategyId.TlsDisorder or StrategyId.AggressiveFragment or StrategyId.TlsFakeTtl);
 
         var signals = diagnosis.InputSignals;
         var hasQuicObfuscation = ordered.Any(s => s.Id == StrategyId.QuicObfuscation);
-        var recommendDropUdp443 = hasQuicObfuscation || (hasTlsBypassStrategy && signals.UdpUnansweredHandshakes >= 2);
+        var recommendDropUdp443 = hasQuicObfuscation
+            || (hasTlsBypassStrategy
+                && !signals.HasTlsTimeout
+                && signals.UdpUnansweredHandshakes >= 2);
 
         var recommendAllowNoSni = false;
         if (hasTlsBypassStrategy && signals.HostTestedCount >= 2)
