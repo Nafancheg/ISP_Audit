@@ -64,8 +64,23 @@ public sealed class StandardDiagnosisEngine
         }
         if (signals.HasHttpRedirect)
         {
-            notes.Add("HTTP: обнаружен редирект/заглушка");
             evidence["httpRedirect"] = "1";
+
+            var redirectHost = string.IsNullOrWhiteSpace(signals.RedirectToHost) ? null : signals.RedirectToHost;
+            if (redirectHost != null)
+            {
+                var isLikelyBlockpage = IsLikelyProviderBlockpageHost(redirectHost);
+                notes.Add(isLikelyBlockpage
+                    ? $"HTTP: редирект на заглушку ({redirectHost})"
+                    : $"HTTP: редирект (Location host={redirectHost})");
+
+                evidence["redirectToHost"] = redirectHost;
+                evidence["redirectKind"] = isLikelyBlockpage ? "blockpage" : "unknown";
+            }
+            else
+            {
+                notes.Add("HTTP: обнаружен редирект/заглушка");
+            }
         }
         if (signals.HasTcpTimeout)
         {
@@ -178,10 +193,13 @@ public sealed class StandardDiagnosisEngine
         // 4) HTTP редирект как наблюдаемый факт
         if (signals.HasHttpRedirect)
         {
+            var redirectHost = string.IsNullOrWhiteSpace(signals.RedirectToHost) ? null : signals.RedirectToHost;
+            var isLikelyBlockpage = IsLikelyProviderBlockpageHost(redirectHost);
+
             return new DiagnosisResult
             {
                 DiagnosisId = DiagnosisId.HttpRedirect,
-                Confidence = 75,
+                Confidence = isLikelyBlockpage ? 80 : 65,
                 MatchedRuleName = "http-redirect",
                 ExplanationNotes = notes,
                 Evidence = evidence,
@@ -381,5 +399,23 @@ public sealed class StandardDiagnosisEngine
             InputSignals = signals,
             DiagnosedAtUtc = DateTimeOffset.UtcNow
         };
+    }
+
+    private static bool IsLikelyProviderBlockpageHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host)) return false;
+
+        var h = host.Trim().TrimEnd('.');
+        if (h.Length == 0) return false;
+
+        // Консервативная эвристика: ограничиваемся тем, что реально встречалось в smoke/кейсе.
+        // Если потребуется расширение списка — лучше делать это через конфиг/справочник.
+        if (string.Equals(h, "warning.rt.ru", StringComparison.OrdinalIgnoreCase)) return true;
+
+        // Часто заглушки имеют явные токены.
+        if (h.Contains("blockpage", StringComparison.OrdinalIgnoreCase)) return true;
+        if (h.StartsWith("warning.", StringComparison.OrdinalIgnoreCase) && h.EndsWith(".rt.ru", StringComparison.OrdinalIgnoreCase)) return true;
+
+        return false;
     }
 }

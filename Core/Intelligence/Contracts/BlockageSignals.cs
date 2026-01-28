@@ -84,6 +84,12 @@ public sealed class BlockageSignals
     /// </summary>
     public bool HasHttpRedirect { get; init; }
 
+    /// <summary>
+    /// Целевой хост HTTP редиректа (из Location), если удалось извлечь.
+    /// Может быть полезен для различения заглушки провайдера и «обычного» редиректа (captive portal/роутер).
+    /// </summary>
+    public string? RedirectToHost { get; init; }
+
     // UDP/QUIC уровень
 
     /// <summary>

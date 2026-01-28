@@ -181,6 +181,21 @@ public sealed class SignalsAdapter
 
         var hasHttpRedirect = inspectionSignals.HasHttpRedirect || windowEvents.HasType(SignalEventType.HttpRedirectObserved);
 
+        string? redirectToHost = inspectionSignals.RedirectToHost;
+        if (string.IsNullOrWhiteSpace(redirectToHost))
+        {
+            for (var i = windowEvents.Count - 1; i >= 0; i--)
+            {
+                var e = windowEvents[i];
+                if (e.Type != SignalEventType.HttpRedirectObserved) continue;
+                if (e.Value is string s && !string.IsNullOrWhiteSpace(s))
+                {
+                    redirectToHost = s;
+                    break;
+                }
+            }
+        }
+
         // UDP unanswered: берём максимум между последним инспекционным срезом и событиями в окне.
         var udpUnanswered = Math.Max(0, inspectionSignals.UdpUnansweredHandshakes);
         for (var i = windowEvents.Count - 1; i >= 0; i--)
@@ -223,6 +238,7 @@ public sealed class SignalsAdapter
             HasFakeIp = hasFakeIp,
 
             HasHttpRedirect = hasHttpRedirect,
+            RedirectToHost = redirectToHost,
 
             UdpUnansweredHandshakes = udpUnanswered,
             Http3AttemptCount = http3AttemptCount,

@@ -122,6 +122,7 @@ namespace TestNetworkApp.Smoke
                     HasDnsFailure = false,
                     HasFakeIp = false,
                     HasHttpRedirect = true,
+                    RedirectToHost = "warning.rt.ru",
 
                     HasTcpTimeout = false,
                     HasTcpReset = false,
@@ -141,6 +142,18 @@ namespace TestNetworkApp.Smoke
                 {
                     return new SmokeTestResult("REG-018", "REG: HttpRedirect → HttpHostTricks (план не пустой)", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали DiagnosisId=HttpRedirect, получили {dx.DiagnosisId} (rule={dx.MatchedRuleName})");
+                }
+
+                if (!dx.Evidence.TryGetValue("redirectToHost", out var redirectToHost) || !string.Equals(redirectToHost, "warning.rt.ru", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SmokeTestResult("REG-018", "REG: HttpRedirect → HttpHostTricks (план не пустой)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали evidence redirectToHost=warning.rt.ru, получили '{redirectToHost ?? "<null>"}'");
+                }
+
+                if (!dx.Evidence.TryGetValue("redirectKind", out var redirectKind) || !string.Equals(redirectKind, "blockpage", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SmokeTestResult("REG-018", "REG: HttpRedirect → HttpHostTricks (план не пустой)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали evidence redirectKind=blockpage, получили '{redirectKind ?? "<null>"}'");
                 }
 
                 var plan = selector.Select(dx);

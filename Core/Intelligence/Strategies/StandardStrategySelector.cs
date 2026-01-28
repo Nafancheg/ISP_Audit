@@ -181,6 +181,15 @@ public sealed class StandardStrategySelector
             reasoning += "; assist: No SNI";
         }
 
+        if (forDiagnosisId == DiagnosisId.HttpRedirect && !string.IsNullOrWhiteSpace(signals.RedirectToHost))
+        {
+            reasoning += $"; redirectHost={signals.RedirectToHost}";
+            if (confidence < 70)
+            {
+                reasoning += "; возможно captive portal/роутер (проверь сеть/авторизацию)";
+            }
+        }
+
         if (deferred.Count > 0)
         {
             reasoning += "; deferred: " + string.Join(", ", deferred.Select(d => d.Id));
