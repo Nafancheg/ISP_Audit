@@ -378,11 +378,20 @@ namespace IspAudit.ViewModels
             return Task.Run(async () =>
             {
                 // Локальная эвристика результата: для всех target IP смотрим, были ли строки ✓/❌.
-                // Если есть хотя бы один ❌ — считаем Failure. Если есть хотя бы один ✓ и нет ❌ — Success.
-                // Если вообще нет записей по IP — Unknown (ничего не пишем в store).
+                // Усиление:
+                // - если одновременно есть ✓ и ❌ по цели — outcome=Unknown (не учимся на неоднозначном результате)
+                // - если есть хотя бы один ✓ и нет ❌ — Success
+                // - если есть хотя бы один ❌ и нет ✓ — Failure
+                // - если вообще нет записей — Unknown
                 var targetIpStrings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var sawOk = false;
-                var sawFail = false;
+                var anyOk = false;
+                var anyFail = false;
+
+                // Более точный режим: если в логах ретеста удалось увидеть SNI, совпадающий с hostKey,
+                // то считаем outcome только по этим записям. Иначе fallback на все target IP.
+                var anySniMatched = false;
+                var anyOkSniMatched = false;
+                var anyFailSniMatched = false;
 
                 try
                 {
@@ -436,8 +445,29 @@ namespace IspAudit.ViewModels
 
                                         if (!string.IsNullOrWhiteSpace(hostPart) && targetIpStrings.Contains(hostPart))
                                         {
-                                            if (msg.StartsWith("❌ ", StringComparison.Ordinal)) sawFail = true;
-                                            if (msg.StartsWith("✓ ", StringComparison.Ordinal)) sawOk = true;
+                                            var isFail = msg.StartsWith("❌ ", StringComparison.Ordinal);
+                                            var isOk = msg.StartsWith("✓ ", StringComparison.Ordinal);
+
+                                            if (isFail) anyFail = true;
+                                            if (isOk) anyOk = true;
+
+                                            // Учитываем SNI (если есть) как более точную привязку к hostKey.
+                                            // Важно: не требуем совпадения всегда, потому что SNI может быть "-".
+                                            var sni = TryExtractInlineToken(msg, "SNI");
+                                            if (!string.IsNullOrWhiteSpace(sni) && sni != "-"
+                                                && !System.Net.IPAddress.TryParse(hostKey, out _))
+                                            {
+                                                var normalizedHost = (hostKey ?? string.Empty).Trim().Trim('.');
+                                                var normalizedSni = (sni ?? string.Empty).Trim().Trim('.');
+                                                if (!string.IsNullOrWhiteSpace(normalizedHost)
+                                                    && (string.Equals(normalizedSni, normalizedHost, StringComparison.OrdinalIgnoreCase)
+                                                        || normalizedSni.EndsWith("." + normalizedHost, StringComparison.OrdinalIgnoreCase)))
+                                                {
+                                                    anySniMatched = true;
+                                                    if (isFail) anyFailSniMatched = true;
+                                                    if (isOk) anyOkSniMatched = true;
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -491,19 +521,32 @@ namespace IspAudit.ViewModels
                         var store = FeedbackStoreProvider.TryGetStore(msg => Log(msg));
                         if (store != null)
                         {
-                            var outcome = sawFail
-                                ? StrategyOutcome.Failure
-                                : (sawOk ? StrategyOutcome.Success : StrategyOutcome.Unknown);
+                            // Если SNI совпадал с hostKey хотя бы раз — считаем outcome по SNI-matched множеству.
+                            // Иначе fallback: по всем target IP.
+                            var ok = anySniMatched ? anyOkSniMatched : anyOk;
+                            var fail = anySniMatched ? anyFailSniMatched : anyFail;
+
+                            var outcome = (ok && fail)
+                                ? StrategyOutcome.Unknown
+                                : (fail ? StrategyOutcome.Failure : (ok ? StrategyOutcome.Success : StrategyOutcome.Unknown));
 
                             if (outcome != StrategyOutcome.Unknown)
                             {
                                 var now = DateTimeOffset.UtcNow;
-                                foreach (var s in pending.Plan.Strategies)
+                                var ids = pending.Plan.Strategies.Select(s => s.Id).ToList();
+
+                                // DropUdp443 — это реализация техники QuicObfuscation.
+                                if (pending.Plan.DropUdp443 && !ids.Contains(StrategyId.QuicObfuscation))
                                 {
-                                    store.Record(new FeedbackKey(pending.Plan.ForDiagnosis, s.Id), outcome, now);
+                                    ids.Add(StrategyId.QuicObfuscation);
                                 }
 
-                                Log($"[FEEDBACK][op={opId}] recorded host={hostKey}; diag={pending.Plan.ForDiagnosis}; outcome={outcome}; strategies={pending.Plan.Strategies.Count}");
+                                foreach (var id in ids)
+                                {
+                                    store.Record(new FeedbackKey(pending.Plan.ForDiagnosis, id), outcome, now);
+                                }
+
+                                Log($"[FEEDBACK][op={opId}] recorded host={hostKey}; diag={pending.Plan.ForDiagnosis}; outcome={outcome}; ids={ids.Count}; sniMatched={(anySniMatched ? 1 : 0)}");
                             }
                         }
                     }
