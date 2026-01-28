@@ -308,7 +308,7 @@ Regression smoke (P0.1 Step 12): добавлены гейты
         *   Лимит задаётся через `PipelineConfig.MaxConcurrentTests` и реализован в `TesterWorker` через `SemaphoreSlim` (in-flight задачи).
         *   Это ключевой рычаг ускорения live-диагностики при активном браузере (когда входной поток событий превышает скорость одного последовательного тестера).
     *   Опционально принимает `AutoHostlistService`: на этапе Classification добавляет кандидатов хостов в авто-hostlist (для отображения в UI и последующего ручного применения). Auto-hostlist питается `InspectionSignalsSnapshot` (intel-only). Дополнительно, если хост стал кандидатом, этот контекст прокидывается в intel-хвост (evidence/notes) как короткая нота `autoHL hits=… score=…`.
-    *   INTEL UX-гейт: событие `OnPlanBuilt` публикуется только для хостов, которые реально прошли фильтр отображения как проблема (`FilterAction.Process`), чтобы кнопка apply не применяла план, сформированный по шумовому/успешному хосту.
+    *   INTEL UX-гейт: событие `OnPlanBuilt` публикуется для `FilterAction.Process` и `FilterAction.LogOnly` (если в плане есть действия), и НЕ публикуется только при `FilterAction.Drop`.
 
 Smoke-хелперы (для детерминированных проверок без WinDivert/реальной сети):
 * `DnsParserService.TryExtractSniFromTlsClientHelloPayload(...)` — извлечение SNI из TLS payload.
@@ -334,7 +334,8 @@ Smoke-хелперы (для детерминированных проверок
         * Каталог доменов хранится во внешнем JSON рядом с приложением (`state\\domain_families.json`): можно вручную закреплять домены (pinned), а также смотреть/использовать автоматически выученные (learned).
         * Это **не** wildcard-мэтчинг в `BypassFilter`: домен используется как UX-цель/цель outcome (и как вход для резолва IP в селективном `DropUdp443`).
     * Отмена: команда `Cancel` отменяет не только диагностику, но и текущий ручной apply (через отдельный CTS).
-* Step 5 (Feedback/Rerank): добавлен слой обратной связи `Core/Intelligence/Feedback/*` (MVP: in-memory + опциональный JSON persist). `StandardStrategySelector` умеет (опционально) ранжировать стратегии по успешности, **поверх** hardcoded `BasePriority`.
+* Step 5 (Feedback/Rerank): добавлен слой обратной связи `Core/Intelligence/Feedback/*`. В рантайме по умолчанию включён `JsonFileFeedbackStore` (persist: `state\\feedback_store.json`) и инжектится в `StandardStrategySelector`.
+    * Запись outcome выполняется best-effort после Post-Apply ретеста: если по target IP есть хотя бы один `❌` → `Failure`, иначе если есть `✓` → `Success`.
 
 ---
 

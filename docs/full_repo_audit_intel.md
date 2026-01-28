@@ -283,7 +283,9 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Нереализованные стратегии: warning + skip (без исключений), без падения пайплайна.
 
 Актуализация (Dev, 22.12.2025): feedback store + ранжирование в StrategySelector
-- Добавлен `Core/Intelligence/Feedback/*`: MVP-хранилище обратной связи (in-memory) + опциональная файловая реализация `JsonFileFeedbackStore`.
+- Добавлен `Core/Intelligence/Feedback/*`: хранилище обратной связи (in-memory) + файловая реализация `JsonFileFeedbackStore`.
+    - В рантайме store включён по умолчанию (persist: `state\\feedback_store.json`) и инжектится в `StandardStrategySelector`.
+    - Запись исхода выполняется best-effort после Post-Apply ретеста (по строкам `✓/❌` для target IP): `Success`/`Failure`.
 - `StandardStrategySelector` умеет (опционально) добавлять вес по успешности **поверх** hardcoded `BasePriority`.
 - Gate: при отсутствии данных поведение полностью как раньше; одинаковый вход + одинаковый feedback → одинаковый план.
 

@@ -124,7 +124,8 @@ namespace IspAudit.Utils
             _diagnosisEngine = new StandardDiagnosisEngine();
 
             // INTEL: selector (план стратегий по диагнозу)
-            _strategySelector = new StandardStrategySelector();
+            var feedbackStore = FeedbackStoreProvider.TryGetStore(msg => _progress?.Report(msg));
+            _strategySelector = new StandardStrategySelector(feedbackStore);
 
             // INTEL: executor (только форматирование/логирование)
             _executor = new BypassExecutorMvp();

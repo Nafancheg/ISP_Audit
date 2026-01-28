@@ -20,6 +20,7 @@ using IspAudit.Windows;
 using IspAudit;
 using System.Windows.Media;
 using System.Net;
+using IspAudit.Core.Intelligence.Feedback;
 
 // Явно указываем WPF вместо WinForms
 using Application = System.Windows.Application;
@@ -37,6 +38,9 @@ namespace IspAudit.ViewModels
     public partial class DiagnosticOrchestrator : INotifyPropertyChanged
     {
         #region Recommendations (Apply)
+
+        private sealed record PendingFeedbackContext(BypassPlan Plan, DateTimeOffset AppliedAtUtc);
+        private readonly ConcurrentDictionary<string, PendingFeedbackContext> _pendingFeedbackByHostKey = new(StringComparer.OrdinalIgnoreCase);
 
         public sealed record ApplyOutcome(string HostKey, string AppliedStrategyText, string PlanText, string? Reasoning)
         {
@@ -240,6 +244,13 @@ namespace IspAudit.ViewModels
 
                 await bypassController.ApplyIntelPlanAsync(plan, hostKey, IntelApplyTimeout, ct, OnPhaseEvent).ConfigureAwait(false);
 
+                // Feedback: фиксируем контекст успешного apply, чтобы post-apply ретест мог записать успех/неуспех.
+                // Важно: контекст ключуется по hostKey (домен/IP), так как correlationId доступен только на уровне UI.
+                if (plan.Strategies.Count > 0)
+                {
+                    _pendingFeedbackByHostKey[hostKey] = new PendingFeedbackContext(plan, DateTimeOffset.UtcNow);
+                }
+
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[APPLY] OK; after={afterState}");
                 ResetRecommendations();
@@ -366,6 +377,13 @@ namespace IspAudit.ViewModels
 
             return Task.Run(async () =>
             {
+                // Локальная эвристика результата: для всех target IP смотрим, были ли строки ✓/❌.
+                // Если есть хотя бы один ❌ — считаем Failure. Если есть хотя бы один ✓ и нет ❌ — Success.
+                // Если вообще нет записей по IP — Unknown (ничего не пишем в store).
+                var targetIpStrings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var sawOk = false;
+                var sawFail = false;
+
                 try
                 {
                     using var op = BypassOperationContext.Enter(opId, "post_apply_retest", hostKey);
@@ -391,6 +409,14 @@ namespace IspAudit.ViewModels
                         return;
                     }
 
+                    foreach (var h in hosts)
+                    {
+                        if (h.RemoteIp != null)
+                        {
+                            targetIpStrings.Add(h.RemoteIp.ToString());
+                        }
+                    }
+
                     PostApplyRetestStatus = $"Ретест после Apply: проверяем {hosts.Count} IP…";
 
                     var progress = new Progress<string>(msg =>
@@ -399,6 +425,26 @@ namespace IspAudit.ViewModels
                         {
                             Application.Current?.Dispatcher.Invoke(() =>
                             {
+                                // Парсим ✓/❌ строки и отмечаем статус по target IP.
+                                try
+                                {
+                                    if (!string.IsNullOrWhiteSpace(msg) && (msg.StartsWith("✓ ", StringComparison.Ordinal) || msg.StartsWith("❌ ", StringComparison.Ordinal)))
+                                    {
+                                        var afterPrefix = msg.Substring(2).TrimStart();
+                                        var firstToken = afterPrefix.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+                                        var hostPart = string.IsNullOrWhiteSpace(firstToken) ? string.Empty : (firstToken.Split(':').FirstOrDefault() ?? string.Empty);
+
+                                        if (!string.IsNullOrWhiteSpace(hostPart) && targetIpStrings.Contains(hostPart))
+                                        {
+                                            if (msg.StartsWith("❌ ", StringComparison.Ordinal)) sawFail = true;
+                                            if (msg.StartsWith("✓ ", StringComparison.Ordinal)) sawOk = true;
+                                        }
+                                    }
+                                }
+                                catch
+                                {
+                                }
+
                                 // Важно: обновляем рекомендации/диагнозы так же, как при обычной диагностике.
                                 TrackIntelDiagnosisSummary(msg);
                                 TrackRecommendation(msg, bypassController);
@@ -438,6 +484,29 @@ namespace IspAudit.ViewModels
 
                     await pipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(15)).ConfigureAwait(false);
                     PostApplyRetestStatus = "Ретест после Apply: завершён";
+
+                    // Feedback: по результату ретеста записываем исход применённых стратегий.
+                    if (_pendingFeedbackByHostKey.TryRemove(hostKey, out var pending))
+                    {
+                        var store = FeedbackStoreProvider.TryGetStore(msg => Log(msg));
+                        if (store != null)
+                        {
+                            var outcome = sawFail
+                                ? StrategyOutcome.Failure
+                                : (sawOk ? StrategyOutcome.Success : StrategyOutcome.Unknown);
+
+                            if (outcome != StrategyOutcome.Unknown)
+                            {
+                                var now = DateTimeOffset.UtcNow;
+                                foreach (var s in pending.Plan.Strategies)
+                                {
+                                    store.Record(new FeedbackKey(pending.Plan.ForDiagnosis, s.Id), outcome, now);
+                                }
+
+                                Log($"[FEEDBACK][op={opId}] recorded host={hostKey}; diag={pending.Plan.ForDiagnosis}; outcome={outcome}; strategies={pending.Plan.Strategies.Count}");
+                            }
+                        }
+                    }
                 }
                 catch (OperationCanceledException)
                 {
