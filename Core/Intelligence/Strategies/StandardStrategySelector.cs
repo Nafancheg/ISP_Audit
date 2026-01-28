@@ -359,6 +359,12 @@ public sealed class StandardStrategySelector
                 new StrategyTemplate(StrategyId.DropRst, BasePriority: 30, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
             ],
 
+            // HTTP редирект (заглушка/подмена ответа). В MVP реагируем консервативно: HTTP Host tricks (TCP/80).
+            DiagnosisId.HttpRedirect =>
+            [
+                new StrategyTemplate(StrategyId.HttpHostTricks, BasePriority: 85, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
+            ],
+
             // Будущие диагнозы (может появиться в следующих итерациях diagnosis engine)
             DiagnosisId.ActiveDpiEdge or DiagnosisId.StatefulDpi =>
             [

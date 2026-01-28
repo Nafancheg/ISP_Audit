@@ -160,6 +160,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Step 2 INTEL Diagnosis подключён: `StandardDiagnosisEngine` ставит диагноз по `BlockageSignals` и возвращает пояснения, основанные на фактах (DNS fail, TCP/TLS timeout, TLS auth failure, retx-rate, HTTP redirect, RST TTL/IPID delta + latency) без привязки к стратегиям/обходу. Для RST-кейсов DPI-id (`ActiveDpiEdge/StatefulDpi`) выдаётся только при устойчивости улик (`SuspiciousRstCount >= 2`), чтобы не создавать ложную уверенность по единичному событию. Для TLS-only кейсов добавлен консервативный диагноз `TlsInterference`, чтобы селектор мог сформировать план TLS-стратегий.
 - Step 3 INTEL Selector подключён: `StandardStrategySelector` строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI-лога (без auto-apply).
     - План может включать `DeferredStrategies` — отложенные техники (если появляются новые/экспериментальные стратегии). Сейчас deferred-техник нет (список пуст; механизм заготовлен на будущее). Phase 3 стратегии `HttpHostTricks`, `QuicObfuscation` и `BadChecksum` считаются implemented: попадают в `plan.Strategies` и реально применяются при ручном `ApplyIntelPlanAsync`.
+    - Для диагноза `HttpRedirect` селектор выдаёт минимальную реакцию MVP: стратегию `HttpHostTricks` (TCP/80).
     - Реализация Phase 3 в рантайме:
         - `QuicObfuscation` → включает assist-флаг `DropUdp443` (QUIC→TCP fallback).
         - `HttpHostTricks` → `BypassFilter` режет HTTP `Host:` по границе TCP сегментов (исходящий TCP/80) и дропает оригинал.

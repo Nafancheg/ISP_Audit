@@ -21,7 +21,7 @@
 ## Последние проверки
 - [x] 27.01.2026: smoke ui (non-admin) PASS 13/13
 - [x] 28.01.2026: dotnet build OK
-- [x] 28.01.2026: smoke reg (non-admin) PASS 17/17
+- [x] 28.01.2026: smoke reg (non-admin) PASS 18/18
 
 ---
 
@@ -48,6 +48,7 @@
     - [x] INTEL: QUIC→TCP (DROP_UDP_443) не рекомендовать, если уже есть `TLS_HANDSHAKE_TIMEOUT` на TCP/443 (приоритет — лечение TLS, чтобы не создавать ложный «приоритет UDP»).
     - [x] INTEL/Tester: добавить реальный probe HTTP/3 (QUIC) и протащить в сигналы/диагноз (QuicInterference) + вывод в UI (H3:✓/✗/-) и приоритизация DropUdp443 по факту H3.
     - [x] Regression smoke: `REG-017` — H3 fail-only → QuicInterference и assist DropUdp443; при TLS timeout DropUdp443 не рекомендуется.
+    - [x] INTEL: HttpRedirect → план обхода (минимум: `HttpHostTricks`). Regression smoke: `REG-018`.
     - [x] Отключить AutoRetest по изменению тумблеров bypass по умолчанию (для чистой наблюдаемости).
     - [x] P0.x Реактивная синхронизация targets для селективного QUIC→TCP: refresh UDP/443 targets по UDP blockage (без глобального DropUdp443)
       - [x] Assist-флаги (QUIC→TCP, No-SNI) применяются при ручном Apply

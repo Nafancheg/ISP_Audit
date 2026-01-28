@@ -105,6 +105,54 @@ namespace TestNetworkApp.Smoke
                 return new SmokeTestResult("REG-017", "REG: H3 fail → QuicInterference → assist DropUdp443", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
             }, ct);
 
+        public static Task<SmokeTestResult> REG_HttpRedirect_RecommendsHttpHostTricks(CancellationToken ct)
+            => RunAsync("REG-018", "REG: HttpRedirect → HttpHostTricks (план не пустой)", () =>
+            {
+                var engine = new StandardDiagnosisEngine();
+                var selector = new StandardStrategySelector();
+
+                var signals = new BlockageSignals
+                {
+                    HostKey = "example.com",
+                    CapturedAtUtc = DateTimeOffset.UtcNow,
+                    AggregationWindow = TimeSpan.FromSeconds(30),
+                    SampleSize = 5,
+                    IsUnreliable = false,
+
+                    HasDnsFailure = false,
+                    HasFakeIp = false,
+                    HasHttpRedirect = true,
+
+                    HasTcpTimeout = false,
+                    HasTcpReset = false,
+                    HasTlsTimeout = false,
+                    HasTlsAuthFailure = false,
+                    HasTlsReset = false,
+
+                    Http3AttemptCount = 0,
+                    Http3SuccessCount = 0,
+                    Http3FailureCount = 0,
+                    Http3TimeoutCount = 0,
+                    Http3NotSupportedCount = 0,
+                };
+
+                var dx = engine.Diagnose(signals);
+                if (dx.DiagnosisId != DiagnosisId.HttpRedirect)
+                {
+                    return new SmokeTestResult("REG-018", "REG: HttpRedirect → HttpHostTricks (план не пустой)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали DiagnosisId=HttpRedirect, получили {dx.DiagnosisId} (rule={dx.MatchedRuleName})");
+                }
+
+                var plan = selector.Select(dx);
+                if (!plan.Strategies.Any(s => s.Id == StrategyId.HttpHostTricks))
+                {
+                    return new SmokeTestResult("REG-018", "REG: HttpRedirect → HttpHostTricks (план не пустой)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали HttpHostTricks в plan.Strategies. Strategies=[{string.Join(",", plan.Strategies.Select(s => s.Id))}] Reason={plan.Reasoning}");
+                }
+
+                return new SmokeTestResult("REG-018", "REG: HttpRedirect → HttpHostTricks (план не пустой)", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+            }, ct);
+
         public static async Task<SmokeTestResult> REG_Tracert_Cp866_NoMojibake(CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();
