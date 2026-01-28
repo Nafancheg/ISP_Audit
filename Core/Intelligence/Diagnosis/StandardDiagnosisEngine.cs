@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using IspAudit.Core.Intelligence.Contracts;
+using IspAudit.Utils;
 
 namespace IspAudit.Core.Intelligence.Diagnosis;
 
@@ -194,7 +195,7 @@ public sealed class StandardDiagnosisEngine
         if (signals.HasHttpRedirect)
         {
             var redirectHost = string.IsNullOrWhiteSpace(signals.RedirectToHost) ? null : signals.RedirectToHost;
-            var isLikelyBlockpage = IsLikelyProviderBlockpageHost(redirectHost);
+            var isLikelyBlockpage = BlockpageHostCatalog.IsLikelyProviderBlockpageHost(redirectHost);
 
             return new DiagnosisResult
             {
@@ -402,20 +403,5 @@ public sealed class StandardDiagnosisEngine
     }
 
     private static bool IsLikelyProviderBlockpageHost(string? host)
-    {
-        if (string.IsNullOrWhiteSpace(host)) return false;
-
-        var h = host.Trim().TrimEnd('.');
-        if (h.Length == 0) return false;
-
-        // Консервативная эвристика: ограничиваемся тем, что реально встречалось в smoke/кейсе.
-        // Если потребуется расширение списка — лучше делать это через конфиг/справочник.
-        if (string.Equals(h, "warning.rt.ru", StringComparison.OrdinalIgnoreCase)) return true;
-
-        // Часто заглушки имеют явные токены.
-        if (h.Contains("blockpage", StringComparison.OrdinalIgnoreCase)) return true;
-        if (h.StartsWith("warning.", StringComparison.OrdinalIgnoreCase) && h.EndsWith(".rt.ru", StringComparison.OrdinalIgnoreCase)) return true;
-
-        return false;
-    }
+        => BlockpageHostCatalog.IsLikelyProviderBlockpageHost(host);
 }

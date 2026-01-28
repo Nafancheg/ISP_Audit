@@ -33,14 +33,12 @@ namespace IspAudit.Utils
             {
                 try
                 {
-                    var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ISP_Audit");
-                    Directory.CreateDirectory(dir);
-                    return Path.Combine(dir, BackupFileName);
+                    AppPaths.EnsureStateDirectoryExists();
+                    return AppPaths.GetStateFilePath(BackupFileName);
                 }
                 catch
                 {
-                    // Fallback: текущая директория процесса (хуже, но лучше чем падать)
-                    return BackupFileName;
+                    return Path.Combine(AppPaths.AppDirectory, BackupFileName);
                 }
             }
         }

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Security.Principal;
 using System.Text.Json;
+using IspAudit.Utils;
 
 namespace IspAudit.Core.Traffic;
 
@@ -54,8 +55,7 @@ internal static class TrafficEngineCrashReporter
             return overrideDir.Trim();
         }
 
-        var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(baseDir, "ISP_Audit", "crash_reports", "traffic_engine");
+        return Path.Combine(AppPaths.StateDirectory, "crash_reports", "traffic_engine");
     }
 
     private static bool IsAdministratorSafe()

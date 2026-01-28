@@ -49,6 +49,7 @@
     - [x] INTEL/Tester: добавить реальный probe HTTP/3 (QUIC) и протащить в сигналы/диагноз (QuicInterference) + вывод в UI (H3:✓/✗/-) и приоритизация DropUdp443 по факту H3.
     - [x] Regression smoke: `REG-017` — H3 fail-only → QuicInterference и assist DropUdp443; при TLS timeout DropUdp443 не рекомендуется.
     - [x] INTEL: HttpRedirect → план обхода (минимум: `HttpHostTricks`). Regression smoke: `REG-018`.
+    - [x] INTEL: справочник blockpage-hosts вынесен во внешний JSON `state\\blockpage_hosts.json` (configurable). Regression smoke: `REG-019`.
     - [x] Отключить AutoRetest по изменению тумблеров bypass по умолчанию (для чистой наблюдаемости).
     - [x] P0.x Реактивная синхронизация targets для селективного QUIC→TCP: refresh UDP/443 targets по UDP blockage (без глобального DropUdp443)
       - [x] Assist-флаги (QUIC→TCP, No-SNI) применяются при ручном Apply
@@ -72,7 +73,7 @@
     - [x] Stress smoke: `INFRA-009` — конкурентные обновления decision snapshot + UDP targets во время обработки пакетов не должны приводить к падениям.
     - [x] Составить карту «подозреваемых коллекций» и всех чтений/записей: [docs/P0_1_suspect_collections.md](docs/P0_1_suspect_collections.md)
     - [x] Strict smoke all (через `SmokeLauncher` + UAC): PASS 149/149 (FAIL=0, SKIP=0), отчёт: [artifacts/smoke_strict_20260121_122319.json](artifacts/smoke_strict_20260121_122319.json)
-    - [x] Crash report `TrafficEngine`: при падении loop сохраняется best-effort JSON в `%LocalAppData%\ISP_Audit\crash_reports\traffic_engine\` (исключение + lastMutation).
+    - [x] Crash report `TrafficEngine`: при падении loop сохраняется best-effort JSON рядом с приложением: `state\\crash_reports\\traffic_engine\\` (исключение + lastMutation).
     - [ ] Описать ручной сценарий воспроизведения (точная последовательность действий).
     - [ ] Сделать воспроизводимость ≥80% (цель: краш за ~2 минуты).
     - [ ] Добавить regression сценарий (integration/stress): rapid apply/переключение во время активной диагностики.

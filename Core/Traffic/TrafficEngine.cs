@@ -432,7 +432,7 @@ namespace IspAudit.Core.Traffic
                 var lastMutationForLog = FormatLastMutationForLog();
                 _progress?.Report($"[TrafficEngine][ERROR] Loop crashed (thread {Environment.CurrentManagedThreadId}): {ex}{lastMutationForLog}");
 
-                // P0.1: сохраняем crash-report в %LocalAppData% для расследования редких падений без стабильного репро.
+                // P0.1: сохраняем crash-report рядом с приложением (state/) для расследования редких падений без стабильного репро.
                 TrafficEngineCrashReporter.TryWrite(ex, lastMutationForLog);
             }
         }

@@ -34,7 +34,7 @@ namespace IspAudit.ViewModels
         private readonly ConcurrentDictionary<string, string> _ipToUiKey = new();
 
         // Доменная агрегация (общая): автоматически ищем «семейства» доменов, где появляется много вариативных подхостов.
-        // Список семейств хранится во внешнем JSON (LocalAppData\ISP_Audit\domain_families.json).
+        // Список семейств хранится во внешнем JSON рядом с приложением (state/domain_families.json).
         private DomainFamilyCatalogState _domainCatalog = new();
         private DomainFamilyAnalyzer _domainFamilies = new(new DomainFamilyCatalogState());
 

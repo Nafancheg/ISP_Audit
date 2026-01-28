@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "enabled": true,
+  "exactHosts": [
+    "warning.rt.ru"
+  ],
+  "containsTokens": [
+    "blockpage"
+  ],
+  "prefixSuffixRules": [
+    { "prefix": "warning.", "suffix": ".rt.ru" }
+  ]
+}

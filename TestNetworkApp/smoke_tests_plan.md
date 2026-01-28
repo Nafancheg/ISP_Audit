@@ -1082,7 +1082,7 @@ Legacy-классификатор удалён. Классификацию и ф
 **Ожидаемый результат:** AttachmentCount=2, Included=1, Excluded=1, union endpoints=2, флаги OR=true, excluded не сброшен
 
 **Test ID:** `REG-014`
-**Что проверяет:** Round-trip сохранения/загрузки `%LocalAppData%\ISP_Audit\group_participation.json` через `GroupBypassAttachmentStore` (overridePath)
+**Что проверяет:** Round-trip сохранения/загрузки `state\\group_participation.json` через `GroupBypassAttachmentStore` (overridePath)
 **Для чего:** Регресс-гейт P0.1 Step 15: участие/пиннинг должны переживать перезапуск приложения и не зависеть от UI-level словарей
 **Критерий успеха:** После persist+reload восстанавливаются pinning `hostKey -> groupKey` и ручные excluded hostKey для группы
 **Входные данные:** In-memory store + временный путь файла (temp), pinning двух hostKey и excluded одного hostKey
@@ -1115,6 +1115,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Критерий успеха:** DiagnosisId=HttpRedirect и `HttpHostTricks` присутствует в `plan.Strategies`.
 **Входные данные:** Синтетические `BlockageSignals` с `HasHttpRedirect=true` и без DNS/TCP/TLS/H3 проблем.
 **Ожидаемый результат:** План содержит стратегию `HttpHostTricks`.
+
+**Test ID:** `REG-019`
+**Что проверяет:** справочник blockpage-hosts конфигурируем (JSON) и влияет на `redirectKind`
+**Для чего:** не держать список заглушек в коде; позволить поддерживать/расширять список без перекомпиляции
+**Критерий успеха:** при кастомном JSON (через `ISP_AUDIT_BLOCKPAGE_HOSTS_PATH`) `evidence.redirectKind=blockpage`
+**Входные данные:** синтетические `BlockageSignals` с `HasHttpRedirect=true` и `RedirectToHost=my.block.test`
+**Ожидаемый результат:** DiagnosisId=HttpRedirect и `redirectKind=blockpage`
 
 **Test ID:** `REG-004`
 **Что проверяет:** Per-card ретест во время диагностики ставится в очередь и флашится после завершения

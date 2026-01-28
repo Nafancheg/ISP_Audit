@@ -166,6 +166,73 @@ namespace TestNetworkApp.Smoke
                 return new SmokeTestResult("REG-018", "REG: HttpRedirect → HttpHostTricks (план не пустой)", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
             }, ct);
 
+        public static Task<SmokeTestResult> REG_BlockpageHosts_Configurable_JsonOverride(CancellationToken ct)
+            => RunAsync("REG-019", "REG: blockpage-hosts JSON влияет на redirectKind", () =>
+            {
+                const string envVar = "ISP_AUDIT_BLOCKPAGE_HOSTS_PATH";
+
+                var prev = Environment.GetEnvironmentVariable(envVar);
+                var tmpDir = Path.Combine(Path.GetTempPath(), "ISP_Audit_smoke");
+                Directory.CreateDirectory(tmpDir);
+                var tmpPath = Path.Combine(tmpDir, $"blockpage_hosts_{Guid.NewGuid():N}.json");
+
+                try
+                {
+                    var json = "{\n  \"version\": 1,\n  \"enabled\": true,\n  \"exactHosts\": [\n    \"my.block.test\"\n  ]\n}";
+                    File.WriteAllText(tmpPath, json, Encoding.UTF8);
+
+                    Environment.SetEnvironmentVariable(envVar, tmpPath);
+
+                    var engine = new StandardDiagnosisEngine();
+
+                    var signals = new BlockageSignals
+                    {
+                        HostKey = "example.com",
+                        CapturedAtUtc = DateTimeOffset.UtcNow,
+                        AggregationWindow = TimeSpan.FromSeconds(30),
+                        SampleSize = 5,
+                        IsUnreliable = false,
+
+                        HasDnsFailure = false,
+                        HasFakeIp = false,
+                        HasHttpRedirect = true,
+                        RedirectToHost = "my.block.test",
+
+                        HasTcpTimeout = false,
+                        HasTcpReset = false,
+                        HasTlsTimeout = false,
+                        HasTlsAuthFailure = false,
+                        HasTlsReset = false,
+
+                        Http3AttemptCount = 0,
+                        Http3SuccessCount = 0,
+                        Http3FailureCount = 0,
+                        Http3TimeoutCount = 0,
+                        Http3NotSupportedCount = 0,
+                    };
+
+                    var dx = engine.Diagnose(signals);
+                    if (dx.DiagnosisId != DiagnosisId.HttpRedirect)
+                    {
+                        return new SmokeTestResult("REG-019", "REG: blockpage-hosts JSON влияет на redirectKind", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали DiagnosisId=HttpRedirect, получили {dx.DiagnosisId} (rule={dx.MatchedRuleName})");
+                    }
+
+                    if (!dx.Evidence.TryGetValue("redirectKind", out var redirectKind) || !string.Equals(redirectKind, "blockpage", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-019", "REG: blockpage-hosts JSON влияет на redirectKind", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали evidence redirectKind=blockpage по кастомному JSON, получили '{redirectKind ?? "<null>"}'");
+                    }
+
+                    return new SmokeTestResult("REG-019", "REG: blockpage-hosts JSON влияет на redirectKind", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+                }
+                finally
+                {
+                    try { Environment.SetEnvironmentVariable(envVar, prev); } catch { }
+                    try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { }
+                }
+            }, ct);
+
         public static async Task<SmokeTestResult> REG_Tracert_Cp866_NoMojibake(CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();

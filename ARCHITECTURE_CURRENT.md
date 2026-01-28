@@ -72,7 +72,7 @@ graph TD
     *   Левая панель управления работает как drawer (`DrawerHost`) с возможностью закрепления (PIN) и автосворачиванием во время диагностики.
     *   Таблица результатов упрощена до 5 колонок (статус-иконка / SNI-домен / GroupKey (+ ACTIVE для текущей группы) / иконки стратегии / действие). Детали доступны по double-click по строке.
     *   После применения обхода ("Подключить"/Apply) UI запоминает и показывает **фактически применённую** стратегию для группы/строк результата (поверх рекомендаций) + краткий **Bundle summary** (стратегия+флаги+endpoints/policies). Пометка **APPLIED** работает аккумулятивно: несколько групп могут быть отмечены одновременно. Состояние участия карточки в группе отображается бейджами **IN/OUT/EXCLUDED**.
-    *   P0.1 Step 14: состояние группы (manual participation + pinning `hostKey -> groupKey` + merge EffectiveGroupConfig) хранится в `Core/Bypass/GroupBypassAttachmentStore` и сохраняется в `%LocalAppData%\\ISP_Audit\\group_participation.json`.
+    *   P0.1 Step 14: состояние группы (manual participation + pinning `hostKey -> groupKey` + merge EffectiveGroupConfig) хранится в `Core/Bypass/GroupBypassAttachmentStore` и сохраняется рядом с приложением: `state\\group_participation.json`.
         *   Manual participation: бейдж **OUT** и кнопка исключения/возврата. Исключённые карточки не помечаются APPLIED и не получают AppliedBypassStrategy.
         *   Pinning (Step 11): «стабильный» groupKey для hostKey, чтобы изменения `SuggestedDomainSuffix` во время диагностики не могли бесшумно поменять ручной состав группы.
         *   После успешного Apply INTEL store обновляется (endpoints/assist-флаги) через `UpdateAttachmentFromApply`.
@@ -84,14 +84,14 @@ graph TD
     *   Инициализирует `DiagnosticOrchestrator`.
     *   Обрабатывает команды пользователя (Start/Stop, Open Report).
     *   **P0.6 Смена сети (staged revalidation):** подписывается на системные события смены сети (через `NetworkChangeMonitor`) и показывает уведомление «Проверить/Отключить/Игнорировать». «Проверить» запускает staged-проверку `Activation → Outcome` и затем предлагает запустить полную диагностику (без auto-apply).
-    *   При закрытии приложения выполняет безопасный shutdown: отменяет диагностику, отключает bypass и восстанавливает DNS/DoH (если был включён через `FixService` и существует backup в `%LocalAppData%\ISP_Audit\dns_backup.json`). Важно: `App.OnExit` синхронно дожидается `ShutdownAsync`, чтобы откат успел завершиться до завершения процесса.
+    *   При закрытии приложения выполняет безопасный shutdown: отменяет диагностику, отключает bypass и восстанавливает DNS/DoH (если был включён через `FixService` и существует backup рядом с приложением: `state\\dns_backup.json`). Важно: `App.OnExit` синхронно дожидается `ShutdownAsync`, чтобы откат успел завершиться до завершения процесса.
     *   Crash-recovery: при старте `BypassController.InitializeOnStartupAsync` пытается восстановить DNS из backup, если он остался от прошлой незавершённой сессии (например, после падения процесса).
 *   **`BypassController`**: ViewModel, отвечающая за настройки обхода.
     *   Связывает UI-тумблеры (Fragment/Disorder/Fake/Drop RST/DoH + assist-флаги `QUIC→TCP` и `No SNI`) с `TlsBypassService` (регистрация фильтра управляется сервисом).
     *   Восстанавливает пресет/автокоррекцию и assist-флаги из `bypass_profile.json`; сохраняет выбранный пресет отдельно (обновляя только поля фрагментации) и assist-флаги отдельно (без перезаписи TTL/redirect rules).
     *   Пресеты фрагментации (стандарт/умеренный/агрессивный/профиль) и логика автокоррекции живут в сервисе, контроллер лишь проксирует выбор без собственного таймера.
     *   Метрики/вердикт приходят из событий `TlsBypassService` (`MetricsUpdated/VerdictChanged/StateChanged`): UI показывает план фрагментации, таймстамп начала метрик, активный пресет/мин. чанк и не подсвечивает карточку при серых статусах «нет данных/не 443».
-    *   P0.1 (наблюдаемость): ведёт журнал транзакций «применения обхода» и показывает его в UI (вкладка «Применение») с экспортом JSON в `artifacts/` и копированием в буфер. Последние K транзакций сохраняются в `%LocalAppData%\ISP_Audit\apply_transactions.json` и подхватываются при следующем запуске.
+    *   P0.1 (наблюдаемость): ведёт журнал транзакций «применения обхода» и показывает его в UI (вкладка «Применение») с экспортом JSON в `artifacts/` и копированием в буфер. Последние K транзакций сохраняются рядом с приложением: `state\\apply_transactions.json` и подхватываются при следующем запуске.
         *   Формат транзакции INTEL (Step 2): структурные секции `Request/Snapshot/Result` + `Contributions` (вклады/изменения) при сохранении ключевых v1 полей для обратной совместимости.
         *   Snapshot включает: activation/outcome, options snapshot, DoH/DNS пресет, список активных целей (P0.1 Step 1) и policy-driven snapshot (если доступен).
     *   P0.1 (наблюдаемость): для корреляции редких падений `TrafficEngine` добавлен `BypassOperationContext` (AsyncLocal) для операций Apply/Disable и ретестов (Retest/PostApplyRetest). `TrafficEngine` хранит последний snapshot мутации (`SetLastMutationContext`) и печатает его в `Loop crashed`.
@@ -121,7 +121,7 @@ Stop/Start и при burst'ах endpoint churn.
 
 *   **`BypassStateManager`**: единый владелец состояния обхода (SSoT) для `TrafficEngine` и `TlsBypassService`.
     *   **Fail-safe (Lite Watchdog + crash recovery):**
-        *   Ведёт журнал сессии bypass (LocalAppData) с флагами `CleanShutdown`/`WasBypassActive`.
+        *   Ведёт журнал сессии bypass рядом с приложением (`state\\bypass_session.json`) с флагами `CleanShutdown`/`WasBypassActive`.
         *   При старте, если прошлый shutdown был не clean при активном bypass — выполняет принудительный `Disable`.
         *   При активном bypass и отсутствии heartbeat/метрик дольше окна — выполняет авто-`Disable`.
     *   **Activation Detection (по метрикам):**
@@ -273,7 +273,7 @@ Smoke-раннер (CLI): в `TestNetworkApp` есть режим `--smoke [all|
 
 Regression smoke (P0.1 Step 12): добавлены гейты
 
-*   `REG-003`: roundtrip сохранения/загрузки `%LocalAppData%\\ISP_Audit\\apply_transactions.json` в режиме без WPF (`Application.Current == null`).
+*   `REG-003`: roundtrip сохранения/загрузки `state\\apply_transactions.json` в режиме без WPF (`Application.Current == null`).
 *   `REG-004`: per-card ретест ставится в очередь во время диагностики и гарантированно «флашится» после завершения прогона.
 
 Категория `dpi2` (DPI Intelligence / INTEL) покрыта детерминированными smoke-тестами `DPI2-001..024` в `TestNetworkApp/Smoke/SmokeTests.Dpi2.cs`: проверяются адаптация legacy сигналов в TTL-store, очистка по TTL, агрегация по окнам 30s/60s, постановка диагноза, жёсткие защиты селектора (confidence/risk/unimplemented), Gate-маркеры `[INTEL][GATE1]`, форматирование компактного вывода с префиксом `[INTEL]`, отсутствие auto-apply (MVP), а также контракт параметризации и ручного применения плана (TlsFragment params + e2e selector→plan→manual apply).
@@ -323,7 +323,7 @@ Smoke-хелперы (для детерминированных проверок
 * Step 2 (Diagnosis): в runtime подключена постановка диагноза через `StandardDiagnosisEngine` по агрегированному срезу `BlockageSignals`.
 * Step 3 (Selector/Plan): в runtime подключён `StandardStrategySelector`, который строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI (без auto-apply).
     * План может содержать `DeferredStrategies` — отложенные техники (если появляются новые/экспериментальные стратегии). Сейчас список deferred-техник пуст (механизм заготовлен на будущее). Phase 3 стратегии `HttpHostTricks`, `QuicObfuscation` и `BadChecksum` считаются **implemented** и попадают в `plan.Strategies`.
-    * Диагноз `HttpRedirect` учитывает `RedirectToHost` (если извлечён из `Location:`); уверенность выше, если редирект похож на заглушку провайдера. Минимальная реакция в MVP: рекомендация `HttpHostTricks` (TCP/80).
+    * Диагноз `HttpRedirect` учитывает `RedirectToHost` (если извлечён из `Location:`); уверенность выше, если редирект похож на заглушку провайдера (справочник/правила: `state\\blockpage_hosts.json`). Минимальная реакция в MVP: рекомендация `HttpHostTricks` (TCP/80).
 * Step 4 (ExecutorMvp): добавлен `Core/Intelligence/Execution/BypassExecutorMvp.cs` — **только** форматирование/логирование (диагноз + уверенность + короткое объяснение + список стратегий), без вызова `TrafficEngine`/`BypassController` и без авто-применения.
 * Ручное применение плана (без auto-apply): `LiveTestingPipeline` публикует объектный `BypassPlan` через событие `OnPlanBuilt`, `DiagnosticOrchestrator` хранит последний план и применяет его только по клику пользователя через `BypassController.ApplyIntelPlanAsync(...)`. Исполнение apply/timeout/rollback вынесено в `Core/Bypass/BypassApplyService`.
     * Защита от устаревшего плана: `DiagnosticOrchestrator.ApplyRecommendationsAsync(...)` применяет план только если `planHostKey` совпадает с последней целью, извлечённой из UI‑диагноза (иначе — SKIP в лог).
@@ -331,7 +331,7 @@ Smoke-хелперы (для детерминированных проверок
         * При достаточных наблюдениях UI может схлопывать карточки подхостов в одну доменную карточку (ключ = доменный суффикс).
         * В панели рекомендаций появляется отдельная кнопка «Подключить (домен: <suffix>)».
         * Команда вызывает `DiagnosticOrchestrator.ApplyRecommendationsForDomainAsync(..., suffix)`, который выбирает применимый план из подхостов, но выставляет `OutcomeTargetHost = suffix`.
-        * Каталог доменов хранится во внешнем JSON (`%LocalAppData%\ISP_Audit\domain_families.json`): можно вручную закреплять домены (pinned), а также смотреть/использовать автоматически выученные (learned).
+        * Каталог доменов хранится во внешнем JSON рядом с приложением (`state\\domain_families.json`): можно вручную закреплять домены (pinned), а также смотреть/использовать автоматически выученные (learned).
         * Это **не** wildcard-мэтчинг в `BypassFilter`: домен используется как UX-цель/цель outcome (и как вход для резолва IP в селективном `DropUdp443`).
     * Отмена: команда `Cancel` отменяет не только диагностику, но и текущий ручной apply (через отдельный CTS).
 * Step 5 (Feedback/Rerank): добавлен слой обратной связи `Core/Intelligence/Feedback/*` (MVP: in-memory + опциональный JSON persist). `StandardStrategySelector` умеет (опционально) ранжировать стратегии по успешности, **поверх** hardcoded `BasePriority`.
@@ -496,7 +496,7 @@ Smoke-хелперы (для детерминированных проверок
     *   Обертка над драйвером WinDivert.
     *   Управляет загрузкой фильтров и инъекцией пакетов.
     *   Важный порядок: пассивные наблюдатели (например `TrafficMonitorFilter` для DNS/SNI/инспекций) должны выполняться **раньше** модифицирующих фильтров (`BypassFilter`), чтобы получать исходный (неизменённый) трафик.
-    *   P0.1 (диагностика): при падении loop сохраняется best-effort crash-report JSON в `%LocalAppData%\ISP_Audit\crash_reports\traffic_engine\` (исключение + `lastMutation`).
+    *   P0.1 (диагностика): при падении loop сохраняется best-effort crash-report JSON рядом с приложением: `state\\crash_reports\\traffic_engine\\` (исключение + `lastMutation`).
 *   **`BypassStateManager` (`Bypass/BypassStateManager.*.cs`)**:
     *   Single source of truth (SSoT) для управления `TrafficEngine` и `TlsBypassService`.
     *   Держит watchdog/crash recovery, observed IP cache для селективного `DropUdp443`, а также activation/outcome snapshots.

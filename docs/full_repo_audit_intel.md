@@ -18,7 +18,7 @@
 
 Дополнение (21.01.2026): P0.1 — карта «подозреваемых коллекций» (возможные источники `Collection was modified`) и покрытие INFRA smoke — см. `docs/P0_1_suspect_collections.md`.
 
-Дополнение (21.01.2026): P0.1 — `TrafficEngine` сохраняет best-effort crash-report JSON в `%LocalAppData%\ISP_Audit\crash_reports\traffic_engine\` (исключение + lastMutation) для расследования редких падений.
+Дополнение (21.01.2026): P0.1 — `TrafficEngine` сохраняет best-effort crash-report JSON рядом с приложением: `state\\crash_reports\\traffic_engine\\` (исключение + lastMutation) для расследования редких падений.
 
 ---
 
@@ -124,11 +124,11 @@
 - P2.3 (UX): во время Apply UI показывает индикатор выполнения и текущую фазу (по событиям фаз из `Core/Bypass/BypassApplyService`), чтобы не было ощущения «кнопка не работает».
 - Дополнительно есть кнопка **«Рестарт коннекта»**: кратковременно дропает трафик к целевым IP:443, чтобы приложение инициировало новое соединение уже под применённым bypass.
 - UX-уточнение (P0.1 Step 10, 19.01.2026): кнопка применения рекомендаций в bypass-панели явно показывает выбранную цель/группу (и подсказку tooltip), чтобы не создавать ощущение «глобального переключателя».
-- P0.1 (наблюдаемость): UI ведёт журнал транзакций «применения обхода» и показывает его в bypass-панели (вкладка «Применение») с экспортом JSON в `artifacts/` и копированием в буфер. Последние K транзакций сохраняются в `%LocalAppData%\ISP_Audit\apply_transactions.json` и восстанавливаются при старте.
+- P0.1 (наблюдаемость): UI ведёт журнал транзакций «применения обхода» и показывает его в bypass-панели (вкладка «Применение») с экспортом JSON в `artifacts/` и копированием в буфер. Последние K транзакций сохраняются рядом с приложением: `state\\apply_transactions.json` и восстанавливаются при старте.
     - P0.1 (наблюдаемость, crash correlation): операции Apply/Disable, а также ретесты (Retest/PostApplyRetest) оборачиваются в `BypassOperationContext` (AsyncLocal). `TrafficEngine` сохраняет `lastMutation` (`SetLastMutationContext`) и печатает его в `Loop crashed`, чтобы связывать редкие падения с последней транзакцией/операцией.
     - Формат транзакции (P0.1 Step 2): добавлены секции `Request/Snapshot/Result` и список `Contributions` (вклады/изменения) при сохранении ключевых v1 полей для совместимости со старым persisted JSON.
     - Snapshot фиксирует activation/outcome, snapshot опций bypass, DoH/DNS пресет, список «активных целей» (Step 1) и policy snapshot (если доступен).
-    - Gate (P0.1 Step 14): введён единый источник истины `Core/Bypass/GroupBypassAttachmentStore` для participation/pinning `hostKey -> groupKey` и детерминированного merge EffectiveGroupConfig; состояние сохраняется в `%LocalAppData%\ISP_Audit\group_participation.json` и обновляется после успешного Apply.
+    - Gate (P0.1 Step 14): введён единый источник истины `Core/Bypass/GroupBypassAttachmentStore` для participation/pinning `hostKey -> groupKey` и детерминированного merge EffectiveGroupConfig; состояние сохраняется рядом с приложением: `state\\group_participation.json` и обновляется после успешного Apply.
         - Details: в окне «Детали применения обхода» participation snapshot включает attachments per-hostKey (excluded/endpoints/assist-флаги/updatedAtUtc) для репорта.
         - Regression: `REG-013` — union endpoints + OR assist-флаги, sticky excluded.
         - Regression: `REG-014` — persist+reload excluded/pinning через store (round-trip).
@@ -177,7 +177,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Добавлена Activation Detection (по метрикам): статус `ENGINE_DEAD/NOT_ACTIVATED/ACTIVATED/NO_TRAFFIC/UNKNOWN` для наблюдаемости.
 - Добавлен Outcome Check для HTTPS: `SUCCESS/FAILED/UNKNOWN` через tagged outcome-probe (активная TCP+TLS+HTTP проверка цели), probe исключается из пользовательских метрик (smoke gate: `DPI2-029`).
 - P0.6 Смена сети: при системном событии смены сети UI показывает уведомление «Проверить/Отключить/Игнорировать». «Проверить» запускает staged revalidation (Activation → Outcome) и затем предлагает запустить полную диагностику (без auto-apply; smoke gate: `UI-013`).
-- Важное UX/безопасность: при закрытии приложения выполняется shutdown без «хвостов»: диагностика отменяется, bypass выключается, а DNS/DoH восстанавливаются (если были включены через `FixService` и существует backup в `%LocalAppData%\ISP_Audit\dns_backup.json`). Fail-safe: если backup отсутствует, но активен один из пресетов DNS, управляемых приложением (например, 1.1.1.1), `FixService` выполняет fallback-возврат DNS в автоматический режим.
+- Важное UX/безопасность: при закрытии приложения выполняется shutdown без «хвостов»: диагностика отменяется, bypass выключается, а DNS/DoH восстанавливаются (если были включены через `FixService` и существует backup рядом с приложением: `state\\dns_backup.json`). Fail-safe: если backup отсутствует, но активен один из пресетов DNS, управляемых приложением (например, 1.1.1.1), `FixService` выполняет fallback-возврат DNS в автоматический режим.
 - Гарантия отката: `App.OnExit` синхронно дожидается полного `ShutdownAsync`, чтобы откат DNS/DoH успел завершиться до завершения процесса.
 - Crash-recovery: при старте, если обнаружен backup от прошлой незавершённой сессии, выполняется попытка восстановления DNS.
 - Safety gate: `FixService` не применяет DNS/DoH, если не удалось успешно записать backup-файл на диск (иначе откат после падения был бы невозможен).
@@ -212,7 +212,9 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Боль (типичный кейс: YouTube/CDN): сервис «лечится» через множество подхостов, поэтому ручной apply по одному хосту создаёт UX-хаос (много карточек/целей).
 - Добавлен общий механизм «доменных семейств» (без хардкода конкретных CDN): UI на лету замечает домены, у которых появляется много вариативных подхостов, и может предложить доменную цель (suffix).
 - Доменное применение выполняется через `DiagnosticOrchestrator.ApplyRecommendationsForDomainAsync(..., suffix)`: метод выбирает применимый INTEL-план из подхостов, но выставляет `OutcomeTargetHost` на домен.
-- Внешний каталог доменов: `%LocalAppData%\ISP_Audit\domain_families.json`.
+- Внешний каталог доменов: `state\\domain_families.json`.
+
+- Справочник blockpage-hosts (для повышения уверенности `HttpRedirect` и `evidence.redirectKind`): `state\\blockpage_hosts.json`.
     - `PinnedDomains`: ручной «справочник» (можно закреплять домены, чтобы подсказка включалась быстрее).
     - `LearnedDomains`: автокэш доменов, которые система «выучила» по наблюдениям.
 - Важно: это не wildcard-мэтчинг в `BypassFilter` (фильтры по доменам не поддерживаются напрямую); домен используется как UX-цель/цель outcome и как вход для резолва IP в селективном `DropUdp443`.

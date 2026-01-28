@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using IspAudit.Utils;
 
 namespace IspAudit.Core.Bypass
 {
@@ -26,9 +27,7 @@ namespace IspAudit.Core.Bypass
 
         public static string GetPersistPath()
         {
-            var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var dir = Path.Combine(baseDir, "ISP_Audit");
-            return Path.Combine(dir, "group_participation.json");
+            return AppPaths.GetStateFilePath("group_participation.json");
         }
 
         public bool TryGetPinnedGroupKey(string hostKey, out string groupKey)

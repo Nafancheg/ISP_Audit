@@ -79,6 +79,7 @@ namespace TestNetworkApp.Smoke
                 ["REG-016"] = REG_ApplyIntelPlan_Timeout_HasPhaseDiagnostics,
                 ["REG-017"] = REG_QuicInterference_Http3Fail_RecommendsDropUdp443,
                 ["REG-018"] = REG_HttpRedirect_RecommendsHttpHostTricks,
+                ["REG-019"] = REG_BlockpageHosts_Configurable_JsonOverride,
 
                 ["PIPE-005"] = Pipe_UnifiedFilter_LoopbackDropped,
                 ["PIPE-006"] = Pipe_UnifiedFilter_NoiseOnlyOnDisplay,

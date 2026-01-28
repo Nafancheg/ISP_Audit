@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using IspAudit.Utils;
 
 namespace IspAudit.Bypass
 {
@@ -42,9 +43,7 @@ namespace IspAudit.Bypass
                 return overridePath;
             }
 
-            var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var dir = Path.Combine(baseDir, "ISP_Audit");
-            return Path.Combine(dir, "bypass_session.json");
+            return AppPaths.GetStateFilePath("bypass_session.json");
         }
 
         public void MarkSessionStarted()

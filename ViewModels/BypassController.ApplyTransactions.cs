@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using IspAudit.Bypass;
+using IspAudit.Utils;
 using IspAudit.Wpf;
 
 // Явно указываем WPF Application вместо WinForms
@@ -315,9 +316,7 @@ namespace IspAudit.ViewModels
                 return overridePath;
             }
 
-            var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var dir = Path.Combine(baseDir, "ISP_Audit");
-            return Path.Combine(dir, "apply_transactions.json");
+            return AppPaths.GetStateFilePath("apply_transactions.json");
         }
 
         private void PersistApplyTransactionsBestEffort()
