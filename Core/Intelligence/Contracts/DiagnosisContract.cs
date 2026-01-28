@@ -55,6 +55,12 @@ public enum DiagnosisId
     TlsInterference,
 
     /// <summary>
+    /// Проблема на уровне QUIC/HTTP/3 (HTTP/3 не устанавливается), при этом явных проблем TCP/TLS не наблюдается.
+    /// Практический сигнал: имеет смысл принудить HTTP/3 → HTTP/2 (QUIC fallback), например через DropUdp443.
+    /// </summary>
+    QuicInterference,
+
+    /// <summary>
     /// Легитимная недоступность (не блокировка).
     /// </summary>
     NoBlockage,

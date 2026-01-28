@@ -37,7 +37,14 @@ namespace IspAudit.Core.Models
         string? ReverseDnsHostname,     // PTR / reverse DNS (если делали)
         int? TcpLatencyMs,
         string? BlockageType,          // null, TCP_CONNECTION_RESET (legacy: TCP_RST), TCP_CONNECT_TIMEOUT (legacy: TCP_TIMEOUT), TLS_HANDSHAKE_TIMEOUT (legacy: TLS_TIMEOUT), TLS_AUTH_FAILURE (legacy: TLS_DPI), UDP_DROP
-        DateTime TestedAt
+        DateTime TestedAt,
+
+        // HTTP/3 (QUIC) — отдельный канал от TCP/TLS.
+        // null = тест не выполнялся (нет hostname или отключено/не поддерживается платформой).
+        bool? Http3Ok = null,
+        string? Http3Status = null,     // H3_OK | H3_FAILED | H3_TIMEOUT | H3_NOT_SUPPORTED | H3_NOT_ATTEMPTED
+        int? Http3LatencyMs = null,
+        string? Http3Error = null
     );
 
     /// <summary>

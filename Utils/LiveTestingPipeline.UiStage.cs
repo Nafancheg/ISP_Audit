@@ -68,7 +68,19 @@ namespace IspAudit.Utils
                     }
 
                     // Статус проверок
-                    var checks = $"DNS:{(blocked.TestResult.DnsOk ? "✓" : "✗")} TCP:{(blocked.TestResult.TcpOk ? "✓" : "✗")} TLS:{(blocked.TestResult.TlsOk ? "✓" : "✗")}";
+                    var h3Mark = blocked.TestResult.Http3Ok == true
+                        ? "✓"
+                        : blocked.TestResult.Http3Ok == false
+                            ? "✗"
+                            : "-";
+
+                    var h3Tail = string.IsNullOrWhiteSpace(blocked.TestResult.Http3Status)
+                        ? string.Empty
+                        : blocked.TestResult.Http3Status == "H3_OK" || blocked.TestResult.Http3Status == "H3_NOT_ATTEMPTED"
+                            ? string.Empty
+                            : $"({blocked.TestResult.Http3Status})";
+
+                    var checks = $"DNS:{(blocked.TestResult.DnsOk ? "✓" : "✗")} TCP:{(blocked.TestResult.TcpOk ? "✓" : "✗")} TLS:{(blocked.TestResult.TlsOk ? "✓" : "✗")} H3:{h3Mark}{h3Tail}";
 
                     var blockage = string.IsNullOrEmpty(blocked.TestResult.BlockageType)
                         ? PipelineContract.BypassUnknown

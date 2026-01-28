@@ -110,6 +110,11 @@ public sealed class SignalsAdapter
         // HostTested count + no-SNI ratio
         var hostTestedCount = 0;
         var hostTestedNoSniCount = 0;
+        var http3AttemptCount = 0;
+        var http3SuccessCount = 0;
+        var http3FailureCount = 0;
+        var http3TimeoutCount = 0;
+        var http3NotSupportedCount = 0;
         for (var i = 0; i < windowEvents.Count; i++)
         {
             var e = windowEvents[i];
@@ -120,6 +125,34 @@ public sealed class SignalsAdapter
             if (e.Metadata == null || !e.Metadata.TryGetValue("sni", out var sni) || string.IsNullOrWhiteSpace(sni))
             {
                 hostTestedNoSniCount++;
+            }
+
+            if (e.Value is HostTested ht && !string.IsNullOrWhiteSpace(ht.Http3Status))
+            {
+                // Считаем только реальные попытки (ProbeHttp3Async заполняет статус при попытке).
+                if (!string.Equals(ht.Http3Status, "H3_NOT_ATTEMPTED", StringComparison.Ordinal))
+                {
+                    http3AttemptCount++;
+
+                    if (string.Equals(ht.Http3Status, "H3_OK", StringComparison.Ordinal))
+                    {
+                        http3SuccessCount++;
+                    }
+                    else if (string.Equals(ht.Http3Status, "H3_TIMEOUT", StringComparison.Ordinal))
+                    {
+                        http3TimeoutCount++;
+                        http3FailureCount++;
+                    }
+                    else if (string.Equals(ht.Http3Status, "H3_NOT_SUPPORTED", StringComparison.Ordinal))
+                    {
+                        http3NotSupportedCount++;
+                    }
+                    else
+                    {
+                        // H3_FAILED / H3_DOWNGRADED_* и прочие статусы считаем как failure.
+                        http3FailureCount++;
+                    }
+                }
             }
         }
 
@@ -192,6 +225,11 @@ public sealed class SignalsAdapter
             HasHttpRedirect = hasHttpRedirect,
 
             UdpUnansweredHandshakes = udpUnanswered,
+            Http3AttemptCount = http3AttemptCount,
+            Http3SuccessCount = http3SuccessCount,
+            Http3FailureCount = http3FailureCount,
+            Http3TimeoutCount = http3TimeoutCount,
+            Http3NotSupportedCount = http3NotSupportedCount,
             HostTestedCount = hostTestedCount,
             HostTestedNoSniCount = hostTestedNoSniCount,
 
@@ -202,7 +240,7 @@ public sealed class SignalsAdapter
             SampleSize = windowEvents.Count,
             // Если в окне мало событий, но есть «сильный» наблюдаемый факт (TLS timeout, DNS failure и т.п.)
             // — это уже достаточная база для консервативного диагноза.
-            IsUnreliable = windowEvents.Count < 2 && !(hasDnsFailure || hasTcpTimeout || hasTcpReset || hasTlsTimeout || hasTlsAuthFailure || hasHttpRedirect || retxRate != null)
+            IsUnreliable = windowEvents.Count < 2 && !(hasDnsFailure || hasTcpTimeout || hasTcpReset || hasTlsTimeout || hasTlsAuthFailure || hasHttpRedirect || (http3FailureCount > 0) || retxRate != null)
         };
     }
 
@@ -470,6 +508,7 @@ public sealed class SignalsAdapter
         if (!string.IsNullOrWhiteSpace(tested.DnsStatus)) dict["dnsStatus"] = tested.DnsStatus!;
         if (!string.IsNullOrWhiteSpace(tested.Hostname)) dict["hostname"] = tested.Hostname!;
         if (!string.IsNullOrWhiteSpace(tested.SniHostname)) dict["sni"] = tested.SniHostname!;
+        if (!string.IsNullOrWhiteSpace(tested.Http3Status)) dict["h3"] = tested.Http3Status!;
 
         return dict;
     }

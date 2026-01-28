@@ -92,6 +92,34 @@ public sealed class BlockageSignals
     /// </summary>
     public int UdpUnansweredHandshakes { get; init; }
 
+    // HTTP/3 (QUIC) уровень (из HostTested)
+
+    /// <summary>
+    /// Количество попыток HTTP/3 (QUIC) в окне.
+    /// </summary>
+    public int Http3AttemptCount { get; init; }
+
+    /// <summary>
+    /// Количество успешных HTTP/3 (QUIC) попыток в окне.
+    /// </summary>
+    public int Http3SuccessCount { get; init; }
+
+    /// <summary>
+    /// Количество неуспешных HTTP/3 (QUIC) попыток (ошибка/исключение) в окне.
+    /// </summary>
+    public int Http3FailureCount { get; init; }
+
+    /// <summary>
+    /// Количество таймаутов HTTP/3 (QUIC) в окне.
+    /// </summary>
+    public int Http3TimeoutCount { get; init; }
+
+    /// <summary>
+    /// Количество попыток, которые завершились "не поддерживается" (платформа/рантайм без HTTP/3).
+    /// Это не признак блокировки провайдера.
+    /// </summary>
+    public int Http3NotSupportedCount { get; init; }
+
     // SNI/качество имени (из HostTested)
 
     /// <summary>

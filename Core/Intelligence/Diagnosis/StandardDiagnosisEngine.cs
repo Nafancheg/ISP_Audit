@@ -30,6 +30,16 @@ public sealed class StandardDiagnosisEngine
             evidence["udpUnanswered"] = signals.UdpUnansweredHandshakes.ToString();
         }
 
+        if (signals.Http3AttemptCount > 0)
+        {
+            notes.Add($"H3: attempts={signals.Http3AttemptCount} ok={signals.Http3SuccessCount} fail={signals.Http3FailureCount} timeout={signals.Http3TimeoutCount} notSupported={signals.Http3NotSupportedCount}");
+            evidence["h3Attempts"] = signals.Http3AttemptCount.ToString();
+            evidence["h3Ok"] = signals.Http3SuccessCount.ToString();
+            evidence["h3Fail"] = signals.Http3FailureCount.ToString();
+            evidence["h3Timeout"] = signals.Http3TimeoutCount.ToString();
+            evidence["h3NotSupported"] = signals.Http3NotSupportedCount.ToString();
+        }
+
         if (signals.HostTestedCount > 0)
         {
             evidence["hostTestedCount"] = signals.HostTestedCount.ToString();
@@ -134,7 +144,8 @@ public sealed class StandardDiagnosisEngine
 
         // 2) Очевидно «всё чисто» по флагам
         if (!signals.HasDnsFailure && !signals.HasFakeIp && !signals.HasHttpRedirect &&
-            !signals.HasTcpTimeout && !signals.HasTcpReset && !signals.HasTlsTimeout && !signals.HasTlsAuthFailure && !signals.HasTlsReset)
+            !signals.HasTcpTimeout && !signals.HasTcpReset && !signals.HasTlsTimeout && !signals.HasTlsAuthFailure && !signals.HasTlsReset &&
+            signals.Http3FailureCount == 0)
         {
             return new DiagnosisResult
             {
@@ -192,6 +203,34 @@ public sealed class StandardDiagnosisEngine
                 InputSignals = signals,
                 DiagnosedAtUtc = DateTimeOffset.UtcNow
             };
+        }
+
+        // 5.1) QUIC/HTTP/3 проблема (без явных TCP/TLS проблем)
+        // Важно: диагностируем только если реально были попытки H3 и нет успехов.
+        // Если H3 не поддерживается платформой — это не блокировка.
+        if (signals.Http3AttemptCount > 0 && signals.Http3SuccessCount == 0 && signals.Http3FailureCount > 0 && signals.Http3NotSupportedCount == 0)
+        {
+            var hasOtherIssues =
+                signals.HasHttpRedirect ||
+                signals.HasTcpTimeout || signals.HasTcpReset ||
+                signals.HasTlsTimeout || signals.HasTlsAuthFailure || signals.HasTlsReset;
+
+            if (!hasOtherIssues)
+            {
+                // Таймауты считаем более сильным признаком, чем "failed".
+                var confidence = signals.Http3TimeoutCount > 0 ? 65 : 55;
+
+                return new DiagnosisResult
+                {
+                    DiagnosisId = DiagnosisId.QuicInterference,
+                    Confidence = confidence,
+                    MatchedRuleName = "h3-fail-without-tcp-tls",
+                    ExplanationNotes = notes,
+                    Evidence = evidence,
+                    InputSignals = signals,
+                    DiagnosedAtUtc = DateTimeOffset.UtcNow
+                };
+            }
         }
 
         // 6) Таймаут + высокая доля ретрансмиссий

@@ -105,6 +105,11 @@
     Важно: DNS/DoH считается "верхнеуровневым" системным изменением и по умолчанию **не применяется автоматически** из рекомендаций
     (только явное действие пользователя или инженерный режим через runtime feature gate).
 
+- Актуализация (Intel/Tester, 28.01.2026): добавлен активный probe HTTP/3 (QUIC) в `StandardHostTester` (принудительный HTTP/3 запрос с `RequestVersionExact`).
+    - Результат фиксируется в `HostTested` (`Http3Ok/Http3Status/Http3LatencyMs/Http3Error`) и агрегируется в `BlockageSignals` как счётчики `Http3*Count`.
+    - В `StandardDiagnosisEngine` добавлен диагноз `QuicInterference` (H3 fail без явных TCP/TLS проблем).
+    - В `StandardStrategySelector` assist `DropUdp443` приоритизируется по факту H3 (реальная проба) и только затем использует эвристику `UdpUnansweredHandshakes`.
+
     ### Runtime Adaptation Layer (Reactive Target Sync)
 
     - Для компенсации задержки между runtime-сигналами (inspection) и фактическим воздействием селективного QUIC→TCP,

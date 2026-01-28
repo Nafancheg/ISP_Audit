@@ -62,10 +62,6 @@ public sealed class StandardStrategySelector
         }
 
         var candidates = BuildCandidates(diagnosis.DiagnosisId);
-        if (candidates.Count == 0)
-        {
-            return CreateEmptyPlan(diagnosis.DiagnosisId, confidence, "нет маппинга для диагноза");
-        }
 
         var filtered = new List<BypassStrategy>(capacity: candidates.Count);
         var deferred = new List<DeferredBypassStrategy>(capacity: 3);
@@ -106,10 +102,8 @@ public sealed class StandardStrategySelector
             });
         }
 
-        if (filtered.Count == 0 && deferred.Count == 0)
-        {
-            return CreateEmptyPlan(diagnosis.DiagnosisId, confidence, "все стратегии отфильтрованы по риску/реализации");
-        }
+        // Важно: допускаем assist-only план даже без стратегий.
+        // Например, для QUIC/HTTP3 иногда достаточно DropUdp443 (принудить H3→H2).
 
         var forDiagnosisId = diagnosis.DiagnosisId;
 
@@ -140,7 +134,8 @@ public sealed class StandardStrategySelector
         ordered = KeepOnlyOneTlsModeStrategy(ordered);
 
         // Assist-рекомендации (MVP):
-        // - DropUdp443: если есть признаки QUIC/UDP активности, и требуется/выбран TLS-обход (он работает только на TCP).
+        // - DropUdp443: если есть признаки проблем QUIC/HTTP3.
+        //   Приоритет: реальные HTTP/3 пробы (HostTester) > эвристика "безответные UDP рукопожатия".
         //   ВАЖНО: если уже есть TLS timeout на TCP/443, то QUIC→TCP не является приоритетным лечением
         //   (это не устраняет TLS проблему) — тогда не навязываем DropUdp443, чтобы не путать пользователя.
         // - AllowNoSni: если SNI часто отсутствует в HostTested, а мы рекомендуем TLS-обход.
@@ -148,10 +143,18 @@ public sealed class StandardStrategySelector
 
         var signals = diagnosis.InputSignals;
         var hasQuicObfuscation = ordered.Any(s => s.Id == StrategyId.QuicObfuscation);
+
+        var hasHttp3Evidence = signals.Http3AttemptCount > 0;
+        var hasHttp3FailureOnly = hasHttp3Evidence
+            && signals.Http3NotSupportedCount == 0
+            && signals.Http3SuccessCount == 0
+            && signals.Http3FailureCount > 0;
+
+        var hasUdpHeuristic = signals.UdpUnansweredHandshakes >= 2;
+        var hasQuicEvidence = hasHttp3Evidence ? hasHttp3FailureOnly : hasUdpHeuristic;
+
         var recommendDropUdp443 = hasQuicObfuscation
-            || (hasTlsBypassStrategy
-                && !signals.HasTlsTimeout
-                && signals.UdpUnansweredHandshakes >= 2);
+            || (!signals.HasTlsTimeout && hasQuicEvidence);
 
         var recommendAllowNoSni = false;
         if (hasTlsBypassStrategy && signals.HostTestedCount >= 2)
@@ -166,6 +169,11 @@ public sealed class StandardStrategySelector
             ? "план сформирован по диагнозу INTEL (feedback)"
             : "план сформирован по диагнозу INTEL (MVP)";
 
+        if (candidates.Count == 0)
+        {
+            reasoning += "; нет маппинга стратегий для диагноза";
+        }
+
         if (recommendDropUdp443)
         {
             reasoning += "; assist: QUIC→TCP";
@@ -178,6 +186,14 @@ public sealed class StandardStrategySelector
         if (deferred.Count > 0)
         {
             reasoning += "; deferred: " + string.Join(", ", deferred.Select(d => d.Id));
+        }
+
+        if (ordered.Count == 0 && deferred.Count == 0 && !recommendDropUdp443 && !recommendAllowNoSni)
+        {
+            return CreateEmptyPlan(diagnosis.DiagnosisId, confidence,
+                candidates.Count == 0
+                    ? "нет маппинга для диагноза"
+                    : "все стратегии отфильтрованы по риску/реализации");
         }
 
         return new BypassPlan
