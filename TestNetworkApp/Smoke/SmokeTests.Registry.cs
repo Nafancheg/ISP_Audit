@@ -77,6 +77,7 @@ namespace TestNetworkApp.Smoke
                 ["REG-014"] = REG_GroupParticipation_Persisted_RoundTrip_ThroughStore,
                 ["REG-015"] = REG_ObservedIps_Seeded_FromCandidateEndpoints,
                 ["REG-016"] = REG_ApplyIntelPlan_Timeout_HasPhaseDiagnostics,
+                ["REG-017"] = REG_QuicInterference_Http3Fail_RecommendsDropUdp443,
 
                 ["PIPE-005"] = Pipe_UnifiedFilter_LoopbackDropped,
                 ["PIPE-006"] = Pipe_UnifiedFilter_NoiseOnlyOnDisplay,

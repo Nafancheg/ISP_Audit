@@ -1102,6 +1102,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** `ISP_AUDIT_TEST_APPLY_DELAY_MS=500` и `timeout=50ms` при вызове `BypassController.ApplyIntelPlanAsync`
 **Ожидаемый результат:** Бросается `BypassApplyCanceledException`, в `Execution` присутствует фазовая диагностика
 
+**Test ID:** `REG-017`
+**Что проверяет:** QUIC/HTTP3 диагностика и рекомендация QUIC fallback (DropUdp443)
+**Для чего:** Регресс-гейт: отличать QUIC/HTTP3 проблему от TCP/TLS. При H3 fail без TCP/TLS ошибок должен появляться assist DropUdp443, а при TLS timeout — не должен.
+**Критерий успеха:** DiagnosisId=QuicInterference для H3-fail-only сигналов; план содержит `DropUdp443=true`. При `HasTlsTimeout=true` план НЕ содержит `DropUdp443`.
+**Входные данные:** Синтетические `BlockageSignals` (H3 attempts>0, ok=0, fail>0, notSupported=0) в двух вариантах: без TLS timeout и с TLS timeout.
+**Ожидаемый результат:** Соответствие диагнозов/assist-флага ожидаемой логике
+
 **Test ID:** `REG-004`
 **Что проверяет:** Per-card ретест во время диагностики ставится в очередь и флашится после завершения
 **Для чего:** Регресс-гейт UX: кнопка «Ретест» не должна быть «мертвой» во время диагностики

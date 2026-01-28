@@ -10,6 +10,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
 using IspAudit.Core.Bypass;
+using IspAudit.Core.Intelligence.Contracts;
+using IspAudit.Core.Intelligence.Diagnosis;
+using IspAudit.Core.Intelligence.Strategies;
 using IspAudit.Core.Traffic;
 using IspAudit.Utils;
 using IspAudit.ViewModels;
@@ -18,6 +21,90 @@ namespace TestNetworkApp.Smoke
 {
     internal static partial class SmokeTests
     {
+        public static Task<SmokeTestResult> REG_QuicInterference_Http3Fail_RecommendsDropUdp443(CancellationToken ct)
+            => RunAsync("REG-017", "REG: H3 fail → QuicInterference → assist DropUdp443", () =>
+            {
+                var engine = new StandardDiagnosisEngine();
+                var selector = new StandardStrategySelector();
+
+                var signalsQuicOnly = new BlockageSignals
+                {
+                    HostKey = "video.googlevideo.com",
+                    CapturedAtUtc = DateTimeOffset.UtcNow,
+                    AggregationWindow = TimeSpan.FromSeconds(30),
+                    SampleSize = 10,
+                    IsUnreliable = false,
+
+                    // Ключевой сценарий: HTTP/3 пытались, но успехов нет, ошибок/таймаутов есть, платформа H3 поддерживает.
+                    Http3AttemptCount = 3,
+                    Http3SuccessCount = 0,
+                    Http3FailureCount = 2,
+                    Http3TimeoutCount = 1,
+                    Http3NotSupportedCount = 0,
+
+                    // Чтобы правило «quic only» было применимо, остальные улики должны быть чистыми.
+                    HasDnsFailure = false,
+                    HasFakeIp = false,
+                    HasHttpRedirect = false,
+                    HasTcpTimeout = false,
+                    HasTcpReset = false,
+                    HasTlsTimeout = false,
+                    HasTlsAuthFailure = false,
+                    HasTlsReset = false,
+                };
+
+                var dxQuicOnly = engine.Diagnose(signalsQuicOnly);
+                if (dxQuicOnly.DiagnosisId != DiagnosisId.QuicInterference)
+                {
+                    return new SmokeTestResult("REG-017", "REG: H3 fail → QuicInterference → assist DropUdp443", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали DiagnosisId=QuicInterference, получили {dxQuicOnly.DiagnosisId} (rule={dxQuicOnly.MatchedRuleName})");
+                }
+
+                var planQuicOnly = selector.Select(dxQuicOnly);
+                if (!planQuicOnly.DropUdp443)
+                {
+                    return new SmokeTestResult("REG-017", "REG: H3 fail → QuicInterference → assist DropUdp443", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали DropUdp443=true по H3-fail уликам (assist-only план допускается)");
+                }
+
+                // Регресс-гейт: если уже есть TLS timeout на TCP/443, QUIC→TCP не должно быть приоритетной рекомендацией.
+                var signalsTlsTimeout = new BlockageSignals
+                {
+                    HostKey = signalsQuicOnly.HostKey,
+                    CapturedAtUtc = signalsQuicOnly.CapturedAtUtc,
+                    AggregationWindow = signalsQuicOnly.AggregationWindow,
+                    SampleSize = signalsQuicOnly.SampleSize,
+                    IsUnreliable = signalsQuicOnly.IsUnreliable,
+
+                    Http3AttemptCount = signalsQuicOnly.Http3AttemptCount,
+                    Http3SuccessCount = signalsQuicOnly.Http3SuccessCount,
+                    Http3FailureCount = signalsQuicOnly.Http3FailureCount,
+                    Http3TimeoutCount = signalsQuicOnly.Http3TimeoutCount,
+                    Http3NotSupportedCount = signalsQuicOnly.Http3NotSupportedCount,
+
+                    HasDnsFailure = signalsQuicOnly.HasDnsFailure,
+                    HasFakeIp = signalsQuicOnly.HasFakeIp,
+                    HasHttpRedirect = signalsQuicOnly.HasHttpRedirect,
+                    HasTcpTimeout = signalsQuicOnly.HasTcpTimeout,
+                    HasTcpReset = signalsQuicOnly.HasTcpReset,
+
+                    HasTlsTimeout = true,
+                    HasTlsAuthFailure = signalsQuicOnly.HasTlsAuthFailure,
+                    HasTlsReset = signalsQuicOnly.HasTlsReset,
+                };
+
+                var dxTlsTimeout = engine.Diagnose(signalsTlsTimeout);
+                var planTlsTimeout = selector.Select(dxTlsTimeout);
+
+                if (planTlsTimeout.DropUdp443)
+                {
+                    return new SmokeTestResult("REG-017", "REG: H3 fail → QuicInterference → assist DropUdp443", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Не ожидали DropUdp443=true при HasTlsTimeout=true (dx={dxTlsTimeout.DiagnosisId}, rule={dxTlsTimeout.MatchedRuleName})");
+                }
+
+                return new SmokeTestResult("REG-017", "REG: H3 fail → QuicInterference → assist DropUdp443", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+            }, ct);
+
         public static async Task<SmokeTestResult> REG_Tracert_Cp866_NoMojibake(CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();

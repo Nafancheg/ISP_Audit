@@ -46,6 +46,7 @@
     - [x] Убрать «автоматику» для assist в INTEL-плане: токены `DROP_UDP_443/ALLOW_NO_SNI` остаются в рекомендациях, но по умолчанию не применяются автоматически (требуется явное включение пользователем).
     - [x] INTEL: QUIC→TCP (DROP_UDP_443) не рекомендовать, если уже есть `TLS_HANDSHAKE_TIMEOUT` на TCP/443 (приоритет — лечение TLS, чтобы не создавать ложный «приоритет UDP»).
     - [x] INTEL/Tester: добавить реальный probe HTTP/3 (QUIC) и протащить в сигналы/диагноз (QuicInterference) + вывод в UI (H3:✓/✗/-) и приоритизация DropUdp443 по факту H3.
+    - [x] Regression smoke: `REG-017` — H3 fail-only → QuicInterference и assist DropUdp443; при TLS timeout DropUdp443 не рекомендуется.
     - [x] Отключить AutoRetest по изменению тумблеров bypass по умолчанию (для чистой наблюдаемости).
     - [x] P0.x Реактивная синхронизация targets для селективного QUIC→TCP: refresh UDP/443 targets по UDP blockage (без глобального DropUdp443)
       - [x] Assist-флаги (QUIC→TCP, No-SNI) применяются при ручном Apply
