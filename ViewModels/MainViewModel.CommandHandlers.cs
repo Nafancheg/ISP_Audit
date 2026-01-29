@@ -407,6 +407,48 @@ namespace IspAudit.ViewModels
             await ApplyDomainRecommendationsAsync(domainOverride).ConfigureAwait(false);
         }
 
+        private void TogglePinDomainFromResult(TestResult? test)
+        {
+            try
+            {
+                if (test?.Target == null) return;
+
+                var preferredHostKey = GetPreferredHostKey(test);
+                if (string.IsNullOrWhiteSpace(preferredHostKey)) return;
+
+                string domainSuffix;
+
+                // 1) Если есть активная подсказка семейства и строка относится к ней — закрепляем именно её.
+                if (IspAudit.Utils.DomainUtils.IsHostInSuffix(preferredHostKey, Results.SuggestedDomainSuffix) && Results.CanSuggestDomainAggregation)
+                {
+                    domainSuffix = Results.SuggestedDomainSuffix ?? string.Empty;
+                }
+                else if (!Results.TryGetPinCandidateFromHostKey(preferredHostKey, out domainSuffix))
+                {
+                    return;
+                }
+
+                domainSuffix = (domainSuffix ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(domainSuffix)) return;
+
+                var ok = Results.TogglePinnedDomain(domainSuffix);
+                if (!ok)
+                {
+                    Log($"[DomainCatalog] Не удалось изменить pin для '{domainSuffix}'");
+                    return;
+                }
+
+                var pinned = Results.IsDomainPinned(domainSuffix);
+                Log(pinned
+                    ? $"[DomainCatalog] Закреплён домен: {domainSuffix}"
+                    : $"[DomainCatalog] Снято закрепление домена: {domainSuffix}");
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
         private Task RetestFromResultAsync(TestResult? test)
         {
             try

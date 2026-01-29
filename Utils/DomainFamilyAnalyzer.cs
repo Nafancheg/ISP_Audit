@@ -31,6 +31,19 @@ namespace IspAudit.Utils
 
         public DomainFamilySuggestion? CurrentSuggestion { get; private set; }
 
+        public bool IsLearned(string domainSuffix)
+        {
+            if (string.IsNullOrWhiteSpace(domainSuffix)) return false;
+            try
+            {
+                return _catalog.LearnedDomains.ContainsKey(domainSuffix.Trim().Trim('.'));
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public DomainFamilyAnalyzer(DomainFamilyCatalogState catalog, Action<string>? log = null)
         {
             _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
@@ -87,6 +100,22 @@ namespace IspAudit.Utils
             return _catalog.PinnedDomains.Any(d => d.Equals(domainSuffix, StringComparison.OrdinalIgnoreCase));
         }
 
+        /// <summary>
+        /// Принудительно пересчитывает CurrentSuggestion на основе уже накопленных статистик.
+        /// Полезно, когда меняется каталог (pinned/learned) без новых наблюдений.
+        /// </summary>
+        public bool ForceRecomputeSuggestion()
+        {
+            try
+            {
+                return RecomputeSuggestionAndPersistIfNeeded();
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private bool RecomputeSuggestionAndPersistIfNeeded()
         {
             var newSuggestion = PickBestSuggestion();
@@ -113,6 +142,10 @@ namespace IspAudit.Utils
             const int defaultMinSubhosts = 4;
             const int defaultMinEntropy = 2;
 
+            // Если домен уже встречался раньше (learned) — можно включаться быстрее.
+            const int learnedMinSubhosts = 3;
+            const int learnedMinEntropy = 1;
+
             DomainFamilySuggestion? best = null;
 
             foreach (var kv in _statsBySuffix)
@@ -123,8 +156,11 @@ namespace IspAudit.Utils
                 int unique = stats.Subhosts.Count;
                 int entropy = stats.EntropySubhosts.Count;
 
-                int minSubhosts = IsPinned(suffix) ? 2 : defaultMinSubhosts;
-                int minEntropy = IsPinned(suffix) ? 1 : defaultMinEntropy;
+                bool pinned = IsPinned(suffix);
+                bool learned = IsLearned(suffix);
+
+                int minSubhosts = pinned ? 2 : (learned ? learnedMinSubhosts : defaultMinSubhosts);
+                int minEntropy = pinned ? 1 : (learned ? learnedMinEntropy : defaultMinEntropy);
 
                 if (unique < minSubhosts) continue;
                 if (entropy < minEntropy) continue;

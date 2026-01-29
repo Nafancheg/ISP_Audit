@@ -181,10 +181,13 @@ namespace IspAudit.ViewModels
 
                 if (e.PropertyName == nameof(TestResultsManager.SuggestedDomainSuffix) ||
                     e.PropertyName == nameof(TestResultsManager.SuggestedDomainSubhostCount) ||
-                    e.PropertyName == nameof(TestResultsManager.CanSuggestDomainAggregation))
+                    e.PropertyName == nameof(TestResultsManager.CanSuggestDomainAggregation) ||
+                    e.PropertyName == nameof(TestResultsManager.DomainPinsVersion))
                 {
                     OnPropertyChanged(nameof(HasDomainSuggestion));
                     OnPropertyChanged(nameof(ApplyDomainButtonText));
+                    OnPropertyChanged(nameof(IsSuggestedDomainPinned));
+                    OnPropertyChanged(nameof(ToggleDomainPinButtonText));
                     OnPropertyChanged(nameof(DomainSuggestionHintText));
                     OnPropertyChanged(nameof(ActiveApplyGroupKey));
                     RefreshManualParticipationMarkersBestEffort();
@@ -235,6 +238,11 @@ namespace IspAudit.ViewModels
             // UX: если строка относится к SuggestedDomainSuffix, даём кнопку "Подключить домен" прямо в таблице.
             ConnectDomainFromResultCommand = new RelayCommand(async param => await ConnectDomainFromResultAsync(param as IspAudit.Models.TestResult),
                 param => ShowBypassPanel && !IsApplyingRecommendations);
+
+            // Закрепление домена в каталоге доменных семейств (state/domain_families.json).
+            // UX: ускоряет появление auto-suggest для CDN/шардовых доменов.
+            TogglePinDomainFromResultCommand = new RelayCommand(param => TogglePinDomainFromResult(param as IspAudit.Models.TestResult),
+                _ => true);
 
             RetestFromResultCommand = new RelayCommand(async param => await RetestFromResultAsync(param as IspAudit.Models.TestResult),
                 _ => true);

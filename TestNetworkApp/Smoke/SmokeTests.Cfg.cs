@@ -227,5 +227,115 @@ namespace TestNetworkApp.Smoke
                     return null;
                 }
             }, ct);
+
+        public static Task<SmokeTestResult> Cfg_DomainFamilies_CatalogAndThresholds(CancellationToken ct)
+            => RunAsync("CFG-006", "DomainFamily: persist+reload + pinned/learned пороги", () =>
+            {
+                var path = DomainFamilyCatalog.CatalogFilePath;
+                string? backup = null;
+                bool hadFile = File.Exists(path);
+
+                try
+                {
+                    if (hadFile)
+                    {
+                        backup = File.ReadAllText(path);
+                    }
+
+                    // 1) Round-trip persist+reload
+                    var state = new DomainFamilyCatalogState
+                    {
+                        Version = 1,
+                        PinnedDomains = new List<string> { "example.com" },
+                        LearnedDomains = new Dictionary<string, LearnedDomainEntry>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["learned.test"] = new LearnedDomainEntry
+                            {
+                                EvidenceCount = 10,
+                                EntropyEvidenceCount = 3,
+                                Reason = "Smoke",
+                                FirstSeenUtc = DateTime.UtcNow.AddDays(-1),
+                                LastSeenUtc = DateTime.UtcNow
+                            }
+                        }
+                    };
+
+                    DomainFamilyCatalog.TryPersist(state);
+                    var loaded = DomainFamilyCatalog.LoadOrDefault();
+
+                    if (!loaded.PinnedDomains.Any(d => d.Equals("example.com", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return new SmokeTestResult("CFG-006", "DomainFamily: persist+reload + pinned/learned пороги", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "PinnedDomains не сохранился/не загрузился (ожидали example.com)");
+                    }
+
+                    if (!loaded.LearnedDomains.ContainsKey("learned.test"))
+                    {
+                        return new SmokeTestResult("CFG-006", "DomainFamily: persist+reload + pinned/learned пороги", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "LearnedDomains не сохранился/не загрузился (ожидали learned.test)");
+                    }
+
+                    // 2) Порог pinned: достаточно 2 подхостов и 1 entropy.
+                    var analyzerPinned = new DomainFamilyAnalyzer(loaded);
+                    analyzerPinned.ObserveHost("r1---edge-12345.example.com");
+                    analyzerPinned.ObserveHost("r2---edge-67890.example.com");
+
+                    if (!string.Equals(analyzerPinned.CurrentSuggestion?.DomainSuffix, "example.com", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("CFG-006", "DomainFamily: persist+reload + pinned/learned пороги", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Pinned порог не сработал: ожидали подсказку example.com после 2 подхостов");
+                    }
+
+                    // 3) Порог learned: по умолчанию (после доработки) достаточно 3 подхостов и 1 entropy.
+                    var stateLearnedOnly = new DomainFamilyCatalogState
+                    {
+                        Version = 1,
+                        PinnedDomains = new List<string>(),
+                        LearnedDomains = new Dictionary<string, LearnedDomainEntry>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["learned.test"] = new LearnedDomainEntry
+                            {
+                                EvidenceCount = 10,
+                                EntropyEvidenceCount = 3,
+                                Reason = "Smoke",
+                                FirstSeenUtc = DateTime.UtcNow.AddDays(-1),
+                                LastSeenUtc = DateTime.UtcNow
+                            }
+                        }
+                    };
+
+                    var analyzerLearned = new DomainFamilyAnalyzer(stateLearnedOnly);
+                    analyzerLearned.ObserveHost("r1---edge-12345.learned.test");
+                    analyzerLearned.ObserveHost("r2---edge-67890.learned.test");
+                    analyzerLearned.ObserveHost("r3---edge-11111.learned.test");
+
+                    if (!string.Equals(analyzerLearned.CurrentSuggestion?.DomainSuffix, "learned.test", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("CFG-006", "DomainFamily: persist+reload + pinned/learned пороги", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Learned порог не сработал: ожидали подсказку learned.test после 3 подхостов");
+                    }
+
+                    return new SmokeTestResult("CFG-006", "DomainFamily: persist+reload + pinned/learned пороги", SmokeOutcome.Pass, TimeSpan.Zero,
+                        $"OK: pinned/learned работают, каталог: {path}");
+                }
+                finally
+                {
+                    try
+                    {
+                        if (hadFile)
+                        {
+                            File.WriteAllText(path, backup ?? string.Empty);
+                        }
+                        else if (File.Exists(path))
+                        {
+                            File.Delete(path);
+                        }
+                    }
+                    catch
+                    {
+                        // best-effort
+                    }
+                }
+            }, ct);
     }
 }

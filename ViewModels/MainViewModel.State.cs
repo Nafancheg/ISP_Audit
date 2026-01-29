@@ -251,6 +251,35 @@ namespace IspAudit.ViewModels
             ? "Применяю…"
             : $"Подключить (домен: {Results.SuggestedDomainSuffix ?? "…"})";
 
+        public bool IsSuggestedDomainPinned
+        {
+            get
+            {
+                try
+                {
+                    var suffix = Results.SuggestedDomainSuffix;
+                    if (string.IsNullOrWhiteSpace(suffix)) return false;
+                    return Results.IsDomainPinned(suffix);
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
+
+        public string ToggleDomainPinButtonText
+        {
+            get
+            {
+                var suffix = Results.SuggestedDomainSuffix;
+                if (string.IsNullOrWhiteSpace(suffix)) return "Закрепить домен";
+                return IsSuggestedDomainPinned
+                    ? $"Открепить домен: {suffix}"
+                    : $"Закрепить домен: {suffix}";
+            }
+        }
+
         public string DomainSuggestionHintText
         {
             get
@@ -261,6 +290,9 @@ namespace IspAudit.ViewModels
                 var n = Results.SuggestedDomainSubhostCount;
                 return $"Авто-обнаружение CDN/шардов: замечено {n} подхостов для *.{suffix}.\n" +
                       "Кнопка применяет план рекомендаций к домену (OutcomeTargetHost=домен).\n" +
+                      (IsSuggestedDomainPinned
+                          ? "Домен закреплён: подсказка может включаться быстрее.\n"
+                          : "Можно закрепить домен, чтобы подсказка включалась быстрее.\n") +
                        $"Справочник/кэш: {IspAudit.Utils.DomainFamilyCatalog.CatalogFilePath}";
             }
         }

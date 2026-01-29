@@ -27,6 +27,7 @@ namespace IspAudit.ViewModels
         public ICommand RestartConnectionCommand { get; }
         public ICommand ConnectFromResultCommand { get; }
         public ICommand ConnectDomainFromResultCommand { get; }
+        public ICommand TogglePinDomainFromResultCommand { get; }
         public ICommand RetestFromResultCommand { get; }
         public ICommand ReconnectFromResultCommand { get; }
         public ICommand ToggleParticipationFromResultCommand { get; }

@@ -125,5 +125,24 @@ namespace IspAudit
                 }
             }
         }
+
+        private void TogglePinDomain_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (sender is not MenuItem menuItem) return;
+                if (menuItem.DataContext is not TestResult result) return;
+                if (DataContext is not MainViewModel viewModel) return;
+
+                if (viewModel.TogglePinDomainFromResultCommand.CanExecute(result))
+                {
+                    viewModel.TogglePinDomainFromResultCommand.Execute(result);
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
     }
 }

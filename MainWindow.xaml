@@ -26,6 +26,9 @@
             <MenuItem Header="Копировать Host" Click="CopyHost_Click"/>
             <MenuItem Header="Копировать Fallback IP" Click="CopyFallbackIp_Click"
                       Visibility="{Binding Target.FallbackIp, Converter={StaticResource StringToVisibilityConverter}}"/>
+            <Separator/>
+            <MenuItem Header="📌 Закрепить/открепить домен" Click="TogglePinDomain_Click"
+                      ToolTip="Переключает закрепление базового домена для этой строки (ускоряет auto-suggest доменных семейств)."/>
         </ContextMenu>
     </Window.Resources>
 
@@ -195,6 +198,12 @@
                                         <Button Content="{Binding ApplyDomainButtonText}" Command="{Binding ApplyDomainRecommendationsCommand}"
                                             Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" FontSize="12" HorizontalAlignment="Left" Height="30" Margin="0,6,0,0"
                                             ToolTip="{Binding DomainSuggestionHintText}"
+                                            Visibility="{Binding HasDomainSuggestion, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                                        <Button Content="{Binding ToggleDomainPinButtonText}" Command="{Binding TogglePinDomainFromResultCommand}"
+                                            CommandParameter="{Binding SelectedTestResult}"
+                                            Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" FontSize="12" HorizontalAlignment="Left" Height="30" Margin="0,6,0,0"
+                                            ToolTip="Закрепляет домен в каталоге (state/domain_families.json), чтобы auto-suggest включался быстрее."
                                             Visibility="{Binding HasDomainSuggestion, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 </StackPanel>
                             </Border>
