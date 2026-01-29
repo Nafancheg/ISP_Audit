@@ -68,7 +68,12 @@ namespace IspAudit.Utils
                 var path = CatalogFilePath;
                 if (!File.Exists(path))
                 {
-                    return CreateDefault();
+                    var created = CreateDefault();
+
+                    // UX: если каталога нет, создаём его на диске сразу,
+                    // чтобы пользователю было проще редактировать pinned-группы вручную.
+                    TryPersist(created, log);
+                    return created;
                 }
 
                 var json = File.ReadAllText(path);

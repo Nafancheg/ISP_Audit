@@ -338,7 +338,7 @@ Smoke-хелперы (для детерминированных проверок
         * Это **не** wildcard-мэтчинг в `BypassFilter`: домен используется как UX-цель/цель outcome (и как вход для резолва IP в селективном `DropUdp443`).
 
     * Кросс-доменная группировка (P1.2, pinned-группы): поверх доменных семейств добавлен слой **Domain Groups** — группа может объединять несколько базовых доменов (пример: YouTube = `youtube.com` + `googlevideo.com` + `ytimg.com` + `ggpht.com`).
-        * Каталог групп хранится во внешнем JSON (`state\\domain_groups.json`) и по умолчанию содержит pinned-группу `group-youtube`.
+        * Каталог групп хранится во внешнем JSON (`state\\domain_groups.json`) и по умолчанию содержит pinned-группу `group-youtube`. Если файла нет, он создаётся автоматически при первом запуске (best-effort).
         * `TestResultsManager` отслеживает hostKey, определяет подсказку группы и умеет best-effort схлопывать карточки доменов группы в одну (ключ = groupKey).
         * В панели рекомендаций появляется кнопка «Подключить (группа: …)».
         * Команда вызывает `DiagnosticOrchestrator.ApplyRecommendationsForDomainGroupAsync(..., groupKey, anchorDomain, domains)`: оркестратор берёт применимый план из любого домена группы, но применяет его к anchor-домену (OutcomeTargetHost=anchor). Для селективного `DropUdp443` UI собирает union endpoint snapshot по всем доменам группы.
