@@ -336,6 +336,13 @@ Smoke-хелперы (для детерминированных проверок
             * `pinned`: минимальные пороги для подсказки ниже.
             * `learned`: подсказка может включаться быстрее, даже если в текущей сессии подхостов ещё не «очень много».
         * Это **не** wildcard-мэтчинг в `BypassFilter`: домен используется как UX-цель/цель outcome (и как вход для резолва IP в селективном `DropUdp443`).
+
+    * Кросс-доменная группировка (P1.2, pinned-группы): поверх доменных семейств добавлен слой **Domain Groups** — группа может объединять несколько базовых доменов (пример: YouTube = `youtube.com` + `googlevideo.com` + `ytimg.com` + `ggpht.com`).
+        * Каталог групп хранится во внешнем JSON (`state\\domain_groups.json`) и по умолчанию содержит pinned-группу `group-youtube`.
+        * `TestResultsManager` отслеживает hostKey, определяет подсказку группы и умеет best-effort схлопывать карточки доменов группы в одну (ключ = groupKey).
+        * В панели рекомендаций появляется кнопка «Подключить (группа: …)».
+        * Команда вызывает `DiagnosticOrchestrator.ApplyRecommendationsForDomainGroupAsync(..., groupKey, anchorDomain, domains)`: оркестратор берёт применимый план из любого домена группы, но применяет его к anchor-домену (OutcomeTargetHost=anchor). Для селективного `DropUdp443` UI собирает union endpoint snapshot по всем доменам группы.
+        * Это также **не** wildcard-фильтрация: группировка влияет на UX (агрегация/Apply/GroupKey), а пакетные правила остаются endpoint-based.
     * Отмена: команда `Cancel` отменяет не только диагностику, но и текущий ручной apply (через отдельный CTS).
 * Step 5 (Feedback/Rerank): добавлен слой обратной связи `Core/Intelligence/Feedback/*`. В рантайме по умолчанию включён `JsonFileFeedbackStore` (persist: `state\\feedback_store.json`) и инжектится в `StandardStrategySelector`.
     * Запись outcome выполняется best-effort после Post-Apply ретеста:

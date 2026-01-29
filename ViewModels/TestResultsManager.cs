@@ -38,9 +38,20 @@ namespace IspAudit.ViewModels
         private DomainFamilyCatalogState _domainCatalog = new();
         private DomainFamilyAnalyzer _domainFamilies = new(new DomainFamilyCatalogState());
 
+        // P1.2: кросс-доменные группы (YouTube: youtube.com + googlevideo.com + ...)
+        // Каталог групп: state/domain_groups.json
+        private DomainGroupCatalogState _domainGroupCatalog = new();
+        private DomainGroupAnalyzer _domainGroups = new(new DomainGroupCatalogState());
+
         public string? SuggestedDomainSuffix => _domainFamilies.CurrentSuggestion?.DomainSuffix;
         public int SuggestedDomainSubhostCount => _domainFamilies.CurrentSuggestion?.UniqueSubhosts ?? 0;
         public bool CanSuggestDomainAggregation => _domainFamilies.CurrentSuggestion != null;
+
+        public string? SuggestedDomainGroupKey => _domainGroups.CurrentSuggestion?.GroupKey;
+        public string? SuggestedDomainGroupDisplayName => _domainGroups.CurrentSuggestion?.DisplayName;
+        public string? SuggestedDomainGroupAnchorDomain => _domainGroups.CurrentSuggestion?.AnchorDomain;
+        public System.Collections.Generic.IReadOnlyList<string> SuggestedDomainGroupDomains => _domainGroups.CurrentSuggestion?.Domains ?? Array.Empty<string>();
+        public bool CanSuggestDomainGroup => _domainGroups.CurrentSuggestion != null;
 
         private readonly record struct OutcomeHistory(DateTime LastPassUtc, DateTime LastProblemUtc);
         private readonly ConcurrentDictionary<string, OutcomeHistory> _outcomeHistoryByKey = new();

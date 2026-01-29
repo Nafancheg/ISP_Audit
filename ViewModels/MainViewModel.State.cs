@@ -247,6 +247,59 @@ namespace IspAudit.ViewModels
             }
         }
 
+        public bool HasDomainGroupSuggestion
+        {
+            get
+            {
+                try
+                {
+                    if (SelectedTestResult?.Target == null) return false;
+                    if (!Results.CanSuggestDomainGroup) return false;
+
+                    var hostKey = GetPreferredHostKey(SelectedTestResult);
+                    if (string.IsNullOrWhiteSpace(hostKey)) return false;
+
+                    return Results.IsHostInSuggestedDomainGroup(hostKey);
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
+
+        public string ApplyDomainGroupButtonText
+        {
+            get
+            {
+                if (IsApplyingRecommendations) return "Применяю…";
+                var name = Results.SuggestedDomainGroupDisplayName;
+                if (string.IsNullOrWhiteSpace(name)) name = Results.SuggestedDomainGroupKey;
+                var display = string.IsNullOrWhiteSpace(name) ? "…" : name;
+                return $"Подключить (группа: {display})";
+            }
+        }
+
+        public string DomainGroupSuggestionHintText
+        {
+            get
+            {
+                var key = Results.SuggestedDomainGroupKey;
+                if (string.IsNullOrWhiteSpace(key)) return "";
+
+                var name = Results.SuggestedDomainGroupDisplayName;
+                if (string.IsNullOrWhiteSpace(name)) name = key;
+
+                var domains = Results.SuggestedDomainGroupDomains;
+                var list = domains == null || domains.Count == 0 ? "(пусто)" : string.Join(", ", domains);
+
+                return $"Кросс-доменная группа: {name} ({key}).\n" +
+                       $"Домены: {list}.\n" +
+                       "Кнопка применяет план рекомендаций к группе (GroupKey=ключ группы, OutcomeTargetHost=anchor-домен).\n" +
+                       $"Справочник/кэш: {IspAudit.Utils.DomainGroupCatalog.CatalogFilePath}";
+            }
+        }
+
         public string ApplyDomainButtonText => IsApplyingRecommendations
             ? "Применяю…"
             : $"Подключить (домен: {Results.SuggestedDomainSuffix ?? "…"})";

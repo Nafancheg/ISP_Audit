@@ -124,6 +124,89 @@ namespace IspAudit.ViewModels
             return await ApplyPlanInternalAsync(bypassController, domain, plan).ConfigureAwait(false);
         }
 
+        public async Task<ApplyOutcome?> ApplyRecommendationsForDomainGroupAsync(
+            BypassController bypassController,
+            string groupKey,
+            string anchorDomain,
+            IReadOnlyList<string> domains)
+        {
+            if (bypassController == null) throw new ArgumentNullException(nameof(bypassController));
+
+            var gk = (groupKey ?? string.Empty).Trim();
+            var anchor = (anchorDomain ?? string.Empty).Trim().Trim('.');
+            if (string.IsNullOrWhiteSpace(gk)) return null;
+            if (string.IsNullOrWhiteSpace(anchor)) return null;
+            if (domains == null || domains.Count == 0) return null;
+
+            var normalizedDomains = domains
+                .Select(d => (d ?? string.Empty).Trim().Trim('.'))
+                .Where(d => !string.IsNullOrWhiteSpace(d))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (normalizedDomains.Count == 0)
+            {
+                Log($"[APPLY] Group '{gk}': домены не определены");
+                return null;
+            }
+
+            // Берём планы только из доменов группы и применяем их к anchor-домену.
+            var candidates = _intelPlansByHost
+                .Where(kv =>
+                {
+                    var host = (kv.Key ?? string.Empty).Trim();
+                    if (string.IsNullOrWhiteSpace(host)) return false;
+
+                    foreach (var d in normalizedDomains)
+                    {
+                        if (string.Equals(host, d, StringComparison.OrdinalIgnoreCase)) return true;
+                        if (host.EndsWith("." + d, StringComparison.OrdinalIgnoreCase)) return true;
+                    }
+
+                    return false;
+                })
+                .Select(kv => (HostKey: kv.Key, Plan: kv.Value))
+                .ToList();
+
+            if (candidates.Count == 0)
+            {
+                Log($"[APPLY] Group '{gk}': нет сохранённых планов (anchor='{anchor}')");
+                return null;
+            }
+
+            BypassPlan? plan = null;
+            string? sourceHost = null;
+
+            // Предпочитаем последний план, если он относится к группе.
+            if (!string.IsNullOrWhiteSpace(_lastIntelPlanHostKey)
+                && candidates.Any(c => string.Equals(c.HostKey, _lastIntelPlanHostKey, StringComparison.OrdinalIgnoreCase))
+                && _intelPlansByHost.TryGetValue(_lastIntelPlanHostKey, out var lastPlan)
+                && PlanHasApplicableActions(lastPlan))
+            {
+                plan = lastPlan;
+                sourceHost = _lastIntelPlanHostKey;
+            }
+            else
+            {
+                foreach (var c in candidates)
+                {
+                    if (!PlanHasApplicableActions(c.Plan)) continue;
+                    plan = c.Plan;
+                    sourceHost = c.HostKey;
+                    break;
+                }
+            }
+
+            if (plan == null || !PlanHasApplicableActions(plan))
+            {
+                Log($"[APPLY] Group '{gk}': нет применимых действий в планах");
+                return null;
+            }
+
+            Log($"[APPLY] Group '{gk}': apply from '{sourceHost}' (anchor='{anchor}')");
+            return await ApplyPlanInternalAsync(bypassController, anchor, plan).ConfigureAwait(false);
+        }
+
         public async Task<ApplyOutcome?> ApplyRecommendationsAsync(BypassController bypassController, string? preferredHostKey)
         {
             // 1) Пытаемся применить план для выбранной цели (если UI передал её).

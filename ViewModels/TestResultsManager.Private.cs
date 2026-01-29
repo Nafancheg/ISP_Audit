@@ -80,6 +80,9 @@ namespace IspAudit.ViewModels
             {
                 if (string.IsNullOrWhiteSpace(hostKey)) return;
 
+                // P1.2: кросс-доменная группировка (pinned groups) — независима от доменных семейств.
+                TrackDomainGroupCandidate(hostKey);
+
                 var before = _domainFamilies.CurrentSuggestion?.DomainSuffix;
                 var changed = _domainFamilies.ObserveHost(hostKey);
                 var after = _domainFamilies.CurrentSuggestion?.DomainSuffix;

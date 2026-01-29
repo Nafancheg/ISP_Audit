@@ -200,6 +200,11 @@
                                             ToolTip="{Binding DomainSuggestionHintText}"
                                             Visibility="{Binding HasDomainSuggestion, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
+                                        <Button Content="{Binding ApplyDomainGroupButtonText}" Command="{Binding ApplyDomainGroupRecommendationsCommand}"
+                                            Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" FontSize="12" HorizontalAlignment="Left" Height="30" Margin="0,6,0,0"
+                                            ToolTip="{Binding DomainGroupSuggestionHintText}"
+                                            Visibility="{Binding HasDomainGroupSuggestion, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
                                         <Button Content="{Binding ToggleDomainPinButtonText}" Command="{Binding TogglePinDomainFromResultCommand}"
                                             CommandParameter="{Binding SelectedTestResult}"
                                             Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" FontSize="12" HorizontalAlignment="Left" Height="30" Margin="0,6,0,0"

@@ -216,6 +216,18 @@ UX: режим `QUIC→TCP` выбирается через контекстно
     - Поддерживает `PinnedDomains` (ручное закрепление) и `LearnedDomains` (авто-выученные домены).
     - Закрепление доступно из UI (pin/unpin), и ускоряет появление доменной подсказки/агрегации карточек.
 
+Актуализация (Runtime, 29.01.2026): кросс-доменные группы (Domain Groups, pinned)
+- Поверх доменных семейств добавлен слой Domain Groups: группа может объединять несколько базовых доменов одного сервиса (пример: YouTube = `youtube.com` + `googlevideo.com` + `ytimg.com` + `ggpht.com`).
+- Каталог pinned-групп хранится в `state\\domain_groups.json` (по умолчанию присутствует `group-youtube`).
+- UI:
+    - `TestResultsManager` определяет подсказку группы по базовому суффиксу.
+    - Карточки доменов группы best-effort схлопываются в одну карточку (ключ = groupKey).
+    - В панели рекомендаций появляется кнопка «Подключить (группа: …)».
+- Apply:
+    - `DiagnosticOrchestrator.ApplyRecommendationsForDomainGroupAsync(..., groupKey, anchorDomain, domains)` берёт применимый INTEL-план из любого домена группы и применяет его к anchor-домену (OutcomeTargetHost=anchor).
+    - Для селективного `DropUdp443` UI собирает union endpoint snapshot по всем доменам группы.
+- Smoke: добавлен `CFG-007` (persist+reload + pinned подсказка).
+
 - Справочник blockpage-hosts (для повышения уверенности `HttpRedirect` и `evidence.redirectKind`): `state\\blockpage_hosts.json`.
     - `PinnedDomains`: ручной «справочник» (можно закреплять домены, чтобы подсказка включалась быстрее).
     - `LearnedDomains`: автокэш доменов, которые система «выучила» по наблюдениям.

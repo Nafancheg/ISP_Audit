@@ -22,6 +22,14 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(SuggestedDomainSuffix));
             OnPropertyChanged(nameof(SuggestedDomainSubhostCount));
             OnPropertyChanged(nameof(CanSuggestDomainAggregation));
+
+            _domainGroupCatalog = DomainGroupCatalog.LoadOrDefault(Log);
+            _domainGroups = new DomainGroupAnalyzer(_domainGroupCatalog, Log);
+            OnPropertyChanged(nameof(SuggestedDomainGroupKey));
+            OnPropertyChanged(nameof(SuggestedDomainGroupDisplayName));
+            OnPropertyChanged(nameof(SuggestedDomainGroupAnchorDomain));
+            OnPropertyChanged(nameof(SuggestedDomainGroupDomains));
+            OnPropertyChanged(nameof(CanSuggestDomainGroup));
         }
 
         /// <summary>

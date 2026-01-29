@@ -337,5 +337,82 @@ namespace TestNetworkApp.Smoke
                     }
                 }
             }, ct);
+
+        public static Task<SmokeTestResult> Cfg_DomainGroups_CatalogAndPinnedSuggestion(CancellationToken ct)
+            => RunAsync("CFG-007", "DomainGroups: persist+reload + pinned подсказка", () =>
+            {
+                var path = DomainGroupCatalog.CatalogFilePath;
+                string? backup = null;
+                bool hadFile = File.Exists(path);
+
+                try
+                {
+                    if (hadFile)
+                    {
+                        backup = File.ReadAllText(path);
+                    }
+
+                    var state = new DomainGroupCatalogState
+                    {
+                        Version = 1,
+                        PinnedGroups = new List<DomainGroupEntry>
+                        {
+                            new DomainGroupEntry
+                            {
+                                Key = "group-youtube",
+                                DisplayName = "YouTube",
+                                Domains = new List<string> { "youtube.com", "googlevideo.com", "ytimg.com", "ggpht.com" },
+                                Note = "Smoke"
+                            }
+                        }
+                    };
+
+                    DomainGroupCatalog.TryPersist(state);
+                    var loaded = DomainGroupCatalog.LoadOrDefault();
+
+                    var yt = loaded.PinnedGroups.FirstOrDefault(g => g.Key.Equals("group-youtube", StringComparison.OrdinalIgnoreCase));
+                    if (yt == null)
+                    {
+                        return new SmokeTestResult("CFG-007", "DomainGroups: persist+reload + pinned подсказка", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "PinnedGroups не сохранился/не загрузился (ожидали group-youtube)");
+                    }
+
+                    if (!yt.Domains.Any(d => d.Equals("googlevideo.com", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return new SmokeTestResult("CFG-007", "DomainGroups: persist+reload + pinned подсказка", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "PinnedGroups.Domains не содержит googlevideo.com");
+                    }
+
+                    var analyzer = new DomainGroupAnalyzer(loaded);
+                    analyzer.ObserveHost("r1---edge-12345.googlevideo.com");
+
+                    if (!string.Equals(analyzer.CurrentSuggestion?.GroupKey, "group-youtube", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("CFG-007", "DomainGroups: persist+reload + pinned подсказка", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Pinned подсказка не сработала: ожидали group-youtube для host в googlevideo.com");
+                    }
+
+                    return new SmokeTestResult("CFG-007", "DomainGroups: persist+reload + pinned подсказка", SmokeOutcome.Pass, TimeSpan.Zero,
+                        $"OK: pinned-группа работает, каталог: {path}");
+                }
+                finally
+                {
+                    try
+                    {
+                        if (hadFile)
+                        {
+                            File.WriteAllText(path, backup ?? string.Empty);
+                        }
+                        else if (File.Exists(path))
+                        {
+                            File.Delete(path);
+                        }
+                    }
+                    catch
+                    {
+                        // best-effort
+                    }
+                }
+            }, ct);
     }
 }

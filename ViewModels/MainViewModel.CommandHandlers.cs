@@ -285,6 +285,167 @@ namespace IspAudit.ViewModels
             }
         }
 
+        private async Task ApplyDomainGroupRecommendationsAsync(string? groupKeyOverride = null)
+        {
+            if (IsApplyingRecommendations)
+            {
+                return;
+            }
+
+            if (!ShowBypassPanel)
+            {
+                Log("[APPLY] Bypass недоступен (нужны права администратора)");
+                return;
+            }
+
+            IsApplyingRecommendations = true;
+            try
+            {
+                if (string.IsNullOrWhiteSpace(groupKeyOverride) && !HasDomainGroupSuggestion)
+                {
+                    Log("[APPLY] Подсказка доменной группы недоступна для текущей цели");
+                    return;
+                }
+
+                var groupKey = string.IsNullOrWhiteSpace(groupKeyOverride)
+                    ? Results.SuggestedDomainGroupKey
+                    : groupKeyOverride;
+
+                if (string.IsNullOrWhiteSpace(groupKey))
+                {
+                    Log("[APPLY] GroupKey доменной группы не определён");
+                    return;
+                }
+
+                var preferredHostKey = GetPreferredHostKey(SelectedTestResult);
+                if (string.IsNullOrWhiteSpace(preferredHostKey))
+                {
+                    Log("[APPLY] Нет hostKey для выбранной строки (SNI/Host/Name пуст)");
+                    return;
+                }
+
+                // Anchor-домен нужен как OutcomeTargetHost (для селективных стратегий).
+                string? anchorDomain = null;
+                if (Results.TryGetSuggestedGroupAnchorForHostKey(preferredHostKey, out var anchor))
+                {
+                    anchorDomain = anchor;
+                }
+
+                if (string.IsNullOrWhiteSpace(anchorDomain))
+                {
+                    anchorDomain = Results.SuggestedDomainGroupAnchorDomain;
+                }
+
+                var domains = Results.SuggestedDomainGroupDomains;
+                if (domains == null || domains.Count == 0)
+                {
+                    Log("[APPLY] Список доменов группы пуст — применять нечего");
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(anchorDomain))
+                {
+                    anchorDomain = domains[0];
+                }
+
+                if (!string.IsNullOrWhiteSpace(groupKeyOverride))
+                {
+                    Log($"[APPLY] Групповой apply: groupKey={groupKey} (override)");
+                }
+
+                var txId = Guid.NewGuid().ToString("N");
+                using var op = BypassOperationContext.Enter(txId, "ui_apply_domain_group", anchorDomain, anchorDomain);
+
+                var outcome = await Orchestrator.ApplyRecommendationsForDomainGroupAsync(Bypass, groupKey, anchorDomain, domains).ConfigureAwait(false);
+
+                // Практический UX: ретестим anchor-домен (OutcomeTargetHost).
+                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, anchorDomain, txId);
+
+                if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
+                {
+                    // Важно: groupKey для доменных групп — это именно ключ группы, не производный от суффикса.
+                    var normalizedGroupKey = groupKey.Trim().Trim('.');
+
+                    if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ApplyAppliedStrategyToGroupKey(normalizedGroupKey, outcome.AppliedStrategyText);
+                        MarkAppliedBypassTargetsForGroupKey(normalizedGroupKey);
+
+                        // Step 11: групповой apply фиксирует groupKey для anchor-домена.
+                        PinHostKeyToGroupKeyBestEffort(outcome.HostKey, normalizedGroupKey);
+                        PersistManualParticipationBestEffort();
+                    }
+
+                    // Для группового ключа нужно объединение endpoint'ов всех доменов группы.
+                    var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
+                    if (endpoints.Count == 0)
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1100));
+                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                    }
+
+                    foreach (var d in domains)
+                    {
+                        if (endpoints.Count >= 64) break;
+                        if (string.IsNullOrWhiteSpace(d)) continue;
+
+                        var extra = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(d);
+                        if (extra.Count == 0)
+                        {
+                            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(600));
+                            try
+                            {
+                                extra = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(d, cts.Token).ConfigureAwait(false);
+                            }
+                            catch
+                            {
+                                extra = Array.Empty<string>();
+                            }
+                        }
+
+                        if (extra.Count == 0) continue;
+
+                        endpoints = endpoints
+                            .Concat(extra)
+                            .Select(s => (s ?? string.Empty).Trim())
+                            .Where(s => !string.IsNullOrWhiteSpace(s))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .Take(64)
+                            .ToArray();
+                    }
+
+                    if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _groupBypassAttachmentStore.UpdateAttachmentFromApply(normalizedGroupKey, outcome.HostKey, endpoints, outcome.PlanText);
+                        PersistManualParticipationBestEffort();
+                    }
+
+                    Bypass.RecordApplyTransaction(outcome.HostKey, normalizedGroupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning,
+                        transactionIdOverride: txId,
+                        resultStatus: outcome.Status,
+                        error: outcome.Error,
+                        rollbackStatus: outcome.RollbackStatus,
+                        cancelReason: outcome.CancelReason,
+                        applyCurrentPhase: outcome.ApplyCurrentPhase,
+                        applyTotalElapsedMs: outcome.ApplyTotalElapsedMs,
+                        applyPhases: outcome.ApplyPhases);
+                    UpdateLastApplyTransactionTextForGroupKey(normalizedGroupKey);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Log("[APPLY] Отмена применения групповой стратегии");
+            }
+            catch (Exception ex)
+            {
+                Log($"[APPLY] Ошибка применения групповой стратегии: {ex.Message}");
+            }
+            finally
+            {
+                IsApplyingRecommendations = false;
+            }
+        }
+
         private async Task ConnectFromResultAsync(TestResult? test)
         {
             if (IsApplyingRecommendations)

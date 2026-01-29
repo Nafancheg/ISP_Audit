@@ -153,6 +153,7 @@ namespace TestNetworkApp.Smoke
                 ["CFG-004"] = Cfg_NoiseHostFilter_Singleton,
                 ["CFG-005"] = Cfg_NoiseHostFilter_LoadAndMatch,
                 ["CFG-006"] = Cfg_DomainFamilies_CatalogAndThresholds,
+                ["CFG-007"] = Cfg_DomainGroups_CatalogAndPinnedSuggestion,
 
                 ["BYPASS-001"] = Bypass_TlsBypassService_RegistersFilter,
                 ["BYPASS-002"] = Bypass_TlsBypassService_RemovesFilter,
