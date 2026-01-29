@@ -147,6 +147,33 @@ namespace IspAudit.Utils
                 .Where(g => !string.IsNullOrWhiteSpace(g.Key) && g.Domains.Count > 0)
                 .ToList();
 
+            // Нормализация learned.
+            var normalizedLearned = new Dictionary<string, LearnedDomainGroupEntry>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in state.LearnedGroups)
+            {
+                var key = (kv.Key ?? string.Empty).Trim();
+                var entry = kv.Value;
+                if (string.IsNullOrWhiteSpace(key) || entry == null) continue;
+
+                entry.Reason = (entry.Reason ?? string.Empty).Trim();
+                entry.Domains ??= new List<string>();
+                entry.Domains = entry.Domains
+                    .Select(d => (d ?? string.Empty).Trim().Trim('.'))
+                    .Where(d => !string.IsNullOrWhiteSpace(d))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (entry.Domains.Count == 0) continue;
+
+                // Best-effort: если даты не заданы, выставляем "сейчас".
+                if (entry.FirstSeenUtc == default) entry.FirstSeenUtc = DateTime.UtcNow;
+                if (entry.LastSeenUtc == default) entry.LastSeenUtc = entry.FirstSeenUtc;
+
+                normalizedLearned[key] = entry;
+            }
+
+            state.LearnedGroups = normalizedLearned;
+
             return state;
         }
     }

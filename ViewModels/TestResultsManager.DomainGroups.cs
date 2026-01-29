@@ -57,6 +57,22 @@ namespace IspAudit.ViewModels
         {
             try
             {
+                var nowUtc = DateTime.UtcNow;
+
+                // P1.2: learned groups (co-occurrence). Если каталог изменился — обновляем индекс анализатора.
+                var learnedChanged = _domainGroupLearner.ObserveHost(hostKey, nowUtc);
+                if (learnedChanged)
+                {
+                    _domainGroups.UpdateCatalogState(_domainGroupCatalog);
+
+                    // Persist делаем best-effort и не слишком часто.
+                    if (_domainGroupLearner.ShouldPersistNow(nowUtc))
+                    {
+                        DomainGroupCatalog.TryPersist(_domainGroupCatalog, Log);
+                        _domainGroupLearner.MarkPersisted(nowUtc);
+                    }
+                }
+
                 var before = _domainGroups.CurrentSuggestion?.GroupKey;
                 var changed = _domainGroups.ObserveHost(hostKey);
                 var after = _domainGroups.CurrentSuggestion?.GroupKey;

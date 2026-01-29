@@ -339,6 +339,9 @@ Smoke-хелперы (для детерминированных проверок
 
     * Кросс-доменная группировка (P1.2, pinned-группы): поверх доменных семейств добавлен слой **Domain Groups** — группа может объединять несколько базовых доменов (пример: YouTube = `youtube.com` + `googlevideo.com` + `ytimg.com` + `ggpht.com`).
         * Каталог групп хранится во внешнем JSON (`state\\domain_groups.json`) и по умолчанию содержит pinned-группу `group-youtube`. Если файла нет, он создаётся автоматически при первом запуске (best-effort).
+        * Learned groups (suggest-only): UI может автоматически «выучить» группу на основе co-occurrence доменов в окне времени (без авто-apply, без wildcard фильтрации). Данные пишутся в `state\\domain_groups.json` → `LearnedGroups`.
+            * Pinned имеет приоритет над learned.
+            * Обучение выполняется только для доменов (не IP), и игнорирует шумовые хосты.
         * `TestResultsManager` отслеживает hostKey, определяет подсказку группы и умеет best-effort схлопывать карточки доменов группы в одну (ключ = groupKey).
         * В панели рекомендаций появляется кнопка «Подключить (группа: …)».
         * Команда вызывает `DiagnosticOrchestrator.ApplyRecommendationsForDomainGroupAsync(..., groupKey, anchorDomain, domains)`: оркестратор берёт применимый план из любого домена группы, но применяет его к anchor-домену (OutcomeTargetHost=anchor). Для селективного `DropUdp443` UI собирает union endpoint snapshot по всем доменам группы.

@@ -229,6 +229,15 @@ UX: режим `QUIC→TCP` выбирается через контекстно
     - Для селективного `DropUdp443` UI собирает union endpoint snapshot по всем доменам группы.
 - Smoke: добавлен `CFG-007` (persist+reload + pinned подсказка).
 
+Актуализация (Runtime, 29.01.2026): learned groups (co-occurrence, suggest-only)
+- Добавлено обучение learned-групп в UI-сессии: если домены часто встречаются рядом по времени (co-occurrence окно), создаётся learned-группа.
+- Персист: `state\\domain_groups.json` → `LearnedGroups`.
+- Безопасность:
+    - Это suggest-only (без авто-apply), и не создаёт никаких wildcard правил для фильтрации пакетов.
+    - Pinned-группы имеют приоритет над learned.
+    - Игнорируются шумовые хосты и IP-цели.
+- Smoke: добавлен `CFG-008` (learned подсказка).
+
 - Справочник blockpage-hosts (для повышения уверенности `HttpRedirect` и `evidence.redirectKind`): `state\\blockpage_hosts.json`.
     - `PinnedDomains`: ручной «справочник» (можно закреплять домены, чтобы подсказка включалась быстрее).
     - `LearnedDomains`: автокэш доменов, которые система «выучила» по наблюдениям.

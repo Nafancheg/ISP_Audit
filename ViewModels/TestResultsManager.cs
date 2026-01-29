@@ -42,6 +42,7 @@ namespace IspAudit.ViewModels
         // Каталог групп: state/domain_groups.json
         private DomainGroupCatalogState _domainGroupCatalog = new();
         private DomainGroupAnalyzer _domainGroups = new(new DomainGroupCatalogState());
+        private DomainGroupLearner _domainGroupLearner = new(new DomainGroupCatalogState());
 
         public string? SuggestedDomainSuffix => _domainFamilies.CurrentSuggestion?.DomainSuffix;
         public int SuggestedDomainSubhostCount => _domainFamilies.CurrentSuggestion?.UniqueSubhosts ?? 0;

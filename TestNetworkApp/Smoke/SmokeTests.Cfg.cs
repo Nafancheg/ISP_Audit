@@ -414,5 +414,101 @@ namespace TestNetworkApp.Smoke
                     }
                 }
             }, ct);
+
+        public static Task<SmokeTestResult> Cfg_DomainGroups_LearnedSuggestion(CancellationToken ct)
+            => RunAsync("CFG-008", "DomainGroups: learned (co-occurrence) подсказка", () =>
+            {
+                var path = DomainGroupCatalog.CatalogFilePath;
+                string? backup = null;
+                bool hadFile = File.Exists(path);
+
+                try
+                {
+                    if (hadFile)
+                    {
+                        backup = File.ReadAllText(path);
+                    }
+
+                    // Стартуем с пустого каталога без pinned-групп, чтобы проверить именно learned.
+                    var state = new DomainGroupCatalogState
+                    {
+                        Version = 1,
+                        PinnedGroups = new List<DomainGroupEntry>(),
+                        LearnedGroups = new Dictionary<string, LearnedDomainGroupEntry>(StringComparer.OrdinalIgnoreCase)
+                    };
+
+                    DomainGroupCatalog.TryPersist(state);
+
+                    // Важно: загружаем через API каталога (нормализация/пути).
+                    var loaded = DomainGroupCatalog.LoadOrDefault();
+
+                    // Порог по умолчанию 8: генерируем серию co-occurrence событий.
+                    var learner = new DomainGroupLearner(loaded);
+                    var now = DateTime.UtcNow;
+
+                    for (int i = 0; i < 8; i++)
+                    {
+                        learner.ObserveHost("www.youtube.com", now.AddMilliseconds(i * 10));
+                        learner.ObserveHost("r1---sn-a5mekned.googlevideo.com", now.AddMilliseconds(i * 10 + 1));
+                    }
+
+                    if (loaded.LearnedGroups.Count == 0)
+                    {
+                        return new SmokeTestResult("CFG-008", "DomainGroups: learned (co-occurrence) подсказка", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали, что learner создаст хотя бы одну learned-группу");
+                    }
+
+                    DomainGroupCatalog.TryPersist(loaded);
+                    var reloaded = DomainGroupCatalog.LoadOrDefault();
+
+                    if (reloaded.LearnedGroups.Count == 0)
+                    {
+                        return new SmokeTestResult("CFG-008", "DomainGroups: learned (co-occurrence) подсказка", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "LearnedGroups не сохранился/не загрузился");
+                    }
+
+                    var analyzer = new DomainGroupAnalyzer(reloaded);
+                    analyzer.ObserveHost("r2---sn-a5mekned.googlevideo.com");
+
+                    if (analyzer.CurrentSuggestion == null)
+                    {
+                        return new SmokeTestResult("CFG-008", "DomainGroups: learned (co-occurrence) подсказка", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали learned-подсказку для host в googlevideo.com");
+                    }
+
+                    if (!analyzer.CurrentSuggestion.Domains.Any(d => d.Equals("youtube.com", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return new SmokeTestResult("CFG-008", "DomainGroups: learned (co-occurrence) подсказка", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Learned-подсказка не содержит youtube.com");
+                    }
+
+                    if (!analyzer.CurrentSuggestion.Domains.Any(d => d.Equals("googlevideo.com", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return new SmokeTestResult("CFG-008", "DomainGroups: learned (co-occurrence) подсказка", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Learned-подсказка не содержит googlevideo.com");
+                    }
+
+                    return new SmokeTestResult("CFG-008", "DomainGroups: learned (co-occurrence) подсказка", SmokeOutcome.Pass, TimeSpan.Zero,
+                        $"OK: learned groups={reloaded.LearnedGroups.Count}, example={analyzer.CurrentSuggestion.GroupKey}");
+                }
+                finally
+                {
+                    try
+                    {
+                        if (hadFile)
+                        {
+                            File.WriteAllText(path, backup ?? string.Empty);
+                        }
+                        else if (File.Exists(path))
+                        {
+                            File.Delete(path);
+                        }
+                    }
+                    catch
+                    {
+                        // best-effort
+                    }
+                }
+            }, ct);
     }
 }

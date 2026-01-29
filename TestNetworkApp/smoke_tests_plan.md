@@ -905,6 +905,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** `state\\domain_groups.json` (pinned)
 **Ожидаемый результат:** Для host в `googlevideo.com` выдаётся подсказка `group-youtube`
 
+**Test ID:** `CFG-008`
+**Что проверяет:** DomainGroups learned (co-occurrence) подсказка
+**Для чего:** Авто-подсказки групп для связанных доменов (suggest-only), чтобы не требовать ручного внесения всех доменов в pinned
+**Критерий успеха:** Learner накапливает evidence и создаёт learned-группу, которая затем влияет на подсказку анализатора
+**Входные данные:** Серия co-occurrence наблюдений `youtube.com` + `googlevideo.com`
+**Ожидаемый результат:** Для host в `googlevideo.com` выдаётся learned-подсказка, содержащая оба домена
+
 ---
 
 ## 9. Error Handling & Edge Cases

@@ -25,6 +25,7 @@ namespace IspAudit.ViewModels
 
             _domainGroupCatalog = DomainGroupCatalog.LoadOrDefault(Log);
             _domainGroups = new DomainGroupAnalyzer(_domainGroupCatalog, Log);
+            _domainGroupLearner = new DomainGroupLearner(_domainGroupCatalog, options: null, Log);
             OnPropertyChanged(nameof(SuggestedDomainGroupKey));
             OnPropertyChanged(nameof(SuggestedDomainGroupDisplayName));
             OnPropertyChanged(nameof(SuggestedDomainGroupAnchorDomain));
