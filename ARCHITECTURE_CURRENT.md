@@ -1,6 +1,6 @@
 # ISP_Audit — Архитектура (v3.0 Extended)
 
-**Дата обновления:** 16.01.2026
+**Дата обновления:** 29.01.2026
 **Версия:** 3.0 (Comprehensive)
 **Технологии:** .NET 9, WPF, WinDivert 2.2.0
 
@@ -342,6 +342,9 @@ Smoke-хелперы (для детерминированных проверок
         * Learned groups (suggest-only): UI может автоматически «выучить» группу на основе co-occurrence доменов в окне времени (без авто-apply, без wildcard фильтрации). Данные пишутся в `state\\domain_groups.json` → `LearnedGroups`.
             * Pinned имеет приоритет над learned.
             * Обучение выполняется только для доменов (не IP), и игнорирует шумовые хосты.
+            * UX-контроль learned-групп:
+                * «Скрыть подсказку» добавляет ключ learned-группы в `IgnoredLearnedGroupKeys`, после чего анализатор не предлагает её повторно.
+                * «Закрепить группу (learned → pinned)» переносит домены learned-группы в `PinnedGroups` (и удаляет learned-запись).
         * `TestResultsManager` отслеживает hostKey, определяет подсказку группы и умеет best-effort схлопывать карточки доменов группы в одну (ключ = groupKey).
         * В панели рекомендаций появляется кнопка «Подключить (группа: …)».
         * Команда вызывает `DiagnosticOrchestrator.ApplyRecommendationsForDomainGroupAsync(..., groupKey, anchorDomain, domains)`: оркестратор берёт применимый план из любого домена группы, но применяет его к anchor-домену (OutcomeTargetHost=anchor). Для селективного `DropUdp443` UI собирает union endpoint snapshot по всем доменам группы.

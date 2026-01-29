@@ -155,6 +155,8 @@ namespace TestNetworkApp.Smoke
                 ["CFG-006"] = Cfg_DomainFamilies_CatalogAndThresholds,
                 ["CFG-007"] = Cfg_DomainGroups_CatalogAndPinnedSuggestion,
                 ["CFG-008"] = Cfg_DomainGroups_LearnedSuggestion,
+                ["CFG-009"] = Cfg_DomainGroups_LearnedIgnore,
+                ["CFG-010"] = Cfg_DomainGroups_LearnedPromoteToPinned,
 
                 ["BYPASS-001"] = Bypass_TlsBypassService_RegistersFilter,
                 ["BYPASS-002"] = Bypass_TlsBypassService_RemovesFilter,

@@ -151,6 +151,20 @@ namespace IspAudit.Utils
         {
             var index = new Dictionary<string, DomainGroupSuggestion>(StringComparer.OrdinalIgnoreCase);
 
+            var ignoredLearned = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                foreach (var k in catalog.IgnoredLearnedGroupKeys ?? new List<string>())
+                {
+                    var key = (k ?? string.Empty).Trim();
+                    if (key.Length > 0) ignoredLearned.Add(key);
+                }
+            }
+            catch
+            {
+                // best-effort
+            }
+
             try
             {
                 // Порядок важен: pinned должны иметь приоритет над learned.
@@ -192,6 +206,11 @@ namespace IspAudit.Utils
                     var key = (kv.Key ?? string.Empty).Trim();
                     var entry = kv.Value;
                     if (string.IsNullOrWhiteSpace(key) || entry == null) continue;
+
+                    if (ignoredLearned.Contains(key))
+                    {
+                        continue;
+                    }
 
                     var domains = (entry.Domains ?? new List<string>())
                         .Select(d => (d ?? string.Empty).Trim().Trim('.'))

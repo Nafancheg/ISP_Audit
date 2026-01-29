@@ -54,6 +54,23 @@ namespace IspAudit.ViewModels
         public System.Collections.Generic.IReadOnlyList<string> SuggestedDomainGroupDomains => _domainGroups.CurrentSuggestion?.Domains ?? Array.Empty<string>();
         public bool CanSuggestDomainGroup => _domainGroups.CurrentSuggestion != null;
 
+        public bool IsSuggestedDomainGroupLearned
+        {
+            get
+            {
+                try
+                {
+                    var key = (SuggestedDomainGroupKey ?? string.Empty).Trim();
+                    if (string.IsNullOrWhiteSpace(key)) return false;
+                    return _domainGroupCatalog?.LearnedGroups?.ContainsKey(key) == true;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
+
         private readonly record struct OutcomeHistory(DateTime LastPassUtc, DateTime LastProblemUtc);
         private readonly ConcurrentDictionary<string, OutcomeHistory> _outcomeHistoryByKey = new();
 

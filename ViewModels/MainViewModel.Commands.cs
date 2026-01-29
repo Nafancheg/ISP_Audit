@@ -25,6 +25,8 @@ namespace IspAudit.ViewModels
         public ICommand ApplyRecommendationsCommand { get; }
         public ICommand ApplyDomainRecommendationsCommand { get; }
         public ICommand ApplyDomainGroupRecommendationsCommand { get; }
+        public ICommand PromoteDomainGroupSuggestionCommand { get; }
+        public ICommand IgnoreDomainGroupSuggestionCommand { get; }
         public ICommand RestartConnectionCommand { get; }
         public ICommand ConnectFromResultCommand { get; }
         public ICommand ConnectDomainFromResultCommand { get; }

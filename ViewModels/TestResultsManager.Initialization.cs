@@ -31,6 +31,7 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(SuggestedDomainGroupAnchorDomain));
             OnPropertyChanged(nameof(SuggestedDomainGroupDomains));
             OnPropertyChanged(nameof(CanSuggestDomainGroup));
+            OnPropertyChanged(nameof(IsSuggestedDomainGroupLearned));
         }
 
         /// <summary>

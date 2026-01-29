@@ -268,6 +268,22 @@ namespace IspAudit.ViewModels
             }
         }
 
+        public bool HasLearnedDomainGroupSuggestion
+        {
+            get
+            {
+                try
+                {
+                    if (!HasDomainGroupSuggestion) return false;
+                    return Results.IsSuggestedDomainGroupLearned;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
+
         public string ApplyDomainGroupButtonText
         {
             get
@@ -297,6 +313,49 @@ namespace IspAudit.ViewModels
                        $"Домены: {list}.\n" +
                        "Кнопка применяет план рекомендаций к группе (GroupKey=ключ группы, OutcomeTargetHost=anchor-домен).\n" +
                        $"Справочник/кэш: {IspAudit.Utils.DomainGroupCatalog.CatalogFilePath}";
+            }
+        }
+
+        public string PromoteDomainGroupSuggestionButtonText
+        {
+            get
+            {
+                if (IsApplyingRecommendations) return "Применяю…";
+                return "Закрепить группу (learned → pinned)";
+            }
+        }
+
+        public string IgnoreDomainGroupSuggestionButtonText
+        {
+            get
+            {
+                return "Скрыть подсказку (learned)";
+            }
+        }
+
+        public string PromoteDomainGroupSuggestionHintText
+        {
+            get
+            {
+                var key = Results.SuggestedDomainGroupKey;
+                if (string.IsNullOrWhiteSpace(key)) return "";
+
+                return "Переносит текущую learned-группу в pinned (ручные группы).\n" +
+                       "После этого подсказка станет стабильной и не зависит от обучения.\n" +
+                       $"Файл: {IspAudit.Utils.DomainGroupCatalog.CatalogFilePath}";
+            }
+        }
+
+        public string IgnoreDomainGroupSuggestionHintText
+        {
+            get
+            {
+                var key = Results.SuggestedDomainGroupKey;
+                if (string.IsNullOrWhiteSpace(key)) return "";
+
+                return "Скрывает текущую learned-группу из подсказок (ignore).\n" +
+                       "Это влияет только на UX, фильтрацию пакетов не меняет.\n" +
+                       $"Файл: {IspAudit.Utils.DomainGroupCatalog.CatalogFilePath}";
             }
         }
 

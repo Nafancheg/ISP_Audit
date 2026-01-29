@@ -197,11 +197,17 @@ namespace IspAudit.ViewModels
                 if (e.PropertyName == nameof(TestResultsManager.SuggestedDomainGroupKey) ||
                     e.PropertyName == nameof(TestResultsManager.SuggestedDomainGroupDisplayName) ||
                     e.PropertyName == nameof(TestResultsManager.SuggestedDomainGroupAnchorDomain) ||
-                    e.PropertyName == nameof(TestResultsManager.CanSuggestDomainGroup))
+                    e.PropertyName == nameof(TestResultsManager.CanSuggestDomainGroup) ||
+                    e.PropertyName == nameof(TestResultsManager.IsSuggestedDomainGroupLearned))
                 {
                     OnPropertyChanged(nameof(HasDomainGroupSuggestion));
+                    OnPropertyChanged(nameof(HasLearnedDomainGroupSuggestion));
                     OnPropertyChanged(nameof(ApplyDomainGroupButtonText));
                     OnPropertyChanged(nameof(DomainGroupSuggestionHintText));
+                    OnPropertyChanged(nameof(PromoteDomainGroupSuggestionButtonText));
+                    OnPropertyChanged(nameof(IgnoreDomainGroupSuggestionButtonText));
+                    OnPropertyChanged(nameof(PromoteDomainGroupSuggestionHintText));
+                    OnPropertyChanged(nameof(IgnoreDomainGroupSuggestionHintText));
                     OnPropertyChanged(nameof(ActiveApplyGroupKey));
                     CommandManager.InvalidateRequerySuggested();
                 }
@@ -239,6 +245,9 @@ namespace IspAudit.ViewModels
             ApplyRecommendationsCommand = new RelayCommand(async _ => await ApplyRecommendationsAsync(), _ => HasRecommendations && !IsApplyingRecommendations);
             ApplyDomainRecommendationsCommand = new RelayCommand(async _ => await ApplyDomainRecommendationsAsync(), _ => HasDomainSuggestion && !IsApplyingRecommendations);
             ApplyDomainGroupRecommendationsCommand = new RelayCommand(async _ => await ApplyDomainGroupRecommendationsAsync(), _ => HasDomainGroupSuggestion && !IsApplyingRecommendations);
+
+            PromoteDomainGroupSuggestionCommand = new RelayCommand(_ => PromoteDomainGroupSuggestionBestEffort(), _ => HasLearnedDomainGroupSuggestion && !IsApplyingRecommendations);
+            IgnoreDomainGroupSuggestionCommand = new RelayCommand(_ => IgnoreDomainGroupSuggestionBestEffort(), _ => HasLearnedDomainGroupSuggestion && !IsApplyingRecommendations);
 
             RestartConnectionCommand = new RelayCommand(async _ => await RestartConnectionAsync(), _ => ShowBypassPanel && !IsApplyingRecommendations);
 

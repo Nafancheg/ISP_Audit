@@ -16,6 +16,7 @@ using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
+using MessageBoxResult = System.Windows.MessageBoxResult;
 
 namespace IspAudit.ViewModels
 {
@@ -443,6 +444,76 @@ namespace IspAudit.ViewModels
             finally
             {
                 IsApplyingRecommendations = false;
+            }
+        }
+
+        private void IgnoreDomainGroupSuggestionBestEffort()
+        {
+            try
+            {
+                if (!HasLearnedDomainGroupSuggestion)
+                {
+                    Log("[DomainGroups] Ignore: learned-подсказка недоступна");
+                    return;
+                }
+
+                var hk = GetPreferredHostKey(SelectedTestResult);
+                if (string.IsNullOrWhiteSpace(hk))
+                {
+                    hk = Results.SuggestedDomainGroupAnchorDomain;
+                }
+
+                if (!Results.TryIgnoreSuggestedDomainGroupBestEffort(hk))
+                {
+                    Log("[DomainGroups] Ignore: не удалось скрыть learned-группу");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[DomainGroups] Ignore: ошибка: {ex.Message}");
+            }
+        }
+
+        private void PromoteDomainGroupSuggestionBestEffort()
+        {
+            try
+            {
+                if (!HasLearnedDomainGroupSuggestion)
+                {
+                    Log("[DomainGroups] Promote: learned-подсказка недоступна");
+                    return;
+                }
+
+                var key = Results.SuggestedDomainGroupKey;
+                var name = Results.SuggestedDomainGroupDisplayName;
+                if (string.IsNullOrWhiteSpace(name)) name = key;
+
+                var res = MessageBox.Show(
+                    $"Закрепить learned-группу '{name}' как pinned?\n\n" +
+                    "Pinned-группы имеют приоритет и сохраняются в state/domain_groups.json.",
+                    "Закрепить группу",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (res != MessageBoxResult.Yes)
+                {
+                    return;
+                }
+
+                var hk = GetPreferredHostKey(SelectedTestResult);
+                if (string.IsNullOrWhiteSpace(hk))
+                {
+                    hk = Results.SuggestedDomainGroupAnchorDomain;
+                }
+
+                if (!Results.TryPromoteSuggestedDomainGroupToPinnedBestEffort(hk))
+                {
+                    Log("[DomainGroups] Promote: не удалось закрепить learned-группу");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[DomainGroups] Promote: ошибка: {ex.Message}");
             }
         }
 

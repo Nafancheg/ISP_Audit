@@ -8,6 +8,108 @@ namespace IspAudit.ViewModels
 {
     public partial class TestResultsManager
     {
+        public bool TryIgnoreSuggestedDomainGroupBestEffort(string? hostKeyForRecompute)
+        {
+            try
+            {
+                var sug = _domainGroups.CurrentSuggestion;
+                if (sug == null) return false;
+
+                var groupKey = (sug.GroupKey ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(groupKey)) return false;
+
+                // На этом этапе разрешаем скрывать только learned-группы.
+                if (!_domainGroupCatalog.LearnedGroups.ContainsKey(groupKey))
+                {
+                    Log($"[DomainGroups] Ignore: группа не learned ({groupKey})");
+                    return false;
+                }
+
+                var changed = DomainGroupCatalog.TryIgnoreLearnedGroup(_domainGroupCatalog, groupKey, Log);
+                if (!changed) return false;
+
+                DomainGroupCatalog.TryPersist(_domainGroupCatalog, Log);
+                _domainGroups.UpdateCatalogState(_domainGroupCatalog);
+
+                // Пересчитываем подсказку сразу (чтобы UI не ждал новых событий).
+                var hk = (hostKeyForRecompute ?? string.Empty).Trim().Trim('.');
+                if (!string.IsNullOrWhiteSpace(hk))
+                {
+                    _domainGroups.ObserveHost(hk);
+                }
+                else
+                {
+                    _domainGroups.Reset();
+                }
+
+                OnPropertyChanged(nameof(SuggestedDomainGroupKey));
+                OnPropertyChanged(nameof(SuggestedDomainGroupDisplayName));
+                OnPropertyChanged(nameof(SuggestedDomainGroupAnchorDomain));
+                OnPropertyChanged(nameof(SuggestedDomainGroupDomains));
+                OnPropertyChanged(nameof(CanSuggestDomainGroup));
+                OnPropertyChanged(nameof(IsSuggestedDomainGroupLearned));
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public bool TryPromoteSuggestedDomainGroupToPinnedBestEffort(string? hostKeyForRecompute)
+        {
+            try
+            {
+                var sug = _domainGroups.CurrentSuggestion;
+                if (sug == null) return false;
+
+                var groupKey = (sug.GroupKey ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(groupKey)) return false;
+
+                if (!_domainGroupCatalog.LearnedGroups.ContainsKey(groupKey))
+                {
+                    Log($"[DomainGroups] Promote: группа не learned ({groupKey})");
+                    return false;
+                }
+
+                var promoted = DomainGroupCatalog.TryPromoteLearnedGroupToPinned(_domainGroupCatalog, groupKey, out var newPinnedKey, Log);
+                if (!promoted) return false;
+
+                DomainGroupCatalog.TryPersist(_domainGroupCatalog, Log);
+                _domainGroups.UpdateCatalogState(_domainGroupCatalog);
+
+                // Пересчитываем подсказку сразу.
+                var hk = (hostKeyForRecompute ?? string.Empty).Trim().Trim('.');
+                if (!string.IsNullOrWhiteSpace(hk))
+                {
+                    _domainGroups.ObserveHost(hk);
+                }
+                else
+                {
+                    _domainGroups.Reset();
+                }
+
+                OnPropertyChanged(nameof(SuggestedDomainGroupKey));
+                OnPropertyChanged(nameof(SuggestedDomainGroupDisplayName));
+                OnPropertyChanged(nameof(SuggestedDomainGroupAnchorDomain));
+                OnPropertyChanged(nameof(SuggestedDomainGroupDomains));
+                OnPropertyChanged(nameof(CanSuggestDomainGroup));
+                OnPropertyChanged(nameof(IsSuggestedDomainGroupLearned));
+
+                // UX: после promote подсказка может смениться на новую pinned-группу.
+                if (!string.IsNullOrWhiteSpace(newPinnedKey))
+                {
+                    Log($"[DomainGroups] Закреплено как pinned: {newPinnedKey}");
+                }
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public bool IsHostInSuggestedDomainGroup(string hostKey)
         {
             try
@@ -84,6 +186,7 @@ namespace IspAudit.ViewModels
                 OnPropertyChanged(nameof(SuggestedDomainGroupAnchorDomain));
                 OnPropertyChanged(nameof(SuggestedDomainGroupDomains));
                 OnPropertyChanged(nameof(CanSuggestDomainGroup));
+                OnPropertyChanged(nameof(IsSuggestedDomainGroupLearned));
 
                 // Если появилась новая подсказка — схлопнем карточки по группе.
                 if (!string.IsNullOrWhiteSpace(after) && !string.Equals(before, after, StringComparison.OrdinalIgnoreCase))

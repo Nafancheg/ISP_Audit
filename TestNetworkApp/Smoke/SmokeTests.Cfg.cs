@@ -510,5 +510,185 @@ namespace TestNetworkApp.Smoke
                     }
                 }
             }, ct);
+
+        public static Task<SmokeTestResult> Cfg_DomainGroups_LearnedIgnore(CancellationToken ct)
+            => RunAsync("CFG-009", "DomainGroups: learned ignore (не показывать подсказку)", () =>
+            {
+                var path = DomainGroupCatalog.CatalogFilePath;
+                string? backup = null;
+                bool hadFile = File.Exists(path);
+
+                try
+                {
+                    if (hadFile)
+                    {
+                        backup = File.ReadAllText(path);
+                    }
+
+                    var state = new DomainGroupCatalogState
+                    {
+                        Version = 2,
+                        PinnedGroups = new List<DomainGroupEntry>(),
+                        LearnedGroups = new Dictionary<string, LearnedDomainGroupEntry>(StringComparer.OrdinalIgnoreCase)
+                    };
+
+                    DomainGroupCatalog.TryPersist(state);
+                    var loaded = DomainGroupCatalog.LoadOrDefault();
+
+                    // Выучиваем одну learned-группу.
+                    var learner = new DomainGroupLearner(loaded);
+                    var now = DateTime.UtcNow;
+                    for (int i = 0; i < 8; i++)
+                    {
+                        learner.ObserveHost("www.youtube.com", now.AddMilliseconds(i * 10));
+                        learner.ObserveHost("r1---sn-a5mekned.googlevideo.com", now.AddMilliseconds(i * 10 + 1));
+                    }
+
+                    if (loaded.LearnedGroups.Count == 0)
+                    {
+                        return new SmokeTestResult("CFG-009", "DomainGroups: learned ignore (не показывать подсказку)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали, что learner создаст learned-группу");
+                    }
+
+                    var learnedKey = loaded.LearnedGroups.Keys.First();
+                    if (!DomainGroupCatalog.TryIgnoreLearnedGroup(loaded, learnedKey))
+                    {
+                        return new SmokeTestResult("CFG-009", "DomainGroups: learned ignore (не показывать подсказку)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "TryIgnoreLearnedGroup вернул false");
+                    }
+
+                    DomainGroupCatalog.TryPersist(loaded);
+                    var reloaded = DomainGroupCatalog.LoadOrDefault();
+
+                    var analyzer = new DomainGroupAnalyzer(reloaded);
+                    analyzer.ObserveHost("r2---sn-a5mekned.googlevideo.com");
+
+                    if (analyzer.CurrentSuggestion != null)
+                    {
+                        return new SmokeTestResult("CFG-009", "DomainGroups: learned ignore (не показывать подсказку)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали отсутствие подсказки, но получили: {analyzer.CurrentSuggestion.GroupKey}");
+                    }
+
+                    return new SmokeTestResult("CFG-009", "DomainGroups: learned ignore (не показывать подсказку)", SmokeOutcome.Pass, TimeSpan.Zero,
+                        $"OK: ignored={learnedKey}");
+                }
+                finally
+                {
+                    try
+                    {
+                        if (hadFile)
+                        {
+                            File.WriteAllText(path, backup ?? string.Empty);
+                        }
+                        else if (File.Exists(path))
+                        {
+                            File.Delete(path);
+                        }
+                    }
+                    catch
+                    {
+                        // best-effort
+                    }
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> Cfg_DomainGroups_LearnedPromoteToPinned(CancellationToken ct)
+            => RunAsync("CFG-010", "DomainGroups: learned promote -> pinned", () =>
+            {
+                var path = DomainGroupCatalog.CatalogFilePath;
+                string? backup = null;
+                bool hadFile = File.Exists(path);
+
+                try
+                {
+                    if (hadFile)
+                    {
+                        backup = File.ReadAllText(path);
+                    }
+
+                    var state = new DomainGroupCatalogState
+                    {
+                        Version = 2,
+                        PinnedGroups = new List<DomainGroupEntry>(),
+                        LearnedGroups = new Dictionary<string, LearnedDomainGroupEntry>(StringComparer.OrdinalIgnoreCase)
+                    };
+
+                    DomainGroupCatalog.TryPersist(state);
+                    var loaded = DomainGroupCatalog.LoadOrDefault();
+
+                    var learner = new DomainGroupLearner(loaded);
+                    var now = DateTime.UtcNow;
+                    for (int i = 0; i < 8; i++)
+                    {
+                        learner.ObserveHost("www.youtube.com", now.AddMilliseconds(i * 10));
+                        learner.ObserveHost("r1---sn-a5mekned.googlevideo.com", now.AddMilliseconds(i * 10 + 1));
+                    }
+
+                    if (loaded.LearnedGroups.Count == 0)
+                    {
+                        return new SmokeTestResult("CFG-010", "DomainGroups: learned promote -> pinned", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали, что learner создаст learned-группу");
+                    }
+
+                    var learnedKey = loaded.LearnedGroups.Keys.First();
+                    if (!DomainGroupCatalog.TryPromoteLearnedGroupToPinned(loaded, learnedKey, out var pinnedKey))
+                    {
+                        return new SmokeTestResult("CFG-010", "DomainGroups: learned promote -> pinned", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "TryPromoteLearnedGroupToPinned вернул false");
+                    }
+
+                    if (string.IsNullOrWhiteSpace(pinnedKey))
+                    {
+                        return new SmokeTestResult("CFG-010", "DomainGroups: learned promote -> pinned", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "pinnedKey пустой");
+                    }
+
+                    DomainGroupCatalog.TryPersist(loaded);
+                    var reloaded = DomainGroupCatalog.LoadOrDefault();
+
+                    if (reloaded.LearnedGroups.ContainsKey(learnedKey))
+                    {
+                        return new SmokeTestResult("CFG-010", "DomainGroups: learned promote -> pinned", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "LearnedGroups всё ещё содержит promoted ключ");
+                    }
+
+                    if (!reloaded.PinnedGroups.Any(g => string.Equals(g.Key, pinnedKey, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return new SmokeTestResult("CFG-010", "DomainGroups: learned promote -> pinned", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "PinnedGroups не содержит новую группу");
+                    }
+
+                    var analyzer = new DomainGroupAnalyzer(reloaded);
+                    analyzer.ObserveHost("r2---sn-a5mekned.googlevideo.com");
+
+                    if (!string.Equals(analyzer.CurrentSuggestion?.GroupKey, pinnedKey, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var got = analyzer.CurrentSuggestion?.GroupKey ?? "<null>";
+                        return new SmokeTestResult("CFG-010", "DomainGroups: learned promote -> pinned", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали pinned подсказку '{pinnedKey}', получили '{got}'");
+                    }
+
+                    return new SmokeTestResult("CFG-010", "DomainGroups: learned promote -> pinned", SmokeOutcome.Pass, TimeSpan.Zero,
+                        $"OK: {learnedKey} -> {pinnedKey}");
+                }
+                finally
+                {
+                    try
+                    {
+                        if (hadFile)
+                        {
+                            File.WriteAllText(path, backup ?? string.Empty);
+                        }
+                        else if (File.Exists(path))
+                        {
+                            File.Delete(path);
+                        }
+                    }
+                    catch
+                    {
+                        // best-effort
+                    }
+                }
+            }, ct);
     }
 }
