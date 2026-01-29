@@ -20,6 +20,7 @@ namespace IspAudit.Utils
     {
         private readonly DomainGroupCatalogState _catalog;
         private readonly Action<string>? _log;
+        private readonly Dictionary<string, DomainGroupSuggestion> _suggestionByBaseSuffix;
 
         public DomainGroupSuggestion? CurrentSuggestion { get; private set; }
 
@@ -27,6 +28,7 @@ namespace IspAudit.Utils
         {
             _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
             _log = log;
+            _suggestionByBaseSuffix = BuildPinnedIndex(_catalog);
         }
 
         public void Reset()
@@ -118,21 +120,10 @@ namespace IspAudit.Utils
                 baseSuffix = (baseSuffix ?? string.Empty).Trim().Trim('.');
                 if (baseSuffix.Length == 0) return null;
 
-                // 1) Pinned groups
-                foreach (var g in _catalog.PinnedGroups ?? Enumerable.Empty<DomainGroupEntry>())
+                // 1) Pinned groups (O(1) lookup)
+                if (_suggestionByBaseSuffix.TryGetValue(baseSuffix, out var pinned))
                 {
-                    if (g.Domains == null || g.Domains.Count == 0) continue;
-                    if (!g.Domains.Any(d => d.Equals(baseSuffix, StringComparison.OrdinalIgnoreCase))) continue;
-
-                    var display = string.IsNullOrWhiteSpace(g.DisplayName) ? g.Key : g.DisplayName;
-                    var anchor = g.Domains[0];
-                    return new DomainGroupSuggestion(
-                        GroupKey: g.Key,
-                        DisplayName: display,
-                        AnchorDomain: anchor,
-                        Domains: g.Domains,
-                        Reason: "Pinned group (каталог)"
-                    );
+                    return pinned;
                 }
 
                 // 2) Learned groups (advanced, не включаем без явной логики/скоринга)
@@ -143,6 +134,53 @@ namespace IspAudit.Utils
                 _log?.Invoke($"[DomainGroups] Ошибка выбора подсказки: {ex.Message}");
                 return null;
             }
+        }
+
+        private static Dictionary<string, DomainGroupSuggestion> BuildPinnedIndex(DomainGroupCatalogState catalog)
+        {
+            var index = new Dictionary<string, DomainGroupSuggestion>(StringComparer.OrdinalIgnoreCase);
+
+            try
+            {
+                foreach (var g in catalog.PinnedGroups ?? Enumerable.Empty<DomainGroupEntry>())
+                {
+                    var key = (g.Key ?? string.Empty).Trim();
+                    if (string.IsNullOrWhiteSpace(key)) continue;
+
+                    var domains = (g.Domains ?? new List<string>())
+                        .Select(d => (d ?? string.Empty).Trim().Trim('.'))
+                        .Where(d => !string.IsNullOrWhiteSpace(d))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    if (domains.Count == 0) continue;
+
+                    var display = string.IsNullOrWhiteSpace(g.DisplayName) ? key : g.DisplayName.Trim();
+                    var anchor = domains[0];
+
+                    var suggestion = new DomainGroupSuggestion(
+                        GroupKey: key,
+                        DisplayName: display,
+                        AnchorDomain: anchor,
+                        Domains: domains,
+                        Reason: "Pinned group (каталог)"
+                    );
+
+                    // Если один и тот же домен попал в несколько групп — берём первую (детерминизм по порядку в JSON).
+                    foreach (var d in domains)
+                    {
+                        if (!index.ContainsKey(d))
+                        {
+                            index[d] = suggestion;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // best-effort
+            }
+
+            return index;
         }
     }
 }
