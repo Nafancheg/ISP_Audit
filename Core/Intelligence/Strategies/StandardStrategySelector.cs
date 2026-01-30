@@ -151,8 +151,11 @@ public sealed class StandardStrategySelector
         var hasUdpHeuristic = signals.UdpUnansweredHandshakes >= 2;
         var hasQuicEvidence = hasHttp3Evidence ? hasHttp3FailureOnly : hasUdpHeuristic;
 
+        // Assist DropUdp443 имеет смысл только когда диагноз указывает на QUIC/HTTP3 проблему
+        // (или когда мы явно рекомендуем QUIC-стратегию). Иначе это путает пользователя
+        // и ломает кейсы вроде DnsHijack → UseDoh.
         var recommendDropUdp443 = hasQuicObfuscation
-            || (!signals.HasTlsTimeout && hasQuicEvidence);
+            || (forDiagnosisId == DiagnosisId.QuicInterference && !signals.HasTlsTimeout && hasQuicEvidence);
 
         var recommendAllowNoSni = false;
         if (hasTlsBypassStrategy && signals.HostTestedCount >= 2)

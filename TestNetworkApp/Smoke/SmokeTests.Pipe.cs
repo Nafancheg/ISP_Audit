@@ -4,7 +4,11 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
@@ -715,15 +719,10 @@ namespace TestNetworkApp.Smoke
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 cts.CancelAfter(TimeSpan.FromSeconds(6));
 
-                var host = "google.com";
-                var addresses = await Dns.GetHostAddressesAsync(host).WaitAsync(cts.Token).ConfigureAwait(false);
-                var ip = addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) ?? addresses.FirstOrDefault();
-
-                if (ip == null)
-                {
-                    return new SmokeTestResult("PIPE-008", "DNS-резолв через StandardHostTester", SmokeOutcome.Fail, sw.Elapsed,
-                        "DNS.GetHostAddressesAsync вернул пустой список");
-                }
+                // Детерминированно: не зависим от внешнего интернета/провайдера.
+                // localhost должен резолвиться в любой системе.
+                var host = "localhost";
+                var ip = IPAddress.Loopback;
 
                 var tester = new StandardHostTester(progress: null);
                 var discovered = new HostDiscovered(
@@ -765,28 +764,33 @@ namespace TestNetworkApp.Smoke
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 cts.CancelAfter(TimeSpan.FromSeconds(8));
 
-                var host = "google.com";
-                var addresses = await Dns.GetHostAddressesAsync(host).WaitAsync(cts.Token).ConfigureAwait(false);
-                var ip = addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) ?? addresses.FirstOrDefault();
+                // Детерминированно: локальный TCP listener вместо внешней сети.
+                var host = "localhost";
+                var ip = IPAddress.Loopback;
+                using var listener = new TcpListener(ip, port: 0);
+                listener.Start();
 
-                if (ip == null)
-                {
-                    return new SmokeTestResult("PIPE-009", "TCP Handshake (SYN → SYN-ACK)", SmokeOutcome.Fail, sw.Elapsed,
-                        "DNS.GetHostAddressesAsync вернул пустой список");
-                }
+                var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+                var acceptTask = listener.AcceptTcpClientAsync(cts.Token);
 
                 var tester = new StandardHostTester(progress: null);
                 var discovered = new HostDiscovered(
-                    Key: $"{ip}:443:TCP",
+                    Key: $"{ip}:{port}:TCP",
                     RemoteIp: ip,
-                    RemotePort: 443,
+                    RemotePort: port,
                     Protocol: BypassTransportProtocol.Tcp,
                     DiscoveredAt: DateTime.UtcNow)
                 {
                     Hostname = host
                 };
 
-                var tested = await tester.TestHostAsync(discovered, cts.Token).ConfigureAwait(false);
+                var testedTask = tester.TestHostAsync(discovered, cts.Token);
+                using var client = new TcpClient();
+                await client.ConnectAsync(ip, port, cts.Token).ConfigureAwait(false);
+                using var accepted = await acceptTask.ConfigureAwait(false);
+                await testedTask.ConfigureAwait(false);
+
+                var tested = await testedTask.ConfigureAwait(false);
                 if (!tested.TcpOk)
                 {
                     return new SmokeTestResult("PIPE-009", "TCP Handshake (SYN → SYN-ACK)", SmokeOutcome.Fail, sw.Elapsed,
@@ -794,7 +798,7 @@ namespace TestNetworkApp.Smoke
                 }
 
                 return new SmokeTestResult("PIPE-009", "TCP Handshake (SYN → SYN-ACK)", SmokeOutcome.Pass, sw.Elapsed,
-                    $"OK: TCP connect к {host} ({ip}:443)");
+                    $"OK: TCP connect к {host} ({ip}:{port})");
             }
             catch (OperationCanceledException)
             {
@@ -815,21 +819,25 @@ namespace TestNetworkApp.Smoke
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 cts.CancelAfter(TimeSpan.FromSeconds(10));
 
-                var host = "google.com";
-                var addresses = await Dns.GetHostAddressesAsync(host).WaitAsync(cts.Token).ConfigureAwait(false);
-                var ip = addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) ?? addresses.FirstOrDefault();
+                // Детерминированно: локальный TLS сервер с self-signed сертификатом.
+                // Для smoke мы отключаем валидацию сертификата в StandardHostTester через callback.
+                var host = "localhost";
+                var ip = IPAddress.Loopback;
 
-                if (ip == null)
-                {
-                    return new SmokeTestResult("PIPE-010", "TLS ClientHello → ServerHello", SmokeOutcome.Fail, sw.Elapsed,
-                        "DNS.GetHostAddressesAsync вернул пустой список");
-                }
+                using var certificate = CreateSelfSignedCertificate(subjectName: "CN=localhost");
+                using var listener = new TcpListener(ip, port: 0);
+                listener.Start();
+                var port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
-                var tester = new StandardHostTester(progress: null);
+                var serverTask = RunSingleTlsServerAsync(listener, certificate, cts.Token);
+
+                var tester = new StandardHostTester(
+                    progress: null,
+                    remoteCertificateValidationCallback: static (_, _, _, _) => true);
                 var discovered = new HostDiscovered(
-                    Key: $"{ip}:443:TCP",
+                    Key: $"{ip}:{port}:TCP",
                     RemoteIp: ip,
-                    RemotePort: 443,
+                    RemotePort: port,
                     Protocol: BypassTransportProtocol.Tcp,
                     DiscoveredAt: DateTime.UtcNow)
                 {
@@ -844,8 +852,11 @@ namespace TestNetworkApp.Smoke
                         $"TLS не OK (BlockageType={tested.BlockageType ?? "<null>"})");
                 }
 
+                // Дожидаемся сервера, чтобы исключить гонки и утечки.
+                await serverTask.ConfigureAwait(false);
+
                 return new SmokeTestResult("PIPE-010", "TLS ClientHello → ServerHello", SmokeOutcome.Pass, sw.Elapsed,
-                    $"OK: TLS handshake к {host} ({ip}:443)");
+                    $"OK: TLS handshake к {host} ({ip}:{port})");
             }
             catch (OperationCanceledException)
             {
@@ -855,6 +866,82 @@ namespace TestNetworkApp.Smoke
             catch (Exception ex)
             {
                 return new SmokeTestResult("PIPE-010", "TLS ClientHello → ServerHello", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+
+            static X509Certificate2 CreateSelfSignedCertificate(string subjectName)
+            {
+                using var rsa = RSA.Create(2048);
+                var req = new CertificateRequest(
+                    new X500DistinguishedName(subjectName),
+                    rsa,
+                    HashAlgorithmName.SHA256,
+                    RSASignaturePadding.Pkcs1);
+
+                req.CertificateExtensions.Add(
+                    new X509BasicConstraintsExtension(false, false, 0, false));
+                req.CertificateExtensions.Add(
+                    new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
+                req.CertificateExtensions.Add(
+                    new X509SubjectKeyIdentifierExtension(req.PublicKey, false));
+
+                // SAN: localhost
+                var san = new SubjectAlternativeNameBuilder();
+                san.AddDnsName("localhost");
+                san.AddIpAddress(IPAddress.Loopback);
+                req.CertificateExtensions.Add(san.Build());
+
+                var notBefore = DateTimeOffset.UtcNow.AddMinutes(-5);
+                var notAfter = DateTimeOffset.UtcNow.AddDays(7);
+                using var cert = req.CreateSelfSigned(notBefore, notAfter);
+
+                // Важно: вернуть с приватным ключом и в удобном формате для SslStream.
+                return new X509Certificate2(cert.Export(X509ContentType.Pfx));
+            }
+
+            static async Task RunSingleTlsServerAsync(TcpListener listener, X509Certificate2 certificate, CancellationToken ct2)
+            {
+                // StandardHostTester делает 2 отдельных подключения:
+                // 1) TCP probe (connect+close)
+                // 2) TLS probe (новый connect + handshake)
+                // Плюс возможен повтор TLS (до 2 попыток).
+                var options = new SslServerAuthenticationOptions
+                {
+                    ServerCertificate = certificate,
+                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                    ClientCertificateRequired = false,
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                };
+
+                try
+                {
+                    for (int acceptIndex = 0; acceptIndex < 3; acceptIndex++)
+                    {
+                        using var client = await listener.AcceptTcpClientAsync(ct2).ConfigureAwait(false);
+
+                        // Первая сессия — это TCP probe, он не шлёт TLS bytes.
+                        if (acceptIndex == 0)
+                        {
+                            continue;
+                        }
+
+                        using var ssl = new SslStream(client.GetStream(), leaveInnerStreamOpen: false);
+                        try
+                        {
+                            await ssl.AuthenticateAsServerAsync(options, ct2).ConfigureAwait(false);
+                            return;
+                        }
+                        catch when (acceptIndex < 2)
+                        {
+                            // Дадим следующей попытке шанс (у клиента 2 TLS-попытки).
+                        }
+                    }
+
+                    throw new InvalidOperationException("TLS server: не удалось выполнить handshake за ожидаемое число подключений");
+                }
+                finally
+                {
+                    listener.Stop();
+                }
             }
         }
 

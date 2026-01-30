@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
+using System.Net.Security;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Core.Diagnostics;
@@ -15,6 +16,7 @@ namespace IspAudit.Core.Modules
         private readonly IProgress<string>? _progress;
         private readonly System.Collections.Generic.IReadOnlyDictionary<string, string>? _dnsCache;
         private readonly TimeSpan _testTimeout;
+        private readonly RemoteCertificateValidationCallback? _remoteCertificateValidationCallback;
 
         private const int TcpMaxAttempts = 2;
         private const int TlsMaxAttempts = 2;
@@ -22,13 +24,15 @@ namespace IspAudit.Core.Modules
         public StandardHostTester(
             IProgress<string>? progress,
             System.Collections.Generic.IReadOnlyDictionary<string, string>? dnsCache = null,
-            TimeSpan? testTimeout = null)
+            TimeSpan? testTimeout = null,
+            RemoteCertificateValidationCallback? remoteCertificateValidationCallback = null)
         {
             _progress = progress;
             _dnsCache = dnsCache;
             _testTimeout = testTimeout.HasValue && testTimeout.Value > TimeSpan.Zero
                 ? testTimeout.Value
                 : TimeSpan.FromSeconds(3);
+            _remoteCertificateValidationCallback = remoteCertificateValidationCallback;
         }
 
         public async Task<HostTested> TestHostAsync(HostDiscovered host, CancellationToken ct)
@@ -179,8 +183,10 @@ namespace IspAudit.Core.Modules
                     }
                 }
 
-                // 3. TLS handshake (только для порта 443 и если TCP прошел)
-                if (tcpOk && host.RemotePort == 443 && !string.IsNullOrEmpty(hostname) && hostnameFromCacheOrInput)
+                // 3. TLS handshake (обычно только для 443). Для тестов/нестандартных портов допускаем TLS probe,
+                // если задано SNI (это явный сигнал, что соединение TLS).
+                var shouldProbeTls = host.RemotePort == 443 || !string.IsNullOrEmpty(host.SniHostname);
+                if (tcpOk && shouldProbeTls && !string.IsNullOrEmpty(hostname) && hostnameFromCacheOrInput)
                 {
                     var tlsDeadline = DateTime.UtcNow + _testTimeout;
                     for (int attempt = 1; attempt <= TlsMaxAttempts; attempt++)
@@ -197,8 +203,11 @@ namespace IspAudit.Core.Modules
                             using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                             attemptCts.CancelAfter(remaining);
 
-                            await tcpClient.ConnectAsync(host.RemoteIp, 443, attemptCts.Token).ConfigureAwait(false);
-                            using var sslStream = new System.Net.Security.SslStream(tcpClient.GetStream(), false);
+                            await tcpClient.ConnectAsync(host.RemoteIp, host.RemotePort, attemptCts.Token).ConfigureAwait(false);
+                            using var sslStream = new System.Net.Security.SslStream(
+                                tcpClient.GetStream(),
+                                leaveInnerStreamOpen: false,
+                                userCertificateValidationCallback: _remoteCertificateValidationCallback);
 
                             var sslOptions = new System.Net.Security.SslClientAuthenticationOptions
                             {

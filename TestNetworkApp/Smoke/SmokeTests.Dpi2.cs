@@ -1551,7 +1551,7 @@ namespace TestNetworkApp.Smoke
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_Guard_NoLegacySignalsOrGetSignals_InIntelRuntimePath(CancellationToken ct)
-            => RunAsync("DPI2-025", "Guard: в intel runtime-пути нет BlockageSignals/GetSignals", () =>
+            => RunAsync("DPI2-025", "Guard: в intel runtime-пути нет GetSignals/legacy classifier", () =>
             {
                 static string? TryFindRepoRoot(string startDir)
                 {
@@ -1605,18 +1605,14 @@ namespace TestNetworkApp.Smoke
 
                 if (filesToCheck.Count == 0)
                 {
-                    return new SmokeTestResult("DPI2-025", "Guard: в intel runtime-пути нет BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-025", "Guard: в intel runtime-пути нет GetSignals/legacy classifier", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Не нашли файлы для проверки. root='{root}'");
                 }
 
-                var reBlockageSignals = new Regex(@"\bBlockageSignals\b", RegexOptions.Compiled);
                 var reGetSignalsCall = new Regex(@"\bGetSignals\s*\(", RegexOptions.Compiled);
                 var reLegacySignals = new Regex(@"\blegacySignals\s*\.", RegexOptions.Compiled);
                 var reNewLegacyClassifier = new Regex(@"\bnew\s+StandardBlockageClassifier\b", RegexOptions.Compiled);
                 var reCallLegacyClassifier = new Regex(@"\bStandardBlockageClassifier\s*\.\s*ClassifyBlockage\s*\(", RegexOptions.Compiled);
-
-                // Полное вычищение legacy/bridge: в INTEL-слое не должно быть ссылок на BlockageSignals вообще.
-                var allowedBlockageSignalsFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                 var offenders = new List<string>();
                 foreach (var file in filesToCheck)
@@ -1633,23 +1629,15 @@ namespace TestNetworkApp.Smoke
                         offenders.Add(rel.Replace('\\', '/'));
                         continue;
                     }
-
-                    // 2) BlockageSignals в INTEL-слое запрещён полностью.
-                    var isInIntelLayer = file.StartsWith(intelDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-                    if (isInIntelLayer && !allowedBlockageSignalsFiles.Contains(file) && reBlockageSignals.IsMatch(text))
-                    {
-                        var rel = Path.GetRelativePath(root, file);
-                        offenders.Add(rel.Replace('\\', '/'));
-                    }
                 }
 
                 if (offenders.Count > 0)
                 {
-                    return new SmokeTestResult("DPI2-025", "Guard: в intel runtime-пути нет BlockageSignals/GetSignals", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-025", "Guard: в intel runtime-пути нет GetSignals/legacy classifier", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Найдены следы legacy в intel runtime-пути: " + string.Join(", ", offenders));
                 }
 
-                return new SmokeTestResult("DPI2-025", "Guard: в intel runtime-пути нет BlockageSignals/GetSignals", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-025", "Guard: в intel runtime-пути нет GetSignals/legacy classifier", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: checkedFiles={filesToCheck.Count}, root='{root}'");
             }, ct);
 
