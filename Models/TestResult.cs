@@ -81,6 +81,9 @@ namespace IspAudit.Models
                 OnPropertyChanged(nameof(Status));
                 OnPropertyChanged(nameof(StatusText));
                 OnPropertyChanged(nameof(ShowDetailsButton));
+                OnPropertyChanged(nameof(PrimaryStatus));
+                OnPropertyChanged(nameof(PrimaryStatusText));
+                OnPropertyChanged(nameof(ShowPrimaryStatusText));
             }
         }
 
@@ -281,10 +284,51 @@ namespace IspAudit.Models
                 OnPropertyChanged(nameof(PostApplyCheckText));
                 OnPropertyChanged(nameof(PostApplyCheckTooltip));
                 OnPropertyChanged(nameof(ShowPostApplyCheck));
+                OnPropertyChanged(nameof(PrimaryStatus));
+                OnPropertyChanged(nameof(PrimaryStatusText));
+                OnPropertyChanged(nameof(ShowPrimaryStatusText));
             }
         }
 
         public bool ShowPostApplyCheck => PostApplyCheckStatus != PostApplyCheckStatus.None;
+
+        /// <summary>
+        /// P1.8: первичный статус для UI.
+        ///
+        /// Не изменяет исторический/текущий <see cref="Status"/> от пайплайна.
+        /// Если есть семантика пост‑проверки — она становится "главной меткой" в UI.
+        /// </summary>
+        public TestStatus PrimaryStatus
+        {
+            get
+            {
+                if (PostApplyCheckStatus == PostApplyCheckStatus.None)
+                {
+                    return Status;
+                }
+
+                return PostApplyCheckStatus switch
+                {
+                    PostApplyCheckStatus.Ok => TestStatus.Pass,
+                    PostApplyCheckStatus.Fail => TestStatus.Fail,
+                    PostApplyCheckStatus.Partial => TestStatus.Warn,
+                    PostApplyCheckStatus.Unknown => TestStatus.Warn,
+                    PostApplyCheckStatus.NotChecked => TestStatus.Warn,
+                    PostApplyCheckStatus.Queued => TestStatus.Running,
+                    PostApplyCheckStatus.Running => TestStatus.Running,
+                    _ => Status
+                };
+            }
+        }
+
+        /// <summary>
+        /// P1.8: первичный текст статуса для UI.
+        /// </summary>
+        public string PrimaryStatusText
+            => PostApplyCheckStatus == PostApplyCheckStatus.None ? StatusText : PostApplyCheckText;
+
+        public bool ShowPrimaryStatusText
+            => PrimaryStatus != TestStatus.Idle || PostApplyCheckStatus != PostApplyCheckStatus.None;
 
         private DateTimeOffset? _postApplyCheckAtUtc;
         public DateTimeOffset? PostApplyCheckAtUtc

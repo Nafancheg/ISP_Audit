@@ -361,6 +361,7 @@ Smoke-хелперы (для детерминированных проверок
         * `DiagnosticOrchestrator.StartPostApplyRetestAsync(...)` публикует вердикт `OK/FAIL/PARTIAL/UNKNOWN` через событие `OnPostApplyCheckVerdict`.
         * `MainViewModel` маппит вердикт на apply-group (groupKey) и выставляет badge `Пост‑проверка: …` на карточках группы.
         * P1.7 (персист): последний вердикт по groupKey (время + итог + детали) сохраняется в `state/post_apply_checks.json` и восстанавливается при старте.
+        * P1.8 (UI-приоритет): карточка использует `TestResult.PrimaryStatus/PrimaryStatusText`, чтобы показывать пост‑проверку как основную метку, не меняя `TestStatus`.
 
 ---
 

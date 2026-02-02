@@ -326,6 +326,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - В `Models/TestResult` добавлен отдельный `PostApplyCheckStatus` (badge на карточке), чтобы отражать итог «пост‑проверки» после Apply, не смешивая его с текущим `TestStatus` (Idle/Running/Pass/Fail/Warn).
 - `DiagnosticOrchestrator.StartPostApplyRetestAsync(...)` публикует вердикт `OK/FAIL/PARTIAL/UNKNOWN` через событие `OnPostApplyCheckVerdict`, а `MainViewModel` применяет его на карточки apply‑группы.
 - P1.7 (персист): последний результат пост‑проверки по groupKey сохраняется в `state/post_apply_checks.json` (время + итог + краткие детали) и поднимается при старте.
+- P1.8 (UI-приоритет): в UI введены `PrimaryStatus/PrimaryStatusText` для показа итогов пост‑проверки как основной метки, без изменения `TestStatus`.
 
 Примечание (UI/идентификация хостов): карточки результатов привязаны к **человеко‑понятному ключу** (в первую очередь SNI/hostname, если он известен). IP сохраняется как технический атрибут (`FallbackIp`) и может использоваться для корреляции, но не должен быть главным «лицом» карточки для пользователя.
 ```

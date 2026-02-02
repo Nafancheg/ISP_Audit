@@ -54,7 +54,9 @@ namespace IspAudit.Controls
 
                 var target = TestResult.Target;
                 
-                statusDot.Status = TestResult.Status;
+                // P1.8: визуально показываем "текущий итог" как основную метку.
+                // Исторический/текущий Status от пайплайна остаётся в модели (и деталях).
+                statusDot.Status = TestResult.PrimaryStatus;
                 titleText.Text = target.Name;
                 serviceText.Text = target.Service;
 
@@ -87,10 +89,10 @@ namespace IspAudit.Controls
                     if (CopyFallbackIpItem != null) CopyFallbackIpItem.Visibility = Visibility.Collapsed;
                 }
 
-                if (TestResult.Status != TestStatus.Idle)
+                if (TestResult.ShowPrimaryStatusText)
                 {
-                    statusText.Text = TestResult.StatusText;
-                    statusText.Foreground = GetStatusBrush(TestResult.Status);
+                    statusText.Text = TestResult.PrimaryStatusText;
+                    statusText.Foreground = GetStatusBrush(TestResult.PrimaryStatus);
                     statusText.Visibility = Visibility.Visible;
                 }
                 else

@@ -793,6 +793,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** Принудительный вызов `ShowNetworkChangePrompt` через smoke/reflection
 **Ожидаемый результат:** `IsNetworkChangePromptVisible=true`, затем `false` после `NetworkIgnoreCommand`
 
+**Test ID:** `UI-014`
+**Что проверяет:** P1.8 — "текущий итог" (Post-Apply) отображается как основная метка
+**Для чего:** Не теряя историю `TestStatus`, в UI должно быть видно, что получилось после Apply
+**Критерий успеха:** `PrimaryStatus/PrimaryStatusText` отражают `PostApplyCheckStatus` и могут отличаться от `Status`
+**Входные данные:** `TestResult(Status=Fail, PostApplyCheckStatus=Ok)`
+**Ожидаемый результат:** `PrimaryStatus=Pass`, при этом `Status` остаётся `Fail`
+
 ---
 
 ## 7. Orchestration & Process Tracking

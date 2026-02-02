@@ -402,5 +402,51 @@ namespace TestNetworkApp.Smoke
                 return new SmokeTestResult("UI-012", "SNI/hostname имеет приоритет над IP в ключе карточки", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK");
             }, ct);
+
+        public static Task<SmokeTestResult> Ui_PostApplySemantics_PrimaryStatus_OverridesPipelineStatus(CancellationToken ct)
+            => RunAsync("UI-014", "P1.8: PrimaryStatus/PrimaryStatusText отражают пост‑проверку как основную метку", () =>
+            {
+                var tr = new TestResult
+                {
+                    Status = TestStatus.Fail
+                };
+
+                // Без пост‑проверки: всё как раньше.
+                if (tr.PostApplyCheckStatus != PostApplyCheckStatus.None)
+                {
+                    return new SmokeTestResult("UI-014", "P1.8: PrimaryStatus/PrimaryStatusText отражают пост‑проверку как основную метку", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали PostApplyCheckStatus=None по умолчанию");
+                }
+
+                if (tr.PrimaryStatus != TestStatus.Fail)
+                {
+                    return new SmokeTestResult("UI-014", "P1.8: PrimaryStatus/PrimaryStatusText отражают пост‑проверку как основную метку", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали PrimaryStatus=Fail, получили {tr.PrimaryStatus}");
+                }
+
+                // С пост‑проверкой OK: PrimaryStatus должен стать Pass, но pipeline Status остаётся Fail.
+                tr.PostApplyCheckStatus = PostApplyCheckStatus.Ok;
+
+                if (tr.Status != TestStatus.Fail)
+                {
+                    return new SmokeTestResult("UI-014", "P1.8: PrimaryStatus/PrimaryStatusText отражают пост‑проверку как основную метку", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали, что pipeline Status останется Fail (история не должна теряться)");
+                }
+
+                if (tr.PrimaryStatus != TestStatus.Pass)
+                {
+                    return new SmokeTestResult("UI-014", "P1.8: PrimaryStatus/PrimaryStatusText отражают пост‑проверку как основную метку", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали PrimaryStatus=Pass при PostApply=Ok, получили {tr.PrimaryStatus}");
+                }
+
+                if (string.IsNullOrWhiteSpace(tr.PrimaryStatusText) || !tr.PrimaryStatusText.Contains("Пост", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SmokeTestResult("UI-014", "P1.8: PrimaryStatus/PrimaryStatusText отражают пост‑проверку как основную метку", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали, что PrimaryStatusText будет про пост‑проверку, получили '{tr.PrimaryStatusText}'");
+                }
+
+                return new SmokeTestResult("UI-014", "P1.8: PrimaryStatus/PrimaryStatusText отражают пост‑проверку как основную метку", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK");
+            }, ct);
     }
 }
