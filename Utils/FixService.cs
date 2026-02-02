@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net.NetworkInformation;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.Win32;
 
 namespace IspAudit.Utils
 {
@@ -53,9 +54,18 @@ namespace IspAudit.Utils
 
         private class DnsBackupState
         {
+            public int Version { get; set; } = 2;
             public string AdapterName { get; set; } = "";
             public string Config { get; set; } = "";
             public DateTime Timestamp { get; set; }
+
+            // Какие DoH-серверы мы добавляли (чтобы гарантированно убрать их при восстановлении)
+            public List<string> DohServers { get; set; } = new();
+
+            // Снимок HKLM\...\Dnscache\Parameters\EnableAutoDoh ДО вмешательства приложения
+            public bool EnableAutoDohCaptured { get; set; }
+            public bool EnableAutoDohValuePresent { get; set; }
+            public int EnableAutoDohValue { get; set; }
         }
 
         /// <summary>
@@ -164,6 +174,9 @@ namespace IspAudit.Utils
                 await EnableDoHAsync(preset.PrimaryIp, preset.PrimaryDoH);
                 await EnableDoHAsync(preset.SecondaryIp, preset.SecondaryDoH);
 
+                // Обновляем бэкап: фиксируем, какие DoH-серверы были добавлены
+                await TryUpdateBackupWithDohServersAsync(adapter.Name, new[] { preset.PrimaryIp, preset.SecondaryIp }).ConfigureAwait(false);
+
                 // Проверка (для логов)
                 var (_, checkOutput) = await RunCommandAsync("netsh", "dns show encryption");
                 Log($"[FixService] Current DoH rules:\n{checkOutput}");
@@ -184,17 +197,19 @@ namespace IspAudit.Utils
         /// </summary>
         public static async Task<(bool success, string error)> RestoreDnsAsync()
         {
+            DnsBackupState? loadedState = null;
+
             // Если в памяти пусто, пробуем загрузить с диска
             if (_originalDnsConfig == null && File.Exists(BackupFilePath))
             {
                 try
                 {
                     var json = await File.ReadAllTextAsync(BackupFilePath).ConfigureAwait(false);
-                    var state = JsonSerializer.Deserialize<DnsBackupState>(json);
-                    if (state != null)
+                    loadedState = JsonSerializer.Deserialize<DnsBackupState>(json);
+                    if (loadedState != null)
                     {
-                        _originalDnsConfig = state.Config;
-                        _originalAdapterName = state.AdapterName;
+                        _originalDnsConfig = loadedState.Config;
+                        _originalAdapterName = loadedState.AdapterName;
                     }
                 }
                 catch (Exception ex)
@@ -223,6 +238,14 @@ namespace IspAudit.Utils
                                 Log($"[FixService] PowerShell fallback reset failed: {psOutput}. Trying netsh dhcp.");
                                 var (success, _) = await RunCommandAsync("netsh", $"interface ipv4 set dns name=\"{adapter.Name}\" source=dhcp").ConfigureAwait(false);
                                 if (!success) return (false, "Нет сохраненных настроек DNS (и fallback восстановление не удалось)");
+                            }
+
+                            // Если мы видим активный наш пресет, вероятно включали DoH-правила для его IP.
+                            // В режиме fallback не трогаем реестр (не знаем исходное значение), но убираем DoH-профили/правила.
+                            var presetObj = AvailablePresets.FirstOrDefault(p => p.Name.Equals(preset, StringComparison.OrdinalIgnoreCase));
+                            if (presetObj != null)
+                            {
+                                await CleanupDohArtifactsAsync(new[] { presetObj.PrimaryIp, presetObj.SecondaryIp }).ConfigureAwait(false);
                             }
 
                             await RunCommandAsync("ipconfig", "/flushdns").ConfigureAwait(false);
@@ -264,6 +287,20 @@ namespace IspAudit.Utils
                 }
 
                 await RunCommandAsync("ipconfig", "/flushdns").ConfigureAwait(false);
+
+                // Важно: удаляем DoH-профили/правила, которые мы могли добавить.
+                // Иначе в ipconfig /all может оставаться DoH-профиль даже после возврата DNS.
+                var cleanupServers = (loadedState?.DohServers != null && loadedState.DohServers.Count > 0)
+                    ? loadedState.DohServers
+                    : GetAllKnownPresetIps();
+
+                await CleanupDohArtifactsAsync(cleanupServers).ConfigureAwait(false);
+
+                // Возвращаем EnableAutoDoh, но только если у нас есть снимок ДО вмешательства приложения.
+                if (loadedState?.EnableAutoDohCaptured == true)
+                {
+                    TryRestoreEnableAutoDoh(loadedState.EnableAutoDohValuePresent, loadedState.EnableAutoDohValue);
+                }
 
                 // Очищаем состояние и удаляем файл бэкапа
                 _originalDnsConfig = null;
@@ -331,11 +368,17 @@ namespace IspAudit.Utils
                     // Сохраняем в файл
                     try
                     {
+                        var (enableAutoDohPresent, enableAutoDohValue) = TryReadEnableAutoDoh();
                         var state = new DnsBackupState
                         {
                             AdapterName = _originalAdapterName,
                             Config = _originalDnsConfig,
-                            Timestamp = DateTime.Now
+                            Timestamp = DateTime.Now,
+                            // Пока пусто, заполним после успешного EnableDoHAsync
+                            DohServers = new List<string>(),
+                            EnableAutoDohCaptured = true,
+                            EnableAutoDohValuePresent = enableAutoDohPresent,
+                            EnableAutoDohValue = enableAutoDohValue
                         };
                         var json = JsonSerializer.Serialize(state);
                         await File.WriteAllTextAsync(BackupFilePath, json).ConfigureAwait(false);
@@ -474,6 +517,110 @@ namespace IspAudit.Utils
             }
 
             return netshSuccess;
+        }
+
+        private static (bool present, int value) TryReadEnableAutoDoh()
+        {
+            try
+            {
+                using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\Dnscache\Parameters", writable: false);
+                if (key == null) return (false, 0);
+
+                var raw = key.GetValue("EnableAutoDoh", null);
+                if (raw == null) return (false, 0);
+
+                // REG_DWORD может приходить как int
+                var value = Convert.ToInt32(raw);
+                return (true, value);
+            }
+            catch
+            {
+                return (false, 0);
+            }
+        }
+
+        private static void TryRestoreEnableAutoDoh(bool present, int value)
+        {
+            try
+            {
+                using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\Dnscache\Parameters", writable: true);
+                if (key == null) return;
+
+                if (!present)
+                {
+                    // Значения не было до нас — удаляем, чтобы не оставлять глобальную настройку.
+                    try { key.DeleteValue("EnableAutoDoh", throwOnMissingValue: false); } catch { }
+                    return;
+                }
+
+                key.SetValue("EnableAutoDoh", value, RegistryValueKind.DWord);
+            }
+            catch
+            {
+                // Без прав админа/при политике безопасности восстановление может быть недоступно.
+            }
+        }
+
+        private static List<string> GetAllKnownPresetIps()
+        {
+            var ips = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in AvailablePresets)
+            {
+                if (!string.IsNullOrWhiteSpace(p.PrimaryIp)) ips.Add(p.PrimaryIp);
+                if (!string.IsNullOrWhiteSpace(p.SecondaryIp)) ips.Add(p.SecondaryIp);
+            }
+            return ips.ToList();
+        }
+
+        private static async Task CleanupDohArtifactsAsync(IEnumerable<string> serverIps)
+        {
+            foreach (var ip in serverIps.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(ip)) continue;
+
+                // 1) Удаляем профиль DoH в DnsClient (Win11/PowerShell)
+                try
+                {
+                    var psCommand = $"Remove-DnsClientDohServerAddress -ServerAddress '{ip}' -ErrorAction SilentlyContinue";
+                    await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"").ConfigureAwait(false);
+                }
+                catch { }
+
+                // 2) Удаляем правило netsh encryption (Win10/legacy)
+                try
+                {
+                    await RunCommandAsync("netsh", $"dns delete encryption server={ip}").ConfigureAwait(false);
+                }
+                catch { }
+            }
+        }
+
+        private static async Task TryUpdateBackupWithDohServersAsync(string adapterName, IEnumerable<string> dohServers)
+        {
+            try
+            {
+                if (!File.Exists(BackupFilePath)) return;
+
+                var json = await File.ReadAllTextAsync(BackupFilePath).ConfigureAwait(false);
+                var state = JsonSerializer.Deserialize<DnsBackupState>(json);
+                if (state == null) return;
+                if (!state.AdapterName.Equals(adapterName, StringComparison.OrdinalIgnoreCase)) return;
+
+                var list = dohServers
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                state.DohServers = list;
+                state.Version = Math.Max(state.Version, 2);
+
+                var updated = JsonSerializer.Serialize(state);
+                await File.WriteAllTextAsync(BackupFilePath, updated).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Не критично: бэкап уже есть; просто хуже точность cleanup.
+            }
         }
 
         /// <summary>
