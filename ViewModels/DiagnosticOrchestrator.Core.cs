@@ -191,16 +191,8 @@ namespace IspAudit.ViewModels
 
                 DiagnosticStatus = "Анализ трафика...";
 
-                // 5. Преимптивный bypass (через сервис, с телеметрией в UI)
-                // Важно: в текущем MVP auto-apply запрещён. Даже если флаг включён в UI,
-                // мы не применяем техники автоматически.
-                if (enableAutoBypass)
-                {
-                    Log("[Orchestrator] ⚠ Auto-bypass запрошен, но отключён политикой (auto-apply запрещён)");
-                    ((IProgress<string>?)progress)?.Report("⚠ Auto-bypass отключён: авто-применение обхода запрещено");
-                }
-
-                enableAutoBypass = false;
+                // 5. Telemetry/UI для auto-bypass.
+                // Важно: сам пайплайн не применяет обход напрямую — оркестратор решает, делать ли auto-apply.
                 ResetAutoBypassUi(enableAutoBypass);
 
                 // 6. Создание TrafficCollector (чистый сборщик)
@@ -235,12 +227,21 @@ namespace IspAudit.ViewModels
                         : null,
                     bypassController.AutoHostlist);
 
-                // Принимаем объектный план напрямую из pipeline (auto-apply запрещён).
+                var autoApplyEnabled = enableAutoBypass;
+
+                // Принимаем объектный план напрямую из pipeline.
                 _testingPipeline.OnPlanBuilt += (hostKey, plan) =>
                 {
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
                         StorePlan(hostKey, plan, bypassController);
+
+                        // Auto-apply: инициируем применением плана только если флаг включён пользователем.
+                        // Pipeline сам по себе обход не применяет.
+                        if (autoApplyEnabled)
+                        {
+                            TryStartAutoApplyFromPlan(hostKey, plan, bypassController);
+                        }
                     });
                 };
 

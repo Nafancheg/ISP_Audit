@@ -151,14 +151,15 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 Актуализация (Design Phase, 16.12.2025):
 - Введён дизайн-план “DPI Intelligence INTEL” в docs/phase2_plan.md: слой между диагностикой и обходом.
 - Ключевое отличие: сигналы рассматриваются как **цепочки событий во времени** (не разовый снимок), правила диагнозов внедряются поэтапно (сначала только по доступным данным).
-- В MVP запрещён auto-apply: допускается только ручное применение рекомендаций пользователем.
+- `LiveTestingPipeline` не применяет обход автоматически: пайплайн вычисляет сигналы/диагноз/план и публикует `BypassPlan` наружу.
+- Auto-apply может быть включён **на уровне оркестратора** (`EnableAutoBypass=true`): оркестратор принимает `BypassPlan` через `OnPlanBuilt` и может применить его через `BypassController.ApplyIntelPlanAsync(...)` (с cooldown/gate).
 
 Актуализация (Runtime, 16.12.2025):
 - Step 1 INTEL Signals подключён: `SignalsAdapter` пишет события в `InMemorySignalSequenceStore` на этапе Classification в `LiveTestingPipeline`. Инспекционные факты берутся через `IInspectionSignalsProvider` в виде `InspectionSignalsSnapshot` (INTEL-only, без legacy типов).
     - Есть защиты от роста памяти: debounce одинаковых событий и cap числа событий на HostKey (in-memory store).
     - Политика DoH в INTEL рекомендациях: DoH рекомендуется как low-risk при `DnsHijack` (чисто DNS) и также используется в multi-layer сценариях.
 - Step 2 INTEL Diagnosis подключён: `StandardDiagnosisEngine` ставит диагноз по `BlockageSignals` и возвращает пояснения, основанные на фактах (DNS fail, TCP/TLS timeout, TLS auth failure, retx-rate, HTTP redirect, RST TTL/IPID delta + latency) без привязки к стратегиям/обходу. Для RST-кейсов DPI-id (`ActiveDpiEdge/StatefulDpi`) выдаётся только при устойчивости улик (`SuspiciousRstCount >= 2`), чтобы не создавать ложную уверенность по единичному событию. Для TLS-only кейсов добавлен консервативный диагноз `TlsInterference`, чтобы селектор мог сформировать план TLS-стратегий.
-- Step 3 INTEL Selector подключён: `StandardStrategySelector` строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI-лога (без auto-apply).
+- Step 3 INTEL Selector подключён: `StandardStrategySelector` строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI-лога.
     - План может включать `DeferredStrategies` — отложенные техники (если появляются новые/экспериментальные стратегии). Сейчас deferred-техник нет (список пуст; механизм заготовлен на будущее). Phase 3 стратегии `HttpHostTricks`, `QuicObfuscation` и `BadChecksum` считаются implemented: попадают в `plan.Strategies` и реально применяются при ручном `ApplyIntelPlanAsync`.
     - Для диагноза `HttpRedirect` учитывается `RedirectToHost` (если извлечён из `Location:`); уверенность выше для вероятной заглушки провайдера. Селектор выдаёт минимальную реакцию MVP: стратегию `HttpHostTricks` (TCP/80).
     - Реализация Phase 3 в рантайме:
@@ -166,7 +167,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
         - `HttpHostTricks` → `BypassFilter` режет HTTP `Host:` по границе TCP сегментов (исходящий TCP/80) и дропает оригинал.
         - `BadChecksum` → для фейковых TCP пакетов используется расширенный send без пересчёта checksum и со сбросом checksum-флагов адреса.
 - Step 4 INTEL Executor (MVP) подключён: `BypassExecutorMvp` формирует компактный, читаемый пользователем вывод (диагноз + уверенность + 1 короткое объяснение + список стратегий) и **не** применяет обход.
-- Реальный executor INTEL (ручной apply, без auto-apply): `LiveTestingPipeline` публикует объектный `BypassPlan` через `OnPlanBuilt`, `DiagnosticOrchestrator` хранит последний план и применяет его только по клику пользователя через `BypassController.ApplyIntelPlanAsync(...)`, который делегирует apply/timeout/rollback в `Core/Bypass/BypassApplyService`.
+- Реальный executor INTEL: `LiveTestingPipeline` публикует объектный `BypassPlan` через `OnPlanBuilt`, `DiagnosticOrchestrator` хранит план и может применить его либо по клику пользователя, либо автоматически при включённом `EnableAutoBypass`. Применение выполняется через `BypassController.ApplyIntelPlanAsync(...)`, который делегирует apply/timeout/rollback в `Core/Bypass/BypassApplyService`.
 - UX-гейт для корректности: `OnPlanBuilt` публикуется только для хостов, которые реально прошли фильтр отображения как проблема (попали в UI как issue), чтобы кнопка apply не применяла план, построенный по шумовому/успешному хосту.
 
 Актуализация (Runtime, 29.12.2025): Bypass State Manager (2.INTEL.12)
@@ -254,7 +255,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 
 ### As‑Is (реально есть в репозитории)
 - INTEL контур подключён в рантайм: Signals → Diagnosis → Selector → Plan.
-- Auto-apply запрещён: применяется только по ручному действию пользователя (manual apply).
+- Auto-apply: пайплайн обход не применяет; решение об auto-apply принимает оркестратор (флаг `EnableAutoBypass`).
 - Реальный apply INTEL реализован в `Core/Bypass/BypassApplyService`: таймаут/отмена + безопасный rollback; вызывается через `BypassController.ApplyIntelPlanAsync(...)`.
 - P0.1: `ApplyIntelPlanAsync` защищён apply-gate (сериализация) — параллельные apply выполняются последовательно, чтобы исключить гонки.
 - Feedback store (MVP) реализован и может влиять на ранжирование в `StandardStrategySelector`.
