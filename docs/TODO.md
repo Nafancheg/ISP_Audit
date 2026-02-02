@@ -33,6 +33,7 @@
 - [x] 02.02.2026: smoke reg (non-admin) PASS 20/20 (post-apply persistence)
 - [x] 02.02.2026: smoke ui (non-admin) PASS 13/13 (post-apply persistence)
 - [x] 02.02.2026: smoke ui (non-admin) PASS 14/14 (P1.8 primary status)
+- [x] 02.02.2026: smoke strict (admin) PASS 155/155, отчёт: [artifacts/smoke_strict_20260202_173725.json](artifacts/smoke_strict_20260202_173725.json)
 
 ---
 
