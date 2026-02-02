@@ -1,6 +1,6 @@
 # ISP_Audit — TODO (только невыполненное)
 
-Дата: 30.01.2026 (актуализировано)
+Дата: 02.02.2026 (актуализировано)
 Назначение: список незакрытых задач и проблем. Всё выполненное и историческое — в CHANGELOG.md и ARCHITECTURE_CURRENT.md.
 
 ---
@@ -26,6 +26,7 @@
 - [x] 02.02.2026: dotnet build OK
 - [x] 02.02.2026: smoke reg (non-admin) PASS 19/19
 - [x] 02.02.2026: smoke ui (non-admin) PASS 13/13
+- [x] 02.02.2026: smoke strict (admin) PASS 153/153, отчёт: [artifacts/smoke_strict_20260202_114445.json](artifacts/smoke_strict_20260202_114445.json)
 
 ---
 

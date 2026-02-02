@@ -40,21 +40,33 @@ namespace IspAudit.ViewModels
                 var key = (groupKey ?? string.Empty).Trim().Trim('.');
                 if (string.IsNullOrWhiteSpace(key)) return null;
 
-                // Быстрый путь: UI коллекция уже отсортирована по убыванию (новые сверху).
+                // Важно: ObservableCollection может быть не отсортирована (например при загрузке с диска),
+                // а также может не обновиться (если UiInvoke попал в неготовый Dispatcher в smoke/strict).
+                // Поэтому выбираем «последнюю» транзакцию устойчиво: объединяем кандидатов из UI и журнала
+                // и берём максимальный CreatedAtUtc.
+                var candidates = new List<BypassApplyTransaction>();
+
                 try
                 {
-                    return ApplyTransactions.FirstOrDefault(t =>
-                        string.Equals((t.GroupKey ?? string.Empty).Trim().Trim('.'), key, StringComparison.OrdinalIgnoreCase));
+                    candidates.AddRange(ApplyTransactions.Where(t =>
+                        string.Equals((t.GroupKey ?? string.Empty).Trim().Trim('.'), key, StringComparison.OrdinalIgnoreCase)));
                 }
                 catch
                 {
                     // ignore
                 }
 
-                // Fallback: snapshot журнала.
-                var snapshot = _applyTransactionsJournal.Snapshot();
-                return snapshot
-                    .Where(t => string.Equals((t.GroupKey ?? string.Empty).Trim().Trim('.'), key, StringComparison.OrdinalIgnoreCase))
+                try
+                {
+                    candidates.AddRange(_applyTransactionsJournal.Snapshot().Where(t =>
+                        string.Equals((t.GroupKey ?? string.Empty).Trim().Trim('.'), key, StringComparison.OrdinalIgnoreCase)));
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                return candidates
                     .OrderByDescending(t => ParseCreatedAtUtcOrMin(t.CreatedAtUtc))
                     .FirstOrDefault();
             }
