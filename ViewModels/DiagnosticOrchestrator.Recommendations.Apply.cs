@@ -521,7 +521,7 @@ namespace IspAudit.ViewModels
 
                             try
                             {
-                                OnPostApplyCheckVerdict?.Invoke(hostKey, verdict, "enqueue");
+                                OnPostApplyCheckVerdict?.Invoke(hostKey, verdict, "enqueue", $"pipeline_not_ready; out={verdict}");
                             }
                             catch
                             {
@@ -583,7 +583,7 @@ namespace IspAudit.ViewModels
 
                         try
                         {
-                            OnPostApplyCheckVerdict?.Invoke(hostKey, verdictAfterEnqueue, "enqueue");
+                            OnPostApplyCheckVerdict?.Invoke(hostKey, verdictAfterEnqueue, "enqueue", $"enqueued; ips={hosts.Count}; out={verdictAfterEnqueue}");
                         }
                         catch
                         {
@@ -602,7 +602,7 @@ namespace IspAudit.ViewModels
                     {
                         try
                         {
-                            OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "enqueue");
+                            OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "enqueue", "cancelled");
                         }
                         catch
                         {
@@ -620,7 +620,7 @@ namespace IspAudit.ViewModels
                     {
                         try
                         {
-                            OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "enqueue");
+                            OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "enqueue", $"error: {ex.Message}");
                         }
                         catch
                         {
@@ -803,7 +803,7 @@ namespace IspAudit.ViewModels
 
                     try
                     {
-                        OnPostApplyCheckVerdict?.Invoke(hostKey, verdict, "local");
+                        OnPostApplyCheckVerdict?.Invoke(hostKey, verdict, "local", $"summaryOk={summaryOk}; summaryFail={summaryFail}");
                     }
                     catch
                     {
@@ -857,7 +857,7 @@ namespace IspAudit.ViewModels
                 {
                     try
                     {
-                        OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "local");
+                        OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "local", "cancelled");
                     }
                     catch
                     {
@@ -874,7 +874,7 @@ namespace IspAudit.ViewModels
                 {
                     try
                     {
-                        OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "local");
+                        OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "local", $"error: {ex.Message}");
                     }
                     catch
                     {

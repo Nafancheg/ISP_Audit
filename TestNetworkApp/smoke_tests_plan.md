@@ -1160,6 +1160,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** синтетические `BlockageSignals` с `HasHttpRedirect=true` и `RedirectToHost=my.block.test`
 **Ожидаемый результат:** DiagnosisId=HttpRedirect и `redirectKind=blockpage`
 
+**Test ID:** `REG-020`
+**Что проверяет:** Persist/restore последнего результата «пост‑проверки» (post-apply check) по groupKey
+**Для чего:** Бейдж «Пост‑проверка: …» должен переживать перезапуск приложения
+**Критерий успеха:** После записи `state\\post_apply_checks.json` и повторной загрузки состояние восстановлено
+**Входные данные:** Синтетический `PostApplyCheckEntry` (groupKey + verdict + checkedAtUtc) через store c override path
+**Ожидаемый результат:** После reload запись доступна по groupKey и содержит ожидаемые поля
+
 **Test ID:** `REG-004`
 **Что проверяет:** Per-card ретест во время диагностики ставится в очередь и флашится после завершения
 **Для чего:** Регресс-гейт UX: кнопка «Ретест» не должна быть «мертвой» во время диагностики

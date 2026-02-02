@@ -279,11 +279,67 @@ namespace IspAudit.Models
                 _postApplyCheckStatus = value;
                 OnPropertyChanged(nameof(PostApplyCheckStatus));
                 OnPropertyChanged(nameof(PostApplyCheckText));
+                OnPropertyChanged(nameof(PostApplyCheckTooltip));
                 OnPropertyChanged(nameof(ShowPostApplyCheck));
             }
         }
 
         public bool ShowPostApplyCheck => PostApplyCheckStatus != PostApplyCheckStatus.None;
+
+        private DateTimeOffset? _postApplyCheckAtUtc;
+        public DateTimeOffset? PostApplyCheckAtUtc
+        {
+            get => _postApplyCheckAtUtc;
+            set
+            {
+                if (_postApplyCheckAtUtc == value) return;
+                _postApplyCheckAtUtc = value;
+                OnPropertyChanged(nameof(PostApplyCheckAtUtc));
+                OnPropertyChanged(nameof(PostApplyCheckTooltip));
+            }
+        }
+
+        private string _postApplyCheckDetails = string.Empty;
+        public string PostApplyCheckDetails
+        {
+            get => _postApplyCheckDetails;
+            set
+            {
+                var v = value ?? string.Empty;
+                if (string.Equals(_postApplyCheckDetails, v, StringComparison.Ordinal)) return;
+                _postApplyCheckDetails = v;
+                OnPropertyChanged(nameof(PostApplyCheckDetails));
+                OnPropertyChanged(nameof(PostApplyCheckTooltip));
+            }
+        }
+
+        public string PostApplyCheckTooltip
+        {
+            get
+            {
+                if (PostApplyCheckStatus == PostApplyCheckStatus.None) return string.Empty;
+
+                var sb = new System.Text.StringBuilder();
+                sb.Append(PostApplyCheckText);
+
+                if (PostApplyCheckAtUtc.HasValue)
+                {
+                    var local = PostApplyCheckAtUtc.Value.ToLocalTime();
+                    sb.Append("\n");
+                    sb.Append("Время: ");
+                    sb.Append(local.ToString("dd.MM.yyyy HH:mm:ss"));
+                }
+
+                if (!string.IsNullOrWhiteSpace(PostApplyCheckDetails))
+                {
+                    sb.Append("\n");
+                    sb.Append("Детали: ");
+                    sb.Append(PostApplyCheckDetails.Trim());
+                }
+
+                return sb.ToString();
+            }
+        }
 
         public string PostApplyCheckText
         {

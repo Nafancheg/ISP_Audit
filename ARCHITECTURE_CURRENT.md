@@ -360,6 +360,7 @@ Smoke-хелперы (для детерминированных проверок
     * P1.8 (UX-слой, семантика «исправлено/не проверено»): в `Models/TestResult` добавлен отдельный `PostApplyCheckStatus` (не смешивается с `TestStatus`).
         * `DiagnosticOrchestrator.StartPostApplyRetestAsync(...)` публикует вердикт `OK/FAIL/PARTIAL/UNKNOWN` через событие `OnPostApplyCheckVerdict`.
         * `MainViewModel` маппит вердикт на apply-group (groupKey) и выставляет badge `Пост‑проверка: …` на карточках группы.
+        * P1.7 (персист): последний вердикт по groupKey (время + итог + детали) сохраняется в `state/post_apply_checks.json` и восстанавливается при старте.
 
 ---
 

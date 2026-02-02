@@ -303,6 +303,13 @@ namespace IspAudit.ViewModels
 
                         groupCard.PostApplyCheckStatus = MergePostApplyCheckStatus(groupCard.PostApplyCheckStatus, src.PostApplyCheckStatus);
 
+                        if (src.PostApplyCheckAtUtc.HasValue
+                            && (!groupCard.PostApplyCheckAtUtc.HasValue || src.PostApplyCheckAtUtc > groupCard.PostApplyCheckAtUtc))
+                        {
+                            groupCard.PostApplyCheckAtUtc = src.PostApplyCheckAtUtc;
+                            groupCard.PostApplyCheckDetails = src.PostApplyCheckDetails;
+                        }
+
                         TestResults.Remove(src);
                     }
 

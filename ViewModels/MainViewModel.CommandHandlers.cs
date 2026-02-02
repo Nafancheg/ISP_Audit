@@ -894,6 +894,11 @@ namespace IspAudit.ViewModels
 
         private void SetPostApplyCheckStatusForGroupKey(string groupKey, PostApplyCheckStatus status)
         {
+            SetPostApplyCheckResultForGroupKey(groupKey, status, checkedAtUtc: null, details: null);
+        }
+
+        private void SetPostApplyCheckResultForGroupKey(string groupKey, PostApplyCheckStatus status, DateTimeOffset? checkedAtUtc, string? details)
+        {
             if (string.IsNullOrWhiteSpace(groupKey)) return;
             var key = groupKey.Trim().Trim('.');
             if (string.IsNullOrWhiteSpace(key)) return;
@@ -922,11 +927,23 @@ namespace IspAudit.ViewModels
                     }
 
                     r.PostApplyCheckStatus = status;
+
+                    // Для нефинальных состояний сбрасываем контекст, чтобы не показывать старое время/детали.
+                    if (status == PostApplyCheckStatus.Queued || status == PostApplyCheckStatus.Running || status == PostApplyCheckStatus.NotChecked)
+                    {
+                        r.PostApplyCheckAtUtc = null;
+                        r.PostApplyCheckDetails = string.Empty;
+                    }
+                    else if (status == PostApplyCheckStatus.Ok || status == PostApplyCheckStatus.Fail || status == PostApplyCheckStatus.Partial || status == PostApplyCheckStatus.Unknown)
+                    {
+                        r.PostApplyCheckAtUtc = checkedAtUtc;
+                        r.PostApplyCheckDetails = details ?? string.Empty;
+                    }
                 }
             });
         }
 
-        private void ApplyPostApplyVerdictToHostKey(string hostKey, string verdict)
+        private void ApplyPostApplyVerdictToHostKey(string hostKey, string verdict, string mode, string? details)
         {
             try
             {
@@ -936,16 +953,34 @@ namespace IspAudit.ViewModels
                 var groupKey = GetStableApplyGroupKeyForHostKey(hk);
                 if (string.IsNullOrWhiteSpace(groupKey)) return;
 
-                var v = (verdict ?? string.Empty).Trim();
-                var mapped = v.Equals("OK", StringComparison.OrdinalIgnoreCase) || v.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase)
-                    ? PostApplyCheckStatus.Ok
-                    : (v.Equals("FAIL", StringComparison.OrdinalIgnoreCase) || v.Equals("FAILED", StringComparison.OrdinalIgnoreCase)
-                        ? PostApplyCheckStatus.Fail
-                        : (v.Equals("PARTIAL", StringComparison.OrdinalIgnoreCase)
-                            ? PostApplyCheckStatus.Partial
-                            : PostApplyCheckStatus.Unknown));
+                var mapped = MapPostApplyVerdictToStatus(verdict);
+                var nowUtc = DateTimeOffset.UtcNow;
 
-                SetPostApplyCheckStatusForGroupKey(groupKey, mapped);
+                var d = (details ?? string.Empty).Trim();
+                if (!string.IsNullOrWhiteSpace(mode))
+                {
+                    d = string.IsNullOrWhiteSpace(d) ? $"mode={mode}" : $"mode={mode}; {d}";
+                }
+
+                SetPostApplyCheckResultForGroupKey(groupKey, mapped, nowUtc, d);
+
+                // Персистим last-known результат по groupKey.
+                var entry = new IspAudit.Utils.PostApplyCheckStore.PostApplyCheckEntry
+                {
+                    GroupKey = (groupKey ?? string.Empty).Trim().Trim('.'),
+                    Verdict = (verdict ?? string.Empty).Trim(),
+                    CheckedAtUtc = nowUtc.ToString("u").TrimEnd(),
+                    HostKey = hk,
+                    Mode = (mode ?? string.Empty).Trim(),
+                    Details = (details ?? string.Empty).Trim()
+                };
+
+                lock (_postApplyChecksSync)
+                {
+                    _postApplyChecksByGroupKey[entry.GroupKey] = entry;
+                }
+
+                PersistPostApplyChecksBestEffort();
             }
             catch
             {
@@ -1457,8 +1492,33 @@ namespace IspAudit.ViewModels
                     {
                         r.PostApplyCheckStatus = PostApplyCheckStatus.None;
                     }
+
+                    if (r.PostApplyCheckAtUtc != null)
+                    {
+                        r.PostApplyCheckAtUtc = null;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(r.PostApplyCheckDetails))
+                    {
+                        r.PostApplyCheckDetails = string.Empty;
+                    }
                 }
             });
+
+            // Сбрасываем persisted контекст, чтобы после Disable/Reset не всплывали старые пост‑проверки.
+            try
+            {
+                lock (_postApplyChecksSync)
+                {
+                    _postApplyChecksByGroupKey.Clear();
+                }
+
+                IspAudit.Utils.PostApplyCheckStore.TryDeletePersistedFileBestEffort(Log);
+            }
+            catch
+            {
+                // ignore
+            }
         }
 
         private void ApplyAppliedStrategyToResults(string hostKey, string appliedStrategyText)

@@ -112,6 +112,7 @@
 
                     <!-- Post-Apply check status (P1.8) -->
                     <Border CornerRadius="4" Padding="6,2" Margin="0,0,4,4"
+                            ToolTip="{Binding TestResult.PostApplyCheckTooltip}"
                             Visibility="{Binding TestResult.ShowPostApplyCheck, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Border.Style>
                             <Style TargetType="Border">

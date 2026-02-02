@@ -233,6 +233,67 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> REG_PostApplyChecks_Persisted_RoundTrip(CancellationToken ct)
+            => RunAsync("REG-020", "REG: post-apply-checks persist+reload через PostApplyCheckStore", () =>
+            {
+                const string envVar = "ISP_AUDIT_POST_APPLY_CHECKS_PATH";
+
+                var prev = Environment.GetEnvironmentVariable(envVar);
+                var tmpDir = Path.Combine(Path.GetTempPath(), "ISP_Audit_smoke");
+                Directory.CreateDirectory(tmpDir);
+                var tmpPath = Path.Combine(tmpDir, $"post_apply_checks_{Guid.NewGuid():N}.json");
+
+                try
+                {
+                    Environment.SetEnvironmentVariable(envVar, tmpPath);
+
+                    var now = DateTimeOffset.UtcNow;
+                    var groupKey = "youtube.com";
+                    var entry = new PostApplyCheckStore.PostApplyCheckEntry
+                    {
+                        GroupKey = groupKey,
+                        Verdict = "OK",
+                        CheckedAtUtc = now.ToString("u").TrimEnd(),
+                        HostKey = "r1---sn.example.googlevideo.com",
+                        Mode = "enqueue",
+                        Details = "enqueued; ips=3; out=OK"
+                    };
+
+                    var dict = new System.Collections.Generic.Dictionary<string, PostApplyCheckStore.PostApplyCheckEntry>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        [groupKey] = entry
+                    };
+
+                    PostApplyCheckStore.PersistByGroupKeyBestEffort(dict, log: null);
+
+                    var loaded = PostApplyCheckStore.LoadByGroupKeyBestEffort(log: null);
+                    if (!loaded.TryGetValue(groupKey, out var loadedEntry) || loadedEntry == null)
+                    {
+                        return new SmokeTestResult("REG-020", "REG: post-apply-checks persist+reload через PostApplyCheckStore", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Не нашли сохранённую запись по groupKey");
+                    }
+
+                    if (!string.Equals(loadedEntry.Verdict, "OK", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-020", "REG: post-apply-checks persist+reload через PostApplyCheckStore", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали Verdict=OK, получили '{loadedEntry.Verdict}'");
+                    }
+
+                    if (string.IsNullOrWhiteSpace(loadedEntry.CheckedAtUtc))
+                    {
+                        return new SmokeTestResult("REG-020", "REG: post-apply-checks persist+reload через PostApplyCheckStore", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "CheckedAtUtc пустой");
+                    }
+
+                    return new SmokeTestResult("REG-020", "REG: post-apply-checks persist+reload через PostApplyCheckStore", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+                }
+                finally
+                {
+                    try { Environment.SetEnvironmentVariable(envVar, prev); } catch { }
+                    try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { }
+                }
+            }, ct);
+
         public static async Task<SmokeTestResult> REG_Tracert_Cp866_NoMojibake(CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();

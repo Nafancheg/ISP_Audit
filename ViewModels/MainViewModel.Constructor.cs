@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using IspAudit.Bypass;
 using IspAudit.Core.Bypass;
+using IspAudit.Models;
 using IspAudit.Utils;
 using IspAudit.Wpf;
 
@@ -34,6 +35,11 @@ namespace IspAudit.ViewModels
 
         // P0.1 Step 14: единый источник истины для group participation / pinning / merge состояния группы.
         private readonly GroupBypassAttachmentStore _groupBypassAttachmentStore = new();
+
+        // P1.7/P1.8: персист результата пост‑проверки по groupKey.
+        private readonly object _postApplyChecksSync = new();
+        private readonly System.Collections.Generic.Dictionary<string, IspAudit.Utils.PostApplyCheckStore.PostApplyCheckEntry> _postApplyChecksByGroupKey =
+            new(StringComparer.OrdinalIgnoreCase);
 
         public MainViewModel()
         {
@@ -179,14 +185,14 @@ namespace IspAudit.ViewModels
                 }
             };
 
-            Orchestrator.OnPostApplyCheckVerdict += (hostKey, verdict, mode) =>
+            Orchestrator.OnPostApplyCheckVerdict += (hostKey, verdict, mode, details) =>
             {
                 try
                 {
                     UiBeginInvoke(() =>
                     {
                         // mode пока используется только для логов/диагностики, в UI не выводим.
-                        ApplyPostApplyVerdictToHostKey(hostKey, verdict);
+                        ApplyPostApplyVerdictToHostKey(hostKey, verdict, mode, details);
                     });
                 }
                 catch
@@ -397,6 +403,9 @@ namespace IspAudit.ViewModels
             // Автозагрузка manual participation (best-effort).
             LoadManualParticipationFromDiskBestEffort();
 
+            // Автозагрузка результатов пост‑проверки (best-effort).
+            LoadPostApplyChecksFromDiskBestEffort();
+
             Log("✓ MainViewModel инициализирован");
         }
 
@@ -445,6 +454,95 @@ namespace IspAudit.ViewModels
                     // ignore
                 }
             });
+        }
+
+        private void PersistPostApplyChecksBestEffort()
+        {
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    System.Collections.Generic.Dictionary<string, IspAudit.Utils.PostApplyCheckStore.PostApplyCheckEntry> snapshot;
+                    lock (_postApplyChecksSync)
+                    {
+                        snapshot = new System.Collections.Generic.Dictionary<string, IspAudit.Utils.PostApplyCheckStore.PostApplyCheckEntry>(_postApplyChecksByGroupKey, StringComparer.OrdinalIgnoreCase);
+                    }
+
+                    IspAudit.Utils.PostApplyCheckStore.PersistByGroupKeyBestEffort(snapshot, Log);
+                }
+                catch
+                {
+                    // ignore
+                }
+            });
+        }
+
+        private void LoadPostApplyChecksFromDiskBestEffort()
+        {
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    var loaded = IspAudit.Utils.PostApplyCheckStore.LoadByGroupKeyBestEffort(Log);
+                    lock (_postApplyChecksSync)
+                    {
+                        _postApplyChecksByGroupKey.Clear();
+                        foreach (var kvp in loaded)
+                        {
+                            if (string.IsNullOrWhiteSpace(kvp.Key) || kvp.Value == null) continue;
+                            _postApplyChecksByGroupKey[kvp.Key] = kvp.Value;
+                        }
+                    }
+
+                    // Обновим UI best-effort.
+                    UiBeginInvoke(() =>
+                    {
+                        foreach (var kvp in loaded)
+                        {
+                            var groupKey = (kvp.Key ?? string.Empty).Trim().Trim('.');
+                            if (string.IsNullOrWhiteSpace(groupKey)) continue;
+
+                            var entry = kvp.Value;
+                            if (entry == null) continue;
+
+                            // В UI выставляем только финальные состояния.
+                            var mapped = MapPostApplyVerdictToStatus(entry.Verdict);
+                            var atUtc = TryParseUtc(entry.CheckedAtUtc);
+
+                            var details = (entry.Details ?? string.Empty).Trim();
+                            if (!string.IsNullOrWhiteSpace(entry.Mode))
+                            {
+                                details = string.IsNullOrWhiteSpace(details) ? $"mode={entry.Mode}" : $"mode={entry.Mode}; {details}";
+                            }
+                            if (!string.IsNullOrWhiteSpace(entry.HostKey))
+                            {
+                                details = string.IsNullOrWhiteSpace(details) ? $"host={entry.HostKey}" : $"host={entry.HostKey}; {details}";
+                            }
+
+                            SetPostApplyCheckResultForGroupKey(groupKey, mapped, atUtc, details);
+                        }
+                    });
+                }
+                catch
+                {
+                    // ignore
+                }
+            });
+        }
+
+        private static PostApplyCheckStatus MapPostApplyVerdictToStatus(string? verdict)
+        {
+            var v = (verdict ?? string.Empty).Trim();
+            if (v.Equals("OK", StringComparison.OrdinalIgnoreCase) || v.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase)) return PostApplyCheckStatus.Ok;
+            if (v.Equals("FAIL", StringComparison.OrdinalIgnoreCase) || v.Equals("FAILED", StringComparison.OrdinalIgnoreCase)) return PostApplyCheckStatus.Fail;
+            if (v.Equals("PARTIAL", StringComparison.OrdinalIgnoreCase)) return PostApplyCheckStatus.Partial;
+            return PostApplyCheckStatus.Unknown;
+        }
+
+        private static DateTimeOffset? TryParseUtc(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return null;
+            return DateTimeOffset.TryParse(value, out var dto) ? dto : null;
         }
 
         public async Task InitializeAsync()

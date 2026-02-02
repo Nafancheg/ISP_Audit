@@ -209,6 +209,13 @@ namespace IspAudit.ViewModels
 
                         domainCard.PostApplyCheckStatus = MergePostApplyCheckStatus(domainCard.PostApplyCheckStatus, src.PostApplyCheckStatus);
 
+                        if (src.PostApplyCheckAtUtc.HasValue
+                            && (!domainCard.PostApplyCheckAtUtc.HasValue || src.PostApplyCheckAtUtc > domainCard.PostApplyCheckAtUtc))
+                        {
+                            domainCard.PostApplyCheckAtUtc = src.PostApplyCheckAtUtc;
+                            domainCard.PostApplyCheckDetails = src.PostApplyCheckDetails;
+                        }
+
                         TestResults.Remove(src);
                     }
 
