@@ -424,6 +424,26 @@ namespace IspAudit.ViewModels
         {
             if (bypassController == null) throw new ArgumentNullException(nameof(bypassController));
 
+            void UpdatePostApplyRetestUi(Action action)
+            {
+                try
+                {
+                    var dispatcher = Application.Current?.Dispatcher;
+                    if (dispatcher != null && !dispatcher.CheckAccess())
+                    {
+                        dispatcher.Invoke(action);
+                    }
+                    else
+                    {
+                        action();
+                    }
+                }
+                catch
+                {
+                    // Best-effort: наблюдаемость не должна ломать рантайм
+                }
+            }
+
             var hostKey = ResolveBestHostKeyForApply(preferredHostKey);
             if (string.IsNullOrWhiteSpace(hostKey))
             {
@@ -446,8 +466,13 @@ namespace IspAudit.ViewModels
             _postApplyRetest.Cancellation = new CancellationTokenSource();
             var ct = _postApplyRetest.Cancellation.Token;
 
-            IsPostApplyRetestRunning = true;
-            PostApplyRetestStatus = $"Ретест после Apply: запуск ({hostKey})";
+            UpdatePostApplyRetestUi(() =>
+            {
+                IsPostApplyRetestRunning = true;
+                PostApplyRetestStatus = $"Ретест после Apply: запуск ({hostKey})";
+            });
+
+            var startedAtUtc = DateTimeOffset.UtcNow;
 
             Log($"[PostApplyRetest][op={opId}] Start: host={hostKey}");
 
@@ -460,7 +485,12 @@ namespace IspAudit.ViewModels
                 {
                     try
                     {
-                        PostApplyRetestStatus = $"Ретест после Apply: добавляю в очередь диагностики ({hostKey})…";
+                        UpdatePostApplyRetestUi(() =>
+                        {
+                            PostApplyRetestStatus = $"Ретест после Apply: добавляю в очередь диагностики ({hostKey})…";
+                        });
+
+                        Log($"[PostApplyRetest][op={opId}] Mode=enqueue (diagnostic running)");
 
                         var pipeline = _testingPipeline;
                         var diagCts = _cts;
@@ -477,8 +507,12 @@ namespace IspAudit.ViewModels
                             {
                             }
 
-                            PostApplyRetestStatus = "Ретест после Apply: диагностика активна, pipeline не готов (запущен OUT probe)";
-                            Log($"[PostApplyRetest][op={opId}] Enqueue skipped: diagnostic running but pipeline not ready");
+                            UpdatePostApplyRetestUi(() =>
+                            {
+                                PostApplyRetestStatus = "Ретест после Apply: диагностика активна, pipeline не готов (запущен OUT probe)";
+                            });
+
+                            Log($"[PostApplyRetest][op={opId}] Skip: reason=pipeline_not_ready; action=outcome_probe");
                             return;
                         }
 
@@ -491,8 +525,12 @@ namespace IspAudit.ViewModels
                         var hosts = await BuildPostApplyRetestHostsAsync(hostKey, port: 443, linkedCt).ConfigureAwait(false);
                         if (hosts.Count == 0)
                         {
-                            PostApplyRetestStatus = $"Ретест после Apply: не удалось определить IP ({hostKey})";
-                            Log($"[PostApplyRetest][op={opId}] No targets resolved for host={hostKey} (enqueue)");
+                            UpdatePostApplyRetestUi(() =>
+                            {
+                                PostApplyRetestStatus = $"Ретест после Apply: не удалось определить IP ({hostKey})";
+                            });
+
+                            Log($"[PostApplyRetest][op={opId}] Abort: reason=no_targets_resolved; mode=enqueue; host={hostKey}");
                             return;
                         }
 
@@ -510,26 +548,39 @@ namespace IspAudit.ViewModels
                         {
                         }
 
-                        PostApplyRetestStatus = $"Ретест после Apply: добавлено в очередь диагностики (IP={hosts.Count})";
-                        Log($"[PostApplyRetest][op={opId}] Enqueued into active diagnostic pipeline: host={hostKey}; ips={hosts.Count}");
+                        UpdatePostApplyRetestUi(() =>
+                        {
+                            PostApplyRetestStatus = $"Ретест после Apply: добавлено в очередь диагностики (IP={hosts.Count})";
+                        });
+
+                        Log($"[PostApplyRetest][op={opId}] Enqueued: host={hostKey}; ips={hosts.Count}");
                         return;
                     }
                     catch (OperationCanceledException)
                     {
-                        PostApplyRetestStatus = "Ретест после Apply: отменён";
-                        Log($"[PostApplyRetest][op={opId}] Canceled (enqueue): host={hostKey}");
+                        UpdatePostApplyRetestUi(() =>
+                        {
+                            PostApplyRetestStatus = "Ретест после Apply: отменён";
+                        });
+
+                        Log($"[PostApplyRetest][op={opId}] Canceled: mode=enqueue; host={hostKey}");
                         return;
                     }
                     catch (Exception ex)
                     {
-                        PostApplyRetestStatus = $"Ретест после Apply: ошибка ({ex.Message})";
-                        Log($"[PostApplyRetest][op={opId}] Error (enqueue): {ex.Message}");
+                        UpdatePostApplyRetestUi(() =>
+                        {
+                            PostApplyRetestStatus = $"Ретест после Apply: ошибка ({ex.Message})";
+                        });
+
+                        Log($"[PostApplyRetest][op={opId}] Error: mode=enqueue; error={ex.Message}");
                         return;
                     }
                     finally
                     {
-                        IsPostApplyRetestRunning = false;
-                        Log($"[PostApplyRetest][op={opId}] Done: host={hostKey}");
+                        var elapsedMs = (DateTimeOffset.UtcNow - startedAtUtc).TotalMilliseconds;
+                        UpdatePostApplyRetestUi(() => { IsPostApplyRetestRunning = false; });
+                        Log($"[PostApplyRetest][op={opId}] Finish: mode=enqueue; elapsedMs={elapsedMs:0}; host={hostKey}");
                     }
                 }
 
@@ -553,6 +604,8 @@ namespace IspAudit.ViewModels
                 {
                     using var op = BypassOperationContext.Enter(opId, "post_apply_retest", hostKey);
 
+                    Log($"[PostApplyRetest][op={opId}] Mode=local (standalone pipeline)");
+
                     var effectiveTestTimeout = bypassController.IsVpnDetected
                         ? TimeSpan.FromSeconds(8)
                         : TimeSpan.FromSeconds(3);
@@ -569,8 +622,12 @@ namespace IspAudit.ViewModels
                     var hosts = await BuildPostApplyRetestHostsAsync(hostKey, port: 443, ct).ConfigureAwait(false);
                     if (hosts.Count == 0)
                     {
-                        PostApplyRetestStatus = $"Ретест после Apply: не удалось определить IP ({hostKey})";
-                        Log($"[PostApplyRetest][op={opId}] No targets resolved for host={hostKey}");
+                        UpdatePostApplyRetestUi(() =>
+                        {
+                            PostApplyRetestStatus = $"Ретест после Apply: не удалось определить IP ({hostKey})";
+                        });
+
+                        Log($"[PostApplyRetest][op={opId}] Abort: reason=no_targets_resolved; mode=local; host={hostKey}");
                         return;
                     }
 
@@ -582,7 +639,12 @@ namespace IspAudit.ViewModels
                         }
                     }
 
-                    PostApplyRetestStatus = $"Ретест после Apply: проверяем {hosts.Count} IP…";
+                    UpdatePostApplyRetestUi(() =>
+                    {
+                        PostApplyRetestStatus = $"Ретест после Apply: проверяем {hosts.Count} IP…";
+                    });
+
+                    Log($"[PostApplyRetest][op={opId}] Targets: ips={hosts.Count}");
 
                     var progress = new Progress<string>(msg =>
                     {
@@ -669,7 +731,20 @@ namespace IspAudit.ViewModels
                     }
 
                     await pipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(15)).ConfigureAwait(false);
-                    PostApplyRetestStatus = "Ретест после Apply: завершён";
+
+                    // Итог: даже если outcome неоднозначен — логируем наблюдаемое.
+                    var summaryOk = anySniMatched ? anyOkSniMatched : anyOk;
+                    var summaryFail = anySniMatched ? anyFailSniMatched : anyFail;
+                    var summaryOutcome = (summaryOk && summaryFail)
+                        ? "UNKNOWN"
+                        : (summaryFail ? "FAILED" : (summaryOk ? "SUCCESS" : "UNKNOWN"));
+
+                    UpdatePostApplyRetestUi(() =>
+                    {
+                        PostApplyRetestStatus = "Ретест после Apply: завершён";
+                    });
+
+                    Log($"[PostApplyRetest][op={opId}] Summary: host={hostKey}; outcome={summaryOutcome}; ok={(summaryOk ? 1 : 0)}; fail={(summaryFail ? 1 : 0)}; sniMatched={(anySniMatched ? 1 : 0)}");
 
                     // Feedback: по результату ретеста записываем исход применённых стратегий.
                     if (_pendingFeedbackByHostKey.TryRemove(hostKey, out var pending))
@@ -709,18 +784,27 @@ namespace IspAudit.ViewModels
                 }
                 catch (OperationCanceledException)
                 {
-                    PostApplyRetestStatus = "Ретест после Apply: отменён";
-                    Log($"[PostApplyRetest][op={opId}] Canceled: host={hostKey}");
+                    UpdatePostApplyRetestUi(() =>
+                    {
+                        PostApplyRetestStatus = "Ретест после Apply: отменён";
+                    });
+
+                    Log($"[PostApplyRetest][op={opId}] Canceled: mode=local; host={hostKey}");
                 }
                 catch (Exception ex)
                 {
-                    PostApplyRetestStatus = $"Ретест после Apply: ошибка ({ex.Message})";
-                    Log($"[PostApplyRetest][op={opId}] Error: {ex.Message}");
+                    UpdatePostApplyRetestUi(() =>
+                    {
+                        PostApplyRetestStatus = $"Ретест после Apply: ошибка ({ex.Message})";
+                    });
+
+                    Log($"[PostApplyRetest][op={opId}] Error: mode=local; error={ex.Message}");
                 }
                 finally
                 {
-                    IsPostApplyRetestRunning = false;
-                    Log($"[PostApplyRetest][op={opId}] Done: host={hostKey}");
+                    var elapsedMs = (DateTimeOffset.UtcNow - startedAtUtc).TotalMilliseconds;
+                    UpdatePostApplyRetestUi(() => { IsPostApplyRetestRunning = false; });
+                    Log($"[PostApplyRetest][op={opId}] Finish: mode=local; elapsedMs={elapsedMs:0}; host={hostKey}");
                 }
             }, ct);
         }
