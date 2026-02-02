@@ -194,6 +194,7 @@ namespace IspAudit.ViewModels
                 // 5. Telemetry/UI для auto-bypass.
                 // Важно: сам пайплайн не применяет обход напрямую — оркестратор решает, делать ли auto-apply.
                 ResetAutoBypassUi(enableAutoBypass);
+                ResetAutoApplyState();
 
                 // 6. Создание TrafficCollector (чистый сборщик)
                 _trafficCollector = new TrafficCollector(

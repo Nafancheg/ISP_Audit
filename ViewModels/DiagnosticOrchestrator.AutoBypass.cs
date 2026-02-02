@@ -13,10 +13,32 @@ namespace IspAudit.ViewModels
         private readonly SemaphoreSlim _autoApplyGate = new(1, 1);
         private readonly ConcurrentDictionary<string, DateTimeOffset> _autoApplyLastAttemptUtcByTarget = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, DateTimeOffset> _autoApplyLastSuccessUtcByTarget = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, string> _autoApplyLastPlanSignatureByTarget = new(StringComparer.OrdinalIgnoreCase);
 
         // MVP значения: достаточно, чтобы не «душить» UI/движок.
         private static readonly TimeSpan AutoApplyCooldown = TimeSpan.FromSeconds(45);
         private static readonly TimeSpan AutoApplySuccessCooldown = TimeSpan.FromMinutes(3);
+        private static readonly TimeSpan AutoApplyMinInterval = TimeSpan.FromSeconds(5);
+
+        private void ResetAutoApplyState()
+        {
+            _autoApplyLastAttemptUtcByTarget.Clear();
+            _autoApplyLastSuccessUtcByTarget.Clear();
+            _autoApplyLastPlanSignatureByTarget.Clear();
+        }
+
+        private static string BuildPlanSignature(BypassPlan? plan)
+        {
+            if (plan == null) return string.Empty;
+
+            // Сигнатура должна быть стабильной и дешёвой.
+            // Порядок стратегий в списке уже является частью смысла (порядок проб/применения).
+            var strategies = plan.Strategies.Count == 0
+                ? ""
+                : string.Join(",", plan.Strategies.ConvertAll(s => s.Id.ToString()));
+
+            return $"{strategies}|U{(plan.DropUdp443 ? 1 : 0)}|N{(plan.AllowNoSni ? 1 : 0)}";
+        }
 
         private string ResolveAutoApplyTargetHost(string hostKey)
         {
@@ -34,26 +56,39 @@ namespace IspAudit.ViewModels
             return hk;
         }
 
-        private bool IsAutoApplyCooldownActive(string targetHost, out TimeSpan remaining)
+        private bool IsAutoApplyCooldownActive(string targetHost, bool allowWhenPlanChanged, bool planChanged, out TimeSpan remaining)
         {
             remaining = TimeSpan.Zero;
 
             var now = DateTimeOffset.UtcNow;
 
-            if (_autoApplyLastSuccessUtcByTarget.TryGetValue(targetHost, out var lastSuccessUtc))
+            // После успеха не спамим повторными apply, но если план поменялся — разрешаем быстрее.
+            if (!allowWhenPlanChanged || !planChanged)
             {
-                var age = now - lastSuccessUtc;
-                if (age < AutoApplySuccessCooldown)
+                if (_autoApplyLastSuccessUtcByTarget.TryGetValue(targetHost, out var lastSuccessUtc))
                 {
-                    remaining = AutoApplySuccessCooldown - age;
-                    return true;
+                    var age = now - lastSuccessUtc;
+                    if (age < AutoApplySuccessCooldown)
+                    {
+                        remaining = AutoApplySuccessCooldown - age;
+                        return true;
+                    }
                 }
             }
 
             if (_autoApplyLastAttemptUtcByTarget.TryGetValue(targetHost, out var lastAttemptUtc))
             {
                 var age = now - lastAttemptUtc;
-                if (age < AutoApplyCooldown)
+
+                // Минимальный интервал соблюдаем всегда.
+                if (age < AutoApplyMinInterval)
+                {
+                    remaining = AutoApplyMinInterval - age;
+                    return true;
+                }
+
+                // Если план не менялся — держим более длинный cooldown.
+                if ((!allowWhenPlanChanged || !planChanged) && age < AutoApplyCooldown)
                 {
                     remaining = AutoApplyCooldown - age;
                     return true;
@@ -77,20 +112,25 @@ namespace IspAudit.ViewModels
             var targetHost = ResolveAutoApplyTargetHost(hostKey);
             if (string.IsNullOrWhiteSpace(targetHost)) return;
 
+            var planSig = BuildPlanSignature(plan);
+            var planChanged = !_autoApplyLastPlanSignatureByTarget.TryGetValue(targetHost, out var lastSig)
+                || !string.Equals(lastSig, planSig, StringComparison.OrdinalIgnoreCase);
+
             // UI/оркестратор уже показывают рекомендацию — auto-apply должен быть «мягким» и не спамить.
-            if (IsAutoApplyCooldownActive(targetHost, out var remaining))
+            if (IsAutoApplyCooldownActive(targetHost, allowWhenPlanChanged: true, planChanged: planChanged, out var remaining))
             {
                 Log($"[AUTO_APPLY] Skip (cooldown {remaining.TotalSeconds:0}s): target={targetHost}; from={hostKey}");
                 return;
             }
 
             _autoApplyLastAttemptUtcByTarget[targetHost] = DateTimeOffset.UtcNow;
+            _autoApplyLastPlanSignatureByTarget[targetHost] = planSig;
 
             // Fire-and-forget: внутри есть gate + уважение Cancel.
-            _ = Task.Run(() => AutoApplyFromPlanAsync(targetHost, hostKey, plan, bypassController));
+            _ = Task.Run(() => AutoApplyFromPlanAsync(targetHost, hostKey, plan, planSig, bypassController));
         }
 
-        private async Task AutoApplyFromPlanAsync(string targetHost, string sourceHostKey, BypassPlan plan, BypassController bypassController)
+        private async Task AutoApplyFromPlanAsync(string targetHost, string sourceHostKey, BypassPlan plan, string planSig, BypassController bypassController)
         {
             // Глобальный gate, чтобы не запускать несколько auto-apply параллельно.
             // Важно: ApplyIntelPlanAsync уже сериализуется внутри BypassController, но нам нужно сдержать UI/лог.
@@ -106,11 +146,17 @@ namespace IspAudit.ViewModels
                     return;
                 }
 
-                if (IsAutoApplyCooldownActive(targetHost, out var remaining))
+                var planChanged = !_autoApplyLastPlanSignatureByTarget.TryGetValue(targetHost, out var lastSig)
+                    || !string.Equals(lastSig, planSig, StringComparison.OrdinalIgnoreCase);
+
+                if (IsAutoApplyCooldownActive(targetHost, allowWhenPlanChanged: true, planChanged: planChanged, out var remaining))
                 {
                     Log($"[AUTO_APPLY] Skip (cooldown {remaining.TotalSeconds:0}s): target={targetHost}; from={sourceHostKey}");
                     return;
                 }
+
+                _autoApplyLastAttemptUtcByTarget[targetHost] = DateTimeOffset.UtcNow;
+                _autoApplyLastPlanSignatureByTarget[targetHost] = planSig;
 
                 Log($"[AUTO_APPLY] Start: target={targetHost}; source={sourceHostKey}");
 

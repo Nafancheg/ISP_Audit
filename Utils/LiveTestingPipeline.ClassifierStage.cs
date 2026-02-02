@@ -63,9 +63,21 @@ namespace IspAudit.Utils
                         {
                             // Для UX важно привязывать план к SNI, а не к rDNS:
                             // rDNS может быть "служебным" именем и не подходит как цель для TLS-обхода.
-                            if (!string.IsNullOrWhiteSpace(tested.SniHostname))
+                            var sniForPlan = tested.SniHostname;
+                            if (string.IsNullOrWhiteSpace(sniForPlan) && _dnsParser != null)
                             {
-                                planHostKeyForPublish = tested.SniHostname;
+                                // SNI мог быть распознан DNS/TLS парсером асинхронно и сохранён в кеше
+                                // даже если в объекте HostTested поле SniHostname ещё пустое.
+                                var ipKey = tested.Host.RemoteIp?.ToString();
+                                if (!string.IsNullOrWhiteSpace(ipKey) && _dnsParser.SniCache.TryGetValue(ipKey, out var cachedSni))
+                                {
+                                    sniForPlan = cachedSni;
+                                }
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(sniForPlan))
+                            {
+                                planHostKeyForPublish = sniForPlan;
                             }
                             else
                             {
