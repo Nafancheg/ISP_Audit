@@ -424,13 +424,6 @@ namespace IspAudit.ViewModels
         {
             if (bypassController == null) throw new ArgumentNullException(nameof(bypassController));
 
-            // Не мешаем активной диагностике: там pipeline уже работает и сам обновляет результаты.
-            if (IsDiagnosticRunning)
-            {
-                PostApplyRetestStatus = "Ретест после Apply: пропущен (идёт диагностика)";
-                return Task.CompletedTask;
-            }
-
             var hostKey = ResolveBestHostKeyForApply(preferredHostKey);
             if (string.IsNullOrWhiteSpace(hostKey))
             {
@@ -460,6 +453,86 @@ namespace IspAudit.ViewModels
 
             return Task.Run(async () =>
             {
+                // Если диагностика активна, НЕ создаём второй LiveTestingPipeline (делит TrafficEngine и может конфликтовать).
+                // Вместо этого добавляем цель в очередь существующего pipeline — так UI получит свежие результаты,
+                // даже если диагностика идёт долго или «залипла» на другой цели.
+                if (IsDiagnosticRunning)
+                {
+                    try
+                    {
+                        PostApplyRetestStatus = $"Ретест после Apply: добавляю в очередь диагностики ({hostKey})…";
+
+                        var pipeline = _testingPipeline;
+                        var diagCts = _cts;
+
+                        // Если пайплайн ещё не готов (редкое окно во время старта) — не ждём «окончания диагностики».
+                        // Делаем best-effort outcome-probe, чтобы хотя бы OUT статусы обновились.
+                        if (pipeline == null || diagCts == null)
+                        {
+                            try
+                            {
+                                bypassController.RunOutcomeProbeNowCommand?.Execute(null);
+                            }
+                            catch
+                            {
+                            }
+
+                            PostApplyRetestStatus = "Ретест после Apply: диагностика активна, pipeline не готов (запущен OUT probe)";
+                            Log($"[PostApplyRetest][op={opId}] Enqueue skipped: diagnostic running but pipeline not ready");
+                            return;
+                        }
+
+                        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, diagCts.Token);
+                        var linkedCt = linked.Token;
+
+                        // Даем движку короткое время применить правила после Apply.
+                        await Task.Delay(TimeSpan.FromMilliseconds(350), linkedCt).ConfigureAwait(false);
+
+                        var hosts = await BuildPostApplyRetestHostsAsync(hostKey, port: 443, linkedCt).ConfigureAwait(false);
+                        if (hosts.Count == 0)
+                        {
+                            PostApplyRetestStatus = $"Ретест после Apply: не удалось определить IP ({hostKey})";
+                            Log($"[PostApplyRetest][op={opId}] No targets resolved for host={hostKey} (enqueue)");
+                            return;
+                        }
+
+                        foreach (var h in hosts)
+                        {
+                            await pipeline.EnqueueHostAsync(h).ConfigureAwait(false);
+                        }
+
+                        // Параллельно делаем outcome-probe: он не зависит от pipeline и даёт понятный OUT.
+                        try
+                        {
+                            bypassController.RunOutcomeProbeNowCommand?.Execute(null);
+                        }
+                        catch
+                        {
+                        }
+
+                        PostApplyRetestStatus = $"Ретест после Apply: добавлено в очередь диагностики (IP={hosts.Count})";
+                        Log($"[PostApplyRetest][op={opId}] Enqueued into active diagnostic pipeline: host={hostKey}; ips={hosts.Count}");
+                        return;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        PostApplyRetestStatus = "Ретест после Apply: отменён";
+                        Log($"[PostApplyRetest][op={opId}] Canceled (enqueue): host={hostKey}");
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        PostApplyRetestStatus = $"Ретест после Apply: ошибка ({ex.Message})";
+                        Log($"[PostApplyRetest][op={opId}] Error (enqueue): {ex.Message}");
+                        return;
+                    }
+                    finally
+                    {
+                        IsPostApplyRetestRunning = false;
+                        Log($"[PostApplyRetest][op={opId}] Done: host={hostKey}");
+                    }
+                }
+
                 // Локальная эвристика результата: для всех target IP смотрим, были ли строки ✓/❌.
                 // Усиление:
                 // - если одновременно есть ✓ и ❌ по цели — outcome=Unknown (не учимся на неоднозначном результате)
