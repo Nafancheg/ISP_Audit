@@ -71,11 +71,17 @@ namespace IspAudit.ViewModels
                     {
                         ClearAppliedBypassMarkers();
                     }
+
+                    RaiseActiveApplySummaryChanged();
                 }
 
                 if (e.PropertyName == nameof(BypassController.OutcomeTargetHost))
                 {
                     OnPropertyChanged(nameof(ActiveApplyGroupKey));
+
+                    // ActiveApplyGroupKey влияет на фильтр "Фокус".
+                    RefreshResultsViewNow();
+                    RaiseActiveApplySummaryChanged();
                 }
             };
 
@@ -178,7 +184,6 @@ namespace IspAudit.ViewModels
             {
                 OnPropertyChanged(e.PropertyName ?? "");
                 OnPropertyChanged(nameof(RunningStatusText));
-
                 if (e.PropertyName == nameof(TestResultsManager.SuggestedDomainSuffix) ||
                     e.PropertyName == nameof(TestResultsManager.SuggestedDomainSubhostCount) ||
                     e.PropertyName == nameof(TestResultsManager.CanSuggestDomainAggregation) ||
@@ -215,6 +220,9 @@ namespace IspAudit.ViewModels
 
             // Инициализация результатов
             Results.Initialize();
+
+            // Фильтр/представление результатов (режим "Фокус" + сводка активного применения)
+            InitResultsViewAndFiltering();
 
             // Команды
             StartLiveTestingCommand = new RelayCommand(async _ => await StartOrCancelAsync(), _ => true);

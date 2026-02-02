@@ -446,6 +446,10 @@ namespace IspAudit.ViewModels
 
                 // Step 9: панель деталей по выбранной карточке
                 UpdateSelectedResultApplyTransactionDetails();
+
+                // UX: в режиме "Фокус" при смене выбора хотим быстро показать строки активной группы
+                // и актуальную сводку "что сейчас применено".
+                RefreshResultsViewNow();
             }
         }
 

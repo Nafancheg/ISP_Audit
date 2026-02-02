@@ -612,36 +612,59 @@
                 <!-- Results Header -->
                 <Grid Grid.Row="1" Margin="56,16,16,8"
                       Visibility="{Binding IsStart, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                    <StackPanel Orientation="Horizontal">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="📋" Style="{StaticResource H2Style}" FontFamily="Segoe UI Emoji" Margin="0,0,6,0"/>
-                        <TextBlock Text="Результаты тестирования" Style="{StaticResource H2Style}"/>
-                    </StackPanel>
-                    <Border Background="#DCFCE7" CornerRadius="4" Padding="6,2" Margin="12,0,0,0" VerticalAlignment="Center"
-                        Visibility="{Binding IsBypassActive, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Text="🛡️ Bypass Active" Foreground="#166534" FontWeight="SemiBold" FontSize="11"/>
-                    </Border>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="📋" Style="{StaticResource H2Style}" FontFamily="Segoe UI Emoji" Margin="0,0,6,0"/>
+                            <TextBlock Text="Результаты тестирования" Style="{StaticResource H2Style}"/>
+                        </StackPanel>
+                        <Border Background="#DCFCE7" CornerRadius="4" Padding="6,2" Margin="12,0,0,0" VerticalAlignment="Center"
+                                Visibility="{Binding IsBypassActive, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Text="🛡️ Bypass Active" Foreground="#166534" FontWeight="SemiBold" FontSize="11"/>
+                        </Border>
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                        >
-                    <Button Content="Остановить диагностику" Style="{StaticResource PrimaryButtonStyle}"
-                        Command="{Binding StartLiveTestingCommand}"
-                        Padding="10,4" FontSize="12" Margin="0,0,8,0"
-                        Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <CheckBox Content="Фокус"
+                                  IsChecked="{Binding IsResultsFocusMode}"
+                                  Margin="0,0,12,0"
+                                  VerticalAlignment="Center"
+                                  FontSize="12"
+                                  ToolTip="Фокус: показывать только проблемные/активные/применённые строки"/>
 
-                    <Button Content="📄 Экспорт" Style="{StaticResource SecondaryButtonStyle}"
-                        Command="{Binding ReportCommand}" Margin="0,0,8,0" Padding="10,4" FontSize="12"
-                        Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                    <Button Content="🔄 Новая диагностика" Style="{StaticResource PrimaryButtonStyle}"
-                        Command="{Binding SetStateCommand}" CommandParameter="start" Padding="10,4" FontSize="12"
-                        Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        <Button Content="Остановить диагностику" Style="{StaticResource PrimaryButtonStyle}"
+                                Command="{Binding StartLiveTestingCommand}"
+                                Padding="10,4" FontSize="12" Margin="0,0,8,0"
+                                Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                        <Button Content="📄 Экспорт" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding ReportCommand}" Margin="0,0,8,0" Padding="10,4" FontSize="12"
+                                Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        <Button Content="🔄 Новая диагностика" Style="{StaticResource PrimaryButtonStyle}"
+                                Command="{Binding SetStateCommand}" CommandParameter="start" Padding="10,4" FontSize="12"
+                                Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" Margin="0,6,0,0">
+                        <TextBlock Text="{Binding ActiveApplySummaryText}"
+                                   FontSize="12"
+                                   Foreground="#6B7280"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding Bypass.OutcomeProbeStatusText}"
+                                   FontSize="12"
+                                   Foreground="#6B7280"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding Bypass.OutcomeProbeStatusText, Converter={StaticResource StringToVisibilityConverter}}"/>
                     </StackPanel>
                 </Grid>
 
                 <!-- DataGrid -->
                 <DataGrid Grid.Row="2" x:Name="ResultsGrid"
-                          ItemsSource="{Binding TestResults}"
+                          ItemsSource="{Binding ResultsView}"
                           SelectedItem="{Binding SelectedTestResult, Mode=TwoWay}"
                           AutoGenerateColumns="False"
                           CanUserAddRows="False"
