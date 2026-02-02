@@ -499,20 +499,41 @@ namespace IspAudit.ViewModels
                         // Делаем best-effort outcome-probe, чтобы хотя бы OUT статусы обновились.
                         if (pipeline == null || diagCts == null)
                         {
+                            var verdict = "UNKNOWN";
                             try
                             {
-                                bypassController.RunOutcomeProbeNowCommand?.Execute(null);
+                                var probe = await _stateManager.RunOutcomeProbeNowAsync(
+                                    hostOverride: hostKey,
+                                    timeoutOverride: TimeSpan.FromSeconds(6),
+                                    cancellationToken: ct).ConfigureAwait(false);
+
+                                verdict = probe.Status switch
+                                {
+                                    OutcomeStatus.Success => "OK",
+                                    OutcomeStatus.Failed => "FAIL",
+                                    _ => "UNKNOWN"
+                                };
                             }
                             catch
                             {
+                                // ignore
+                            }
+
+                            try
+                            {
+                                OnPostApplyCheckVerdict?.Invoke(hostKey, verdict, "enqueue");
+                            }
+                            catch
+                            {
+                                // ignore
                             }
 
                             UpdatePostApplyRetestUi(() =>
                             {
-                                PostApplyRetestStatus = "Ретест после Apply: диагностика активна, pipeline не готов (запущен OUT probe)";
+                                PostApplyRetestStatus = $"Ретест после Apply: диагностика активна, pipeline не готов (OUT={verdict})";
                             });
 
-                            Log($"[PostApplyRetest][op={opId}] Skip: reason=pipeline_not_ready; action=outcome_probe");
+                            Log($"[PostApplyRetest][op={opId}] Skip: reason=pipeline_not_ready; action=outcome_probe; verdict={verdict}");
                             return;
                         }
 
@@ -539,25 +560,54 @@ namespace IspAudit.ViewModels
                             await pipeline.EnqueueHostAsync(h).ConfigureAwait(false);
                         }
 
-                        // Параллельно делаем outcome-probe: он не зависит от pipeline и даёт понятный OUT.
+                        // Делаем outcome-probe детерминированно и используем как семантический итог для UI.
+                        var verdictAfterEnqueue = "UNKNOWN";
                         try
                         {
-                            bypassController.RunOutcomeProbeNowCommand?.Execute(null);
+                            var probe = await _stateManager.RunOutcomeProbeNowAsync(
+                                hostOverride: hostKey,
+                                timeoutOverride: TimeSpan.FromSeconds(6),
+                                cancellationToken: linkedCt).ConfigureAwait(false);
+
+                            verdictAfterEnqueue = probe.Status switch
+                            {
+                                OutcomeStatus.Success => "OK",
+                                OutcomeStatus.Failed => "FAIL",
+                                _ => "UNKNOWN"
+                            };
                         }
                         catch
                         {
+                            // ignore
+                        }
+
+                        try
+                        {
+                            OnPostApplyCheckVerdict?.Invoke(hostKey, verdictAfterEnqueue, "enqueue");
+                        }
+                        catch
+                        {
+                            // ignore
                         }
 
                         UpdatePostApplyRetestUi(() =>
                         {
-                            PostApplyRetestStatus = $"Ретест после Apply: добавлено в очередь диагностики (IP={hosts.Count})";
+                            PostApplyRetestStatus = $"Ретест после Apply: добавлено в очередь диагностики (IP={hosts.Count}, OUT={verdictAfterEnqueue})";
                         });
 
-                        Log($"[PostApplyRetest][op={opId}] Enqueued: host={hostKey}; ips={hosts.Count}");
+                        Log($"[PostApplyRetest][op={opId}] Enqueued: host={hostKey}; ips={hosts.Count}; verdict={verdictAfterEnqueue}");
                         return;
                     }
                     catch (OperationCanceledException)
                     {
+                        try
+                        {
+                            OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "enqueue");
+                        }
+                        catch
+                        {
+                            // ignore
+                        }
                         UpdatePostApplyRetestUi(() =>
                         {
                             PostApplyRetestStatus = "Ретест после Apply: отменён";
@@ -568,6 +618,14 @@ namespace IspAudit.ViewModels
                     }
                     catch (Exception ex)
                     {
+                        try
+                        {
+                            OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "enqueue");
+                        }
+                        catch
+                        {
+                            // ignore
+                        }
                         UpdatePostApplyRetestUi(() =>
                         {
                             PostApplyRetestStatus = $"Ретест после Apply: ошибка ({ex.Message})";
@@ -739,6 +797,19 @@ namespace IspAudit.ViewModels
                         ? "UNKNOWN"
                         : (summaryFail ? "FAILED" : (summaryOk ? "SUCCESS" : "UNKNOWN"));
 
+                    var verdict = (summaryOk && summaryFail)
+                        ? "PARTIAL"
+                        : (summaryFail ? "FAIL" : (summaryOk ? "OK" : "UNKNOWN"));
+
+                    try
+                    {
+                        OnPostApplyCheckVerdict?.Invoke(hostKey, verdict, "local");
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+
                     UpdatePostApplyRetestUi(() =>
                     {
                         PostApplyRetestStatus = "Ретест после Apply: завершён";
@@ -784,6 +855,14 @@ namespace IspAudit.ViewModels
                 }
                 catch (OperationCanceledException)
                 {
+                    try
+                    {
+                        OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "local");
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
                     UpdatePostApplyRetestUi(() =>
                     {
                         PostApplyRetestStatus = "Ретест после Apply: отменён";
@@ -793,6 +872,14 @@ namespace IspAudit.ViewModels
                 }
                 catch (Exception ex)
                 {
+                    try
+                    {
+                        OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "local");
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
                     UpdatePostApplyRetestUi(() =>
                     {
                         PostApplyRetestStatus = $"Ретест после Apply: ошибка ({ex.Message})";

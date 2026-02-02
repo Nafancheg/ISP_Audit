@@ -322,6 +322,10 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - `StandardStrategySelector` умеет (опционально) добавлять вес по успешности **поверх** hardcoded `BasePriority`.
 - Gate: при отсутствии данных поведение полностью как раньше; одинаковый вход + одинаковый feedback → одинаковый план.
 
+Актуализация (Dev, 02.02.2026): UX семантика Post-Apply проверки
+- В `Models/TestResult` добавлен отдельный `PostApplyCheckStatus` (badge на карточке), чтобы отражать итог «пост‑проверки» после Apply, не смешивая его с текущим `TestStatus` (Idle/Running/Pass/Fail/Warn).
+- `DiagnosticOrchestrator.StartPostApplyRetestAsync(...)` публикует вердикт `OK/FAIL/PARTIAL/UNKNOWN` через событие `OnPostApplyCheckVerdict`, а `MainViewModel` применяет его на карточки apply‑группы.
+
 Примечание (UI/идентификация хостов): карточки результатов привязаны к **человеко‑понятному ключу** (в первую очередь SNI/hostname, если он известен). IP сохраняется как технический атрибут (`FallbackIp`) и может использоваться для корреляции, но не должен быть главным «лицом» карточки для пользователя.
 ```
 

@@ -131,6 +131,11 @@ namespace IspAudit.ViewModels
                 var outcome = await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey).ConfigureAwait(false);
 
                 // Практический UX: сразу запускаем короткий пост-Apply ретест по цели.
+                if (outcome != null && string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                {
+                    var groupKeyForCheck = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
+                    SetPostApplyCheckStatusForGroupKey(groupKeyForCheck, IsRunning ? PostApplyCheckStatus.Queued : PostApplyCheckStatus.Running);
+                }
                 _ = Orchestrator.StartPostApplyRetestAsync(Bypass, preferredHostKey, txId);
 
                 if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
@@ -231,6 +236,11 @@ namespace IspAudit.ViewModels
                 var outcome = await Orchestrator.ApplyRecommendationsForDomainAsync(Bypass, domain).ConfigureAwait(false);
 
                 // Практический UX: ретестим доменную цель.
+                if (outcome != null && string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                {
+                    var groupKeyForCheck = ComputeApplyGroupKey(outcome.HostKey, domain);
+                    SetPostApplyCheckStatusForGroupKey(groupKeyForCheck, IsRunning ? PostApplyCheckStatus.Queued : PostApplyCheckStatus.Running);
+                }
                 _ = Orchestrator.StartPostApplyRetestAsync(Bypass, domain, txId);
 
                 if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
@@ -312,6 +322,8 @@ namespace IspAudit.ViewModels
                     ? Results.SuggestedDomainGroupKey
                     : groupKeyOverride;
 
+                groupKey = (groupKey ?? string.Empty).Trim().Trim('.');
+
                 if (string.IsNullOrWhiteSpace(groupKey))
                 {
                     Log("[APPLY] GroupKey доменной группы не определён");
@@ -349,6 +361,13 @@ namespace IspAudit.ViewModels
                     anchorDomain = domains[0];
                 }
 
+                anchorDomain = (anchorDomain ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(anchorDomain))
+                {
+                    Log("[APPLY] Anchor-домен не определён");
+                    return;
+                }
+
                 if (!string.IsNullOrWhiteSpace(groupKeyOverride))
                 {
                     Log($"[APPLY] Групповой apply: groupKey={groupKey} (override)");
@@ -360,12 +379,17 @@ namespace IspAudit.ViewModels
                 var outcome = await Orchestrator.ApplyRecommendationsForDomainGroupAsync(Bypass, groupKey, anchorDomain, domains).ConfigureAwait(false);
 
                 // Практический UX: ретестим anchor-домен (OutcomeTargetHost).
+                if (outcome != null && string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                {
+                    var groupKeyForCheck = (groupKey ?? string.Empty).Trim().Trim('.');
+                    SetPostApplyCheckStatusForGroupKey(groupKeyForCheck, IsRunning ? PostApplyCheckStatus.Queued : PostApplyCheckStatus.Running);
+                }
                 _ = Orchestrator.StartPostApplyRetestAsync(Bypass, anchorDomain, txId);
 
                 if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
                 {
                     // Важно: groupKey для доменных групп — это именно ключ группы, не производный от суффикса.
-                    var normalizedGroupKey = groupKey.Trim().Trim('.');
+                    var normalizedGroupKey = groupKey!;
 
                     if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
                     {
@@ -556,6 +580,11 @@ namespace IspAudit.ViewModels
                 var outcome = await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey).ConfigureAwait(false);
 
                 // Практический UX: ретестим именно выбранную цель.
+                if (outcome != null && string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                {
+                    var groupKeyForCheck = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
+                    SetPostApplyCheckStatusForGroupKey(groupKeyForCheck, IsRunning ? PostApplyCheckStatus.Queued : PostApplyCheckStatus.Running);
+                }
                 _ = Orchestrator.StartPostApplyRetestAsync(Bypass, preferredHostKey, txId);
 
                 if (Bypass.IsBypassActive && outcome != null)
@@ -718,6 +747,15 @@ namespace IspAudit.ViewModels
                 }
 
                 test.ActionStatusText = "Ретест запущен";
+                try
+                {
+                    var groupKey = GetStableApplyGroupKeyForHostKey(hostKey);
+                    SetPostApplyCheckStatusForGroupKey(groupKey, IsRunning ? PostApplyCheckStatus.Queued : PostApplyCheckStatus.Running);
+                }
+                catch
+                {
+                    // ignore
+                }
                 var opId = Guid.NewGuid().ToString("N");
                 _ = Orchestrator.StartPostApplyRetestAsync(Bypass, hostKey, opId);
                 return Task.CompletedTask;
@@ -769,10 +807,28 @@ namespace IspAudit.ViewModels
                         _pendingManualRetestHostKeys.Add(hostKey);
                     }
                     test.ActionStatusText = "Переподключено; ретест запланирован";
+                    try
+                    {
+                        var groupKey = GetStableApplyGroupKeyForHostKey(hostKey);
+                        SetPostApplyCheckStatusForGroupKey(groupKey, PostApplyCheckStatus.Queued);
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
                 }
                 else
                 {
                     test.ActionStatusText = "Переподключено; ретест…";
+                    try
+                    {
+                        var groupKey = GetStableApplyGroupKeyForHostKey(hostKey);
+                        SetPostApplyCheckStatusForGroupKey(groupKey, PostApplyCheckStatus.Running);
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
                     var opId = Guid.NewGuid().ToString("N");
                     _ = Orchestrator.StartPostApplyRetestAsync(Bypass, hostKey, opId);
                 }
@@ -798,6 +854,7 @@ namespace IspAudit.ViewModels
                 {
                     var groupKey = GetStableApplyGroupKeyForHostKey(hostKey);
                     SetActionStatusTextForGroupKey(groupKey, "Ретест запущен (очередь)");
+                    SetPostApplyCheckStatusForGroupKey(groupKey, PostApplyCheckStatus.Queued);
 
                     // Step 12: не блокируем UI/OnDiagnosticComplete ожиданием ретеста.
                     // Ретест запускается асинхронно.
@@ -833,6 +890,67 @@ namespace IspAudit.ViewModels
                     }
                 }
             });
+        }
+
+        private void SetPostApplyCheckStatusForGroupKey(string groupKey, PostApplyCheckStatus status)
+        {
+            if (string.IsNullOrWhiteSpace(groupKey)) return;
+            var key = groupKey.Trim().Trim('.');
+            if (string.IsNullOrWhiteSpace(key)) return;
+
+            UiBeginInvoke(() =>
+            {
+                foreach (var r in Results.TestResults)
+                {
+                    var hostKey = GetPreferredHostKey(r);
+                    if (string.IsNullOrWhiteSpace(hostKey)) continue;
+
+                    var rowGroupKey = GetStableApplyGroupKeyForHostKey(hostKey);
+                    if (!string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (IsHostManuallyExcludedFromGroupKey(key, hostKey))
+                    {
+                        continue;
+                    }
+
+                    if (IsNoiseHostKey(hostKey))
+                    {
+                        continue;
+                    }
+
+                    r.PostApplyCheckStatus = status;
+                }
+            });
+        }
+
+        private void ApplyPostApplyVerdictToHostKey(string hostKey, string verdict)
+        {
+            try
+            {
+                var hk = (hostKey ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(hk)) return;
+
+                var groupKey = GetStableApplyGroupKeyForHostKey(hk);
+                if (string.IsNullOrWhiteSpace(groupKey)) return;
+
+                var v = (verdict ?? string.Empty).Trim();
+                var mapped = v.Equals("OK", StringComparison.OrdinalIgnoreCase) || v.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase)
+                    ? PostApplyCheckStatus.Ok
+                    : (v.Equals("FAIL", StringComparison.OrdinalIgnoreCase) || v.Equals("FAILED", StringComparison.OrdinalIgnoreCase)
+                        ? PostApplyCheckStatus.Fail
+                        : (v.Equals("PARTIAL", StringComparison.OrdinalIgnoreCase)
+                            ? PostApplyCheckStatus.Partial
+                            : PostApplyCheckStatus.Unknown));
+
+                SetPostApplyCheckStatusForGroupKey(groupKey, mapped);
+            }
+            catch
+            {
+                // ignore
+            }
         }
 
         private void UpdateLastApplyTransactionTextForGroupKey(string groupKey)
@@ -1333,6 +1451,11 @@ namespace IspAudit.ViewModels
                     if (!string.IsNullOrWhiteSpace(r.AppliedBypassStrategy))
                     {
                         r.AppliedBypassStrategy = null;
+                    }
+
+                    if (r.PostApplyCheckStatus != PostApplyCheckStatus.None)
+                    {
+                        r.PostApplyCheckStatus = PostApplyCheckStatus.None;
                     }
                 }
             });

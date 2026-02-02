@@ -301,6 +301,8 @@ namespace IspAudit.ViewModels
                             groupCard.AppliedBypassStrategy = src.AppliedBypassStrategy;
                         }
 
+                        groupCard.PostApplyCheckStatus = MergePostApplyCheckStatus(groupCard.PostApplyCheckStatus, src.PostApplyCheckStatus);
+
                         TestResults.Remove(src);
                     }
 

@@ -152,6 +152,9 @@ namespace IspAudit.ViewModels
         public event Action<string>? OnPipelineMessage;
         public event Action? OnDiagnosticComplete;
 
+        // P1.8: семантика Post-Apply проверки (OK/FAIL/PARTIAL/UNKNOWN) для UI.
+        public event Action<string, string, string>? OnPostApplyCheckVerdict;
+
         public DiagnosticOrchestrator(BypassStateManager stateManager)
         {
             _stateManager = stateManager ?? throw new ArgumentNullException(nameof(stateManager));

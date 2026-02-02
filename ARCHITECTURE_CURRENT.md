@@ -357,6 +357,10 @@ Smoke-хелперы (для детерминированных проверок
         * Если одновременно есть и `✓`, и `❌` по цели → outcome считается неоднозначным (`Unknown`) и **не записывается**.
         * При `DropUdp443` outcome также записывается как `StrategyId.QuicObfuscation` (т.к. это фактическая реализация техники в MVP).
 
+    * P1.8 (UX-слой, семантика «исправлено/не проверено»): в `Models/TestResult` добавлен отдельный `PostApplyCheckStatus` (не смешивается с `TestStatus`).
+        * `DiagnosticOrchestrator.StartPostApplyRetestAsync(...)` публикует вердикт `OK/FAIL/PARTIAL/UNKNOWN` через событие `OnPostApplyCheckVerdict`.
+        * `MainViewModel` маппит вердикт на apply-group (groupKey) и выставляет badge `Пост‑проверка: …` на карточках группы.
+
 ---
 
 ## 3.2.2 DPI Intelligence INTEL — карта состояния (As‑Is / Target / Roadmap)

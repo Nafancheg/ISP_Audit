@@ -14,6 +14,18 @@ namespace IspAudit.Models
         Warn
     }
 
+    public enum PostApplyCheckStatus
+    {
+        None,
+        NotChecked,
+        Queued,
+        Running,
+        Ok,
+        Fail,
+        Partial,
+        Unknown
+    }
+
     public class TestResult : INotifyPropertyChanged
     {
         private TestStatus _status;
@@ -256,6 +268,40 @@ namespace IspAudit.Models
         }
 
         public bool ShowBundleSummaryText => !string.IsNullOrWhiteSpace(BundleSummaryText);
+
+        private PostApplyCheckStatus _postApplyCheckStatus;
+        public PostApplyCheckStatus PostApplyCheckStatus
+        {
+            get => _postApplyCheckStatus;
+            set
+            {
+                if (_postApplyCheckStatus == value) return;
+                _postApplyCheckStatus = value;
+                OnPropertyChanged(nameof(PostApplyCheckStatus));
+                OnPropertyChanged(nameof(PostApplyCheckText));
+                OnPropertyChanged(nameof(ShowPostApplyCheck));
+            }
+        }
+
+        public bool ShowPostApplyCheck => PostApplyCheckStatus != PostApplyCheckStatus.None;
+
+        public string PostApplyCheckText
+        {
+            get
+            {
+                return PostApplyCheckStatus switch
+                {
+                    PostApplyCheckStatus.NotChecked => "Пост‑проверка: не выполнена",
+                    PostApplyCheckStatus.Queued => "Пост‑проверка: в очереди",
+                    PostApplyCheckStatus.Running => "Пост‑проверка: проверяем…",
+                    PostApplyCheckStatus.Ok => "Пост‑проверка: OK",
+                    PostApplyCheckStatus.Fail => "Пост‑проверка: FAIL",
+                    PostApplyCheckStatus.Partial => "Пост‑проверка: частично",
+                    PostApplyCheckStatus.Unknown => "Пост‑проверка: нет данных",
+                    _ => string.Empty
+                };
+            }
+        }
 
         /// <summary>
         /// Фактически применённая стратегия обхода для этой карточки (после нажатия "Подключить"/Apply).

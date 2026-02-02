@@ -109,6 +109,46 @@
                         <TextBlock Text="{Binding TestResult.AppliedBypassStrategy, StringFormat=Применено: {0}}"
                                    FontSize="10" FontWeight="SemiBold" Foreground="#166534" TextWrapping="Wrap"/>
                     </Border>
+
+                    <!-- Post-Apply check status (P1.8) -->
+                    <Border CornerRadius="4" Padding="6,2" Margin="0,0,4,4"
+                            Visibility="{Binding TestResult.ShowPostApplyCheck, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="#F3F4F6"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding TestResult.PostApplyCheckStatus}" Value="Ok">
+                                        <Setter Property="Background" Value="#ECFDF3"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding TestResult.PostApplyCheckStatus}" Value="Fail">
+                                        <Setter Property="Background" Value="#FEF2F2"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding TestResult.PostApplyCheckStatus}" Value="Partial">
+                                        <Setter Property="Background" Value="#FFF7ED"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="{Binding TestResult.PostApplyCheckText}"
+                                   FontSize="10" FontWeight="SemiBold" Foreground="#374151" TextWrapping="Wrap">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#374151"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding TestResult.PostApplyCheckStatus}" Value="Ok">
+                                            <Setter Property="Foreground" Value="#166534"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding TestResult.PostApplyCheckStatus}" Value="Fail">
+                                            <Setter Property="Foreground" Value="#DC2626"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding TestResult.PostApplyCheckStatus}" Value="Partial">
+                                            <Setter Property="Foreground" Value="#EA580C"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Border>
                 </WrapPanel>
 
                 <!-- Status Text -->

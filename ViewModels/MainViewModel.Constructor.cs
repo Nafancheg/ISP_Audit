@@ -179,6 +179,22 @@ namespace IspAudit.ViewModels
                 }
             };
 
+            Orchestrator.OnPostApplyCheckVerdict += (hostKey, verdict, mode) =>
+            {
+                try
+                {
+                    UiBeginInvoke(() =>
+                    {
+                        // mode пока используется только для логов/диагностики, в UI не выводим.
+                        ApplyPostApplyVerdictToHostKey(hostKey, verdict);
+                    });
+                }
+                catch
+                {
+                    // ignore
+                }
+            };
+
             Results.OnLog += Log;
             Results.PropertyChanged += (s, e) =>
             {

@@ -207,6 +207,8 @@ namespace IspAudit.ViewModels
                             domainCard.AppliedBypassStrategy = src.AppliedBypassStrategy;
                         }
 
+                        domainCard.PostApplyCheckStatus = MergePostApplyCheckStatus(domainCard.PostApplyCheckStatus, src.PostApplyCheckStatus);
+
                         TestResults.Remove(src);
                     }
 
@@ -256,6 +258,37 @@ namespace IspAudit.ViewModels
             }
 
             return incoming;
+        }
+
+        private static PostApplyCheckStatus MergePostApplyCheckStatus(PostApplyCheckStatus a, PostApplyCheckStatus b)
+        {
+            if (a == PostApplyCheckStatus.None) return b;
+            if (b == PostApplyCheckStatus.None) return a;
+
+            bool IsFinal(PostApplyCheckStatus s)
+                => s is PostApplyCheckStatus.Ok or PostApplyCheckStatus.Fail or PostApplyCheckStatus.Partial or PostApplyCheckStatus.Unknown;
+
+            if (IsFinal(a) && IsFinal(b))
+            {
+                if (a == b) return a;
+                if (a == PostApplyCheckStatus.Partial || b == PostApplyCheckStatus.Partial) return PostApplyCheckStatus.Partial;
+                if ((a == PostApplyCheckStatus.Ok && b == PostApplyCheckStatus.Fail) || (a == PostApplyCheckStatus.Fail && b == PostApplyCheckStatus.Ok))
+                {
+                    return PostApplyCheckStatus.Partial;
+                }
+
+                // Любая смесь с Unknown считаем частичной картиной.
+                return PostApplyCheckStatus.Partial;
+            }
+
+            if (IsFinal(a)) return a;
+            if (IsFinal(b)) return b;
+
+            // Оба не финальные: Running > Queued > NotChecked
+            if (a == PostApplyCheckStatus.Running || b == PostApplyCheckStatus.Running) return PostApplyCheckStatus.Running;
+            if (a == PostApplyCheckStatus.Queued || b == PostApplyCheckStatus.Queued) return PostApplyCheckStatus.Queued;
+            if (a == PostApplyCheckStatus.NotChecked || b == PostApplyCheckStatus.NotChecked) return PostApplyCheckStatus.NotChecked;
+            return PostApplyCheckStatus.Unknown;
         }
 
         private void TryMigrateIpCardToNameKey(string ip, string nameKey)
