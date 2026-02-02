@@ -240,7 +240,7 @@ namespace IspAudit.Core.Bypass
                     _log?.Invoke("[APPLY][Executor] Applying DoH (enable)");
 
                     dnsTouched = true;
-                    var (success, error) = await FixService.ApplyDnsFixAsync(planned.PlannedDnsPreset, reason: $"apply_plan:apply_doh_enable preset={planned.PlannedDnsPreset}").ConfigureAwait(false);
+                    var (success, error) = await FixService.ApplyDnsFixAsync(planned.PlannedDnsPreset, reason: $"apply_plan:apply_doh_enable preset={planned.PlannedDnsPreset}", cancellationToken: linked.Token).ConfigureAwait(false);
                     if (success)
                     {
                         dohAfter = true;
@@ -265,7 +265,7 @@ namespace IspAudit.Core.Bypass
                     _log?.Invoke("[APPLY][Executor] Applying DoH (disable)");
 
                     dnsTouched = true;
-                    var (success, error) = await FixService.RestoreDnsAsync(reason: "apply_plan:apply_doh_disable").ConfigureAwait(false);
+                    var (success, error) = await FixService.RestoreDnsAsync(reason: "apply_plan:apply_doh_disable", cancellationToken: linked.Token).ConfigureAwait(false);
                     dohAfter = false;
                     _log?.Invoke(success ? "[DoH] DNS settings restored." : $"[DoH] Restore failed: {error}");
 
@@ -394,11 +394,11 @@ namespace IspAudit.Core.Bypass
                 tracker?.Start("rollback_dns");
                 if (snapshot.DoHEnabled)
                 {
-                    await FixService.ApplyDnsFixAsync(snapshot.SelectedDnsPreset, reason: $"apply_plan:rollback_dns enable preset={snapshot.SelectedDnsPreset}").ConfigureAwait(false);
+                    await FixService.ApplyDnsFixAsync(snapshot.SelectedDnsPreset, reason: $"apply_plan:rollback_dns enable preset={snapshot.SelectedDnsPreset}", cancellationToken: CancellationToken.None).ConfigureAwait(false);
                 }
                 else
                 {
-                    await FixService.RestoreDnsAsync(reason: "apply_plan:rollback_dns disable").ConfigureAwait(false);
+                    await FixService.RestoreDnsAsync(reason: "apply_plan:rollback_dns disable", cancellationToken: CancellationToken.None).ConfigureAwait(false);
                 }
 
                 tracker?.FinalizeCurrent("OK");

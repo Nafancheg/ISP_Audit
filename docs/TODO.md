@@ -110,6 +110,7 @@
     - [x] Обернуть apply на уровне `Bypass/BypassStateManager.cs`: единая точка логирования (Started/PhaseCompleted/Completed/Rollback) + correlation id.
     - [x] Добавить пороги на фазы (WARN/OK) + structured events (без доп. внутренних таймаутов на фазах).
     - [x] Добавить диагностику длительностей `TrafficEngine.StartAsync/StopAsync` (WARN при slow path) для расследования зависаний WinDivert.
+    - [x] Fix: `FixService` поддерживает отмену/timeout для внешних команд (netsh/powershell), токен Apply прокинут в DNS/DoH операции (таймаут больше не «залипает» вне cancellation).
     - [ ] Собрать логи с детализацией на реальном таймауте/зависании.
     - [ ] Классифицировать причину (WinDivert stop, DNS, deadlock, connectivity check).
     - [ ] Проверить потенциальные зависания в `Core/Traffic/TrafficEngine.cs` (например `StopAsync`/`StartAsync`) и добавить диагностику/таймауты при необходимости.

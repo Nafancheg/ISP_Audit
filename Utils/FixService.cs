@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32;
 
@@ -18,6 +19,8 @@ namespace IspAudit.Utils
     /// </summary>
     public static class FixService
     {
+        private static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromSeconds(8);
+
         public static readonly List<DnsPreset> AvailablePresets = new()
         {
             new("Cloudflare", "1.1.1.1", "https://cloudflare-dns.com/dns-query", "1.0.0.1", "https://cloudflare-dns.com/dns-query"),
@@ -115,12 +118,17 @@ namespace IspAudit.Utils
         /// <summary>
         /// Применить DNS fix: установить выбранный пресет (по умолчанию Cloudflare)
         /// </summary>
-        public static async Task<(bool success, string error)> ApplyDnsFixAsync(string presetName = "Cloudflare", string? reason = null)
+        public static async Task<(bool success, string error)> ApplyDnsFixAsync(
+            string presetName = "Cloudflare",
+            string? reason = null,
+            CancellationToken cancellationToken = default)
         {
             try
             {
             var caller = TryGetCallerTag();
             Log($"[FixService] ApplyDnsFixAsync: preset='{presetName}', reason='{reason ?? "-"}', caller='{caller ?? "-"}'");
+
+                cancellationToken.ThrowIfCancellationRequested();
 
                 var preset = AvailablePresets.FirstOrDefault(p => p.Name.Equals(presetName, StringComparison.OrdinalIgnoreCase))
                              ?? AvailablePresets[0];
@@ -140,7 +148,7 @@ namespace IspAudit.Utils
                     {
                         try
                         {
-                            var json = await File.ReadAllTextAsync(BackupFilePath).ConfigureAwait(false);
+                            var json = await File.ReadAllTextAsync(BackupFilePath, cancellationToken).ConfigureAwait(false);
                             var state = JsonSerializer.Deserialize<DnsBackupState>(json);
                             if (state != null && state.AdapterName == adapter.Name)
                             {
@@ -171,16 +179,16 @@ namespace IspAudit.Utils
 
                 // 2. Установить DNS серверы
                 var dnsServers = new[] { preset.PrimaryIp, preset.SecondaryIp };
-                var setDnsSuccess = await SetDnsServersAsync(adapter.Name, dnsServers);
+                var setDnsSuccess = await SetDnsServersAsync(adapter.Name, dnsServers, cancellationToken).ConfigureAwait(false);
                 if (!setDnsSuccess)
                     return (false, "Не удалось установить DNS серверы");
 
                 // Небольшая пауза, чтобы система осознала смену DNS
-                await Task.Delay(500).ConfigureAwait(false);
+                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
 
                 // 3. Включить DoH encryption (Primary + Secondary)
-                await EnableDoHAsync(preset.PrimaryIp, preset.PrimaryDoH);
-                await EnableDoHAsync(preset.SecondaryIp, preset.SecondaryDoH);
+                await EnableDoHAsync(preset.PrimaryIp, preset.PrimaryDoH, cancellationToken).ConfigureAwait(false);
+                await EnableDoHAsync(preset.SecondaryIp, preset.SecondaryDoH, cancellationToken).ConfigureAwait(false);
 
                 // Обновляем бэкап: фиксируем, какие DoH-серверы были добавлены
                 await TryUpdateBackupWithDohServersAsync(
@@ -191,13 +199,17 @@ namespace IspAudit.Utils
                     caller: caller).ConfigureAwait(false);
 
                 // Проверка (для логов)
-                var (_, checkOutput) = await RunCommandAsync("netsh", "dns show encryption");
+                var (_, checkOutput) = await RunCommandAsync("netsh", "dns show encryption", cancellationToken).ConfigureAwait(false);
                 Log($"[FixService] Current DoH rules:\n{checkOutput}");
 
                 // 4. Очистить DNS кэш
-                await RunCommandAsync("ipconfig", "/flushdns").ConfigureAwait(false);
+                await RunCommandAsync("ipconfig", "/flushdns", cancellationToken).ConfigureAwait(false);
 
                 return (true, string.Empty);
+            }
+            catch (OperationCanceledException)
+            {
+                return (false, "Операция отменена");
             }
             catch (Exception ex)
             {
@@ -208,10 +220,14 @@ namespace IspAudit.Utils
         /// <summary>
         /// Восстановить оригинальные настройки DNS
         /// </summary>
-        public static async Task<(bool success, string error)> RestoreDnsAsync(string? reason = null)
+        public static async Task<(bool success, string error)> RestoreDnsAsync(
+            string? reason = null,
+            CancellationToken cancellationToken = default)
         {
             var caller = TryGetCallerTag();
             Log($"[FixService] RestoreDnsAsync: reason='{reason ?? "-"}', caller='{caller ?? "-"}'");
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             DnsBackupState? loadedState = null;
 
@@ -220,7 +236,7 @@ namespace IspAudit.Utils
             {
                 try
                 {
-                    var json = await File.ReadAllTextAsync(BackupFilePath).ConfigureAwait(false);
+                    var json = await File.ReadAllTextAsync(BackupFilePath, cancellationToken).ConfigureAwait(false);
                     loadedState = JsonSerializer.Deserialize<DnsBackupState>(json);
                     if (loadedState != null)
                     {
@@ -248,11 +264,11 @@ namespace IspAudit.Utils
                         {
                             Log($"[FixService] No backup found, but preset '{preset}' is active. Fallback restore to automatic DNS.");
                             var psCommand = $"Set-DnsClientServerAddress -InterfaceAlias '{adapter.Name}' -ResetServerAddresses";
-                            var (psSuccess, psOutput) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"").ConfigureAwait(false);
+                            var (psSuccess, psOutput) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"", cancellationToken).ConfigureAwait(false);
                             if (!psSuccess)
                             {
                                 Log($"[FixService] PowerShell fallback reset failed: {psOutput}. Trying netsh dhcp.");
-                                var (success, _) = await RunCommandAsync("netsh", $"interface ipv4 set dns name=\"{adapter.Name}\" source=dhcp").ConfigureAwait(false);
+                                var (success, _) = await RunCommandAsync("netsh", $"interface ipv4 set dns name=\"{adapter.Name}\" source=dhcp", cancellationToken).ConfigureAwait(false);
                                 if (!success) return (false, "Нет сохраненных настроек DNS (и fallback восстановление не удалось)");
                             }
 
@@ -261,10 +277,10 @@ namespace IspAudit.Utils
                             var presetObj = AvailablePresets.FirstOrDefault(p => p.Name.Equals(preset, StringComparison.OrdinalIgnoreCase));
                             if (presetObj != null)
                             {
-                                await CleanupDohArtifactsAsync(new[] { presetObj.PrimaryIp, presetObj.SecondaryIp }).ConfigureAwait(false);
+                                await CleanupDohArtifactsAsync(new[] { presetObj.PrimaryIp, presetObj.SecondaryIp }, cancellationToken).ConfigureAwait(false);
                             }
 
-                            await RunCommandAsync("ipconfig", "/flushdns").ConfigureAwait(false);
+                            await RunCommandAsync("ipconfig", "/flushdns", cancellationToken).ConfigureAwait(false);
                             return (true, "Восстановлено до автоматических DNS (fallback: бэкап не найден)");
                         }
                     }
@@ -285,11 +301,11 @@ namespace IspAudit.Utils
                 {
                     // Предпочтительно: ResetServerAddresses (возврат к автоматическим DNS)
                     var psCommand = $"Set-DnsClientServerAddress -InterfaceAlias '{_originalAdapterName}' -ResetServerAddresses";
-                    var (psSuccess, psOutput) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"").ConfigureAwait(false);
+                    var (psSuccess, psOutput) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"", cancellationToken).ConfigureAwait(false);
                     if (!psSuccess)
                     {
                         Log($"[FixService] PowerShell reset DNS failed: {psOutput}. Fallback to netsh.");
-                        var (success, _) = await RunCommandAsync("netsh", $"interface ipv4 set dns name=\"{_originalAdapterName}\" source=dhcp").ConfigureAwait(false);
+                        var (success, _) = await RunCommandAsync("netsh", $"interface ipv4 set dns name=\"{_originalAdapterName}\" source=dhcp", cancellationToken).ConfigureAwait(false);
                         if (!success) return (false, "Не удалось восстановить DHCP");
                     }
                 }
@@ -298,11 +314,11 @@ namespace IspAudit.Utils
                     var ips = _originalDnsConfig.Split(',', StringSplitOptions.RemoveEmptyEntries);
                     if (ips.Length > 0)
                     {
-                        await SetDnsServersAsync(_originalAdapterName, ips).ConfigureAwait(false);
+                        await SetDnsServersAsync(_originalAdapterName, ips, cancellationToken).ConfigureAwait(false);
                     }
                 }
 
-                await RunCommandAsync("ipconfig", "/flushdns").ConfigureAwait(false);
+                await RunCommandAsync("ipconfig", "/flushdns", cancellationToken).ConfigureAwait(false);
 
                 // Важно: удаляем DoH-профили/правила, которые мы могли добавить.
                 // Иначе в ipconfig /all может оставаться DoH-профиль даже после возврата DNS.
@@ -310,7 +326,7 @@ namespace IspAudit.Utils
                     ? loadedState.DohServers
                     : GetAllKnownPresetIps();
 
-                await CleanupDohArtifactsAsync(cleanupServers).ConfigureAwait(false);
+                await CleanupDohArtifactsAsync(cleanupServers, cancellationToken).ConfigureAwait(false);
 
                 // Возвращаем EnableAutoDoh, но только если у нас есть снимок ДО вмешательства приложения.
                 if (loadedState?.EnableAutoDohCaptured == true)
@@ -476,7 +492,7 @@ namespace IspAudit.Utils
         /// <summary>
         /// Установить DNS серверы (PowerShell + netsh fallback)
         /// </summary>
-        private static async Task<bool> SetDnsServersAsync(string adapterName, string[] dnsServers)
+        private static async Task<bool> SetDnsServersAsync(string adapterName, string[] dnsServers, CancellationToken cancellationToken)
         {
             try
             {
@@ -484,7 +500,7 @@ namespace IspAudit.Utils
                 string servers = string.Join(",", dnsServers.Select(s => $"'{s}'"));
                 string psCommand = $"Set-DnsClientServerAddress -InterfaceAlias '{adapterName}' -ServerAddresses ({servers})";
 
-                var (psSuccess, psOutput) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"").ConfigureAwait(false);
+                var (psSuccess, psOutput) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"", cancellationToken).ConfigureAwait(false);
 
                 if (psSuccess)
                 {
@@ -496,13 +512,13 @@ namespace IspAudit.Utils
 
                 // Попытка 2: netsh (fallback)
                 // Установить primary DNS
-                var (success1, _) = await RunCommandAsync("netsh", $"interface ipv4 set dns name=\"{adapterName}\" static {dnsServers[0]}").ConfigureAwait(false);
+                var (success1, _) = await RunCommandAsync("netsh", $"interface ipv4 set dns name=\"{adapterName}\" static {dnsServers[0]}", cancellationToken).ConfigureAwait(false);
                 if (!success1) return false;
 
                 // Установить secondary DNS если есть
                 if (dnsServers.Length > 1)
                 {
-                    var (success2, _) = await RunCommandAsync("netsh", $"interface ipv4 add dns name=\"{adapterName}\" {dnsServers[1]} index=2").ConfigureAwait(false);
+                    var (success2, _) = await RunCommandAsync("netsh", $"interface ipv4 add dns name=\"{adapterName}\" {dnsServers[1]} index=2", cancellationToken).ConfigureAwait(false);
                     if (!success2) return false;
                 }
 
@@ -518,12 +534,12 @@ namespace IspAudit.Utils
         /// <summary>
         /// Включить DoH (DNS-over-HTTPS) для указанного DNS сервера
         /// </summary>
-        private static async Task<bool> EnableDoHAsync(string dnsIp, string dohTemplate)
+        private static async Task<bool> EnableDoHAsync(string dnsIp, string dohTemplate, CancellationToken cancellationToken)
         {
             // 0. Убедиться, что AutoDoH разрешен в реестре (для некоторых версий Windows)
             try
             {
-                await RunCommandAsync("reg", "add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\Dnscache\\Parameters\" /v EnableAutoDoh /t REG_DWORD /d 2 /f").ConfigureAwait(false);
+                await RunCommandAsync("reg", "add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\Dnscache\\Parameters\" /v EnableAutoDoh /t REG_DWORD /d 2 /f", cancellationToken).ConfigureAwait(false);
             }
             catch { }
 
@@ -535,10 +551,10 @@ namespace IspAudit.Utils
                 string psCommand = $"Remove-DnsClientDohServerAddress -ServerAddress '{dnsIp}' -ErrorAction SilentlyContinue; " +
                                    $"Add-DnsClientDohServerAddress -ServerAddress '{dnsIp}' -DohTemplate '{dohTemplate}' -AllowFallbackToUdp $false -AutoUpgrade $true";
 
-                var (success, output) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"");
+                var (success, output) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"", cancellationToken).ConfigureAwait(false);
 
                 // Проверка результата
-                var (checkSuccess, checkOutput) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"Get-DnsClientDohServerAddress -ServerAddress '{dnsIp}' | Format-List\"").ConfigureAwait(false);
+                var (checkSuccess, checkOutput) = await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"Get-DnsClientDohServerAddress -ServerAddress '{dnsIp}' | Format-List\"", cancellationToken).ConfigureAwait(false);
                 Log($"[FixService] DoH Check for {dnsIp}:\n{checkOutput}");
 
                 if (success)
@@ -556,10 +572,10 @@ namespace IspAudit.Utils
 
             // Попытка 2: netsh (fallback)
             // 1. Удаляем существующее правило (игнорируем ошибку, если его нет)
-            await RunCommandAsync("netsh", $"dns delete encryption server={dnsIp}").ConfigureAwait(false);
+            await RunCommandAsync("netsh", $"dns delete encryption server={dnsIp}", cancellationToken).ConfigureAwait(false);
 
             // 2. Добавляем новое правило (важно: кавычки вокруг шаблона)
-            var (netshSuccess, netshOutput) = await RunCommandAsync("netsh", $"dns add encryption server={dnsIp} dohtemplate=\"{dohTemplate}\" autoupgrade=yes udpfallback=no").ConfigureAwait(false);
+            var (netshSuccess, netshOutput) = await RunCommandAsync("netsh", $"dns add encryption server={dnsIp} dohtemplate=\"{dohTemplate}\" autoupgrade=yes udpfallback=no", cancellationToken).ConfigureAwait(false);
 
             if (!netshSuccess)
             {
@@ -626,7 +642,7 @@ namespace IspAudit.Utils
             return ips.ToList();
         }
 
-        private static async Task CleanupDohArtifactsAsync(IEnumerable<string> serverIps)
+        private static async Task CleanupDohArtifactsAsync(IEnumerable<string> serverIps, CancellationToken cancellationToken)
         {
             foreach (var ip in serverIps.Distinct(StringComparer.OrdinalIgnoreCase))
             {
@@ -636,14 +652,14 @@ namespace IspAudit.Utils
                 try
                 {
                     var psCommand = $"Remove-DnsClientDohServerAddress -ServerAddress '{ip}' -ErrorAction SilentlyContinue";
-                    await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"").ConfigureAwait(false);
+                    await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"", cancellationToken).ConfigureAwait(false);
                 }
                 catch { }
 
                 // 2) Удаляем правило netsh encryption (Win10/legacy)
                 try
                 {
-                    await RunCommandAsync("netsh", $"dns delete encryption server={ip}").ConfigureAwait(false);
+                    await RunCommandAsync("netsh", $"dns delete encryption server={ip}", cancellationToken).ConfigureAwait(false);
                 }
                 catch { }
             }
@@ -688,10 +704,18 @@ namespace IspAudit.Utils
         /// <summary>
         /// Выполнить shell команду асинхронно
         /// </summary>
-        private static async Task<(bool success, string output)> RunCommandAsync(string fileName, string arguments)
+        private static Task<(bool success, string output)> RunCommandAsync(string fileName, string arguments)
+            => RunCommandAsync(fileName, arguments, CancellationToken.None);
+
+        private static Task<(bool success, string output)> RunCommandAsync(string fileName, string arguments, CancellationToken cancellationToken)
+            => RunCommandAsync(fileName, arguments, DefaultCommandTimeout, cancellationToken);
+
+        private static async Task<(bool success, string output)> RunCommandAsync(string fileName, string arguments, TimeSpan timeout, CancellationToken cancellationToken)
         {
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 var psi = new ProcessStartInfo
                 {
                     FileName = fileName,
@@ -704,14 +728,54 @@ namespace IspAudit.Utils
 
                 using var process = Process.Start(psi);
                 if (process == null)
-                    return (false, "Process failed to start");
+                {
+                    return (false, "Не удалось запустить процесс");
+                }
 
-                var output = await process.StandardOutput.ReadToEndAsync();
-                var error = await process.StandardError.ReadToEndAsync();
+                var outputTask = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+                var errorTask = process.StandardError.ReadToEndAsync(CancellationToken.None);
 
-                await process.WaitForExitAsync();
+                using var timeoutCts = timeout > TimeSpan.Zero
+                    ? new CancellationTokenSource(timeout)
+                    : new CancellationTokenSource();
 
-                return (process.ExitCode == 0, string.IsNullOrEmpty(error) ? output : error);
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+                try
+                {
+                    await process.WaitForExitAsync(linkedCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                        throw;
+                    }
+
+                    // Timeout
+                    try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+
+                    string output = string.Empty;
+                    string error = string.Empty;
+                    try { output = await outputTask.ConfigureAwait(false); } catch { }
+                    try { error = await errorTask.ConfigureAwait(false); } catch { }
+
+                    var extra = string.IsNullOrWhiteSpace(error) ? output : error;
+                    var tail = string.IsNullOrWhiteSpace(extra) ? string.Empty : $"; output={extra.Trim()}";
+                    return (false, $"TIMEOUT {timeout.TotalSeconds:0.#}s: {fileName} {arguments}{tail}");
+                }
+
+                var outText = string.Empty;
+                var errText = string.Empty;
+                try { outText = await outputTask.ConfigureAwait(false); } catch { }
+                try { errText = await errorTask.ConfigureAwait(false); } catch { }
+
+                return (process.ExitCode == 0, string.IsNullOrEmpty(errText) ? outText : errText);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
