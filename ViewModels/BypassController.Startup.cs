@@ -39,7 +39,7 @@ namespace IspAudit.ViewModels
                     if (TrafficEngine.HasAdministratorRights)
                     {
                         Log("[DoH] Detected leftover DNS backup from previous session. Restoring...");
-                        var (success, error) = await FixService.RestoreDnsAsync().ConfigureAwait(false);
+                        var (success, error) = await FixService.RestoreDnsAsync(reason: "startup_crash_recovery").ConfigureAwait(false);
                         Log(success ? "[DoH] DNS restored on startup (crash recovery)." : $"[DoH] Startup restore failed: {error}");
                     }
                     else

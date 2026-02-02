@@ -59,6 +59,11 @@ namespace IspAudit.Utils
             public string Config { get; set; } = "";
             public DateTime Timestamp { get; set; }
 
+            // Атрибуция: откуда и почему была изменена система
+            public string? LastAction { get; set; }
+            public string? LastActionReason { get; set; }
+            public string? LastActionCaller { get; set; }
+
             // Какие DoH-серверы мы добавляли (чтобы гарантированно убрать их при восстановлении)
             public List<string> DohServers { get; set; } = new();
 
@@ -110,10 +115,13 @@ namespace IspAudit.Utils
         /// <summary>
         /// Применить DNS fix: установить выбранный пресет (по умолчанию Cloudflare)
         /// </summary>
-        public static async Task<(bool success, string error)> ApplyDnsFixAsync(string presetName = "Cloudflare")
+        public static async Task<(bool success, string error)> ApplyDnsFixAsync(string presetName = "Cloudflare", string? reason = null)
         {
             try
             {
+            var caller = TryGetCallerTag();
+            Log($"[FixService] ApplyDnsFixAsync: preset='{presetName}', reason='{reason ?? "-"}', caller='{caller ?? "-"}'");
+
                 var preset = AvailablePresets.FirstOrDefault(p => p.Name.Equals(presetName, StringComparison.OrdinalIgnoreCase))
                              ?? AvailablePresets[0];
 
@@ -147,7 +155,7 @@ namespace IspAudit.Utils
                     // Если все еще нет бэкапа, делаем новый
                     if (_originalDnsConfig == null)
                     {
-                        var backupOk = await BackupDnsSettingsAsync(adapter.Name).ConfigureAwait(false);
+                        var backupOk = await BackupDnsSettingsAsync(adapter.Name, action: "apply", reason: reason, caller: caller).ConfigureAwait(false);
                         if (!backupOk)
                         {
                             return (false, "Не удалось создать бэкап DNS (нет прав/нет доступа к файлу). Применение отменено.");
@@ -175,7 +183,12 @@ namespace IspAudit.Utils
                 await EnableDoHAsync(preset.SecondaryIp, preset.SecondaryDoH);
 
                 // Обновляем бэкап: фиксируем, какие DoH-серверы были добавлены
-                await TryUpdateBackupWithDohServersAsync(adapter.Name, new[] { preset.PrimaryIp, preset.SecondaryIp }).ConfigureAwait(false);
+                await TryUpdateBackupWithDohServersAsync(
+                    adapter.Name,
+                    new[] { preset.PrimaryIp, preset.SecondaryIp },
+                    action: "apply",
+                    reason: reason,
+                    caller: caller).ConfigureAwait(false);
 
                 // Проверка (для логов)
                 var (_, checkOutput) = await RunCommandAsync("netsh", "dns show encryption");
@@ -195,8 +208,11 @@ namespace IspAudit.Utils
         /// <summary>
         /// Восстановить оригинальные настройки DNS
         /// </summary>
-        public static async Task<(bool success, string error)> RestoreDnsAsync()
+        public static async Task<(bool success, string error)> RestoreDnsAsync(string? reason = null)
         {
+            var caller = TryGetCallerTag();
+            Log($"[FixService] RestoreDnsAsync: reason='{reason ?? "-"}', caller='{caller ?? "-"}'");
+
             DnsBackupState? loadedState = null;
 
             // Если в памяти пусто, пробуем загрузить с диска
@@ -322,7 +338,7 @@ namespace IspAudit.Utils
 
         #region Helpers
 
-        private static async Task<bool> BackupDnsSettingsAsync(string adapterName)
+        private static async Task<bool> BackupDnsSettingsAsync(string adapterName, string action, string? reason, string? caller)
         {
             try
             {
@@ -374,6 +390,9 @@ namespace IspAudit.Utils
                             AdapterName = _originalAdapterName,
                             Config = _originalDnsConfig,
                             Timestamp = DateTime.Now,
+                            LastAction = action,
+                            LastActionReason = reason,
+                            LastActionCaller = caller,
                             // Пока пусто, заполним после успешного EnableDoHAsync
                             DohServers = new List<string>(),
                             EnableAutoDohCaptured = true,
@@ -403,7 +422,42 @@ namespace IspAudit.Utils
 
         private static void Log(string message)
         {
-            System.Diagnostics.Debug.WriteLine($"[FixService] {message}");
+            try
+            {
+                DebugLogger.Log(message);
+            }
+            catch
+            {
+                System.Diagnostics.Debug.WriteLine(message);
+            }
+        }
+
+        private static string? TryGetCallerTag()
+        {
+            try
+            {
+                var st = new StackTrace(skipFrames: 2, fNeedFileInfo: false);
+                var frames = st.GetFrames();
+                if (frames == null) return null;
+
+                foreach (var f in frames)
+                {
+                    var m = f.GetMethod();
+                    var dt = m?.DeclaringType;
+                    if (dt == null) continue;
+
+                    if (dt == typeof(FixService)) continue;
+                    if (dt == typeof(DebugLogger)) continue;
+
+                    return $"{dt.FullName}.{m!.Name}";
+                }
+
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         /// <summary>
@@ -595,7 +649,12 @@ namespace IspAudit.Utils
             }
         }
 
-        private static async Task TryUpdateBackupWithDohServersAsync(string adapterName, IEnumerable<string> dohServers)
+        private static async Task TryUpdateBackupWithDohServersAsync(
+            string adapterName,
+            IEnumerable<string> dohServers,
+            string action,
+            string? reason,
+            string? caller)
         {
             try
             {
@@ -612,6 +671,9 @@ namespace IspAudit.Utils
                     .ToList();
 
                 state.DohServers = list;
+                state.LastAction = action;
+                state.LastActionReason = reason;
+                state.LastActionCaller = caller;
                 state.Version = Math.Max(state.Version, 2);
 
                 var updated = JsonSerializer.Serialize(state);

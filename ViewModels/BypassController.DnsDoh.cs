@@ -19,7 +19,7 @@ namespace IspAudit.ViewModels
                 string presetName = SelectedDnsPreset;
                 Log($"[DoH] Applying DNS-over-HTTPS ({presetName})...");
 
-                var (success, error) = await FixService.ApplyDnsFixAsync(presetName).ConfigureAwait(false);
+                var (success, error) = await FixService.ApplyDnsFixAsync(presetName, reason: "ui_toggle_doh_enable").ConfigureAwait(false);
 
                 SafeUiInvoke(() =>
                 {
@@ -50,7 +50,7 @@ namespace IspAudit.ViewModels
             try
             {
                 Log("[DoH] Restoring original DNS settings...");
-                var (success, error) = await FixService.RestoreDnsAsync().ConfigureAwait(false);
+                var (success, error) = await FixService.RestoreDnsAsync(reason: "ui_toggle_doh_restore").ConfigureAwait(false);
 
                 SafeUiInvoke(() =>
                 {
