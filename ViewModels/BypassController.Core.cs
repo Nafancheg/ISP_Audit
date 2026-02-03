@@ -139,7 +139,9 @@ namespace IspAudit.ViewModels
             CheckCompatibility();
 
             using var op = BypassOperationContext.EnterIfNone("manual_disable_all");
-            await ApplyBypassOptionsAsync(cancellationToken).ConfigureAwait(false);
+            // Важно: DisableAll должен быть «жёстким» выключением.
+            // ApplyBypassOptionsAsync может снова включить capabilities из remembered active targets (policy-driven union).
+            await _stateManager.DisableTlsAsync("manual_disable_all", cancellationToken).ConfigureAwait(false);
         }
 
         public string GetOutcomeTargetHost() => _stateManager.GetOutcomeTargetHost();

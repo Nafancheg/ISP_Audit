@@ -10,6 +10,7 @@ namespace IspAudit.Bypass
         private volatile bool _watchdogInitialized;
         private DateTime _lastMetricsEventUtc = DateTime.MinValue;
         private DateTime _lastBypassActivatedUtc = DateTime.MinValue;
+        private DateTime _lastEngineNotRunningUtc = DateTime.MinValue;
         private DateTime _lastMetricsSnapshotUtc = DateTime.MinValue;
         private TlsBypassMetrics? _lastMetricsSnapshot;
 
@@ -60,6 +61,7 @@ namespace IspAudit.Bypass
                 var snapshot = _tlsService.GetOptionsSnapshot();
                 if (!snapshot.IsAnyEnabled())
                 {
+                    _lastEngineNotRunningUtc = DateTime.MinValue;
                     return;
                 }
 
@@ -78,21 +80,24 @@ namespace IspAudit.Bypass
                     return;
                 }
 
-                // Если движок не запущен после активации bypass — отключаем (обычно означает проблему с WinDivert/правами).
-                if (!_trafficEngine.IsRunning)
+                // Если движок не запущен слишком долго при активном bypass — отключаем (обычно означает проблему с WinDivert/правами).
+                if (_trafficEngine.IsRunning)
                 {
-                    if (_lastBypassActivatedUtc == DateTime.MinValue)
-                    {
-                        _lastBypassActivatedUtc = nowUtc;
-                        return;
-                    }
+                    _lastEngineNotRunningUtc = DateTime.MinValue;
+                    return;
+                }
 
-                    if ((nowUtc - _lastBypassActivatedUtc) > WatchdogEngineGrace)
-                    {
-                        _log?.Invoke("[Bypass][Watchdog] engine_dead: bypass активен, но TrafficEngine не запущен — выполняем Disable");
-                        await DisableTlsAsync("engine_dead", CancellationToken.None).ConfigureAwait(false);
-                        return;
-                    }
+                if (_lastEngineNotRunningUtc == DateTime.MinValue)
+                {
+                    _lastEngineNotRunningUtc = nowUtc;
+                    return;
+                }
+
+                if ((nowUtc - _lastEngineNotRunningUtc) > WatchdogEngineGrace)
+                {
+                    _log?.Invoke("[Bypass][Watchdog] engine_dead: bypass активен, но TrafficEngine не запущен — выполняем Disable");
+                    await DisableTlsAsync("engine_dead", CancellationToken.None).ConfigureAwait(false);
+                    return;
                 }
             }
             catch (Exception ex)

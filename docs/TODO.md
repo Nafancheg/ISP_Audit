@@ -112,6 +112,8 @@
     - [x] Добавить диагностику длительностей `TrafficEngine.StartAsync/StopAsync` (WARN при slow path) для расследования зависаний WinDivert.
     - [x] Fix: `FixService` поддерживает отмену/timeout для внешних команд (netsh/powershell), токен Apply прокинут в DNS/DoH операции (таймаут больше не «залипает» вне cancellation).
     - [x] Fix: остановка `TrafficEngine` при отсутствии потребителей выполняется через `BypassStateManager` (убирает "в обход BypassStateManager" и снижает риск watchdog/ENGINE_DEAD).
+    - [x] Fix: `DisableAll` выключает bypass через `BypassStateManager.DisableTlsAsync` и чистит remembered active targets (не даём bypass «воскреснуть» из per-target union при Shutdown/Disable).
+    - [x] Fix: watchdog/activation `ENGINE_DEAD` считают grace от момента, когда движок реально стал не запущен (а не от старого времени Apply), чтобы избежать ложных срабатываний.
     - [ ] Собрать логи с детализацией на реальном таймауте/зависании.
     - [ ] Классифицировать причину (WinDivert stop, DNS, deadlock, connectivity check).
     - [ ] Проверить потенциальные зависания в `Core/Traffic/TrafficEngine.cs` (например `StopAsync`/`StartAsync`) и добавить диагностику/таймауты при необходимости.

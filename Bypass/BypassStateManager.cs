@@ -850,6 +850,8 @@ namespace IspAudit.Bypass
                 await _tlsService.DisableAsync(cancellationToken).ConfigureAwait(false);
 
                 _lastBypassActivatedUtc = DateTime.MinValue;
+                _lastEngineNotRunningUtc = DateTime.MinValue;
+                ClearActiveTargetPolicies();
                 _journal.SetBypassActive(false, reason);
 
                 CancelOutcomeProbe();

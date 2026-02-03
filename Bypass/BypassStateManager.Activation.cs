@@ -29,7 +29,7 @@ namespace IspAudit.Bypass
             var stale = TimeSpan.FromMilliseconds(staleMs);
 
             // ENGINE_DEAD: движок не запущен после grace.
-            if (!_trafficEngine.IsRunning && _lastBypassActivatedUtc != DateTime.MinValue && (nowUtc - _lastBypassActivatedUtc) >= engineGrace)
+            if (!_trafficEngine.IsRunning && _lastEngineNotRunningUtc != DateTime.MinValue && (nowUtc - _lastEngineNotRunningUtc) >= engineGrace)
             {
                 return new ActivationStatusSnapshot(ActivationStatus.EngineDead, "ENGINE_DEAD", "TrafficEngine не запущен");
             }
