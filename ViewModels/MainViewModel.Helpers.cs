@@ -188,7 +188,7 @@ namespace IspAudit.ViewModels
                 if (_trafficEngine.IsRunning)
                 {
                     Log("[Main] Stopping TrafficEngine (no active consumers)...");
-                    _ = _trafficEngine.StopAsync();
+                    _ = _bypassState.StopEngineAsync();
                 }
             }
         }
