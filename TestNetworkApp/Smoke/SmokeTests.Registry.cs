@@ -82,6 +82,7 @@ namespace TestNetworkApp.Smoke
                 ["REG-018"] = REG_HttpRedirect_RecommendsHttpHostTricks,
                 ["REG-019"] = REG_BlockpageHosts_Configurable_JsonOverride,
                 ["REG-020"] = REG_PostApplyChecks_Persisted_RoundTrip,
+                ["REG-021"] = REG_HardDisable_ClearsActiveTargetUnion_NoEngineStart,
 
                 ["PIPE-005"] = Pipe_UnifiedFilter_LoopbackDropped,
                 ["PIPE-006"] = Pipe_UnifiedFilter_NoiseOnlyOnDisplay,

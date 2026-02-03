@@ -126,7 +126,17 @@ namespace IspAudit.ViewModels
                 FakeEnabled = false,
                 DropRstEnabled = false,
                 DropUdp443 = false,
-                AllowNoSni = false
+                DropUdp443Global = false,
+                AllowNoSni = false,
+
+                // Важно: DisableAll должен быть «жёстким» выключением.
+                // Здесь отключаем и «скрытые»/не-UI флаги, чтобы последующий Apply не мог
+                // включить обход из текущего _currentOptions при выключенных тумблерах.
+                TtlTrickEnabled = false,
+                AutoTtlEnabled = false,
+                HttpHostTricksEnabled = false,
+                BadChecksumEnabled = false,
+                AutoAdjustAggressive = false
             };
 
             OnPropertyChanged(nameof(IsFragmentEnabled));
@@ -134,7 +144,9 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(IsFakeEnabled));
             OnPropertyChanged(nameof(IsDropRstEnabled));
             OnPropertyChanged(nameof(IsQuicFallbackEnabled));
+            OnPropertyChanged(nameof(IsQuicFallbackGlobal));
             OnPropertyChanged(nameof(IsAllowNoSniEnabled));
+            OnPropertyChanged(nameof(IsAutoAdjustAggressive));
             NotifyActiveStatesChanged();
             CheckCompatibility();
 

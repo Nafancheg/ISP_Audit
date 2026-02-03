@@ -21,6 +21,114 @@ namespace TestNetworkApp.Smoke
 {
     internal static partial class SmokeTests
     {
+        public static Task<SmokeTestResult> REG_HardDisable_ClearsActiveTargetUnion_NoEngineStart(CancellationToken ct)
+            => RunAsyncAwait("REG-021", "REG: hard disable очищает per-target union и не запускает engine при выключенных тумблерах", async innerCt =>
+            {
+                var sw = Stopwatch.StartNew();
+
+                // Логи используем как дополнительный сигнал: при регрессии ожидаем попытку engine_start.
+                var logs = new System.Collections.Generic.List<string>();
+                void Log(string msg)
+                {
+                    try
+                    {
+                        lock (logs)
+                        {
+                            logs.Add(msg);
+                        }
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                }
+
+                try
+                {
+                    var baseProfile = BypassProfile.CreateDefault();
+                    using var engine = new TrafficEngine(progress: null);
+                    using var manager = BypassStateManager.GetOrCreate(engine, baseProfile, log: Log);
+
+                    var bypass = new BypassController(manager);
+
+                    // Симулируем remembered per-target union (P0.1 Step 1): если DisableAll реализован через Apply,
+                    // то даже при выключенных тумблерах effective может «воскреснуть».
+                    manager.RememberActiveTargetPolicy(new BypassStateManager.ActiveTargetPolicy
+                    {
+                        HostKey = "example.com",
+                        AllowNoSni = true,
+                        // Без DropUdp443/Fragment/Disorder/Fake: избегаем лишних зависимостей (DNS/targets/policy compile).
+                        CandidateIpEndpoints = new[] { "1.1.1.1:443" },
+                        DropUdp443 = false,
+                        HttpHostTricksEnabled = false,
+                        TlsStrategy = TlsBypassStrategy.None
+                    });
+
+                    // Проверка precondition: active targets действительно есть.
+                    var getActive = typeof(BypassStateManager)
+                        .GetMethod("GetActiveTargetPoliciesSnapshot", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    if (getActive == null)
+                    {
+                        return new SmokeTestResult("REG-021", "REG: hard disable очищает per-target union и не запускает engine при выключенных тумблерах",
+                            SmokeOutcome.Fail, sw.Elapsed, "Не нашли GetActiveTargetPoliciesSnapshot через reflection");
+                    }
+
+                    var before = getActive.Invoke(manager, new object?[] { null }) as Array;
+                    if (before == null || before.Length == 0)
+                    {
+                        return new SmokeTestResult("REG-021", "REG: hard disable очищает per-target union и не запускает engine при выключенных тумблерах",
+                            SmokeOutcome.Fail, sw.Elapsed, "Precondition: active targets пусты (ожидали минимум 1)");
+                    }
+
+                    await bypass.DisableAllAsync(innerCt).ConfigureAwait(false);
+
+                    // После hard disable должны быть выключены все опции.
+                    var snapAfterDisable = manager.GetOptionsSnapshot();
+                    if (snapAfterDisable.IsAnyEnabled())
+                    {
+                        return new SmokeTestResult("REG-021", "REG: hard disable очищает per-target union и не запускает engine при выключенных тумблерах",
+                            SmokeOutcome.Fail, sw.Elapsed, $"После DisableAllAsync bypass всё ещё включён: {snapAfterDisable.ToReadableStrategy()}");
+                    }
+
+                    // И cleared per-target union.
+                    var after = getActive.Invoke(manager, new object?[] { null }) as Array;
+                    if (after != null && after.Length != 0)
+                    {
+                        return new SmokeTestResult("REG-021", "REG: hard disable очищает per-target union и не запускает engine при выключенных тумблерах",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Ожидали очистку active targets, получили count={after.Length}");
+                    }
+
+                    // Дополнительный check: «Apply при выключенных тумблерах» после hard disable не должен ре-активировать bypass.
+                    await bypass.ApplyBypassOptionsAsync(innerCt).ConfigureAwait(false);
+                    var snapAfterApplyOff = manager.GetOptionsSnapshot();
+                    if (snapAfterApplyOff.IsAnyEnabled())
+                    {
+                        return new SmokeTestResult("REG-021", "REG: hard disable очищает per-target union и не запускает engine при выключенных тумблерах",
+                            SmokeOutcome.Fail, sw.Elapsed, $"После ApplyBypassOptionsAsync (off) bypass внезапно включён: {snapAfterApplyOff.ToReadableStrategy()}");
+                    }
+
+                    string[] lines;
+                    lock (logs)
+                    {
+                        lines = logs.ToArray();
+                    }
+
+                    if (lines.Any(l => !string.IsNullOrWhiteSpace(l) && l.Contains("engine_start", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return new SmokeTestResult("REG-021", "REG: hard disable очищает per-target union и не запускает engine при выключенных тумблерах",
+                            SmokeOutcome.Fail, sw.Elapsed, "Обнаружили engine_start в логах — вероятна регрессия (DisableAll через Apply)");
+                    }
+
+                    return new SmokeTestResult("REG-021", "REG: hard disable очищает per-target union и не запускает engine при выключенных тумблерах",
+                        SmokeOutcome.Pass, sw.Elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-021", "REG: hard disable очищает per-target union и не запускает engine при выключенных тумблерах",
+                        SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> REG_QuicInterference_Http3Fail_RecommendsDropUdp443(CancellationToken ct)
             => RunAsync("REG-017", "REG: H3 fail → QuicInterference → assist DropUdp443", () =>
             {

@@ -1174,6 +1174,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** Синтетический `PostApplyCheckEntry` (groupKey + verdict + checkedAtUtc) через store c override path
 **Ожидаемый результат:** После reload запись доступна по groupKey и содержит ожидаемые поля
 
+**Test ID:** `REG-021`
+**Что проверяет:** "Hard disable" действительно выключает bypass и очищает per-target union (active targets)
+**Для чего:** Регресс-гейт: DisableAll/DisableTlsAsync не должны включать bypass через remembered active targets (и не должны провоцировать `engine_start` при выключенных тумблерах)
+**Критерий успеха:** После `BypassController.DisableAllAsync` все опции выключены, active targets очищены; повторный `ApplyBypassOptionsAsync` при выключенных тумблерах не активирует bypass
+**Входные данные:** Синтетический remembered active target policy (AllowNoSni=true) + вызов DisableAllAsync
+**Ожидаемый результат:** `IsAnyEnabled=false`, active targets count=0, в логах нет `engine_start`
+
 **Test ID:** `REG-004`
 **Что проверяет:** Per-card ретест во время диагностики ставится в очередь и флашится после завершения
 **Для чего:** Регресс-гейт UX: кнопка «Ретест» не должна быть «мертвой» во время диагностики

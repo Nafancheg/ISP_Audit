@@ -36,6 +36,7 @@
 - [x] 02.02.2026: smoke strict (admin) PASS 155/155, отчёт: [artifacts/smoke_strict_20260202_173725.json](artifacts/smoke_strict_20260202_173725.json)
 - [x] 03.02.2026: dotnet build OK
 - [x] 03.02.2026: smoke ui (non-admin) PASS 14/14 (P1.9 aggregation wiring)
+- [x] 03.02.2026: smoke reg (non-admin) PASS 21/21 (REG-021 hard disable)
 
 ---
 
@@ -117,7 +118,7 @@
     - [x] Fix: остановка `TrafficEngine` при отсутствии потребителей выполняется через `BypassStateManager` (убирает "в обход BypassStateManager" и снижает риск watchdog/ENGINE_DEAD).
     - [x] Fix: `DisableAll` выключает bypass через `BypassStateManager.DisableTlsAsync` и чистит remembered active targets (не даём bypass «воскреснуть» из per-target union при Shutdown/Disable).
     - [x] Fix: watchdog/activation `ENGINE_DEAD` считают grace от момента, когда движок реально стал не запущен (а не от старого времени Apply), чтобы избежать ложных срабатываний.
-    - [ ] Regression smoke: `REG-021` — "hard disable" (`DisableTlsAsync`/`DisableAll`) очищает per-target union и не приводит к повторному `engine_start`/effective ON на shutdown.
+    - [x] Regression smoke: `REG-021` — "hard disable" (`DisableTlsAsync`/`DisableAll`) очищает per-target union и не приводит к повторному `engine_start`/effective ON на shutdown.
     - [ ] Собрать логи с детализацией на реальном таймауте/зависании.
     - [ ] Классифицировать причину (WinDivert stop, DNS, deadlock, connectivity check).
     - [ ] Проверить потенциальные зависания в `Core/Traffic/TrafficEngine.cs` (например `StopAsync`/`StartAsync`) и добавить диагностику/таймауты при необходимости.
