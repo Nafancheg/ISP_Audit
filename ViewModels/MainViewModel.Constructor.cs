@@ -64,6 +64,9 @@ namespace IspAudit.ViewModels
             Orchestrator = new DiagnosticOrchestrator(_bypassState);
             Results = new TestResultsManager();
 
+            // P1.9: агрегация строк результатов по pinned groupKey (state/group_participation.json)
+            Results.GroupBypassAttachmentStore = _groupBypassAttachmentStore;
+
             // Подписываемся на события
             Bypass.OnLog += Log;
             Bypass.PropertyChanged += (s, e) =>

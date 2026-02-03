@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using IspAudit.Core.Bypass;
 using IspAudit.Core.Diagnostics;
 using IspAudit.Models;
 using IspAudit;
@@ -32,6 +33,16 @@ namespace IspAudit.ViewModels
         // Также важен режим «Нестабильно», когда в окне есть и успехи, и ошибки.
 
         private readonly ConcurrentDictionary<string, string> _ipToUiKey = new();
+
+        // P1.9: агрегация CDN/подхостов в одну строку по groupKey.
+        // Храним множество «членов» (домены/подхосты) для отображения счётчика ×N.
+        private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _aggregatedMembersByUiKey = new(StringComparer.OrdinalIgnoreCase);
+
+        // Кэш: groupKey -> якорный домен (человекочитаемое имя строки)
+        private readonly ConcurrentDictionary<string, string> _groupKeyToAnchorDomain = new(StringComparer.OrdinalIgnoreCase);
+
+        // Источник истины для pinning hostKey -> groupKey (state/group_participation.json)
+        public GroupBypassAttachmentStore? GroupBypassAttachmentStore { get; set; }
 
         // Доменная агрегация (общая): автоматически ищем «семейства» доменов, где появляется много вариативных подхостов.
         // Список семейств хранится во внешнем JSON рядом с приложением (state/domain_families.json).

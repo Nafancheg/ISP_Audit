@@ -520,7 +520,10 @@ namespace IspAudit.ViewModels
                     var uiStrategy = string.Join(" + ", tokens);
 
                     var result = _ctx.TestResults.FirstOrDefault(t =>
-                        t.Target.Host == targetHostKey || t.Target.Name == targetHostKey);
+                        string.Equals(t.UiKey, targetHostKey, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(t.Target.Host, targetHostKey, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(t.Target.Name, targetHostKey, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(t.Target.SniHost, targetHostKey, StringComparison.OrdinalIgnoreCase));
                     if (result != null)
                     {
                         result.BypassStrategy = uiStrategy;
@@ -572,7 +575,11 @@ namespace IspAudit.ViewModels
 
                 if (string.IsNullOrWhiteSpace(sni) && string.IsNullOrWhiteSpace(rdns)) return;
 
-                var result = _ctx.TestResults.FirstOrDefault(t => t.Target.Host == hostKey || t.Target.FallbackIp == hostKey);
+                var result = _ctx.TestResults.FirstOrDefault(t =>
+                    string.Equals(t.UiKey, hostKey, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(t.Target.Host, hostKey, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(t.Target.Name, hostKey, StringComparison.OrdinalIgnoreCase) ||
+                    t.Target.FallbackIp == hostKey);
                 if (result == null) return;
 
                 // Если hostKey это IP, а SNI уже есть — мигрируем карточку на человеко-понятный ключ.

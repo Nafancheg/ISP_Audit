@@ -32,6 +32,9 @@ namespace IspAudit.Models
         private string _error = string.Empty;
         private string? _details;
 
+        private string _uiKey = string.Empty;
+        private int _aggregatedMemberCount;
+
         private Target _target = null!;
 
         public Target Target
@@ -45,6 +48,41 @@ namespace IspAudit.Models
                 OnPropertyChanged(nameof(DisplayHost));
             }
         }
+
+        /// <summary>
+        /// Детерминированный UI-ключ строки.
+        /// Используется для группировки/сопоставления с ActiveApplyGroupKey (например group-youtube).
+        /// </summary>
+        public string UiKey
+        {
+            get => _uiKey;
+            set
+            {
+                if (string.Equals(_uiKey, value, StringComparison.Ordinal)) return;
+                _uiKey = value ?? string.Empty;
+                OnPropertyChanged(nameof(UiKey));
+            }
+        }
+
+        /// <summary>
+        /// Количество схлопнутых доменов/подхостов в этой строке (P1.9).
+        /// </summary>
+        public int AggregatedMemberCount
+        {
+            get => _aggregatedMemberCount;
+            set
+            {
+                if (_aggregatedMemberCount == value) return;
+                _aggregatedMemberCount = value;
+                OnPropertyChanged(nameof(AggregatedMemberCount));
+                OnPropertyChanged(nameof(ShowAggregatedMemberBadge));
+                OnPropertyChanged(nameof(AggregatedMemberBadgeText));
+            }
+        }
+
+        public bool ShowAggregatedMemberBadge => AggregatedMemberCount > 1;
+
+        public string AggregatedMemberBadgeText => AggregatedMemberCount > 1 ? $"×{AggregatedMemberCount}" : string.Empty;
 
         public string DisplayIp
         {

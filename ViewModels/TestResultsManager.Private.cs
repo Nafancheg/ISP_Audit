@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Linq;
 using System.Net;
@@ -57,7 +58,8 @@ namespace IspAudit.ViewModels
             {
                 var key = NormalizeHost(sni);
                 TrackDomainCandidate(key);
-                return TryApplyDomainAggregation(key);
+                var collapsed = TryApplyDomainAggregation(key);
+                return TryApplyDomainGroupAggregationAndTrackMembers(collapsed, memberKey: key);
             }
 
             // 2) Если host из строки — IP, но мы уже знаем сопоставление IP→SNI, используем его.
@@ -65,13 +67,129 @@ namespace IspAudit.ViewModels
             {
                 var key = NormalizeHost(mapped);
                 TrackDomainCandidate(key);
-                return TryApplyDomainAggregation(key);
+                var collapsed = TryApplyDomainAggregation(key);
+                return TryApplyDomainGroupAggregationAndTrackMembers(collapsed, memberKey: key);
             }
 
             // 3) Иначе используем то, что пришло.
             var fallback = NormalizeHost(hostFromLine);
             TrackDomainCandidate(fallback);
-            return TryApplyDomainAggregation(fallback);
+            var collapsedFallback = TryApplyDomainAggregation(fallback);
+            return TryApplyDomainGroupAggregationAndTrackMembers(collapsedFallback, memberKey: fallback);
+        }
+
+        private string TryApplyDomainGroupAggregationAndTrackMembers(string hostKey, string memberKey)
+        {
+            try
+            {
+                hostKey = NormalizeHost(hostKey);
+                memberKey = NormalizeHost(memberKey);
+
+                if (string.IsNullOrWhiteSpace(hostKey)) return hostKey;
+                if (string.IsNullOrWhiteSpace(memberKey)) return hostKey;
+
+                // IP адреса не агрегируем.
+                if (IPAddress.TryParse(hostKey, out _)) return hostKey;
+
+                // 1) Приоритет: явный pinning hostKey -> groupKey из state/group_participation.json.
+                if (GroupBypassAttachmentStore != null && GroupBypassAttachmentStore.TryGetPinnedGroupKey(memberKey, out var pinned) && !string.IsNullOrWhiteSpace(pinned))
+                {
+                    var gk = NormalizeHost(pinned);
+                    TrackAggregationMember(gk, memberKey);
+                    TryUpdateAnchorDomainForGroupKeyBestEffort(gk, memberKey);
+                    return gk;
+                }
+
+                // 2) Fallback: pinned/learned группы из каталога domain_groups.json.
+                // Важно: ObserveHost делает O(1) lookup и обновляет CurrentSuggestion детерминированно.
+                _ = _domainGroups.ObserveHost(memberKey);
+                var sug = _domainGroups.CurrentSuggestion;
+                if (sug != null && IsHostInSuggestedDomainGroup(memberKey))
+                {
+                    var gk = NormalizeHost(sug.GroupKey);
+                    if (!string.IsNullOrWhiteSpace(gk))
+                    {
+                        TrackAggregationMember(gk, memberKey);
+                        TryUpdateAnchorDomainForGroupKeyBestEffort(gk, memberKey);
+                        return gk;
+                    }
+                }
+
+                return hostKey;
+            }
+            catch
+            {
+                return hostKey;
+            }
+        }
+
+        private void TrackAggregationMember(string uiKey, string memberKey)
+        {
+            try
+            {
+                uiKey = NormalizeHost(uiKey);
+                memberKey = NormalizeHost(memberKey);
+                if (string.IsNullOrWhiteSpace(uiKey) || string.IsNullOrWhiteSpace(memberKey)) return;
+
+                var members = _aggregatedMembersByUiKey.GetOrAdd(uiKey, _ => new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase));
+                _ = members.TryAdd(memberKey, 1);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private int GetAggregatedMemberCount(string uiKey)
+        {
+            try
+            {
+                uiKey = NormalizeHost(uiKey);
+                if (string.IsNullOrWhiteSpace(uiKey)) return 0;
+                return _aggregatedMembersByUiKey.TryGetValue(uiKey, out var members) ? members.Count : 0;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private void TryUpdateAnchorDomainForGroupKeyBestEffort(string groupKey, string memberKey)
+        {
+            try
+            {
+                groupKey = NormalizeHost(groupKey);
+                memberKey = NormalizeHost(memberKey);
+                if (string.IsNullOrWhiteSpace(groupKey)) return;
+                if (string.IsNullOrWhiteSpace(memberKey)) return;
+
+                // Если якорь уже известен — не трогаем.
+                if (_groupKeyToAnchorDomain.TryGetValue(groupKey, out var existing) && !string.IsNullOrWhiteSpace(existing))
+                {
+                    return;
+                }
+
+                // 1) Если текущая подсказка совпадает по groupKey — выбираем якорь по memberKey.
+                var sug = _domainGroups.CurrentSuggestion;
+                if (sug != null && string.Equals(NormalizeHost(sug.GroupKey), groupKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (_domainGroups.TryPickAnchorDomainForHost(memberKey, sug, out var anchor) && !string.IsNullOrWhiteSpace(anchor))
+                    {
+                        _groupKeyToAnchorDomain[groupKey] = NormalizeHost(anchor);
+                        return;
+                    }
+                }
+
+                // 2) Fallback: базовый суффикс memberKey.
+                if (IspAudit.Utils.DomainUtils.TryGetBaseSuffix(memberKey, out var baseSuffix) && !string.IsNullOrWhiteSpace(baseSuffix))
+                {
+                    _groupKeyToAnchorDomain[groupKey] = NormalizeHost(baseSuffix);
+                }
+            }
+            catch
+            {
+                // ignore
+            }
         }
 
         private void TrackDomainCandidate(string hostKey)
@@ -305,33 +423,57 @@ namespace IspAudit.ViewModels
                 if (string.IsNullOrWhiteSpace(ip) || string.IsNullOrWhiteSpace(nameKey)) return;
                 if (!IPAddress.TryParse(ip, out _)) return;
 
+                // P1.9: миграция должна учитывать агрегацию по groupKey,
+                // иначе возможны дубликаты (youtube.com + group-youtube) и стратегия будет назначаться «не той» карточке.
                 nameKey = NormalizeHost(nameKey);
                 if (IPAddress.TryParse(nameKey, out _)) return;
 
+                // Вычисляем финальный UI-ключ с учётом доменных семейств и domain groups.
+                // Важно: memberKey оставляем исходным user-facing доменом (youtube.com),
+                // чтобы можно было подобрать якорь для groupKey.
+                TrackDomainCandidate(nameKey);
+                var collapsed = TryApplyDomainAggregation(nameKey);
+                var uiKey = TryApplyDomainGroupAggregationAndTrackMembers(collapsed, memberKey: nameKey);
+                uiKey = NormalizeHost(uiKey);
+                if (string.IsNullOrWhiteSpace(uiKey) || IPAddress.TryParse(uiKey, out _))
+                {
+                    uiKey = nameKey;
+                }
+
                 // Переносим историю исходов на человеко‑понятный ключ.
                 // Иначе: Fail мог быть записан на IP, а Pass уже придёт на hostname → UI покажет "Доступно" вместо "Нестабильно".
-                MergeOutcomeHistoryKeys(ip, nameKey);
+                MergeOutcomeHistoryKeys(ip, uiKey);
 
                 var ipCard = TestResults.FirstOrDefault(t => t.Target.Host == ip || t.Target.FallbackIp == ip);
                 if (ipCard == null) return;
 
-                var normalizedName = NormalizeHost(nameKey);
+                var normalizedName = NormalizeHost(uiKey);
                 var nameCard = TestResults.FirstOrDefault(t =>
                     NormalizeHost(t.Target.Host).Equals(normalizedName, StringComparison.OrdinalIgnoreCase) ||
                     NormalizeHost(t.Target.Name).Equals(normalizedName, StringComparison.OrdinalIgnoreCase));
 
                 if (nameCard == null)
                 {
+                    var anchor = string.Empty;
+                    if (_groupKeyToAnchorDomain.TryGetValue(normalizedName, out var cachedAnchor) && !string.IsNullOrWhiteSpace(cachedAnchor))
+                    {
+                        anchor = NormalizeHost(cachedAnchor);
+                    }
+
                     // Переименовываем существующую карточку (IP → hostname) и сохраняем IP в FallbackIp.
                     var old = ipCard.Target;
+                    ipCard.UiKey = normalizedName;
                     ipCard.Target = new Target
                     {
-                        Name = nameKey,
-                        Host = nameKey,
+                        // Если uiKey — groupKey, то Name хранит groupKey, а Host/SniHost — якорный домен.
+                        Name = uiKey,
+                        Host = string.IsNullOrWhiteSpace(anchor) ? uiKey : anchor,
                         Service = old.Service,
                         Critical = old.Critical,
                         FallbackIp = string.IsNullOrWhiteSpace(old.FallbackIp) ? ip : old.FallbackIp,
-                        SniHost = string.IsNullOrWhiteSpace(old.SniHost) ? nameKey : old.SniHost,
+                        SniHost = string.IsNullOrWhiteSpace(old.SniHost)
+                            ? (string.IsNullOrWhiteSpace(anchor) ? uiKey : anchor)
+                            : old.SniHost,
                         ReverseDnsHost = old.ReverseDnsHost
                     };
                     return;

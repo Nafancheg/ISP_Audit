@@ -481,6 +481,7 @@
                                                 <DataGridTextColumn Header="Time (UTC)" Binding="{Binding CreatedAtUtc}" Width="150"/>
                                                 <DataGridTextColumn Header="Host" Binding="{Binding InitiatorHostKey}" Width="*"/>
                                                 <DataGridTextColumn Header="Group" Binding="{Binding GroupKey}" Width="160"/>
+                                                <DataGridTextColumn Header="×" Binding="{Binding RepeatCountText}" Width="40"/>
                                                 <DataGridTextColumn Header="IPs" Binding="{Binding CandidateIpEndpoints.Count}" Width="50"/>
                                                 <DataGridTextColumn Header="Applied" Binding="{Binding AppliedStrategyText}" Width="200"/>
                                                 <DataGridTextColumn Header="Plan" Binding="{Binding PlanText}" Width="260"/>
@@ -716,7 +717,20 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTextColumn Header="SNI / Домен" Binding="{Binding DisplayHost}" Width="*" FontWeight="SemiBold"/>
+                        <DataGridTemplateColumn Header="SNI / Домен" Width="*" CanUserResize="True">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding DisplayHost}" FontWeight="SemiBold"/>
+                                        <Border Background="#DBEAFE" CornerRadius="4" Padding="6,2" Margin="8,0,0,0"
+                                                VerticalAlignment="Center"
+                                                Visibility="{Binding ShowAggregatedMemberBadge, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBlock Text="{Binding AggregatedMemberBadgeText}" Foreground="#1D4ED8" FontWeight="SemiBold" FontSize="10"/>
+                                        </Border>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
 
                         <DataGridTemplateColumn Header="Группа" Width="180" CanUserResize="False">
                             <DataGridTemplateColumn.CellTemplate>

@@ -18,6 +18,40 @@ namespace IspAudit.ViewModels
 {
     public partial class BypassController
     {
+        public sealed class ApplyTransactionRow
+        {
+            public ApplyTransactionRow(string dedupKey, int repeatCount, BypassApplyTransaction latest, IReadOnlyList<BypassApplyTransaction> transactions)
+            {
+                DedupKey = dedupKey ?? string.Empty;
+                RepeatCount = repeatCount <= 0 ? 1 : repeatCount;
+                Latest = latest;
+                Transactions = transactions ?? Array.Empty<BypassApplyTransaction>();
+            }
+
+            public string DedupKey { get; }
+
+            public int RepeatCount { get; }
+
+            public string RepeatCountText => RepeatCount <= 1 ? string.Empty : $"×{RepeatCount}";
+
+            public BypassApplyTransaction Latest { get; }
+
+            /// <summary>
+            /// Полный список транзакций для этой агрегированной строки (в пределах текущего буфера/персиста).
+            /// Новые обычно идут первыми.
+            /// </summary>
+            public IReadOnlyList<BypassApplyTransaction> Transactions { get; }
+
+            // Проксируем поля для DataGrid (совместимость с существующими биндингами).
+            public string CreatedAtUtc => Latest.CreatedAtUtc;
+            public string InitiatorHostKey => Latest.InitiatorHostKey;
+            public string GroupKey => Latest.GroupKey;
+            public IReadOnlyList<string> CandidateIpEndpoints => Latest.CandidateIpEndpoints;
+            public string AppliedStrategyText => Latest.AppliedStrategyText;
+            public string PlanText => Latest.PlanText;
+            public string ActivationStatusText => Latest.ActivationStatusText;
+        }
+
         private const int ApplyTransactionsCapacity = 50;
         private const int ApplyTransactionsPersistCount = 10;
         private const int ApplyTransactionsPersistMaxBytes = 2 * 1024 * 1024;
@@ -25,13 +59,13 @@ namespace IspAudit.ViewModels
         private readonly BypassApplyTransactionJournal _applyTransactionsJournal = new(ApplyTransactionsCapacity);
 
         private string _applyTransactionsExportStatusText = string.Empty;
-        private BypassApplyTransaction? _selectedApplyTransaction;
+        private ApplyTransactionRow? _selectedApplyTransaction;
         private string _selectedApplyTransactionJson = string.Empty;
 
         public ICommand ExportSelectedApplyTransactionCommand { get; private set; } = null!;
         public ICommand ClearApplyTransactionsCommand { get; private set; } = null!;
 
-        public ObservableCollection<BypassApplyTransaction> ApplyTransactions { get; } = new();
+        public ObservableCollection<ApplyTransactionRow> ApplyTransactions { get; } = new();
 
         public BypassApplyTransaction? TryGetLatestApplyTransactionForGroupKey(string? groupKey)
         {
@@ -48,8 +82,9 @@ namespace IspAudit.ViewModels
 
                 try
                 {
-                    candidates.AddRange(ApplyTransactions.Where(t =>
-                        string.Equals((t.GroupKey ?? string.Empty).Trim().Trim('.'), key, StringComparison.OrdinalIgnoreCase)));
+                    candidates.AddRange(ApplyTransactions
+                        .Select(r => r.Latest)
+                        .Where(t => string.Equals((t.GroupKey ?? string.Empty).Trim().Trim('.'), key, StringComparison.OrdinalIgnoreCase)));
                 }
                 catch
                 {
@@ -106,7 +141,7 @@ namespace IspAudit.ViewModels
             }
         }
 
-        public BypassApplyTransaction? SelectedApplyTransaction
+        public ApplyTransactionRow? SelectedApplyTransaction
         {
             get => _selectedApplyTransaction;
             set
@@ -115,7 +150,7 @@ namespace IspAudit.ViewModels
                 _selectedApplyTransaction = value;
                 OnPropertyChanged(nameof(SelectedApplyTransaction));
 
-                SelectedApplyTransactionJson = value == null ? string.Empty : BuildApplyTransactionJson(value);
+                SelectedApplyTransactionJson = value == null ? string.Empty : BuildApplyTransactionRowJson(value);
             }
         }
 
@@ -291,16 +326,7 @@ namespace IspAudit.ViewModels
 
                 UiInvoke(() =>
                 {
-                    ApplyTransactions.Insert(0, tx);
-                    while (ApplyTransactions.Count > ApplyTransactionsCapacity)
-                    {
-                        ApplyTransactions.RemoveAt(ApplyTransactions.Count - 1);
-                    }
-
-                    if (SelectedApplyTransaction == null)
-                    {
-                        SelectedApplyTransaction = tx;
-                    }
+                    RebuildApplyTransactionsUiFromJournal();
                 });
 
                 Log($"[P0.1][APPLY_TX] tx={tx.TransactionId}; host={tx.InitiatorHostKey}; group={tx.GroupKey}; ip={tx.CandidateIpEndpoints.Count}; applied={tx.AppliedStrategyText}; act={tx.ActivationStatusText}");
@@ -311,6 +337,24 @@ namespace IspAudit.ViewModels
             {
                 Log($"[P0.1][APPLY_TX] Ошибка записи транзакции: {ex.Message}");
             }
+        }
+
+        private sealed record ApplyTransactionAggregateInfo
+        {
+            public string DedupKey { get; init; } = string.Empty;
+            public string GroupKey { get; init; } = string.Empty;
+            public string PlanText { get; init; } = string.Empty;
+            public int RepeatCount { get; init; }
+            public string LatestTransactionId { get; init; } = string.Empty;
+            public string LatestCreatedAtUtc { get; init; } = string.Empty;
+        }
+
+        private sealed record ApplyTransactionsPersistedStateV2
+        {
+            public string Version { get; init; } = "v2";
+            public string SavedAtUtc { get; init; } = DateTimeOffset.UtcNow.ToString("u").TrimEnd();
+            public IReadOnlyList<BypassApplyTransaction> Transactions { get; init; } = Array.Empty<BypassApplyTransaction>();
+            public IReadOnlyList<ApplyTransactionAggregateInfo> Aggregates { get; init; } = Array.Empty<ApplyTransactionAggregateInfo>();
         }
 
         private sealed record ApplyTransactionsPersistedStateV1
@@ -344,21 +388,15 @@ namespace IspAudit.ViewModels
                         Directory.CreateDirectory(dir);
                     }
 
-                    // Берём последние K транзакций из UI коллекции (новые в начале).
-                    // Если UI ещё не успел обновиться, fallback на snapshot из журнала.
-                    List<BypassApplyTransaction> list;
-                    try
-                    {
-                        list = ApplyTransactions.Take(ApplyTransactionsPersistCount).ToList();
-                    }
-                    catch
-                    {
-                        list = _applyTransactionsJournal.Snapshot().Take(ApplyTransactionsPersistCount).ToList();
-                    }
+                    // Берём последние K транзакций из журнала (raw), а агрегаты восстанавливаем детерминированно.
+                    var list = _applyTransactionsJournal.Snapshot().Take(ApplyTransactionsPersistCount).ToList();
 
-                    var payload = new ApplyTransactionsPersistedStateV1
+                    var aggregates = BuildAggregateInfos(list);
+
+                    var payload = new ApplyTransactionsPersistedStateV2
                     {
-                        Transactions = list
+                        Transactions = list,
+                        Aggregates = aggregates
                     };
 
                     var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions
@@ -410,8 +448,29 @@ namespace IspAudit.ViewModels
                     if (string.IsNullOrWhiteSpace(json)) return;
                     if (json.Length > ApplyTransactionsPersistMaxBytes) return;
 
-                    var state = JsonSerializer.Deserialize<ApplyTransactionsPersistedStateV1>(json);
-                    var list = state?.Transactions;
+                    IReadOnlyList<BypassApplyTransaction>? list = null;
+
+                    // v2 (dedup metadata + raw)
+                    try
+                    {
+                        var state2 = JsonSerializer.Deserialize<ApplyTransactionsPersistedStateV2>(json);
+                        if (state2?.Transactions != null && state2.Transactions.Count > 0)
+                        {
+                            list = state2.Transactions;
+                        }
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+
+                    // v1 (raw only)
+                    if (list == null)
+                    {
+                        var state1 = JsonSerializer.Deserialize<ApplyTransactionsPersistedStateV1>(json);
+                        list = state1?.Transactions;
+                    }
+
                     if (list == null || list.Count == 0) return;
 
                     // Стабильно сортируем: новые сверху. CreatedAtUtc у нас строкой в формате "u".
@@ -429,9 +488,10 @@ namespace IspAudit.ViewModels
 
                             foreach (var tx in ordered)
                             {
-                                ApplyTransactions.Add(tx);
                                 _applyTransactionsJournal.Add(tx);
                             }
+
+                            RebuildApplyTransactionsUiFromJournal();
 
                             if (SelectedApplyTransaction == null)
                             {
@@ -449,6 +509,97 @@ namespace IspAudit.ViewModels
                     // ignore
                 }
             });
+        }
+
+        private void RebuildApplyTransactionsUiFromJournal()
+        {
+            try
+            {
+                var raw = _applyTransactionsJournal.Snapshot();
+                if (raw.Count == 0)
+                {
+                    ApplyTransactions.Clear();
+                    SelectedApplyTransaction = null;
+                    return;
+                }
+
+                var groups = raw
+                    .GroupBy(t => BuildApplyDedupKey(t.GroupKey, t.PlanText), StringComparer.OrdinalIgnoreCase)
+                    .Select(g =>
+                    {
+                        var ordered = g.OrderByDescending(t => ParseCreatedAtUtcOrMin(t.CreatedAtUtc)).ToList();
+                        var latest = ordered.First();
+                        return new ApplyTransactionRow(g.Key, ordered.Count, latest, ordered);
+                    })
+                    .OrderByDescending(r => ParseCreatedAtUtcOrMin(r.CreatedAtUtc))
+                    .Take(ApplyTransactionsCapacity)
+                    .ToList();
+
+                var previouslySelectedKey = SelectedApplyTransaction?.DedupKey;
+
+                ApplyTransactions.Clear();
+                foreach (var row in groups)
+                {
+                    ApplyTransactions.Add(row);
+                }
+
+                if (!string.IsNullOrWhiteSpace(previouslySelectedKey))
+                {
+                    SelectedApplyTransaction = ApplyTransactions.FirstOrDefault(r =>
+                        string.Equals(r.DedupKey, previouslySelectedKey, StringComparison.OrdinalIgnoreCase))
+                        ?? ApplyTransactions.FirstOrDefault();
+                }
+                else
+                {
+                    SelectedApplyTransaction = SelectedApplyTransaction ?? ApplyTransactions.FirstOrDefault();
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private static string BuildApplyDedupKey(string? groupKey, string? planText)
+        {
+            var g = (groupKey ?? string.Empty).Trim().Trim('.');
+            var p = (planText ?? string.Empty).Trim();
+
+            // План может быть длинным, но это лучший детерминированный ключ для дедупликации.
+            // Нормализуем регистр и whitespace для устойчивости.
+            g = g.ToLowerInvariant();
+            p = string.Join(' ', p.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+
+            return $"{g}||{p}";
+        }
+
+        private static IReadOnlyList<ApplyTransactionAggregateInfo> BuildAggregateInfos(IReadOnlyList<BypassApplyTransaction> raw)
+        {
+            try
+            {
+                return raw
+                    .GroupBy(t => BuildApplyDedupKey(t.GroupKey, t.PlanText), StringComparer.OrdinalIgnoreCase)
+                    .Select(g =>
+                    {
+                        var ordered = g.OrderByDescending(t => ParseCreatedAtUtcOrMin(t.CreatedAtUtc)).ToList();
+                        var latest = ordered.First();
+                        return new ApplyTransactionAggregateInfo
+                        {
+                            DedupKey = g.Key,
+                            GroupKey = latest.GroupKey,
+                            PlanText = latest.PlanText,
+                            RepeatCount = ordered.Count,
+                            LatestTransactionId = latest.TransactionId,
+                            LatestCreatedAtUtc = latest.CreatedAtUtc
+                        };
+                    })
+                    .OrderByDescending(a => ParseCreatedAtUtcOrMin(a.LatestCreatedAtUtc))
+                    .ToList();
+            }
+            catch
+            {
+                return Array.Empty<ApplyTransactionAggregateInfo>();
+            }
         }
 
         private static void UiInvoke(Action action)
@@ -494,7 +645,7 @@ namespace IspAudit.ViewModels
                     return;
                 }
 
-                var json = BuildApplyTransactionJson(tx);
+                var json = BuildApplyTransactionRowJson(tx);
                 if (string.IsNullOrWhiteSpace(json))
                 {
                     ApplyTransactionsExportStatusText = "Экспорт: JSON пуст";
@@ -504,7 +655,7 @@ namespace IspAudit.ViewModels
                 var artifactsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "artifacts");
                 Directory.CreateDirectory(artifactsDir);
 
-                var shortId = tx.TransactionId.Length >= 8 ? tx.TransactionId.Substring(0, 8) : tx.TransactionId;
+                var shortId = tx.Latest.TransactionId.Length >= 8 ? tx.Latest.TransactionId.Substring(0, 8) : tx.Latest.TransactionId;
                 var filename = $"apply_transaction_{DateTime.Now:yyyyMMdd_HHmmss}_{shortId}.json";
                 var path = Path.Combine(artifactsDir, filename);
 
@@ -534,6 +685,65 @@ namespace IspAudit.ViewModels
             catch (Exception ex)
             {
                 ApplyTransactionsExportStatusText = $"Экспорт: ошибка ({ex.Message})";
+            }
+        }
+
+        private static string BuildApplyTransactionRowJson(ApplyTransactionRow row)
+        {
+            try
+            {
+                var jsonOpts = new JsonSerializerOptions { WriteIndented = true };
+
+                var root = new JsonObject
+                {
+                    ["dedup"] = new JsonObject
+                    {
+                        ["dedupKey"] = row.DedupKey,
+                        ["repeatCount"] = row.RepeatCount,
+                        ["repeatCountText"] = row.RepeatCountText
+                    }
+                };
+
+                // Полный JSON последней транзакции как основная секция (чтобы не ломать привычные ожидания).
+                var latestJson = BuildApplyTransactionJson(row.Latest);
+                if (!string.IsNullOrWhiteSpace(latestJson))
+                {
+                    try
+                    {
+                        root["latest"] = JsonNode.Parse(latestJson);
+                    }
+                    catch
+                    {
+                        root["latestJson"] = latestJson;
+                    }
+                }
+
+                // Короткий список всех транзакций группы (для аудита) без тяжелых снапшотов.
+                var items = new JsonArray();
+                foreach (var tx in row.Transactions)
+                {
+                    items.Add(new JsonObject
+                    {
+                        ["transactionId"] = tx.TransactionId,
+                        ["createdAtUtc"] = tx.CreatedAtUtc,
+                        ["initiatorHostKey"] = tx.InitiatorHostKey,
+                        ["groupKey"] = tx.GroupKey,
+                        ["candidateIpCount"] = tx.CandidateIpEndpoints?.Count ?? 0,
+                        ["appliedStrategyText"] = tx.AppliedStrategyText,
+                        ["planText"] = tx.PlanText,
+                        ["activationStatusText"] = tx.ActivationStatusText,
+                        ["resultStatus"] = tx.Result?.Status ?? string.Empty,
+                        ["resultError"] = tx.Result?.Error ?? string.Empty
+                    });
+                }
+
+                root["transactions"] = items;
+
+                return root.ToJsonString(jsonOpts);
+            }
+            catch
+            {
+                return string.Empty;
             }
         }
 

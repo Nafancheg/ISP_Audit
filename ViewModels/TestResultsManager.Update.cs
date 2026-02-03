@@ -54,6 +54,31 @@ namespace IspAudit.ViewModels
 
             if (existing != null)
             {
+                existing.UiKey = normalizedHost;
+                existing.AggregatedMemberCount = GetAggregatedMemberCount(normalizedHost);
+
+                // P1.9: если это агрегированная строка по groupKey и мы узнали якорный домен,
+                // обновим Target.Host/SniHost для корректного DisplayHost.
+                if (_groupKeyToAnchorDomain.TryGetValue(normalizedHost, out var anchor) && !string.IsNullOrWhiteSpace(anchor))
+                {
+                    var old = existing.Target;
+                    if (old != null
+                        && string.Equals(NormalizeHost(old.Name), normalizedHost, StringComparison.OrdinalIgnoreCase)
+                        && (string.IsNullOrWhiteSpace(old.SniHost) || string.Equals(NormalizeHost(old.Host), normalizedHost, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        existing.Target = new Target
+                        {
+                            Name = old.Name,
+                            Host = anchor,
+                            Service = old.Service,
+                            Critical = old.Critical,
+                            FallbackIp = old.FallbackIp,
+                            SniHost = anchor,
+                            ReverseDnsHost = old.ReverseDnsHost
+                        };
+                    }
+                }
+
                 existing.Status = status;
                 existing.Details = details;
 
@@ -93,16 +118,27 @@ namespace IspAudit.ViewModels
             }
             else
             {
+                var anchor = string.Empty;
+                if (_groupKeyToAnchorDomain.TryGetValue(normalizedHost, out var cachedAnchor) && !string.IsNullOrWhiteSpace(cachedAnchor))
+                {
+                    anchor = cachedAnchor;
+                }
+
                 var target = new Target
                 {
+                    // P1.9: если host — это groupKey, то Name хранит groupKey, а Host/SniHost — якорный домен.
                     Name = host,
-                    Host = host,
+                    Host = string.IsNullOrWhiteSpace(anchor) ? host : anchor,
                     Service = "Unknown",
                     Critical = false,
-                    FallbackIp = fallbackIp ?? ""
+                    FallbackIp = fallbackIp ?? "",
+                    SniHost = string.IsNullOrWhiteSpace(anchor) ? string.Empty : anchor
                 };
 
                 existing = new TestResult { Target = target, Status = status, Details = details };
+
+                existing.UiKey = normalizedHost;
+                existing.AggregatedMemberCount = GetAggregatedMemberCount(normalizedHost);
 
                 // Parse flags from details
                 existing.IsRstInjection = BlockageCode.ContainsCode(details, BlockageCode.TcpRstInjection) || details.Contains("RST-инжект");

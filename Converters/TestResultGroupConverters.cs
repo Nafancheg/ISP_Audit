@@ -36,6 +36,13 @@ namespace IspAudit.Converters
         {
             if (test?.Target == null) return string.Empty;
 
+            // P1.9: если строка уже агрегирована и имеет детерминированный UiKey (например group-youtube),
+            // используем его, чтобы Group/ACTIVE совпадали с ActiveApplyGroupKey.
+            if (!string.IsNullOrWhiteSpace(test.UiKey))
+            {
+                return test.UiKey.Trim();
+            }
+
             var candidates = new[]
             {
                 test.Target.SniHost,
@@ -123,6 +130,12 @@ namespace IspAudit.Converters
         private static string TestResultToGroupKeyConverterHostKey(TestResult? test)
         {
             if (test?.Target == null) return string.Empty;
+
+            // P1.9: предпочитаем UiKey (если присутствует), чтобы ACTIVE/Group были стабильны.
+            if (!string.IsNullOrWhiteSpace(test.UiKey))
+            {
+                return test.UiKey.Trim();
+            }
 
             var candidates = new[]
             {
