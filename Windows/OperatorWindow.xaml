@@ -74,48 +74,47 @@
                         </Grid>
                     </Border>
 
-                    <!-- Источник трафика (как в инженерном режиме) -->
-                    <StackPanel Margin="0,0,0,10"
-                                Visibility="{Binding Vm.IsSourceStepVisible, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Text="Источник трафика" Opacity="0.85" Margin="0,0,0,6"/>
+                    <!-- Источник трафика (компактно, сворачиваемо) -->
+                    <Expander Header="Источник трафика" Margin="0,0,0,8"
+                              Visibility="{Binding Vm.IsSourceStepVisible, Converter={StaticResource BoolToVisibilityConverter}}"
+                              IsExpanded="{Binding Vm.IsSourceSectionExpanded, Mode=TwoWay}">
+                        <StackPanel Margin="0,6,0,0">
+                            <WrapPanel Margin="0,0,0,6">
+                                <RadioButton Content="Быстрая проверка"
+                                             IsChecked="{Binding Main.IsBasicTestMode, Mode=TwoWay}"
+                                             IsEnabled="{Binding Vm.IsSourceSelectionEnabled}"
+                                             Margin="0,0,14,0"/>
+                                <RadioButton Content="Приложение (.exe)"
+                                             IsChecked="{Binding Main.IsBasicTestMode, Mode=TwoWay, Converter={StaticResource InverseBoolConverter}}"
+                                             IsEnabled="{Binding Vm.IsSourceSelectionEnabled}"/>
+                            </WrapPanel>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <RadioButton Content="Быстрая проверка интернета"
-                                         IsChecked="{Binding Main.IsBasicTestMode, Mode=TwoWay}"
-                                         IsEnabled="{Binding Vm.IsSourceSelectionEnabled}"
-                                         Margin="0,0,14,0"/>
-                            <RadioButton Content="Проверка приложения (.exe)"
-                                         IsChecked="{Binding Main.IsBasicTestMode, Mode=TwoWay, Converter={StaticResource InverseBoolConverter}}"
-                                         IsEnabled="{Binding Vm.IsSourceSelectionEnabled}"/>
+                            <TextBlock TextWrapping="Wrap" Opacity="0.7" FontSize="12" Margin="0,0,0,6">
+                                Быстрая проверка — встроенный трафик. Приложение — анализ выбранного процесса.
+                            </TextBlock>
+
+                            <Grid Visibility="{Binding Main.IsBasicTestMode, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox Grid.Column="0"
+                                         Style="{StaticResource ModernTextBoxStyle}"
+                                         Text="{Binding Main.ExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         IsReadOnly="{Binding Vm.IsSourceSelectionEnabled, Converter={StaticResource InverseBoolConverter}}"
+                                         Height="36"
+                                         materialDesign:HintAssist.Hint="Путь к .exe приложения/игры"
+                                         ToolTip="Выберите .exe приложения/игры."/>
+
+                                <Button Grid.Column="1"
+                                        Content="Обзор..."
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding Main.BrowseExeCommand}"
+                                        Height="36" Margin="10,0,0,0"/>
+                            </Grid>
                         </StackPanel>
-
-                        <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12" Margin="0,0,0,8">
-                            Быстрая проверка использует встроенный генератор тестового трафика. Проверка приложения анализирует трафик выбранной программы.
-                        </TextBlock>
-
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-
-                            <TextBox Grid.Column="0"
-                                     Style="{StaticResource ModernTextBoxStyle}"
-                                     Text="{Binding Main.ExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     IsEnabled="{Binding Main.IsBasicTestMode, Converter={StaticResource InverseBoolConverter}}"
-                                     IsReadOnly="{Binding Vm.IsSourceSelectionEnabled, Converter={StaticResource InverseBoolConverter}}"
-                                     Height="36"
-                                     materialDesign:HintAssist.Hint="Путь к .exe приложения/игры"
-                                     ToolTip="Выберите .exe приложения/игры. Если выбран режим базовых сервисов — поле отключено."/>
-
-                            <Button Grid.Column="1"
-                                    Content="Обзор..."
-                                    Style="{StaticResource SecondaryButtonStyle}"
-                                    Command="{Binding Main.BrowseExeCommand}"
-                                    IsEnabled="{Binding Main.IsBasicTestMode, Converter={StaticResource InverseBoolConverter}}"
-                                    Height="36" Margin="10,0,0,0"/>
-                        </Grid>
-                    </StackPanel>
+                    </Expander>
 
                     <!-- Шаг 2: прогресс -->
                     <Border Padding="10" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}" Margin="0,0,0,10"
@@ -127,15 +126,6 @@
                                          Maximum="{Binding Main.ProgressBarMax}"
                                          Value="{Binding Main.CompletedTests, Mode=OneWay}"/>
                             <TextBlock Text="{Binding Main.RunningStatusText}" Opacity="0.8" Margin="0,6,0,0"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Шаг 3: итог -->
-                    <Border Padding="10" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}" Margin="0,0,0,10"
-                            Visibility="{Binding Vm.IsSummaryStepVisible, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <StackPanel>
-                            <TextBlock Text="Итог" FontWeight="SemiBold"/>
-                            <TextBlock Text="{Binding Vm.SummaryLine}" Opacity="0.85" Margin="0,6,0,0"/>
                         </StackPanel>
                     </Border>
 

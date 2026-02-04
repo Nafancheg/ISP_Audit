@@ -48,6 +48,9 @@ namespace IspAudit.ViewModels
         private string _lastScreenState = string.Empty;
         private bool _lastIsApplyRunning;
 
+        private bool _isSourceSectionExpanded = true;
+        private bool _didAutoCollapseSourceSection;
+
         public ICommand RollbackCommand { get; }
         public ICommand ClearHistoryCommand { get; }
 
@@ -75,10 +78,26 @@ namespace IspAudit.ViewModels
             _lastScreenState = (Main.ScreenState ?? string.Empty).Trim();
             _lastIsApplyRunning = Main.IsApplyRunning;
 
+            // При первом прогоне сворачиваем секцию выбора источника, чтобы она не съедала экран.
+            // Далее состояние контролируется пользователем.
+            _isSourceSectionExpanded = Status == OperatorStatus.Idle;
+            _didAutoCollapseSourceSection = Status != OperatorStatus.Idle;
+
             RollbackCommand = new RelayCommand(async _ => await RollbackAsync().ConfigureAwait(false));
             ClearHistoryCommand = new RelayCommand(_ => ClearHistoryBestEffort());
 
             Main.PropertyChanged += MainOnPropertyChanged;
+        }
+
+        public bool IsSourceSectionExpanded
+        {
+            get => _isSourceSectionExpanded;
+            set
+            {
+                if (_isSourceSectionExpanded == value) return;
+                _isSourceSectionExpanded = value;
+                OnPropertyChanged(nameof(IsSourceSectionExpanded));
+            }
         }
 
         public OperatorHistoryTimeRange HistoryTimeRange
@@ -290,10 +309,12 @@ namespace IspAudit.ViewModels
                 if (string.Equals(e.PropertyName, nameof(MainViewModel.ScreenState), StringComparison.Ordinal))
                 {
                     TrackScreenStateTransition();
+                    AutoCollapseSourceSectionBestEffort();
                 }
                 else if (string.Equals(e.PropertyName, nameof(MainViewModel.IsApplyRunning), StringComparison.Ordinal))
                 {
                     TrackApplyTransition();
+                    AutoCollapseSourceSectionBestEffort();
                 }
                 else if (string.Equals(e.PropertyName, nameof(MainViewModel.FailCount), StringComparison.Ordinal)
                       || string.Equals(e.PropertyName, nameof(MainViewModel.WarnCount), StringComparison.Ordinal)
@@ -326,6 +347,25 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(PrimaryButtonText));
             OnPropertyChanged(nameof(FixButtonText));
             OnPropertyChanged(nameof(HasHistory));
+        }
+
+        private void AutoCollapseSourceSectionBestEffort()
+        {
+            try
+            {
+                if (_didAutoCollapseSourceSection) return;
+
+                // Как только начинается проверка/исправление или появился итог — сворачиваем.
+                if (Status != OperatorStatus.Idle)
+                {
+                    _didAutoCollapseSourceSection = true;
+                    IsSourceSectionExpanded = false;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
         }
 
         private void OnPropertyChanged(string propertyName)
