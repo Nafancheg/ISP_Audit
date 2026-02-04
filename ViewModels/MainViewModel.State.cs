@@ -20,6 +20,10 @@ namespace IspAudit.ViewModels
         private bool _isBasicTestMode = false;
         private bool _isDarkTheme = false;
 
+        // P1.x: явное согласие оператора на системные изменения DNS/DoH.
+        // По умолчанию: запрещено. Разрешение хранится в state/operator_consent.json.
+        private bool _allowDnsDohSystemChanges;
+
         public bool IsDarkTheme
         {
             get => _isDarkTheme;
@@ -30,6 +34,27 @@ namespace IspAudit.ViewModels
                     _isDarkTheme = value;
                     OnPropertyChanged(nameof(IsDarkTheme));
                     ApplyTheme(value);
+                }
+            }
+        }
+
+        public bool AllowDnsDohSystemChanges
+        {
+            get => _allowDnsDohSystemChanges;
+            set
+            {
+                if (_allowDnsDohSystemChanges == value) return;
+                _allowDnsDohSystemChanges = value;
+                OnPropertyChanged(nameof(AllowDnsDohSystemChanges));
+                OperatorConsentStore.SaveBestEffort(value);
+
+                try
+                {
+                    _bypassState.AllowDnsDohSystemChanges = value;
+                }
+                catch
+                {
+                    // ignore
                 }
             }
         }

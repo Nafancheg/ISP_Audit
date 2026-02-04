@@ -139,6 +139,7 @@ namespace IspAudit.Core.Bypass
             TimeSpan timeout,
             bool currentDoHEnabled,
             string selectedDnsPreset,
+            bool allowDnsDohChanges,
             CancellationToken cancellationToken,
             Action<BypassApplyPhaseTiming>? onPhaseEvent = null)
         {
@@ -221,18 +222,47 @@ namespace IspAudit.Core.Bypass
 
                 ReportPhaseStart("apply_tls_options");
                 tracker.Start("apply_tls_options");
-                _log?.Invoke("[APPLY][Executor] Applying bypass options...");
-                await _stateManager.ApplyTlsOptionsAsync(planned.PlannedOptions, linked.Token).ConfigureAwait(false);
-                tlsOptionsApplied = true;
-                _log?.Invoke("[APPLY][Executor] Bypass options applied");
-                tracker.FinalizeCurrent("OK");
+                var skipTlsText = (Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY") ?? string.Empty).Trim();
+                var skipTls = skipTlsText.Equals("1", StringComparison.OrdinalIgnoreCase)
+                    || skipTlsText.Equals("true", StringComparison.OrdinalIgnoreCase)
+                    || skipTlsText.Equals("yes", StringComparison.OrdinalIgnoreCase);
+
+                if (skipTls)
+                {
+                    _log?.Invoke("[APPLY][Executor] Test hook: TLS apply skipped (ISP_AUDIT_TEST_SKIP_TLS_APPLY)");
+                    tracker.FinalizeCurrent("OK", "test_skip_tls_apply");
+                }
+                else
+                {
+                    _log?.Invoke("[APPLY][Executor] Applying bypass options...");
+                    await _stateManager.ApplyTlsOptionsAsync(planned.PlannedOptions, linked.Token).ConfigureAwait(false);
+                    tlsOptionsApplied = true;
+                    _log?.Invoke("[APPLY][Executor] Bypass options applied");
+                    tracker.FinalizeCurrent("OK");
+                }
 
                 linked.Token.ThrowIfCancellationRequested();
 
                 // DoH/DNS: best-effort, как и раньше (не падаем всем apply при ошибке DNS фиксера).
                 var dohAfter = before.DoHEnabled;
 
-                if (planned.PlannedDoHEnabled && !before.DoHEnabled)
+                // Важно: DoH/DNS — системное изменение. Без явного согласия пропускаем любые попытки его включить/выключить.
+                if (!allowDnsDohChanges && planned.PlannedDoHEnabled != before.DoHEnabled)
+                {
+                    linked.Token.ThrowIfCancellationRequested();
+
+                    var direction = planned.PlannedDoHEnabled ? "enable" : "disable";
+                    var details = planned.PlannedDoHEnabled
+                        ? $"reason=no_consent direction={direction} preset={planned.PlannedDnsPreset}"
+                        : $"reason=no_consent direction={direction}";
+
+                    ReportPhaseStart("apply_doh_skipped", details);
+                    tracker.Start("apply_doh_skipped", details);
+                    _log?.Invoke($"[APPLY][Executor] DoH/DNS skipped: no explicit consent (direction={direction})");
+                    tracker.FinalizeCurrent("SKIPPED", "no_consent");
+                }
+
+                if (allowDnsDohChanges && planned.PlannedDoHEnabled && !before.DoHEnabled)
                 {
                     linked.Token.ThrowIfCancellationRequested();
                     ReportPhaseStart("apply_doh_enable", $"preset={planned.PlannedDnsPreset}");
@@ -257,7 +287,7 @@ namespace IspAudit.Core.Bypass
                     linked.Token.ThrowIfCancellationRequested();
                 }
 
-                if (!planned.PlannedDoHEnabled && before.DoHEnabled)
+                if (allowDnsDohChanges && !planned.PlannedDoHEnabled && before.DoHEnabled)
                 {
                     linked.Token.ThrowIfCancellationRequested();
                     ReportPhaseStart("apply_doh_disable");
@@ -419,7 +449,10 @@ namespace IspAudit.Core.Bypass
         private BypassApplyPlanResult BuildPlannedState(BypassApplyStateSnapshot before, BypassPlan plan)
         {
             var updated = before.Options;
-            var enableDoH = false;
+            // DoH/DNS — системная настройка. По умолчанию не трогаем текущее состояние,
+            // а включение возможно только если план явно рекомендует UseDoh.
+            // Фактическое применение/изменение дополнительно gate'ится явным согласием (allowDnsDohChanges).
+            var enableDoH = before.DoHEnabled;
             TlsFragmentPreset? requestedPreset = null;
             bool? requestedAutoAdjustAggressive = null;
 
@@ -489,17 +522,8 @@ namespace IspAudit.Core.Bypass
                         updated = updated with { DropRstEnabled = true };
                         break;
                     case StrategyId.UseDoh:
-                        // Важно: DoH/DNS — это системное изменение. В INTEL-плане это может быть рекомендация,
-                        // но по умолчанию не применяем автоматически.
-                        if (Config.RuntimeFlags.EnableIntelDoHFromPlan)
-                        {
-                            enableDoH = true;
-                            _log?.Invoke("[APPLY][Executor] UseDoh: включаем DoH (разрешено gate)");
-                        }
-                        else
-                        {
-                            _log?.Invoke("[APPLY][Executor] UseDoh: пропуск (по умолчанию DoH из плана не применяется автоматически)");
-                        }
+                        enableDoH = true;
+                        _log?.Invoke("[APPLY][Executor] UseDoh: план запрашивает включение DoH (применение требует явного согласия)");
                         break;
                     case StrategyId.QuicObfuscation:
                         updated = updated with { DropUdp443 = true };

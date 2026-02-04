@@ -124,8 +124,9 @@ graph TD
 
 Важно (архитектурный гейт): INTEL-план может содержать как assist-флаги (например `QUIC→TCP` / `No SNI`), так и
 "верхнеуровневые" системные изменения (DNS/DoH). Assist-флаги допустимо применять в рамках ручного Apply,
-но DNS/DoH по умолчанию **не применяются автоматически** из INTEL рекомендаций — только по явному действию пользователя
-(или в инженерном режиме через runtime feature gate).
+но DNS/DoH выполняются **только при явном согласии пользователя** (consent-gate).
+Согласие хранится рядом с приложением: `state\\operator_consent.json` (см. `Utils/OperatorConsentStore`).
+Если план включает `UseDoh`, но согласия нет — executor репортит фазу `apply_doh_skipped` и не вызывает `FixService`.
 
 Runtime Adaptation Layer: `ReactiveTargetSyncService` принимает runtime-сигналы (например UDP blockage) и синхронизирует
 execution-state (targets/snapshots) best-effort, без UI и без принятия политических решений.

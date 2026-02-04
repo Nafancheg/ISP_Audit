@@ -47,6 +47,10 @@ namespace IspAudit.ViewModels
             Log("MainViewModel: Инициализация");
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
+            // Явное согласие на DNS/DoH системного уровня — по умолчанию запрещено.
+            // Важно: на старте только читаем из store, без записи обратно.
+            _allowDnsDohSystemChanges = OperatorConsentStore.LoadOrDefault(defaultValue: false);
+
             // Create TrafficEngine
             var progress = new Progress<string>(msg => Log(msg));
             _trafficEngine = new IspAudit.Core.Traffic.TrafficEngine(progress);
@@ -58,6 +62,9 @@ namespace IspAudit.ViewModels
 
             // Единый владелец bypass/TrafficEngine
             _bypassState = BypassStateManager.GetOrCreate(_trafficEngine, baseProfile: null, log: Log);
+
+            // Прокидываем согласие в core слой (executor apply использует этот gate).
+            _bypassState.AllowDnsDohSystemChanges = _allowDnsDohSystemChanges;
 
             // Создаём контроллеры
             Bypass = new BypassController(_bypassState);

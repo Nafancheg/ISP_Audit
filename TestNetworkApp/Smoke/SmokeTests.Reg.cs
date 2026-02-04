@@ -945,6 +945,106 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> REG_IntelPlan_DoH_Skipped_WithoutConsent(CancellationToken ct)
+            => RunAsyncAwait("REG-022", "REG: INTEL apply пропускает DoH/DNS без явного согласия (apply_doh_skipped)", async _ =>
+            {
+                var sw = Stopwatch.StartNew();
+                string? prevSkipTls = null;
+
+                try
+                {
+                    prevSkipTls = Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY", "1");
+
+                    var phases = new System.Collections.Generic.List<BypassApplyPhaseTiming>();
+                    void OnPhase(BypassApplyPhaseTiming e)
+                    {
+                        try
+                        {
+                            lock (phases)
+                            {
+                                phases.Add(e);
+                            }
+                        }
+                        catch
+                        {
+                            // ignore
+                        }
+                    }
+
+                    var baseProfile = BypassProfile.CreateDefault();
+                    using var engine = new TrafficEngine(progress: null);
+                    using var manager = BypassStateManager.GetOrCreate(engine, baseProfile: baseProfile, log: null);
+
+                    var service = new BypassApplyService(manager, log: null);
+
+                    var plan = new BypassPlan
+                    {
+                        ForDiagnosis = DiagnosisId.DnsHijack,
+                        PlanConfidence = 90,
+                        PlannedAtUtc = DateTimeOffset.UtcNow,
+                        Reasoning = "smoke",
+                        Strategies = new System.Collections.Generic.List<BypassStrategy>
+                        {
+                            new BypassStrategy { Id = StrategyId.UseDoh, BasePriority = 100, Risk = RiskLevel.Medium }
+                        }
+                    };
+
+                    var result = await service.ApplyIntelPlanWithRollbackAsync(
+                        plan,
+                        timeout: TimeSpan.FromSeconds(2),
+                        currentDoHEnabled: false,
+                        selectedDnsPreset: "Cloudflare",
+                        allowDnsDohChanges: false,
+                        cancellationToken: ct,
+                        onPhaseEvent: OnPhase).ConfigureAwait(false);
+
+                    // При отсутствии согласия итоговое состояние DoH не должно поменяться.
+                    if (result.PlannedDoHEnabled)
+                    {
+                        return new SmokeTestResult("REG-022", "REG: INTEL apply пропускает DoH/DNS без явного согласия (apply_doh_skipped)",
+                            SmokeOutcome.Fail, sw.Elapsed, "Ожидали PlannedDoHEnabled=false при allowDnsDohChanges=false");
+                    }
+
+                    string[] started;
+                    lock (phases)
+                    {
+                        started = phases
+                            .Where(p => string.Equals(p.Status, "START", StringComparison.OrdinalIgnoreCase))
+                            .Select(p => (p.Name ?? string.Empty).Trim())
+                            .Where(p => !string.IsNullOrWhiteSpace(p))
+                            .ToArray();
+                    }
+
+                    if (!started.Any(p => string.Equals(p, "apply_doh_skipped", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var got = string.Join(", ", started);
+                        return new SmokeTestResult("REG-022", "REG: INTEL apply пропускает DoH/DNS без явного согласия (apply_doh_skipped)",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Не нашли фазу apply_doh_skipped. Got=[{got}]");
+                    }
+
+                    if (started.Any(p => string.Equals(p, "apply_doh_enable", StringComparison.OrdinalIgnoreCase))
+                        || started.Any(p => string.Equals(p, "apply_doh_disable", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var got = string.Join(", ", started);
+                        return new SmokeTestResult("REG-022", "REG: INTEL apply пропускает DoH/DNS без явного согласия (apply_doh_skipped)",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Не ожидали apply_doh_enable/disable при allowDnsDohChanges=false. Got=[{got}]");
+                    }
+
+                    return new SmokeTestResult("REG-022", "REG: INTEL apply пропускает DoH/DNS без явного согласия (apply_doh_skipped)",
+                        SmokeOutcome.Pass, sw.Elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-022", "REG: INTEL apply пропускает DoH/DNS без явного согласия (apply_doh_skipped)",
+                        SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY", prevSkipTls);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> REG_GroupBypassAttachmentStore_DeterministicMerge_AndExcludedSticky(CancellationToken ct)
             => RunAsync("REG-013", "REG: GroupBypassAttachmentStore merge (union/OR) и excluded не сбрасывается", () =>
             {

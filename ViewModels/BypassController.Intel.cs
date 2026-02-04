@@ -41,7 +41,7 @@ namespace IspAudit.ViewModels
 
                 var applyService = new BypassApplyService(_stateManager, Log);
                 var applied = await applyService
-                    .ApplyIntelPlanWithRollbackAsync(plan, timeout, _isDoHEnabled, SelectedDnsPreset, cancellationToken, onPhaseEvent)
+                    .ApplyIntelPlanWithRollbackAsync(plan, timeout, _isDoHEnabled, SelectedDnsPreset, allowDnsDohChanges: _stateManager.AllowDnsDohSystemChanges, cancellationToken, onPhaseEvent)
                     .ConfigureAwait(false);
 
                 // Синхронизируем локальное UI-состояние после успешного apply.

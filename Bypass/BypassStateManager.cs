@@ -172,6 +172,16 @@ namespace IspAudit.Bypass
         private static readonly ConditionalWeakTable<TrafficEngine, BypassStateManager> Instances = new();
         private static readonly object InstancesSync = new();
 
+        // Явное согласие на системные изменения DNS/DoH (включение/отключение DoH через FixService).
+        // По умолчанию: false. Управляется из UI (Operator/Engineer) и используется как gate в apply executor.
+        private volatile bool _allowDnsDohSystemChanges;
+
+        public bool AllowDnsDohSystemChanges
+        {
+            get => _allowDnsDohSystemChanges;
+            set => _allowDnsDohSystemChanges = value;
+        }
+
         public static BypassStateManager GetOrCreate(
             TrafficEngine trafficEngine,
             BypassProfile? baseProfile = null,

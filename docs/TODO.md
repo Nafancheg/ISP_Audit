@@ -75,7 +75,7 @@
     - [x] Отключить AutoRetest по изменению тумблеров bypass по умолчанию (для чистой наблюдаемости).
     - [x] P0.x Реактивная синхронизация targets для селективного QUIC→TCP: refresh UDP/443 targets по UDP blockage (без глобального DropUdp443)
       - [x] Assist-флаги (QUIC→TCP, No-SNI) применяются при ручном Apply
-      - [x] DoH из плана по умолчанию не применяется (runtime gate)
+      - [x] DoH/DNS из плана применяется только при явном согласии пользователя (consent gate, state\\operator_consent.json)
       - [x] Логика синхронизации вынесена в слой Runtime Adaptation: `ReactiveTargetSyncService`
       - [x] Bounded queue + coalescing + retry-until-delivered (TTL/attempts) для защиты от stop/start и burst событий
 

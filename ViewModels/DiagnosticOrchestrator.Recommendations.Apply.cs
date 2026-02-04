@@ -276,6 +276,7 @@ namespace IspAudit.ViewModels
                     "apply_tls_options" => "Применение стратегий",
                     "apply_doh_enable" => "Включение DoH",
                     "apply_doh_disable" => "Отключение DoH",
+                    "apply_doh_skipped" => "DoH: пропущено (нужно разрешение)",
                     "rollback_tls_options" => "Откат стратегий",
                     "rollback_dns" => "Откат DNS",
                     _ => $"Фаза: {p}"
