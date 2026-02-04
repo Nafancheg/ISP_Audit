@@ -15,72 +15,53 @@
 
     <Grid Margin="12">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <Grid Grid.Row="0" Margin="0,0,0,10">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <StackPanel>
-                <TextBlock Text="Проверка сети" Style="{StaticResource H2Style}"/>
-                <TextBlock Text="Режим: оператор" Opacity="0.7" FontSize="12"/>
-            </StackPanel>
-
-            <StackPanel Grid.Column="1" Orientation="Horizontal">
-                <ToggleButton Content="Автоисправление"
-                              Style="{StaticResource BypassToggleButtonStyle}"
-                              Height="30" MinWidth="140" Padding="12,0" FontSize="12"
-                              IsChecked="{Binding Main.EnableAutoBypass, Mode=TwoWay}"
-                              ToolTip="Автоматически применять безопасные исправления при проблемах (без ручного выбора стратегий)."
-                              Margin="0,0,10,0"/>
-                <Button Style="{StaticResource ThemeToggleButtonStyle}"
-                        Command="{Binding Main.ToggleThemeCommand}"
-                        ToolTip="Переключить тему"
-                        Height="30" Width="34" Margin="0,0,8,0">
-                    <materialDesign:PackIcon Kind="ThemeLightDark" Width="20" Height="20"/>
-                </Button>
-                <Button Content="Инженерный режим"
-                        Style="{StaticResource SecondaryButtonStyle}"
-                        Padding="12,6"
-                    Command="{Binding EngineerCommand}"/>
-            </StackPanel>
-        </Grid>
-
         <!-- Body -->
-        <Border Grid.Row="1" Style="{StaticResource CardStyle}" Padding="12">
+        <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="12">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
-                    <!-- Hero статус -->
-                    <Border Padding="12" CornerRadius="10" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}" Margin="0,0,0,10">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-
+                    <!-- Компактная шапка: статус + действия -->
+                    <DockPanel Margin="0,0,0,10" LastChildFill="False">
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
                             <materialDesign:PackIcon Kind="{Binding Vm.HeroIconKind}"
-                                                    Width="34" Height="34" Margin="0,0,10,0"
+                                                    Width="26" Height="26" Margin="0,0,10,0"
+                                                    VerticalAlignment="Top"
                                                     Foreground="{Binding Vm.HeroAccentBrush}"/>
-
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="{Binding Vm.Headline}" FontSize="20" FontWeight="SemiBold"/>
-                                <TextBlock Text="{Binding Vm.SummaryLine}" Margin="0,4,0,0" Opacity="0.85" TextWrapping="Wrap"/>
+                            <StackPanel>
+                                <TextBlock Text="{Binding Vm.Headline}" FontSize="18" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding Vm.SummaryLine}" Margin="0,2,0,0" Opacity="0.75" FontSize="12" TextWrapping="Wrap"/>
                             </StackPanel>
-                        </Grid>
-                    </Border>
+                        </StackPanel>
 
-                    <!-- Источник трафика (компактно, сворачиваемо) -->
-                    <Expander Header="Источник трафика" Margin="0,0,0,8"
-                              Visibility="{Binding Vm.IsSourceStepVisible, Converter={StaticResource BoolToVisibilityConverter}}"
-                              IsExpanded="{Binding Vm.IsSourceSectionExpanded, Mode=TwoWay}">
-                        <StackPanel Margin="0,6,0,0">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <ToggleButton Content="Автоисправление"
+                                          Style="{StaticResource BypassToggleButtonStyle}"
+                                          Height="30" MinWidth="140" Padding="12,0" FontSize="12"
+                                          IsChecked="{Binding Main.EnableAutoBypass, Mode=TwoWay}"
+                                          ToolTip="Автоматически применять безопасные исправления при проблемах (без ручного выбора стратегий)."
+                                          Margin="0,0,10,0"/>
+                            <Button Style="{StaticResource ThemeToggleButtonStyle}"
+                                    Command="{Binding Main.ToggleThemeCommand}"
+                                    ToolTip="Переключить тему"
+                                    Height="30" Width="34" Margin="0,0,8,0">
+                                <materialDesign:PackIcon Kind="ThemeLightDark" Width="20" Height="20"/>
+                            </Button>
+                            <Button Content="Инженерный режим"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Padding="12,6"
+                                    Command="{Binding EngineerCommand}"/>
+                        </StackPanel>
+                    </DockPanel>
+
+                    <!-- Источник трафика (без большого заголовка/описания) -->
+                    <Border Padding="10" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}" Margin="0,0,0,10"
+                            Visibility="{Binding Vm.IsSourceStepVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
                             <WrapPanel Margin="0,0,0,6">
-                                <RadioButton Content="Быстрая проверка"
+                                <TextBlock Text="Источник:" Opacity="0.75" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <RadioButton Content="Быстрая"
                                              IsChecked="{Binding Main.IsBasicTestMode, Mode=TwoWay}"
                                              IsEnabled="{Binding Vm.IsSourceSelectionEnabled}"
                                              Margin="0,0,14,0"/>
@@ -88,10 +69,6 @@
                                              IsChecked="{Binding Main.IsBasicTestMode, Mode=TwoWay, Converter={StaticResource InverseBoolConverter}}"
                                              IsEnabled="{Binding Vm.IsSourceSelectionEnabled}"/>
                             </WrapPanel>
-
-                            <TextBlock TextWrapping="Wrap" Opacity="0.7" FontSize="12" Margin="0,0,0,6">
-                                Быстрая проверка — встроенный трафик. Приложение — анализ выбранного процесса.
-                            </TextBlock>
 
                             <Grid Visibility="{Binding Main.IsBasicTestMode, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                                 <Grid.ColumnDefinitions>
@@ -104,7 +81,7 @@
                                          Text="{Binding Main.ExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          IsReadOnly="{Binding Vm.IsSourceSelectionEnabled, Converter={StaticResource InverseBoolConverter}}"
                                          Height="36"
-                                         materialDesign:HintAssist.Hint="Путь к .exe приложения/игры"
+                                         materialDesign:HintAssist.Hint="Путь к .exe"
                                          ToolTip="Выберите .exe приложения/игры."/>
 
                                 <Button Grid.Column="1"
@@ -114,7 +91,7 @@
                                         Height="36" Margin="10,0,0,0"/>
                             </Grid>
                         </StackPanel>
-                    </Expander>
+                    </Border>
 
                     <!-- Шаг 2: прогресс -->
                     <Border Padding="10" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}" Margin="0,0,0,10"
@@ -129,7 +106,7 @@
                         </StackPanel>
                     </Border>
 
-                    <StackPanel Margin="0,6,0,0">
+                    <StackPanel Margin="0,0,0,0">
                     <!-- CTA: один главный -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
                         <Button Content="{Binding Vm.PrimaryButtonText}"
@@ -145,8 +122,8 @@
                                 Command="{Binding Vm.RollbackCommand}"/>
                     </StackPanel>
 
-                    <!-- Детали (пока минимально) -->
-                    <Expander Header="Подробности" Margin="0,10,0,0" IsExpanded="False">
+                    <!-- Подробности + история под одним раскрытием -->
+                    <Expander Header="Подробнее" Margin="0,10,0,0" IsExpanded="False">
                         <StackPanel>
                             <Grid>
                                 <Grid.RowDefinitions>
@@ -184,12 +161,10 @@
                             <Expander Header="Диагностика (сырое)" Margin="0,8,0,0" IsExpanded="False">
                                 <TextBlock Text="{Binding Vm.RawDetailsText}" TextWrapping="Wrap" Opacity="0.75"/>
                             </Expander>
-                        </StackPanel>
-                    </Expander>
 
-                    <!-- История активности -->
-                    <Expander Header="История активности" Margin="0,10,0,0" IsExpanded="False">
-                        <StackPanel>
+                            <Separator Margin="0,10,0,10"/>
+
+                            <TextBlock Text="История активности" FontWeight="SemiBold" Margin="0,0,0,8"/>
                             <WrapPanel Margin="0,0,0,10">
                                 <TextBlock Text="Период:" Opacity="0.75" VerticalAlignment="Center"/>
                                 <ComboBox Margin="8,0,16,0" MinWidth="140"
