@@ -1,8 +1,15 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Media;
+using IspAudit.Models;
+using IspAudit.Utils;
+using IspAudit.Wpf;
 using MaterialDesignThemes.Wpf;
 
 namespace IspAudit.ViewModels
@@ -25,11 +32,74 @@ namespace IspAudit.ViewModels
 
         public MainViewModel Main { get; }
 
+        private const int MaxHistoryEntries = 256;
+        private readonly ObservableCollection<OperatorEventEntry> _historyAll = new();
+
+        public ObservableCollection<OperatorEventEntry> HistoryEvents { get; } = new();
+
+        private OperatorHistoryTimeRange _historyTimeRange = OperatorHistoryTimeRange.Last7Days;
+        private OperatorHistoryTypeFilter _historyTypeFilter = OperatorHistoryTypeFilter.All;
+
+        private string _lastScreenState = string.Empty;
+        private bool _lastIsApplyRunning;
+
+        public ICommand RollbackCommand { get; }
+        public ICommand ClearHistoryCommand { get; }
+
         public OperatorViewModel(MainViewModel main)
         {
             Main = main ?? throw new ArgumentNullException(nameof(main));
-            Main.PropertyChanged += (_, __) => RaiseDerivedProperties();
+
+            // История активности (best-effort).
+            try
+            {
+                var loaded = OperatorEventStore.LoadBestEffort(log: null);
+                foreach (var e in loaded)
+                {
+                    _historyAll.Add(e);
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            ApplyHistoryFilters();
+
+            _lastScreenState = (Main.ScreenState ?? string.Empty).Trim();
+            _lastIsApplyRunning = Main.IsApplyRunning;
+
+            RollbackCommand = new RelayCommand(async _ => await RollbackAsync().ConfigureAwait(false));
+            ClearHistoryCommand = new RelayCommand(_ => ClearHistoryBestEffort());
+
+            Main.PropertyChanged += MainOnPropertyChanged;
         }
+
+        public OperatorHistoryTimeRange HistoryTimeRange
+        {
+            get => _historyTimeRange;
+            set
+            {
+                if (_historyTimeRange == value) return;
+                _historyTimeRange = value;
+                OnPropertyChanged(nameof(HistoryTimeRange));
+                ApplyHistoryFilters();
+            }
+        }
+
+        public OperatorHistoryTypeFilter HistoryTypeFilter
+        {
+            get => _historyTypeFilter;
+            set
+            {
+                if (_historyTypeFilter == value) return;
+                _historyTypeFilter = value;
+                OnPropertyChanged(nameof(HistoryTypeFilter));
+                ApplyHistoryFilters();
+            }
+        }
+
+        public bool HasHistory => _historyAll.Count > 0;
 
         public string Headline
         {
@@ -183,18 +253,43 @@ namespace IspAudit.ViewModels
         {
             get
             {
-                if ((Status == OperatorStatus.Warn || Status == OperatorStatus.Blocked) && Main.HasAnyRecommendations)
-                {
-                    return Main.ApplyRecommendationsCommand;
-                }
-                return Main.StartLiveTestingCommand;
+                // Всегда возвращаем одну команду, чтобы можно было логировать события.
+                return new RelayCommand(_ => ExecutePrimary());
             }
         }
 
         public string FixButtonText => Main.IsApplyRunning ? "Исправляю…" : "Исправить";
-        public ICommand FixCommand => Main.ApplyRecommendationsCommand;
+        public ICommand FixCommand => new RelayCommand(_ => ExecuteFix());
 
         public event PropertyChangedEventHandler? PropertyChanged;
+
+        private void MainOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            try
+            {
+                RaiseDerivedProperties();
+
+                if (string.Equals(e.PropertyName, nameof(MainViewModel.ScreenState), StringComparison.Ordinal))
+                {
+                    TrackScreenStateTransition();
+                }
+                else if (string.Equals(e.PropertyName, nameof(MainViewModel.IsApplyRunning), StringComparison.Ordinal))
+                {
+                    TrackApplyTransition();
+                }
+                else if (string.Equals(e.PropertyName, nameof(MainViewModel.FailCount), StringComparison.Ordinal)
+                      || string.Equals(e.PropertyName, nameof(MainViewModel.WarnCount), StringComparison.Ordinal)
+                      || string.Equals(e.PropertyName, nameof(MainViewModel.PassCount), StringComparison.Ordinal))
+                {
+                    // На завершении диагностики могут прилетать счётчики отдельно.
+                    // Обновим фильтры/derived без логирования.
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
 
         private void RaiseDerivedProperties()
         {
@@ -212,11 +307,332 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(ShowPrimaryButton));
             OnPropertyChanged(nameof(PrimaryButtonText));
             OnPropertyChanged(nameof(FixButtonText));
+            OnPropertyChanged(nameof(HasHistory));
         }
 
         private void OnPropertyChanged(string propertyName)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        private void ExecutePrimary()
+        {
+            if ((Status == OperatorStatus.Warn || Status == OperatorStatus.Blocked) && Main.HasAnyRecommendations)
+            {
+                ExecuteFix();
+                return;
+            }
+
+            ExecuteStartOrStop();
+        }
+
+        private void ExecuteStartOrStop()
+        {
+            try
+            {
+                var wasRunning = Main.IsRunning;
+                AddHistoryEvent(new OperatorEventEntry
+                {
+                    Category = "check",
+                    GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
+                    Title = wasRunning ? "Проверка: остановка" : "Проверка: запуск",
+                    Details = BuildTrafficSourceText(),
+                    Outcome = ""
+                });
+
+                Main.StartLiveTestingCommand.Execute(null);
+            }
+            catch (Exception ex)
+            {
+                AddHistoryEvent(new OperatorEventEntry
+                {
+                    Category = "error",
+                    Title = "Проверка: ошибка запуска",
+                    Details = ex.Message,
+                    Outcome = "FAIL"
+                });
+                throw;
+            }
+        }
+
+        private void ExecuteFix()
+        {
+            try
+            {
+                AddHistoryEvent(new OperatorEventEntry
+                {
+                    Category = "fix",
+                    GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
+                    Title = "Исправление: запуск",
+                    Details = string.IsNullOrWhiteSpace(Main.ActiveApplySummaryText) ? "" : Main.ActiveApplySummaryText,
+                    Outcome = ""
+                });
+
+                Main.ApplyRecommendationsCommand.Execute(null);
+            }
+            catch (Exception ex)
+            {
+                AddHistoryEvent(new OperatorEventEntry
+                {
+                    Category = "error",
+                    Title = "Исправление: ошибка запуска",
+                    Details = ex.Message,
+                    Outcome = "FAIL"
+                });
+                throw;
+            }
+        }
+
+        private async Task RollbackAsync()
+        {
+            AddHistoryEvent(new OperatorEventEntry
+            {
+                Category = "rollback",
+                GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
+                Title = "Откат: запуск",
+                Details = string.IsNullOrWhiteSpace(Main.ActiveApplySummaryText) ? "" : Main.ActiveApplySummaryText,
+                Outcome = ""
+            });
+
+            try
+            {
+                await Main.Bypass.DisableAllAsync().ConfigureAwait(false);
+                AddHistoryEvent(new OperatorEventEntry
+                {
+                    Category = "rollback",
+                    GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
+                    Title = "Откат: выполнено",
+                    Details = "Bypass выключен",
+                    Outcome = "OK"
+                });
+            }
+            catch (Exception ex)
+            {
+                AddHistoryEvent(new OperatorEventEntry
+                {
+                    Category = "error",
+                    Title = "Откат: ошибка",
+                    Details = ex.Message,
+                    Outcome = "FAIL"
+                });
+            }
+        }
+
+        private void TrackScreenStateTransition()
+        {
+            var now = (Main.ScreenState ?? string.Empty).Trim();
+            var prev = _lastScreenState;
+            if (string.Equals(now, prev, StringComparison.Ordinal)) return;
+
+            _lastScreenState = now;
+
+            if (string.Equals(now, "running", StringComparison.OrdinalIgnoreCase))
+            {
+                AddHistoryEvent(new OperatorEventEntry
+                {
+                    Category = "check",
+                    GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
+                    Title = "Проверка: началась",
+                    Details = BuildTrafficSourceText(),
+                    Outcome = ""
+                });
+                return;
+            }
+
+            if (string.Equals(now, "done", StringComparison.OrdinalIgnoreCase))
+            {
+                var outcome = Main.FailCount > 0 ? "FAIL" : (Main.WarnCount > 0 ? "WARN" : "OK");
+                var title = outcome == "OK" ? "Проверка: завершена (норма)"
+                    : outcome == "WARN" ? "Проверка: завершена (есть ограничения)"
+                    : "Проверка: завершена (есть блокировки)";
+
+                AddHistoryEvent(new OperatorEventEntry
+                {
+                    Category = "check",
+                    GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
+                    Title = title,
+                    Details = $"OK: {Main.PassCount} • Нестабильно: {Main.WarnCount} • Блокируется: {Main.FailCount}",
+                    Outcome = outcome
+                });
+            }
+        }
+
+        private void TrackApplyTransition()
+        {
+            var now = Main.IsApplyRunning;
+            var prev = _lastIsApplyRunning;
+            if (now == prev) return;
+
+            _lastIsApplyRunning = now;
+
+            if (now)
+            {
+                AddHistoryEvent(new OperatorEventEntry
+                {
+                    Category = "fix",
+                    GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
+                    Title = "Исправление: выполняется",
+                    Details = string.IsNullOrWhiteSpace(Main.ApplyStatusText) ? "" : Main.ApplyStatusText,
+                    Outcome = ""
+                });
+                return;
+            }
+
+            // Apply закончился.
+            var details = string.IsNullOrWhiteSpace(Main.PostApplyRetestStatus)
+                ? (string.IsNullOrWhiteSpace(Main.ApplyStatusText) ? "" : Main.ApplyStatusText)
+                : $"{Main.ApplyStatusText}; {Main.PostApplyRetestStatus}";
+
+            AddHistoryEvent(new OperatorEventEntry
+            {
+                Category = "fix",
+                GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
+                Title = "Исправление: завершено",
+                Details = details,
+                Outcome = ""
+            });
+        }
+
+        private void AddHistoryEvent(OperatorEventEntry entry)
+        {
+            try
+            {
+                if (entry == null) return;
+
+                // Новые сверху.
+                _historyAll.Insert(0, entry);
+
+                while (_historyAll.Count > MaxHistoryEntries)
+                {
+                    _historyAll.RemoveAt(_historyAll.Count - 1);
+                }
+
+                ApplyHistoryFilters();
+                OnPropertyChanged(nameof(HasHistory));
+
+                // Persist best-effort в фоне.
+                var snapshot = _historyAll.ToList();
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        OperatorEventStore.PersistBestEffort(snapshot, log: null);
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                });
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void ClearHistoryBestEffort()
+        {
+            try
+            {
+                _historyAll.Clear();
+                HistoryEvents.Clear();
+                OperatorEventStore.TryDeletePersistedFileBestEffort(log: null);
+                OnPropertyChanged(nameof(HasHistory));
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void ApplyHistoryFilters()
+        {
+            try
+            {
+                var nowLocal = DateTimeOffset.Now;
+                DateTimeOffset? cutoff = null;
+
+                if (HistoryTimeRange == OperatorHistoryTimeRange.Today)
+                {
+                    cutoff = new DateTimeOffset(nowLocal.Date, nowLocal.Offset);
+                }
+                else if (HistoryTimeRange == OperatorHistoryTimeRange.Last7Days)
+                {
+                    cutoff = nowLocal.AddDays(-7);
+                }
+
+                bool IsTypeMatch(OperatorEventEntry e)
+                {
+                    var cat = (e.Category ?? string.Empty).Trim();
+                    if (HistoryTypeFilter == OperatorHistoryTypeFilter.All) return true;
+                    if (HistoryTypeFilter == OperatorHistoryTypeFilter.Checks) return cat.Equals("check", StringComparison.OrdinalIgnoreCase);
+                    if (HistoryTypeFilter == OperatorHistoryTypeFilter.Fixes) return cat.Equals("fix", StringComparison.OrdinalIgnoreCase) || cat.Equals("rollback", StringComparison.OrdinalIgnoreCase);
+                    if (HistoryTypeFilter == OperatorHistoryTypeFilter.Errors) return cat.Equals("error", StringComparison.OrdinalIgnoreCase);
+                    return true;
+                }
+
+                bool IsTimeMatch(OperatorEventEntry e)
+                {
+                    if (cutoff == null) return true;
+                    try
+                    {
+                        var local = e.OccurredAt.ToLocalTime();
+                        return local >= cutoff.Value;
+                    }
+                    catch
+                    {
+                        return true;
+                    }
+                }
+
+                var filtered = _historyAll
+                    .Where(e => e != null)
+                    .Where(IsTypeMatch)
+                    .Where(IsTimeMatch)
+                    .OrderByDescending(e => e.OccurredAt)
+                    .Take(MaxHistoryEntries)
+                    .ToList();
+
+                HistoryEvents.Clear();
+                foreach (var e in filtered)
+                {
+                    HistoryEvents.Add(e);
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private string BuildTrafficSourceText()
+        {
+            try
+            {
+                if (Main.IsBasicTestMode)
+                {
+                    return "Источник: быстрая проверка интернета";
+                }
+
+                var exePath = (Main.ExePath ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(exePath))
+                {
+                    return "Источник: приложение (.exe) не выбрано";
+                }
+
+                try
+                {
+                    return $"Источник: {Path.GetFileName(exePath)}";
+                }
+                catch
+                {
+                    return "Источник: выбранное приложение (.exe)";
+                }
+            }
+            catch
+            {
+                return string.Empty;
+            }
         }
     }
 }

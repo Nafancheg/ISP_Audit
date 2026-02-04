@@ -34,6 +34,7 @@ namespace TestNetworkApp.Smoke
                 ["UI-012"] = Ui_SniHostname_HasPriorityOverIp_InCardKey,
                 ["UI-013"] = Ui_NetworkChangePrompt_ShowsAndHides_NoGui,
                 ["UI-014"] = Ui_PostApplySemantics_PrimaryStatus_OverridesPipelineStatus,
+                ["UI-015"] = Ui_OperatorEventStore_RoundTrip,
 
                 ["ORCH-001"] = Orch_Pipeline_StartStop_ViaRetestTargets,
                 ["ORCH-002"] = Orch_MonitoringServices_StartStop_AdminGated,

@@ -78,7 +78,6 @@ namespace IspAudit.Windows
             public MainViewModel Main => Vm.Main;
 
             public RelayCommand EngineerCommand { get; }
-            public RelayCommand RollbackCommand { get; }
 
             public OperatorWindowDataContext(OperatorViewModel vm, OperatorWindow window)
             {
@@ -87,18 +86,6 @@ namespace IspAudit.Windows
                 EngineerCommand = new RelayCommand(_ =>
                 {
                     window.SwitchToEngineer();
-                });
-
-                RollbackCommand = new RelayCommand(async _ =>
-                {
-                    try
-                    {
-                        await Vm.Main.Bypass.DisableAllAsync().ConfigureAwait(false);
-                    }
-                    catch
-                    {
-                        // ignore
-                    }
                 });
             }
         }

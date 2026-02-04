@@ -800,6 +800,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** `TestResult(Status=Fail, PostApplyCheckStatus=Ok)`
 **Ожидаемый результат:** `PrimaryStatus=Pass`, при этом `Status` остаётся `Fail`
 
+**Test ID:** `UI-015`
+**Что проверяет:** P1.11 — round-trip персиста истории Operator (OperatorEventStore)
+**Для чего:** Гарантировать, что история активности сохраняется/читается и сортируется без падений
+**Критерий успеха:** Persist → Load возвращает события, новые сверху
+**Входные данные:** 2 события с разным `OccurredAtUtc` (temp path через env override)
+**Ожидаемый результат:** После `LoadBestEffort` есть оба события, первым идёт более новое
+
 ---
 
 ## 7. Orchestration & Process Tracking

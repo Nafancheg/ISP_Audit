@@ -7,6 +7,7 @@ using System.Windows.Media;
 using IspAudit.Bypass;
 using IspAudit.Core.Traffic;
 using IspAudit.Models;
+using IspAudit.Utils;
 using IspAudit.ViewModels;
 
 namespace TestNetworkApp.Smoke
@@ -248,6 +249,74 @@ namespace TestNetworkApp.Smoke
 
                 return new SmokeTestResult("UI-013", "P0.6: Network change prompt показывается/скрывается без GUI", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: prompt показывается и скрывается по команде");
+            }, ct);
+
+        public static Task<SmokeTestResult> Ui_OperatorEventStore_RoundTrip(CancellationToken ct)
+            => RunAsync("UI-015", "P1.11: OperatorEventStore round-trip (best-effort JSON)", () =>
+            {
+                var tempPath = Path.Combine(Path.GetTempPath(), $"isp_audit_operator_events_smoke_{Guid.NewGuid():N}.json");
+                Environment.SetEnvironmentVariable("ISP_AUDIT_OPERATOR_EVENTS_PATH", tempPath);
+
+                try
+                {
+                    OperatorEventStore.TryDeletePersistedFileBestEffort(null);
+
+                    var now = DateTimeOffset.UtcNow;
+                    var older = new OperatorEventEntry
+                    {
+                        Id = "evt_old",
+                        OccurredAtUtc = now.AddMinutes(-5).ToString("u").TrimEnd(),
+                        Category = "CHECK",
+                        GroupKey = "basic",
+                        Title = "Проверка: завершена",
+                        Details = "OK",
+                        Outcome = "OK",
+                        Source = "smoke"
+                    };
+
+                    var newer = new OperatorEventEntry
+                    {
+                        Id = "evt_new",
+                        OccurredAtUtc = now.ToString("u").TrimEnd(),
+                        Category = "FIX",
+                        GroupKey = "basic",
+                        Title = "Исправление: завершено",
+                        Details = "WARN",
+                        Outcome = "WARN",
+                        Source = "smoke"
+                    };
+
+                    OperatorEventStore.PersistBestEffort(new[] { older, newer }, null);
+                    var loaded = OperatorEventStore.LoadBestEffort(null);
+
+                    if (loaded.Count < 2)
+                    {
+                        return new SmokeTestResult("UI-015", "P1.11: OperatorEventStore round-trip (best-effort JSON)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали >=2 событий после загрузки, получили {loaded.Count}");
+                    }
+
+                    // Store гарантирует сортировку: новые сверху.
+                    if (!string.Equals(loaded[0].Id, "evt_new", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult("UI-015", "P1.11: OperatorEventStore round-trip (best-effort JSON)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали первым событие 'evt_new', получили '{loaded[0].Id}'");
+                    }
+
+                    var ids = loaded.Select(e => e.Id).ToArray();
+                    if (!ids.Contains("evt_old") || !ids.Contains("evt_new"))
+                    {
+                        return new SmokeTestResult("UI-015", "P1.11: OperatorEventStore round-trip (best-effort JSON)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали ids evt_old+evt_new, получили: {string.Join(", ", ids)}");
+                    }
+
+                    return new SmokeTestResult("UI-015", "P1.11: OperatorEventStore round-trip (best-effort JSON)", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: сохраняет/читает и сортирует по времени");
+                }
+                finally
+                {
+                    OperatorEventStore.TryDeletePersistedFileBestEffort(null);
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_OPERATOR_EVENTS_PATH", null);
+                }
             }, ct);
 
         public static async Task<SmokeTestResult> Ui_BypassMetrics_UpdatesFromService(CancellationToken ct)
