@@ -36,6 +36,7 @@ namespace TestNetworkApp.Smoke
                 ["UI-014"] = Ui_PostApplySemantics_PrimaryStatus_OverridesPipelineStatus,
                 ["UI-015"] = Ui_OperatorEventStore_RoundTrip,
                 ["UI-016"] = Ui_OperatorSessionStore_RoundTrip,
+                ["UI-017"] = Ui_Operator_DnsDohConsentToggle_IsGuardedAgainstAccidentalPersist,
 
                 ["ORCH-001"] = Orch_Pipeline_StartStop_ViaRetestTargets,
                 ["ORCH-002"] = Orch_MonitoringServices_StartStop_AdminGated,

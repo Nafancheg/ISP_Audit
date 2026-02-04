@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -390,6 +391,89 @@ namespace TestNetworkApp.Smoke
                 {
                     OperatorSessionStore.TryDeletePersistedFileBestEffort(null);
                     Environment.SetEnvironmentVariable("ISP_AUDIT_OPERATOR_SESSIONS_PATH", null);
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> Ui_Operator_DnsDohConsentToggle_IsGuardedAgainstAccidentalPersist(CancellationToken ct)
+            => RunAsync("UI-017", "P1.11: DNS/DoH consent toggle guarded (OneWay + Preview handler)", () =>
+            {
+                try
+                {
+                    static string? TryFindRepoRoot()
+                    {
+                        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+                        for (var i = 0; i < 10 && dir != null; i++)
+                        {
+                            var candidate = Path.Combine(dir.FullName, "Windows", "OperatorWindow.xaml");
+                            if (File.Exists(candidate)) return dir.FullName;
+                            if (File.Exists(Path.Combine(dir.FullName, "ISP_Audit.sln")))
+                            {
+                                // Доп. путь: если нашли sln, но XAML ещё не найден — вероятно он рядом.
+                                if (File.Exists(candidate)) return dir.FullName;
+                            }
+                            dir = dir.Parent;
+                        }
+
+                        return null;
+                    }
+
+                    var root = TryFindRepoRoot();
+                    if (string.IsNullOrWhiteSpace(root))
+                    {
+                        return new SmokeTestResult("UI-017", "P1.11: DNS/DoH consent toggle guarded (OneWay + Preview handler)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Не удалось определить корень репозитория (нет Windows/OperatorWindow.xaml рядом с BaseDirectory)" );
+                    }
+
+                    var xamlPath = Path.Combine(root!, "Windows", "OperatorWindow.xaml");
+                    if (!File.Exists(xamlPath))
+                    {
+                        return new SmokeTestResult("UI-017", "P1.11: DNS/DoH consent toggle guarded (OneWay + Preview handler)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Не найден файл: {xamlPath}");
+                    }
+
+                    var text = File.ReadAllText(xamlPath);
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        return new SmokeTestResult("UI-017", "P1.11: DNS/DoH consent toggle guarded (OneWay + Preview handler)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "OperatorWindow.xaml пустой");
+                    }
+
+                    var required = new List<string>
+                    {
+                        "IsChecked=\"{Binding Main.AllowDnsDohSystemChanges, Mode=OneWay}\"",
+                        "PreviewMouseLeftButtonDown=\"DnsDohConsentToggle_PreviewMouseLeftButtonDown\""
+                    };
+
+                    foreach (var r in required)
+                    {
+                        if (!text.Contains(r, StringComparison.Ordinal))
+                        {
+                            return new SmokeTestResult("UI-017", "P1.11: DNS/DoH consent toggle guarded (OneWay + Preview handler)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"Не нашли обязательный фрагмент XAML: {r}");
+                        }
+                    }
+
+                    // Регресс-гейты: TwoWay binding или Click-обработчик могут снова привести к «кратковременной» записи согласия.
+                    if (text.Contains("AllowDnsDohSystemChanges, Mode=TwoWay", StringComparison.Ordinal)
+                        || text.Contains("IsChecked=\"{Binding Main.AllowDnsDohSystemChanges, Mode=TwoWay}\"", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult("UI-017", "P1.11: DNS/DoH consent toggle guarded (OneWay + Preview handler)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Найден TwoWay binding для AllowDnsDohSystemChanges (должен быть OneWay)" );
+                    }
+
+                    if (text.Contains("Click=\"DnsDohConsentToggle_Click\"", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult("UI-017", "P1.11: DNS/DoH consent toggle guarded (OneWay + Preview handler)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Найден Click-обработчик для DNS/DoH consent toggle (ожидали PreviewMouseLeftButtonDown)" );
+                    }
+
+                    return new SmokeTestResult("UI-017", "P1.11: DNS/DoH consent toggle guarded (OneWay + Preview handler)", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("UI-017", "P1.11: DNS/DoH consent toggle guarded (OneWay + Preview handler)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        ex.Message);
                 }
             }, ct);
 

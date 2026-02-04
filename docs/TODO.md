@@ -43,6 +43,7 @@
 - [x] 04.02.2026: smoke ui (non-admin) PASS 15/15 (Operator UI compact header)
 - [x] 04.02.2026: dotnet build OK (строгое подтверждение разрешения DNS/DoH)
 - [x] 04.02.2026: smoke reg (non-admin) PASS 21/21 (consent gate + confirm)
+- [x] 04.02.2026: smoke ui (non-admin) PASS 17/17 (UI-017 consent toggle guard)
 
 ---
 

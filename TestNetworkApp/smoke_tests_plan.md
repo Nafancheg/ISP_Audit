@@ -814,6 +814,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** 2 сессии с разным `StartedAtUtc` (temp path через env override)
 **Ожидаемый результат:** После `LoadBestEffort` есть обе сессии, первой идёт более новая
 
+**Test ID:** `UI-017`
+**Что проверяет:** P1.11 — тумблер «Разрешить DNS/DoH» защищён от случайного сохранения согласия
+**Для чего:** При Cancel в подтверждении согласие не должно сохраняться «даже на мгновение»
+**Критерий успеха:** В `Windows/OperatorWindow.xaml` тумблер имеет `IsChecked` в режиме `OneWay` и перехват в `PreviewMouseLeftButtonDown`
+**Входные данные:** Проверка XAML как текста
+**Ожидаемый результат:** В XAML присутствуют `Mode=OneWay` и `PreviewMouseLeftButtonDown=...`, и отсутствует `Mode=TwoWay`/`Click=...`
+
 ---
 
 ## 7. Orchestration & Process Tracking
