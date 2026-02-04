@@ -16,6 +16,8 @@ namespace IspAudit.Windows
         private readonly Func<MainViewModel> _getMainViewModel;
         private bool _switchingToEngineer;
 
+        private bool _dnsDohConsentConfirmedThisSession;
+
         private bool _shutdownInProgress;
         private bool _shutdownCompleted;
 
@@ -27,7 +29,61 @@ namespace IspAudit.Windows
             Closing += Window_Closing;
 
             var main = _getMainViewModel();
+
+            // Если согласие уже было выдано и подхвачено из state — считаем, что подтверждение уже получено.
+            _dnsDohConsentConfirmedThisSession = main.AllowDnsDohSystemChanges;
+
             DataContext = new OperatorWindowDataContext(new OperatorViewModel(main), this);
+        }
+
+        private void DnsDohConsentToggle_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (sender is not System.Windows.Controls.Primitives.ToggleButton tb)
+                {
+                    return;
+                }
+
+                // Интересует только включение.
+                if (tb.IsChecked != true)
+                {
+                    return;
+                }
+
+                // В рамках текущей сессии подтверждаем только один раз, чтобы не раздражать.
+                if (_dnsDohConsentConfirmedThisSession)
+                {
+                    return;
+                }
+
+                if (DataContext is not OperatorWindowDataContext ctx)
+                {
+                    return;
+                }
+
+                var result = WpfMessageBox.Show(
+                    "Разрешить системные изменения DNS/DoH?\n\n" +
+                    "Это может изменять сетевые настройки Windows (DNS/DoH) и влиять на все приложения на компьютере.\n\n" +
+                    "Если вы не уверены — оставьте выключенным. Рекомендации обхода без этого продолжат применяться, а DoH будет пропущен.",
+                    "Подтверждение: DNS/DoH",
+                    MessageBoxButton.OKCancel,
+                    MessageBoxImage.Warning);
+
+                if (result == MessageBoxResult.OK)
+                {
+                    _dnsDohConsentConfirmedThisSession = true;
+                    return;
+                }
+
+                // Пользователь отменил — откатываем UI и состояние.
+                try { tb.IsChecked = false; } catch { }
+                try { ctx.Main.AllowDnsDohSystemChanges = false; } catch { }
+            }
+            catch
+            {
+                // Best-effort: не ломаем UI из-за диалога.
+            }
         }
 
         private async void Window_Closing(object? sender, CancelEventArgs e)

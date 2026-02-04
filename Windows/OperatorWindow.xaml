@@ -46,6 +46,7 @@
                                           Style="{StaticResource BypassToggleButtonStyle}"
                                           Height="30" MinWidth="160" Padding="12,0" FontSize="12"
                                           IsChecked="{Binding Main.AllowDnsDohSystemChanges, Mode=TwoWay}"
+                                          Click="DnsDohConsentToggle_Click"
                                           ToolTip="Явное разрешение на системные изменения DNS/DoH (может менять настройки сети Windows). Без этого DoH из рекомендаций будет пропускаться."
                                           Margin="0,0,10,0"/>
                             <Button Style="{StaticResource ThemeToggleButtonStyle}"

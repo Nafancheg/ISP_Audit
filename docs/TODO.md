@@ -41,6 +41,7 @@
 - [x] 04.02.2026: smoke ui (non-admin) PASS 15/15
 - [x] 04.02.2026: dotnet build OK (Operator UI compact header)
 - [x] 04.02.2026: smoke ui (non-admin) PASS 15/15 (Operator UI compact header)
+- [x] 04.02.2026: dotnet build OK (подтверждение разрешения DNS/DoH)
 
 ---
 
