@@ -127,7 +127,7 @@
                         <ProgressBar Height="10" Margin="0,8,0,0"
                                      Minimum="0"
                                      Maximum="{Binding Main.ProgressBarMax}"
-                                     Value="{Binding Main.CompletedTests}"/>
+                                     Value="{Binding Main.CompletedTests, Mode=OneWay}"/>
                         <TextBlock Text="{Binding Main.RunningStatusText}" Opacity="0.8" Margin="0,6,0,0"/>
                     </StackPanel>
                 </Border>
@@ -174,7 +174,7 @@
                     <!-- История активности -->
                     <Expander Header="История активности" Margin="0,10,0,0" IsExpanded="False">
                         <StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <WrapPanel Margin="0,0,0,10">
                                 <TextBlock Text="Период:" Opacity="0.75" VerticalAlignment="Center"/>
                                 <ComboBox Margin="8,0,16,0" MinWidth="140"
                                           SelectedValuePath="Tag"
@@ -194,11 +194,18 @@
                                     <ComboBoxItem Content="Ошибки" Tag="{x:Static models:OperatorHistoryTypeFilter.Errors}"/>
                                 </ComboBox>
 
+                                <TextBlock Text="Группа:" Opacity="0.75" VerticalAlignment="Center"/>
+                                <ComboBox Margin="8,0,16,0" MinWidth="180"
+                                          ItemsSource="{Binding Vm.HistoryGroupOptions}"
+                                          DisplayMemberPath="Title"
+                                          SelectedValuePath="Key"
+                                          SelectedValue="{Binding Vm.HistoryGroupKey, Mode=TwoWay}"/>
+
                                 <Button Content="Очистить"
                                         Style="{StaticResource SecondaryButtonStyle}"
                                         Padding="10,4"
                                         Command="{Binding Vm.ClearHistoryCommand}"/>
-                            </StackPanel>
+                            </WrapPanel>
 
                             <ItemsControl ItemsSource="{Binding Vm.HistoryEvents}">
                                 <ItemsControl.ItemTemplate>

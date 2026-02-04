@@ -33,12 +33,17 @@ namespace IspAudit.ViewModels
         public MainViewModel Main { get; }
 
         private const int MaxHistoryEntries = 256;
+        private const string AllHistoryGroupsKey = "__all__";
         private readonly ObservableCollection<OperatorEventEntry> _historyAll = new();
 
+        public sealed record HistoryGroupOption(string Key, string Title);
+
         public ObservableCollection<OperatorEventEntry> HistoryEvents { get; } = new();
+        public ObservableCollection<HistoryGroupOption> HistoryGroupOptions { get; } = new();
 
         private OperatorHistoryTimeRange _historyTimeRange = OperatorHistoryTimeRange.Last7Days;
         private OperatorHistoryTypeFilter _historyTypeFilter = OperatorHistoryTypeFilter.All;
+        private string _historyGroupKey = AllHistoryGroupsKey;
 
         private string _lastScreenState = string.Empty;
         private bool _lastIsApplyRunning;
@@ -64,6 +69,7 @@ namespace IspAudit.ViewModels
                 // ignore
             }
 
+            RebuildHistoryGroupOptionsBestEffort();
             ApplyHistoryFilters();
 
             _lastScreenState = (Main.ScreenState ?? string.Empty).Trim();
@@ -95,6 +101,18 @@ namespace IspAudit.ViewModels
                 if (_historyTypeFilter == value) return;
                 _historyTypeFilter = value;
                 OnPropertyChanged(nameof(HistoryTypeFilter));
+                ApplyHistoryFilters();
+            }
+        }
+
+        public string HistoryGroupKey
+        {
+            get => _historyGroupKey;
+            set
+            {
+                if (string.Equals(_historyGroupKey, value, StringComparison.Ordinal)) return;
+                _historyGroupKey = string.IsNullOrWhiteSpace(value) ? AllHistoryGroupsKey : value;
+                OnPropertyChanged(nameof(HistoryGroupKey));
                 ApplyHistoryFilters();
             }
         }
@@ -507,6 +525,7 @@ namespace IspAudit.ViewModels
                     _historyAll.RemoveAt(_historyAll.Count - 1);
                 }
 
+                RebuildHistoryGroupOptionsBestEffort();
                 ApplyHistoryFilters();
                 OnPropertyChanged(nameof(HasHistory));
 
@@ -537,7 +556,51 @@ namespace IspAudit.ViewModels
                 _historyAll.Clear();
                 HistoryEvents.Clear();
                 OperatorEventStore.TryDeletePersistedFileBestEffort(log: null);
+                RebuildHistoryGroupOptionsBestEffort();
                 OnPropertyChanged(nameof(HasHistory));
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void RebuildHistoryGroupOptionsBestEffort()
+        {
+            try
+            {
+                var keys = _historyAll
+                    .Where(e => e != null)
+                    .Select(e => (e.GroupKey ?? string.Empty).Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(k => string.IsNullOrWhiteSpace(k) ? "" : k, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var options = new List<HistoryGroupOption>(capacity: 1 + keys.Count)
+                {
+                    new HistoryGroupOption(AllHistoryGroupsKey, "Все")
+                };
+
+                foreach (var k in keys)
+                {
+                    var title = string.IsNullOrWhiteSpace(k) ? "Без группы" : k;
+                    options.Add(new HistoryGroupOption(string.IsNullOrWhiteSpace(k) ? string.Empty : k, title));
+                }
+
+                var selected = _historyGroupKey;
+                HistoryGroupOptions.Clear();
+                foreach (var opt in options)
+                {
+                    HistoryGroupOptions.Add(opt);
+                }
+
+                // Если выбранная группа исчезла — откатываемся на "Все".
+                var exists = HistoryGroupOptions.Any(o => string.Equals(o.Key, selected, StringComparison.Ordinal));
+                if (!exists)
+                {
+                    _historyGroupKey = AllHistoryGroupsKey;
+                    OnPropertyChanged(nameof(HistoryGroupKey));
+                }
             }
             catch
             {
@@ -585,10 +648,22 @@ namespace IspAudit.ViewModels
                     }
                 }
 
+                bool IsGroupMatch(OperatorEventEntry e)
+                {
+                    if (string.Equals(HistoryGroupKey, AllHistoryGroupsKey, StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+
+                    var g = (e.GroupKey ?? string.Empty).Trim();
+                    return string.Equals(g, HistoryGroupKey, StringComparison.OrdinalIgnoreCase);
+                }
+
                 var filtered = _historyAll
                     .Where(e => e != null)
                     .Where(IsTypeMatch)
                     .Where(IsTimeMatch)
+                    .Where(IsGroupMatch)
                     .OrderByDescending(e => e.OccurredAt)
                     .Take(MaxHistoryEntries)
                     .ToList();

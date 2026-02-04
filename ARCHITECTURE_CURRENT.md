@@ -73,7 +73,7 @@ graph TD
     *   Переход в инженерный режим требует подтверждения и сохраняется в `state\\ui_mode.json`.
     *   Operator UI использует shared `MainViewModel`, но показывает только минимальные computed-статусы.
     *   UX-контракт Operator UI (статусы/CTA/wizard-правила) зафиксирован в `docs/P1_11_operator_ui_contract.md`.
-    *   «История активности» (операторские события, не пакеты) хранится best-effort в `state\\operator_events.json` через `Utils/OperatorEventStore` и отображается в Operator UI с базовыми фильтрами.
+    *   «История активности» (операторские события, не пакеты) хранится best-effort в `state\\operator_events.json` через `Utils/OperatorEventStore` и отображается в Operator UI с фильтрами по времени/типу/группе.
     *   OperatorWindow реализован как упрощённый wizard:
         *   Шаг 1: выбор источника трафика (быстрая проверка / выбранное приложение .exe).
         *   Шаг 2: прогресс диагностики (индикатор + «проверено X из Y»).
