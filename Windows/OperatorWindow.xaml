@@ -61,12 +61,16 @@
                     <TextBlock Text="Источник трафика" Opacity="0.85" Margin="0,0,0,6"/>
 
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                        <RadioButton Content="Базовые сервисы (встроенный тест)"
+                        <RadioButton Content="Быстрая проверка интернета"
                                      IsChecked="{Binding Main.IsBasicTestMode, Mode=TwoWay}"
                                      Margin="0,0,14,0"/>
-                        <RadioButton Content="Приложение/игра (.exe)"
+                        <RadioButton Content="Проверка выбранного приложения (.exe)"
                                      IsChecked="{Binding Main.IsBasicTestMode, Mode=TwoWay, Converter={StaticResource InverseBoolConverter}}"/>
                     </StackPanel>
+
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12" Margin="0,0,0,10">
+                        Быстрая проверка использует встроенный генератор тестового трафика. Проверка приложения анализирует трафик выбранной программы.
+                    </TextBlock>
 
                     <Grid>
                         <Grid.ColumnDefinitions>

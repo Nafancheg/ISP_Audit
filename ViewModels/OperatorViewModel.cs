@@ -46,7 +46,7 @@ namespace IspAudit.ViewModels
 
                 if (Main.IsBasicTestMode)
                 {
-                    return "Источник: базовые сервисы (встроенный тест). Нажмите «Проверить».";
+                    return "Источник: быстрая проверка интернета. Нажмите «Проверить».";
                 }
 
                 var exePath = (Main.ExePath ?? string.Empty).Trim();
@@ -58,7 +58,7 @@ namespace IspAudit.ViewModels
                     }
                     catch
                     {
-                        return "Источник: приложение (.exe). Нажмите «Проверить».";
+                        return "Источник: выбранное приложение (.exe). Нажмите «Проверить».";
                     }
                 }
 
