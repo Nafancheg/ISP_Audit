@@ -112,7 +112,10 @@
                 <ToggleButton Grid.Column="1"
                               Content="Обход"
                               Style="{StaticResource BypassToggleButtonStyle}"
-                              IsChecked="{Binding Main.Bypass.IsBypassActive, Mode=TwoWay}"
+                              IsChecked="{Binding Main.Bypass.IsBypassActive}"
+                              Visibility="{Binding Main.Bypass.ShowBypassPanel, Converter={StaticResource BoolToVisibilityConverter}}"
+                              Checked="Bypass_Checked"
+                              Unchecked="Bypass_Unchecked"
                               Margin="8,0,0,0"/>
             </Grid>
         </Border>
