@@ -106,6 +106,17 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Шаг 4: исправление + пост-проверка -->
+                    <Border Padding="10" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}" Margin="0,0,0,10"
+                            Visibility="{Binding Vm.IsFixStepCardVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Vm.FixStepTitle}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding Vm.FixStepStatusText}" Opacity="0.8" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding Vm.FixStepOutcomeText}" Margin="0,6,0,0" TextWrapping="Wrap" Opacity="0.85"
+                                       Visibility="{Binding Vm.HasFixStepOutcome, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        </StackPanel>
+                    </Border>
+
                     <StackPanel Margin="0,0,0,0">
                     <!-- CTA: один главный -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
@@ -113,7 +124,7 @@
                                 Style="{StaticResource PrimaryButtonStyle}"
                                 MinWidth="180" Height="44"
                                 Command="{Binding Vm.PrimaryCommand}"
-                                IsEnabled="{Binding Main.IsApplyRunning, Converter={StaticResource InverseBoolConverter}}"/>
+                                IsEnabled="{Binding Vm.IsPrimaryActionEnabled}"/>
 
                         <Button Content="Откатить"
                                 Style="{StaticResource SecondaryButtonStyle}"

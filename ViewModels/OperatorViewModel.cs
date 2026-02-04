@@ -76,6 +76,11 @@ namespace IspAudit.ViewModels
         private string _lastScreenState = string.Empty;
         private bool _lastIsApplyRunning;
 
+        private bool _fixStepLatched;
+        private string _lastPostApplyVerdict = string.Empty;
+        private string _lastPostApplyDetails = string.Empty;
+        private DateTimeOffset _lastPostApplyVerdictAtUtc = DateTimeOffset.MinValue;
+
         private bool _isSourceSectionExpanded = true;
         private bool _didAutoCollapseSourceSection;
 
@@ -221,9 +226,13 @@ namespace IspAudit.ViewModels
 
                 if (Status == OperatorStatus.Fixing)
                 {
-                    return string.IsNullOrWhiteSpace(Main.ApplyStatusText)
+                    var post = (Main.PostApplyRetestStatus ?? string.Empty).Trim();
+                    if (Main.IsPostApplyRetestRunning && !string.IsNullOrWhiteSpace(post)) return post;
+
+                    var apply = (Main.ApplyStatusText ?? string.Empty).Trim();
+                    return string.IsNullOrWhiteSpace(apply)
                         ? "Применяю безопасные действия и перепроверяю…"
-                        : Main.ApplyStatusText;
+                        : apply;
                 }
 
                 if (Main.IsDone)
@@ -353,7 +362,7 @@ namespace IspAudit.ViewModels
         {
             get
             {
-                if (Main.IsApplyRunning) return OperatorStatus.Fixing;
+                if (Main.IsApplyRunning || Main.IsPostApplyRetestRunning) return OperatorStatus.Fixing;
                 if (Main.IsRunning) return OperatorStatus.Checking;
 
                 if (Main.IsDone)
@@ -414,7 +423,77 @@ namespace IspAudit.ViewModels
 
         public bool IsFixingStepVisible => Status == OperatorStatus.Fixing;
 
-        public bool IsSourceSelectionEnabled => IsSourceStepVisible && !Main.IsRunning && !Main.IsApplyRunning;
+        public bool IsSourceSelectionEnabled => IsSourceStepVisible && !Main.IsRunning && !Main.IsApplyRunning && !Main.IsPostApplyRetestRunning;
+
+        public bool IsPrimaryActionEnabled => Status != OperatorStatus.Fixing;
+
+        public bool IsFixStepCardVisible
+            => Status == OperatorStatus.Fixing
+            || _fixStepLatched
+            || !string.IsNullOrWhiteSpace(Main.PostApplyRetestStatus)
+            || !string.IsNullOrWhiteSpace(_lastPostApplyVerdict);
+
+        public string FixStepTitle
+        {
+            get
+            {
+                if (Main.IsApplyRunning) return "Исправление…";
+                if (Main.IsPostApplyRetestRunning) return "Перепроверка…";
+                return "Итог после исправления";
+            }
+        }
+
+        public string FixStepStatusText
+        {
+            get
+            {
+                if (Main.IsApplyRunning)
+                {
+                    var apply = (Main.ApplyStatusText ?? string.Empty).Trim();
+                    return string.IsNullOrWhiteSpace(apply) ? "Применяю рекомендации…" : apply;
+                }
+
+                if (Main.IsPostApplyRetestRunning)
+                {
+                    var post = (Main.PostApplyRetestStatus ?? string.Empty).Trim();
+                    return string.IsNullOrWhiteSpace(post) ? "Ретест после исправления: выполняется…" : post;
+                }
+
+                var done = (Main.PostApplyRetestStatus ?? string.Empty).Trim();
+                if (!string.IsNullOrWhiteSpace(done)) return done;
+
+                if (_fixStepLatched)
+                {
+                    return "Ретест после исправления: завершён";
+                }
+
+                return "—";
+            }
+        }
+
+        public bool HasFixStepOutcome => !string.IsNullOrWhiteSpace(_lastPostApplyVerdict);
+
+        public string FixStepOutcomeText
+        {
+            get
+            {
+                var v = (_lastPostApplyVerdict ?? string.Empty).Trim().ToUpperInvariant();
+                if (string.IsNullOrWhiteSpace(v)) return string.Empty;
+
+                var headline = v switch
+                {
+                    "OK" => "Итог: стало лучше",
+                    "PARTIAL" => "Итог: частично",
+                    "FAIL" => "Итог: не помогло",
+                    "UNKNOWN" => "Итог: не удалось проверить",
+                    _ => $"Итог: {v}"
+                };
+
+                var d = (_lastPostApplyDetails ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(d)) return headline;
+                return $"{headline} ({d})";
+            }
+        }
 
         public bool ShowFixButton =>
             (Status == OperatorStatus.Warn || Status == OperatorStatus.Blocked)
@@ -428,6 +507,7 @@ namespace IspAudit.ViewModels
             get
             {
                 if (Status == OperatorStatus.Checking) return "Остановить";
+                if (Status == OperatorStatus.Fixing) return "Исправляю…";
                 if (Status == OperatorStatus.Ok) return "Проверить снова";
                 if (Status == OperatorStatus.Warn || Status == OperatorStatus.Blocked)
                 {
@@ -467,6 +547,12 @@ namespace IspAudit.ViewModels
                     TrackApplyTransition();
                     AutoCollapseSourceSectionBestEffort();
                 }
+                else if (string.Equals(e.PropertyName, nameof(MainViewModel.IsPostApplyRetestRunning), StringComparison.Ordinal)
+                      || string.Equals(e.PropertyName, nameof(MainViewModel.PostApplyRetestStatus), StringComparison.Ordinal))
+                {
+                    TrackPostApplyRetestBestEffort();
+                    AutoCollapseSourceSectionBestEffort();
+                }
                 else if (string.Equals(e.PropertyName, nameof(MainViewModel.FailCount), StringComparison.Ordinal)
                       || string.Equals(e.PropertyName, nameof(MainViewModel.WarnCount), StringComparison.Ordinal)
                       || string.Equals(e.PropertyName, nameof(MainViewModel.PassCount), StringComparison.Ordinal))
@@ -491,6 +577,12 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(IsSummaryStepVisible));
             OnPropertyChanged(nameof(IsFixingStepVisible));
             OnPropertyChanged(nameof(IsSourceSelectionEnabled));
+            OnPropertyChanged(nameof(IsPrimaryActionEnabled));
+            OnPropertyChanged(nameof(IsFixStepCardVisible));
+            OnPropertyChanged(nameof(FixStepTitle));
+            OnPropertyChanged(nameof(FixStepStatusText));
+            OnPropertyChanged(nameof(HasFixStepOutcome));
+            OnPropertyChanged(nameof(FixStepOutcomeText));
             OnPropertyChanged(nameof(Headline));
             OnPropertyChanged(nameof(SummaryLine));
             OnPropertyChanged(nameof(UserDetails_Source));
@@ -604,6 +696,7 @@ namespace IspAudit.ViewModels
 
             if (string.Equals(now, "running", StringComparison.OrdinalIgnoreCase))
             {
+                ClearFixWizardStateBestEffort();
                 StartNewDraftForCheckBestEffort();
                 return;
             }
@@ -625,6 +718,7 @@ namespace IspAudit.ViewModels
 
             if (now)
             {
+                _fixStepLatched = true;
                 EnsureDraftExistsBestEffort(reason: "apply_start");
                 if (_activeSession != null)
                 {
@@ -641,6 +735,7 @@ namespace IspAudit.ViewModels
             }
 
             // Apply закончился.
+            _fixStepLatched = true;
             EnsureDraftExistsBestEffort(reason: "apply_end");
             if (_activeSession != null)
             {
@@ -676,6 +771,11 @@ namespace IspAudit.ViewModels
                 EnsureDraftExistsBestEffort(reason: "post_apply_verdict");
                 if (_activeSession == null) return;
 
+                _fixStepLatched = true;
+                _lastPostApplyVerdict = (verdict ?? string.Empty).Trim();
+                _lastPostApplyDetails = (details ?? string.Empty).Trim();
+                _lastPostApplyVerdictAtUtc = DateTimeOffset.UtcNow;
+
                 _activeSession.HadApply = true;
                 _activeSession.PostApplyVerdict = (verdict ?? string.Empty).Trim();
 
@@ -690,6 +790,46 @@ namespace IspAudit.ViewModels
                 _activeSession.Actions.Add(line);
 
                 TryFinalizeActiveSessionBestEffort(preferPostApply: true);
+
+                // Событие приходит не через Main.PropertyChanged — обновим UI явно.
+                RaiseDerivedProperties();
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void TrackPostApplyRetestBestEffort()
+        {
+            try
+            {
+                if (Main.IsPostApplyRetestRunning)
+                {
+                    _fixStepLatched = true;
+                    return;
+                }
+
+                var post = (Main.PostApplyRetestStatus ?? string.Empty).Trim();
+                if (!string.IsNullOrWhiteSpace(post))
+                {
+                    _fixStepLatched = true;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void ClearFixWizardStateBestEffort()
+        {
+            try
+            {
+                _fixStepLatched = false;
+                _lastPostApplyVerdict = string.Empty;
+                _lastPostApplyDetails = string.Empty;
+                _lastPostApplyVerdictAtUtc = DateTimeOffset.MinValue;
             }
             catch
             {
