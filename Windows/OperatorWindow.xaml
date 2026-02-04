@@ -161,6 +161,52 @@
                             <Expander Header="Диагностика (сырое)" Margin="0,8,0,0" IsExpanded="False">
                                 <TextBlock Text="{Binding Vm.RawDetailsText}" TextWrapping="Wrap" Opacity="0.75"/>
                             </Expander>
+
+                            <Expander Header="История (сессии)" Margin="0,8,0,0" IsExpanded="False"
+                                      Visibility="{Binding Vm.HasSessions, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <StackPanel>
+                                    <ItemsControl ItemsSource="{Binding Vm.Sessions}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type models:OperatorSessionEntry}">
+                                                <Border Padding="8" Margin="0,0,0,8" CornerRadius="8"
+                                                        BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}">
+                                                    <Expander IsExpanded="False">
+                                                        <Expander.Header>
+                                                            <DockPanel LastChildFill="True">
+                                                                <TextBlock Text="{Binding StartedAtLocalText}" Opacity="0.75" FontSize="12" DockPanel.Dock="Left"/>
+                                                                <TextBlock Text="{Binding DurationText}" Opacity="0.65" FontSize="12" Margin="10,0,0,0" DockPanel.Dock="Left"/>
+                                                                <TextBlock Text="{Binding Outcome}" FontWeight="SemiBold" DockPanel.Dock="Right"/>
+                                                            </DockPanel>
+                                                        </Expander.Header>
+
+                                                        <StackPanel Margin="0,6,0,0">
+                                                            <TextBlock Text="{Binding TrafficSource}" TextWrapping="Wrap"/>
+                                                            <TextBlock Text="{Binding CountsText}" Margin="0,4,0,0" Opacity="0.85" TextWrapping="Wrap"/>
+
+                                                            <TextBlock Text="{Binding ProblemsText}" Margin="0,6,0,0" TextWrapping="Wrap"
+                                                                       Visibility="{Binding HasProblems, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                                                            <TextBlock Text="{Binding ActionsText}" Margin="0,6,0,0" TextWrapping="Wrap" Opacity="0.85"
+                                                                       Visibility="{Binding HasActions, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                                                            <TextBlock Text="{Binding PostApplyVerdict, StringFormat=Ретест: {0}}" Margin="0,6,0,0" TextWrapping="Wrap" Opacity="0.85"
+                                                                       Visibility="{Binding HasPostApply, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                                            <TextBlock Text="{Binding PostApplyStatusText}" Margin="0,2,0,0" TextWrapping="Wrap" Opacity="0.75"
+                                                                       Visibility="{Binding HasPostApply, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                                        </StackPanel>
+                                                    </Expander>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <Button Content="Очистить историю сессий"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Padding="12,6"
+                                            HorizontalAlignment="Left"
+                                            Command="{Binding Vm.ClearSessionsCommand}"/>
+                                </StackPanel>
+                            </Expander>
                         </StackPanel>
                     </Expander>
                 </StackPanel>

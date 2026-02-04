@@ -319,6 +319,80 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Ui_OperatorSessionStore_RoundTrip(CancellationToken ct)
+            => RunAsync("UI-016", "P1.11: OperatorSessionStore round-trip (best-effort JSON)", () =>
+            {
+                var tempPath = Path.Combine(Path.GetTempPath(), $"isp_audit_operator_sessions_smoke_{Guid.NewGuid():N}.json");
+                Environment.SetEnvironmentVariable("ISP_AUDIT_OPERATOR_SESSIONS_PATH", tempPath);
+
+                try
+                {
+                    OperatorSessionStore.TryDeletePersistedFileBestEffort(null);
+
+                    var now = DateTimeOffset.UtcNow;
+                    var older = new OperatorSessionEntry
+                    {
+                        Id = "sess_old",
+                        StartedAtUtc = now.AddMinutes(-10).ToString("u").TrimEnd(),
+                        EndedAtUtc = now.AddMinutes(-9).ToString("u").TrimEnd(),
+                        TrafficSource = "Источник: smoke",
+                        AutoFixEnabledAtStart = false,
+                        Outcome = "OK",
+                        CountsText = "OK: 3 • Нестабильно: 0 • Блокируется: 0",
+                        ProblemsText = "",
+                        ActionsText = "• Проверка: завершена (норма)",
+                        PostApplyVerdict = "",
+                        PostApplyStatusText = ""
+                    };
+
+                    var newer = new OperatorSessionEntry
+                    {
+                        Id = "sess_new",
+                        StartedAtUtc = now.ToString("u").TrimEnd(),
+                        EndedAtUtc = now.AddMinutes(1).ToString("u").TrimEnd(),
+                        TrafficSource = "Источник: smoke",
+                        AutoFixEnabledAtStart = true,
+                        Outcome = "WARN",
+                        CountsText = "OK: 1 • Нестабильно: 1 • Блокируется: 0",
+                        ProblemsText = "• example.com — WARN",
+                        ActionsText = "• Проверка: завершена (есть ограничения)",
+                        PostApplyVerdict = "UNKNOWN",
+                        PostApplyStatusText = "Ретест после Apply: завершён"
+                    };
+
+                    OperatorSessionStore.PersistBestEffort(new[] { older, newer }, null);
+                    var loaded = OperatorSessionStore.LoadBestEffort(null);
+
+                    if (loaded.Count < 2)
+                    {
+                        return new SmokeTestResult("UI-016", "P1.11: OperatorSessionStore round-trip (best-effort JSON)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали >=2 сессий после загрузки, получили {loaded.Count}");
+                    }
+
+                    // Store гарантирует сортировку: новые сверху.
+                    if (!string.Equals(loaded[0].Id, "sess_new", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult("UI-016", "P1.11: OperatorSessionStore round-trip (best-effort JSON)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали первым sess_new, получили '{loaded[0].Id}'");
+                    }
+
+                    var ids = loaded.Select(e => e.Id).ToArray();
+                    if (!ids.Contains("sess_old") || !ids.Contains("sess_new"))
+                    {
+                        return new SmokeTestResult("UI-016", "P1.11: OperatorSessionStore round-trip (best-effort JSON)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали ids sess_old+sess_new, получили: {string.Join(", ", ids)}");
+                    }
+
+                    return new SmokeTestResult("UI-016", "P1.11: OperatorSessionStore round-trip (best-effort JSON)", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK: сохраняет/читает без падений (best-effort)");
+                }
+                finally
+                {
+                    OperatorSessionStore.TryDeletePersistedFileBestEffort(null);
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_OPERATOR_SESSIONS_PATH", null);
+                }
+            }, ct);
+
         public static async Task<SmokeTestResult> Ui_BypassMetrics_UpdatesFromService(CancellationToken ct)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();

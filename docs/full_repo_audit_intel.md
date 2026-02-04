@@ -28,7 +28,9 @@
 
 Дополнение (04.02.2026): P1.11 — добавлен UX‑контракт Operator UI (`docs/P1_11_operator_ui_contract.md`) и wizard‑скелет OperatorWindow (выбор источника трафика → прогресс → итог) на базе вычисляемого операторского состояния в `OperatorViewModel`.
 
-Дополнение (04.02.2026): P1.11 — добавлена «История активности» Operator UI (события уровня действий/итогов, не пакеты) с best-effort персистом в `state\\operator_events.json`.
+Дополнение (04.02.2026): P1.11 — история Operator UI реализована как список **сессий** (полный цикл: проверка → проблемы → что применили → итог post‑apply ретеста) с best-effort персистом в `state\\operator_sessions.json`.
+
+Примечание (04.02.2026): `state\\operator_events.json` (OperatorEventStore) оставлен как legacy/отладочный след и не является основной «историей» для Operator.
 
 ---
 

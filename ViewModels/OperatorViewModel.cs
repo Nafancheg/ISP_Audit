@@ -33,13 +33,41 @@ namespace IspAudit.ViewModels
         public MainViewModel Main { get; }
 
         private const int MaxHistoryEntries = 256;
+        private const int MaxSessionsEntries = 128;
         private const string AllHistoryGroupsKey = "__all__";
         private readonly ObservableCollection<OperatorEventEntry> _historyAll = new();
+
+        private sealed class SessionDraft
+        {
+            public string Id { get; } = Guid.NewGuid().ToString("N");
+            public DateTimeOffset StartedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+            public string TrafficSource { get; set; } = string.Empty;
+            public bool AutoFixEnabledAtStart { get; set; }
+
+            public bool CheckCompleted { get; set; }
+            public int PassCount { get; set; }
+            public int WarnCount { get; set; }
+            public int FailCount { get; set; }
+            public string CountsText { get; set; } = string.Empty;
+            public List<string> Problems { get; } = new();
+
+            public bool HadApply { get; set; }
+            public string PostApplyVerdict { get; set; } = string.Empty;
+            public string PostApplyStatusText { get; set; } = string.Empty;
+            public List<string> Actions { get; } = new();
+
+            public bool Ended { get; set; }
+        }
+
+        private SessionDraft? _activeSession;
+        private bool _pendingFixTriggeredByUser;
 
         public sealed record HistoryGroupOption(string Key, string Title);
 
         public ObservableCollection<OperatorEventEntry> HistoryEvents { get; } = new();
         public ObservableCollection<HistoryGroupOption> HistoryGroupOptions { get; } = new();
+
+        public ObservableCollection<OperatorSessionEntry> Sessions { get; } = new();
 
         private OperatorHistoryTimeRange _historyTimeRange = OperatorHistoryTimeRange.Last7Days;
         private OperatorHistoryTypeFilter _historyTypeFilter = OperatorHistoryTypeFilter.All;
@@ -53,10 +81,25 @@ namespace IspAudit.ViewModels
 
         public ICommand RollbackCommand { get; }
         public ICommand ClearHistoryCommand { get; }
+        public ICommand ClearSessionsCommand { get; }
 
         public OperatorViewModel(MainViewModel main)
         {
             Main = main ?? throw new ArgumentNullException(nameof(main));
+
+            // История сессий (best-effort).
+            try
+            {
+                var loadedSessions = OperatorSessionStore.LoadBestEffort(log: null);
+                foreach (var s in loadedSessions)
+                {
+                    Sessions.Add(s);
+                }
+            }
+            catch
+            {
+                // ignore
+            }
 
             // История активности (best-effort).
             try
@@ -85,8 +128,19 @@ namespace IspAudit.ViewModels
 
             RollbackCommand = new RelayCommand(async _ => await RollbackAsync().ConfigureAwait(false));
             ClearHistoryCommand = new RelayCommand(_ => ClearHistoryBestEffort());
+            ClearSessionsCommand = new RelayCommand(_ => ClearSessionsBestEffort());
 
             Main.PropertyChanged += MainOnPropertyChanged;
+
+            // Семантика итогов post-apply ретеста (OK/FAIL/PARTIAL/UNKNOWN).
+            try
+            {
+                Main.Orchestrator.OnPostApplyCheckVerdict += OrchestratorOnPostApplyCheckVerdict;
+            }
+            catch
+            {
+                // ignore
+            }
         }
 
         public bool IsSourceSectionExpanded
@@ -137,6 +191,8 @@ namespace IspAudit.ViewModels
         }
 
         public bool HasHistory => _historyAll.Count > 0;
+
+        public bool HasSessions => Sessions.Count > 0;
 
         public string Headline
         {
@@ -449,6 +505,7 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(PrimaryButtonText));
             OnPropertyChanged(nameof(FixButtonText));
             OnPropertyChanged(nameof(HasHistory));
+            OnPropertyChanged(nameof(HasSessions));
         }
 
         private void AutoCollapseSourceSectionBestEffort()
@@ -490,27 +547,12 @@ namespace IspAudit.ViewModels
         {
             try
             {
-                var wasRunning = Main.IsRunning;
-                AddHistoryEvent(new OperatorEventEntry
-                {
-                    Category = "check",
-                    GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
-                    Title = wasRunning ? "Проверка: остановка" : "Проверка: запуск",
-                    Details = BuildTrafficSourceText(),
-                    Outcome = ""
-                });
-
                 Main.StartLiveTestingCommand.Execute(null);
             }
             catch (Exception ex)
             {
-                AddHistoryEvent(new OperatorEventEntry
-                {
-                    Category = "error",
-                    Title = "Проверка: ошибка запуска",
-                    Details = ex.Message,
-                    Outcome = "FAIL"
-                });
+                // Best-effort: фиксируем как «сессию-ошибку», чтобы оператор видел попытку.
+                FinalizeSessionAsErrorBestEffort("Ошибка запуска проверки", ex.Message);
                 throw;
             }
         }
@@ -519,62 +561,36 @@ namespace IspAudit.ViewModels
         {
             try
             {
-                AddHistoryEvent(new OperatorEventEntry
-                {
-                    Category = "fix",
-                    GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
-                    Title = "Исправление: запуск",
-                    Details = string.IsNullOrWhiteSpace(Main.ActiveApplySummaryText) ? "" : Main.ActiveApplySummaryText,
-                    Outcome = ""
-                });
-
+                _pendingFixTriggeredByUser = true;
                 Main.ApplyRecommendationsCommand.Execute(null);
             }
             catch (Exception ex)
             {
-                AddHistoryEvent(new OperatorEventEntry
-                {
-                    Category = "error",
-                    Title = "Исправление: ошибка запуска",
-                    Details = ex.Message,
-                    Outcome = "FAIL"
-                });
+                FinalizeSessionAsErrorBestEffort("Ошибка запуска исправления", ex.Message);
                 throw;
             }
         }
 
         private async Task RollbackAsync()
         {
-            AddHistoryEvent(new OperatorEventEntry
-            {
-                Category = "rollback",
-                GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
-                Title = "Откат: запуск",
-                Details = string.IsNullOrWhiteSpace(Main.ActiveApplySummaryText) ? "" : Main.ActiveApplySummaryText,
-                Outcome = ""
-            });
+            EnsureDraftExistsBestEffort(reason: "rollback");
+            _activeSession?.Actions.Add("Откат: запуск");
 
             try
             {
                 await Main.Bypass.DisableAllAsync().ConfigureAwait(false);
-                AddHistoryEvent(new OperatorEventEntry
+                _activeSession?.Actions.Add("Откат: выполнено (обход выключен)");
+
+                // Rollback часто является «закрывающим» действием. Если сессия без проверки — закрываем сразу.
+                if (_activeSession != null && !_activeSession.CheckCompleted)
                 {
-                    Category = "rollback",
-                    GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
-                    Title = "Откат: выполнено",
-                    Details = "Bypass выключен",
-                    Outcome = "OK"
-                });
+                    TryFinalizeActiveSessionBestEffort(preferPostApply: false);
+                }
             }
             catch (Exception ex)
             {
-                AddHistoryEvent(new OperatorEventEntry
-                {
-                    Category = "error",
-                    Title = "Откат: ошибка",
-                    Details = ex.Message,
-                    Outcome = "FAIL"
-                });
+                _activeSession?.Actions.Add($"Откат: ошибка ({ex.Message})");
+                TryFinalizeActiveSessionBestEffort(preferPostApply: false);
             }
         }
 
@@ -588,32 +604,14 @@ namespace IspAudit.ViewModels
 
             if (string.Equals(now, "running", StringComparison.OrdinalIgnoreCase))
             {
-                AddHistoryEvent(new OperatorEventEntry
-                {
-                    Category = "check",
-                    GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
-                    Title = "Проверка: началась",
-                    Details = BuildTrafficSourceText(),
-                    Outcome = ""
-                });
+                StartNewDraftForCheckBestEffort();
                 return;
             }
 
             if (string.Equals(now, "done", StringComparison.OrdinalIgnoreCase))
             {
-                var outcome = Main.FailCount > 0 ? "FAIL" : (Main.WarnCount > 0 ? "WARN" : "OK");
-                var title = outcome == "OK" ? "Проверка: завершена (норма)"
-                    : outcome == "WARN" ? "Проверка: завершена (есть ограничения)"
-                    : "Проверка: завершена (есть блокировки)";
-
-                AddHistoryEvent(new OperatorEventEntry
-                {
-                    Category = "check",
-                    GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
-                    Title = title,
-                    Details = $"OK: {Main.PassCount} • Нестабильно: {Main.WarnCount} • Блокируется: {Main.FailCount}",
-                    Outcome = outcome
-                });
+                CompleteCheckInDraftBestEffort();
+                TryFinalizeActiveSessionBestEffort(preferPostApply: true);
             }
         }
 
@@ -627,30 +625,363 @@ namespace IspAudit.ViewModels
 
             if (now)
             {
-                AddHistoryEvent(new OperatorEventEntry
+                EnsureDraftExistsBestEffort(reason: "apply_start");
+                if (_activeSession != null)
                 {
-                    Category = "fix",
-                    GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
-                    Title = "Исправление: выполняется",
-                    Details = string.IsNullOrWhiteSpace(Main.ApplyStatusText) ? "" : Main.ApplyStatusText,
-                    Outcome = ""
-                });
+                    _activeSession.HadApply = true;
+                    var mode = _pendingFixTriggeredByUser ? "ручное" : "авто";
+                    _pendingFixTriggeredByUser = false;
+
+                    var detail = (Main.ApplyStatusText ?? string.Empty).Trim();
+                    _activeSession.Actions.Add(string.IsNullOrWhiteSpace(detail)
+                        ? $"Исправление: запуск ({mode})"
+                        : $"Исправление: запуск ({mode}) — {detail}");
+                }
                 return;
             }
 
             // Apply закончился.
-            var details = string.IsNullOrWhiteSpace(Main.PostApplyRetestStatus)
-                ? (string.IsNullOrWhiteSpace(Main.ApplyStatusText) ? "" : Main.ApplyStatusText)
-                : $"{Main.ApplyStatusText}; {Main.PostApplyRetestStatus}";
-
-            AddHistoryEvent(new OperatorEventEntry
+            EnsureDraftExistsBestEffort(reason: "apply_end");
+            if (_activeSession != null)
             {
-                Category = "fix",
-                GroupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim(),
-                Title = "Исправление: завершено",
-                Details = details,
-                Outcome = ""
-            });
+                var apply = (Main.ApplyStatusText ?? string.Empty).Trim();
+                var post = (Main.PostApplyRetestStatus ?? string.Empty).Trim();
+                _activeSession.PostApplyStatusText = post;
+
+                if (!string.IsNullOrWhiteSpace(apply) && !string.IsNullOrWhiteSpace(post))
+                {
+                    _activeSession.Actions.Add($"Исправление: завершено — {apply}; {post}");
+                }
+                else if (!string.IsNullOrWhiteSpace(apply))
+                {
+                    _activeSession.Actions.Add($"Исправление: завершено — {apply}");
+                }
+                else if (!string.IsNullOrWhiteSpace(post))
+                {
+                    _activeSession.Actions.Add($"Исправление: завершено — {post}");
+                }
+                else
+                {
+                    _activeSession.Actions.Add("Исправление: завершено");
+                }
+            }
+
+            TryFinalizeActiveSessionBestEffort(preferPostApply: true);
+        }
+
+        private void OrchestratorOnPostApplyCheckVerdict(string hostKey, string verdict, string mode, string? details)
+        {
+            try
+            {
+                EnsureDraftExistsBestEffort(reason: "post_apply_verdict");
+                if (_activeSession == null) return;
+
+                _activeSession.HadApply = true;
+                _activeSession.PostApplyVerdict = (verdict ?? string.Empty).Trim();
+
+                var d = (details ?? string.Empty).Trim();
+                var hk = (hostKey ?? string.Empty).Trim();
+                var m = (mode ?? string.Empty).Trim();
+
+                var line = string.IsNullOrWhiteSpace(d)
+                    ? $"Ретест после исправления: {verdict} ({m})"
+                    : $"Ретест после исправления: {verdict} ({m}) — {hk}; {d}";
+
+                _activeSession.Actions.Add(line);
+
+                TryFinalizeActiveSessionBestEffort(preferPostApply: true);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void StartNewDraftForCheckBestEffort()
+        {
+            try
+            {
+                // Если предыдущая сессия не была закрыта (например ожидали ретест, но пользователь начал новую проверку)
+                // — закрываем best-effort как UNKNOWN.
+                if (_activeSession != null && !_activeSession.Ended)
+                {
+                    _activeSession.Actions.Add("Новая проверка запущена: предыдущая сессия закрыта без итогового ретеста");
+                    FinalizeDraftBestEffort(_activeSession, outcomeOverride: "UNKNOWN");
+                }
+
+                _activeSession = new SessionDraft
+                {
+                    StartedAtUtc = DateTimeOffset.UtcNow,
+                    TrafficSource = BuildTrafficSourceText(),
+                    AutoFixEnabledAtStart = Main.EnableAutoBypass
+                };
+                _activeSession.Actions.Add("Проверка: началась");
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void CompleteCheckInDraftBestEffort()
+        {
+            try
+            {
+                EnsureDraftExistsBestEffort(reason: "check_done");
+                if (_activeSession == null) return;
+
+                _activeSession.CheckCompleted = true;
+                _activeSession.PassCount = Main.PassCount;
+                _activeSession.WarnCount = Main.WarnCount;
+                _activeSession.FailCount = Main.FailCount;
+                _activeSession.CountsText = $"OK: {Main.PassCount} • Нестабильно: {Main.WarnCount} • Блокируется: {Main.FailCount}";
+
+                _activeSession.Problems.Clear();
+                foreach (var line in BuildProblemsSnapshotLines(maxItems: 10))
+                {
+                    _activeSession.Problems.Add(line);
+                }
+
+                var cancelled = Main.Orchestrator.LastRunWasUserCancelled;
+                var outcome = cancelled
+                    ? "CANCELLED"
+                    : (_activeSession.FailCount > 0 ? "FAIL" : (_activeSession.WarnCount > 0 ? "WARN" : "OK"));
+
+                var title = outcome == "OK" ? "Проверка: завершена (норма)"
+                    : outcome == "WARN" ? "Проверка: завершена (есть ограничения)"
+                    : outcome == "FAIL" ? "Проверка: завершена (есть блокировки)"
+                    : "Проверка: завершена";
+
+                _activeSession.Actions.Add($"{title} — {_activeSession.CountsText}");
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void EnsureDraftExistsBestEffort(string reason)
+        {
+            try
+            {
+                if (_activeSession != null && !_activeSession.Ended) return;
+
+                _activeSession = new SessionDraft
+                {
+                    StartedAtUtc = DateTimeOffset.UtcNow,
+                    TrafficSource = BuildTrafficSourceText(),
+                    AutoFixEnabledAtStart = Main.EnableAutoBypass
+                };
+
+                if (!string.IsNullOrWhiteSpace(reason))
+                {
+                    _activeSession.Actions.Add($"Сессия: создана ({reason})");
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private IEnumerable<string> BuildProblemsSnapshotLines(int maxItems)
+        {
+            try
+            {
+                var list = Main.TestResults
+                    .Where(r => r != null)
+                    .Where(r => r.Status == TestStatus.Fail || r.Status == TestStatus.Warn)
+                    .OrderBy(r => r.Status == TestStatus.Fail ? 0 : 1)
+                    .ThenBy(r => (r.DisplayHost ?? string.Empty), StringComparer.OrdinalIgnoreCase)
+                    .Take(Math.Max(1, maxItems))
+                    .Select(BuildProblemLine)
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .ToList();
+
+                return list;
+            }
+            catch
+            {
+                return Array.Empty<string>();
+            }
+        }
+
+        private static string BuildProblemLine(TestResult r)
+        {
+            try
+            {
+                var host = (r.DisplayHost ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(host)) host = (r.DisplayIp ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(host)) host = "(неизвестная цель)";
+
+                var status = r.Status == TestStatus.Fail ? "FAIL" : "WARN";
+                var tags = new List<string>(capacity: 4);
+                if (r.IsRstInjection) tags.Add("RST");
+                if (r.IsHttpRedirect) tags.Add("Redirect");
+                if (r.IsRetransmissionHeavy) tags.Add("Retransmit");
+                if (r.IsUdpBlockage) tags.Add("UDP/QUIC");
+
+                var tagText = tags.Count > 0 ? $" ({string.Join(", ", tags)})" : string.Empty;
+                var err = (r.Error ?? string.Empty).Trim();
+
+                if (!string.IsNullOrWhiteSpace(err))
+                {
+                    return $"{host} — {status}{tagText}: {err}";
+                }
+
+                return $"{host} — {status}{tagText}";
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private void TryFinalizeActiveSessionBestEffort(bool preferPostApply)
+        {
+            try
+            {
+                if (_activeSession == null || _activeSession.Ended) return;
+
+                // Если был Apply — стараемся закрывать по verdict (семантика P1.8).
+                if (preferPostApply && _activeSession.HadApply)
+                {
+                    if (!string.IsNullOrWhiteSpace(_activeSession.PostApplyVerdict))
+                    {
+                        FinalizeDraftBestEffort(_activeSession, outcomeOverride: MapVerdictToOutcome(_activeSession.PostApplyVerdict));
+                        _activeSession = null;
+                        return;
+                    }
+
+                    // Fallback: если ретест уже не бежит и статус заполнен — тоже закрываем.
+                    if (!Main.IsPostApplyRetestRunning && !string.IsNullOrWhiteSpace(Main.PostApplyRetestStatus))
+                    {
+                        _activeSession.PostApplyStatusText = (Main.PostApplyRetestStatus ?? string.Empty).Trim();
+                        FinalizeDraftBestEffort(_activeSession, outcomeOverride: string.Empty);
+                        _activeSession = null;
+                        return;
+                    }
+
+                    // Ждём.
+                    return;
+                }
+
+                // Без Apply: закрываем по завершению проверки.
+                if (_activeSession.CheckCompleted)
+                {
+                    FinalizeDraftBestEffort(_activeSession, outcomeOverride: string.Empty);
+                    _activeSession = null;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void FinalizeSessionAsErrorBestEffort(string title, string details)
+        {
+            try
+            {
+                EnsureDraftExistsBestEffort(reason: "error");
+                if (_activeSession == null) return;
+
+                _activeSession.Actions.Add($"Ошибка: {title} — {details}");
+                FinalizeDraftBestEffort(_activeSession, outcomeOverride: "FAIL");
+                _activeSession = null;
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private static string MapVerdictToOutcome(string verdict)
+        {
+            var v = (verdict ?? string.Empty).Trim().ToUpperInvariant();
+            return v switch
+            {
+                "OK" => "OK",
+                "FAIL" => "FAIL",
+                "PARTIAL" => "WARN",
+                "UNKNOWN" => "UNKNOWN",
+                _ => string.IsNullOrWhiteSpace(v) ? string.Empty : v
+            };
+        }
+
+        private void FinalizeDraftBestEffort(SessionDraft draft, string outcomeOverride)
+        {
+            try
+            {
+                if (draft.Ended) return;
+                draft.Ended = true;
+
+                var endUtc = DateTimeOffset.UtcNow;
+
+                var cancelled = Main.Orchestrator.LastRunWasUserCancelled;
+                var baseOutcome = cancelled
+                    ? "CANCELLED"
+                    : (draft.FailCount > 0 ? "FAIL" : (draft.WarnCount > 0 ? "WARN" : "OK"));
+
+                var outcome = string.IsNullOrWhiteSpace(outcomeOverride) ? baseOutcome : outcomeOverride.Trim();
+
+                var problemsText = string.Join("\n", draft.Problems.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => "• " + s));
+                var actionsText = string.Join("\n", draft.Actions.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => "• " + s));
+
+                var entry = new OperatorSessionEntry
+                {
+                    Id = draft.Id,
+                    StartedAtUtc = draft.StartedAtUtc.ToString("u").TrimEnd(),
+                    EndedAtUtc = endUtc.ToString("u").TrimEnd(),
+                    TrafficSource = draft.TrafficSource,
+                    AutoFixEnabledAtStart = draft.AutoFixEnabledAtStart,
+                    Outcome = outcome,
+                    CountsText = draft.CountsText,
+                    ProblemsText = problemsText,
+                    ActionsText = actionsText,
+                    PostApplyVerdict = draft.PostApplyVerdict,
+                    PostApplyStatusText = string.IsNullOrWhiteSpace(draft.PostApplyStatusText) ? (Main.PostApplyRetestStatus ?? string.Empty).Trim() : draft.PostApplyStatusText
+                };
+
+                // Новые сверху.
+                Sessions.Insert(0, entry);
+                while (Sessions.Count > MaxSessionsEntries)
+                {
+                    Sessions.RemoveAt(Sessions.Count - 1);
+                }
+                OnPropertyChanged(nameof(HasSessions));
+
+                var snapshot = Sessions.ToList();
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        OperatorSessionStore.PersistBestEffort(snapshot, log: null);
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                });
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void ClearSessionsBestEffort()
+        {
+            try
+            {
+                Sessions.Clear();
+                OperatorSessionStore.TryDeletePersistedFileBestEffort(log: null);
+                OnPropertyChanged(nameof(HasSessions));
+            }
+            catch
+            {
+                // ignore
+            }
         }
 
         private void AddHistoryEvent(OperatorEventEntry entry)
