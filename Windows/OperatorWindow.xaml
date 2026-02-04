@@ -56,20 +56,40 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <!-- Выбор цели -->
-                <Grid Grid.Row="0" Margin="0,0,0,14">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
+                <!-- Источник трафика (как в инженерном режиме) -->
+                <StackPanel Grid.Row="0" Margin="0,0,0,14">
+                    <TextBlock Text="Источник трафика" Opacity="0.85" Margin="0,0,0,6"/>
 
-                    <TextBlock Text="Цель" VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.85"/>
-                    <ComboBox Grid.Column="1"
-                              ItemsSource="{Binding Vm.AvailableTargets}"
-                              SelectedItem="{Binding Vm.SelectedTarget, Mode=TwoWay}"
-                              Style="{StaticResource ModernComboBoxStyle}"
-                              Height="36" />
-                </Grid>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <RadioButton Content="Базовые сервисы (встроенный тест)"
+                                     IsChecked="{Binding Main.IsBasicTestMode, Mode=TwoWay}"
+                                     Margin="0,0,14,0"/>
+                        <RadioButton Content="Приложение/игра (.exe)"
+                                     IsChecked="{Binding Main.IsBasicTestMode, Mode=TwoWay, Converter={StaticResource InverseBoolConverter}}"/>
+                    </StackPanel>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBox Grid.Column="0"
+                                 Style="{StaticResource ModernTextBoxStyle}"
+                                 Text="{Binding Main.ExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 IsEnabled="{Binding Main.IsBasicTestMode, Converter={StaticResource InverseBoolConverter}}"
+                                 Height="36"
+                                 materialDesign:HintAssist.Hint="Путь к .exe приложения/игры"
+                                 ToolTip="Выберите .exe приложения/игры. Если выбран режим базовых сервисов — поле отключено."/>
+
+                        <Button Grid.Column="1"
+                                Content="Обзор..."
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding Main.BrowseExeCommand}"
+                                IsEnabled="{Binding Main.IsBasicTestMode, Converter={StaticResource InverseBoolConverter}}"
+                                Height="36" Margin="10,0,0,0"/>
+                    </Grid>
+                </StackPanel>
 
                 <TextBlock Grid.Row="1" Text="{Binding Vm.Headline}" FontSize="22" FontWeight="SemiBold"/>
                 <TextBlock Grid.Row="2" Text="{Binding Vm.SummaryLine}" Margin="0,6,0,0" Opacity="0.85"/>

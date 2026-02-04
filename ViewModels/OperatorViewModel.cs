@@ -1,11 +1,7 @@
 using System;
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
-using System.Linq;
-using System.Text.Json;
 using System.Windows.Input;
-using IspAudit.Utils;
 
 namespace IspAudit.ViewModels
 {
@@ -15,47 +11,12 @@ namespace IspAudit.ViewModels
     /// </summary>
     public sealed class OperatorViewModel : INotifyPropertyChanged
     {
-        public sealed class OperatorTargetItem
-        {
-            public OperatorTargetItem(string key, string title, bool isBasicServices)
-            {
-                Key = key;
-                Title = title;
-                IsBasicServices = isBasicServices;
-            }
-
-            public string Key { get; }
-            public string Title { get; }
-            public bool IsBasicServices { get; }
-
-            public override string ToString() => Title;
-        }
-
         public MainViewModel Main { get; }
 
         public OperatorViewModel(MainViewModel main)
         {
             Main = main ?? throw new ArgumentNullException(nameof(main));
             Main.PropertyChanged += (_, __) => RaiseDerivedProperties();
-
-            AvailableTargets = new ObservableCollection<OperatorTargetItem>();
-            LoadTargetsBestEffort();
-        }
-
-        public ObservableCollection<OperatorTargetItem> AvailableTargets { get; }
-
-        private OperatorTargetItem? _selectedTarget;
-        public OperatorTargetItem? SelectedTarget
-        {
-            get => _selectedTarget;
-            set
-            {
-                if (ReferenceEquals(_selectedTarget, value)) return;
-                _selectedTarget = value;
-                OnPropertyChanged(nameof(SelectedTarget));
-                ApplySelectedTargetToMainBestEffort(value);
-                RaiseDerivedProperties();
-            }
         }
 
         public string Headline
@@ -83,13 +44,25 @@ namespace IspAudit.ViewModels
                     return $"OK: {Main.PassCount} • Нестабильно: {Main.WarnCount} • Блокируется: {Main.FailCount}";
                 }
 
-                var target = SelectedTarget?.Title;
-                if (!string.IsNullOrWhiteSpace(target))
+                if (Main.IsBasicTestMode)
                 {
-                    return $"Цель: {target}. Нажмите «Проверить».";
+                    return "Источник: базовые сервисы (встроенный тест). Нажмите «Проверить».";
                 }
 
-                return "Выберите цель и нажмите «Проверить».";
+                var exePath = (Main.ExePath ?? string.Empty).Trim();
+                if (!string.IsNullOrWhiteSpace(exePath))
+                {
+                    try
+                    {
+                        return $"Источник: {Path.GetFileName(exePath)}. Нажмите «Проверить».";
+                    }
+                    catch
+                    {
+                        return "Источник: приложение (.exe). Нажмите «Проверить».";
+                    }
+                }
+
+                return "Выберите источник трафика и нажмите «Проверить».";
             }
         }
 
@@ -103,80 +76,6 @@ namespace IspAudit.ViewModels
         public ICommand FixCommand => Main.ApplyRecommendationsCommand;
 
         public event PropertyChangedEventHandler? PropertyChanged;
-
-        private void LoadTargetsBestEffort()
-        {
-            try
-            {
-                AvailableTargets.Clear();
-
-                // 1) Базовые сервисы — всегда доступны
-                AvailableTargets.Add(new OperatorTargetItem("basic", "Базовые сервисы (Google/YouTube/Discord)", isBasicServices: true));
-
-                // 2) Профили из каталога Profiles
-                var profilesDir = Path.Combine(AppPaths.AppDirectory, "Profiles");
-                if (Directory.Exists(profilesDir))
-                {
-                    foreach (var file in Directory.GetFiles(profilesDir, "*.json").OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
-                    {
-                        var key = Path.GetFileNameWithoutExtension(file);
-                        if (string.IsNullOrWhiteSpace(key)) continue;
-
-                        var title = $"Профиль: {key}";
-
-                        try
-                        {
-                            var json = File.ReadAllText(file);
-                            var profile = JsonSerializer.Deserialize<DiagnosticProfile>(json);
-                            var name = (profile?.Name ?? string.Empty).Trim();
-                            if (!string.IsNullOrWhiteSpace(name))
-                            {
-                                title = name;
-                            }
-                        }
-                        catch
-                        {
-                            // ignore
-                        }
-
-                        AvailableTargets.Add(new OperatorTargetItem(key, title, isBasicServices: false));
-                    }
-                }
-
-                // 3) Выбор по умолчанию
-                // Если уже активен профиль Default — показываем его.
-                var defaultProfile = AvailableTargets.FirstOrDefault(t => !t.IsBasicServices && t.Key.Equals("Default", StringComparison.OrdinalIgnoreCase));
-                SelectedTarget = defaultProfile ?? AvailableTargets.FirstOrDefault();
-            }
-            catch
-            {
-                // ignore
-            }
-        }
-
-        private void ApplySelectedTargetToMainBestEffort(OperatorTargetItem? selected)
-        {
-            try
-            {
-                if (selected == null) return;
-
-                if (selected.IsBasicServices)
-                {
-                    Main.IsBasicTestMode = true;
-                    return;
-                }
-
-                Main.IsBasicTestMode = false;
-
-                // Operator выбирает только ЦЕЛЬ (профиль), но не стратегию обхода.
-                // Технические решения остаются за Orchestrator/INTEL.
-                Config.SetActiveProfile(selected.Key);
-            }
-            catch
-            {
-                // ignore
-            }
-        }
 
         private void RaiseDerivedProperties()
         {

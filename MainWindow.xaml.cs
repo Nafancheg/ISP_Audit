@@ -6,6 +6,8 @@ using IspAudit.ViewModels;
 using System.ComponentModel;
 using System.Windows.Threading;
 
+using WpfApplication = System.Windows.Application;
+
 namespace IspAudit
 {
     public partial class MainWindow : Window
@@ -22,7 +24,7 @@ namespace IspAudit
             // Если окно создано напрямую (без App.ShowEngineerWindow), подцепляем shared VM.
             try
             {
-                if (DataContext == null && System.Windows.Application.Current is App app)
+                if (DataContext == null && WpfApplication.Current is App app)
                 {
                     DataContext = app.GetSharedMainViewModel();
                 }
