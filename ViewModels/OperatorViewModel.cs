@@ -198,6 +198,101 @@ namespace IspAudit.ViewModels
             }
         }
 
+        public string UserDetails_Source
+        {
+            get
+            {
+                var t = BuildTrafficSourceText();
+                return string.IsNullOrWhiteSpace(t) ? "—" : t;
+            }
+        }
+
+        public string UserDetails_Status
+        {
+            get
+            {
+                return Status switch
+                {
+                    OperatorStatus.Checking => "Идёт проверка",
+                    OperatorStatus.Fixing => "Идёт исправление",
+                    OperatorStatus.Blocked => "Есть блокировки",
+                    OperatorStatus.Warn => "Есть ограничения",
+                    OperatorStatus.Ok => "Норма",
+                    _ => "Ожидание"
+                };
+            }
+        }
+
+        public string UserDetails_Result
+        {
+            get
+            {
+                if (!Main.IsDone)
+                {
+                    // В процессе/idle показывать счётчики бессмысленно.
+                    return "—";
+                }
+
+                return $"OK: {Main.PassCount} • Нестабильно: {Main.WarnCount} • Блокируется: {Main.FailCount}";
+            }
+        }
+
+        public string UserDetails_AutoFix
+            => Main.EnableAutoBypass ? "Включено" : "Выключено";
+
+        public string UserDetails_Bypass
+            => Main.IsBypassActive ? "Активен" : "Не активен";
+
+        public string UserDetails_LastAction
+        {
+            get
+            {
+                var fix = (Main.ActiveApplySummaryText ?? string.Empty).Trim();
+                var apply = (Main.ApplyStatusText ?? string.Empty).Trim();
+                var post = (Main.PostApplyRetestStatus ?? string.Empty).Trim();
+
+                // Выводим самое «человеческое» из доступного.
+                if (!string.IsNullOrWhiteSpace(fix)) return fix;
+
+                if (!string.IsNullOrWhiteSpace(apply) && !string.IsNullOrWhiteSpace(post))
+                {
+                    return $"{apply}; {post}";
+                }
+
+                if (!string.IsNullOrWhiteSpace(apply)) return apply;
+                if (!string.IsNullOrWhiteSpace(post)) return post;
+
+                return Main.HasAnyRecommendations ? "Доступны рекомендации по исправлению" : "—";
+            }
+        }
+
+        public string RawDetailsText
+        {
+            get
+            {
+                try
+                {
+                    var parts = new List<string>(capacity: 6);
+
+                    var diag = (Main.DiagnosticStatus ?? string.Empty).Trim();
+                    if (!string.IsNullOrWhiteSpace(diag)) parts.Add(diag);
+
+                    var abs = (Main.AutoBypassStatus ?? string.Empty).Trim();
+                    var abv = (Main.AutoBypassVerdict ?? string.Empty).Trim();
+                    var abm = (Main.AutoBypassMetrics ?? string.Empty).Trim();
+                    if (!string.IsNullOrWhiteSpace(abs)) parts.Add(abs);
+                    if (!string.IsNullOrWhiteSpace(abv)) parts.Add(abv);
+                    if (!string.IsNullOrWhiteSpace(abm)) parts.Add(abm);
+
+                    return parts.Count == 0 ? "—" : string.Join(Environment.NewLine, parts);
+                }
+                catch
+                {
+                    return "—";
+                }
+            }
+        }
+
         public OperatorStatus Status
         {
             get
@@ -342,6 +437,13 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(IsSourceSelectionEnabled));
             OnPropertyChanged(nameof(Headline));
             OnPropertyChanged(nameof(SummaryLine));
+            OnPropertyChanged(nameof(UserDetails_Source));
+            OnPropertyChanged(nameof(UserDetails_Status));
+            OnPropertyChanged(nameof(UserDetails_Result));
+            OnPropertyChanged(nameof(UserDetails_AutoFix));
+            OnPropertyChanged(nameof(UserDetails_Bypass));
+            OnPropertyChanged(nameof(UserDetails_LastAction));
+            OnPropertyChanged(nameof(RawDetailsText));
             OnPropertyChanged(nameof(ShowFixButton));
             OnPropertyChanged(nameof(ShowPrimaryButton));
             OnPropertyChanged(nameof(PrimaryButtonText));

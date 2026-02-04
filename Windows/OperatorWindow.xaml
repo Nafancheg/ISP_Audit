@@ -146,16 +146,44 @@
                     </StackPanel>
 
                     <!-- Детали (пока минимально) -->
-                    <Expander Header="Технические детали" Margin="0,10,0,0" IsExpanded="False">
+                    <Expander Header="Подробности" Margin="0,10,0,0" IsExpanded="False">
                         <StackPanel>
-                            <TextBlock Text="Состояние:" FontWeight="SemiBold"/>
-                            <TextBlock Text="{Binding Main.DiagnosticStatus}"/>
-                            <TextBlock Text="" Height="8"/>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="180"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
 
-                            <TextBlock Text="Автоисправление:" FontWeight="SemiBold"/>
-                            <TextBlock Text="{Binding Main.AutoBypassStatus}"/>
-                            <TextBlock Text="{Binding Main.AutoBypassVerdict}"/>
-                            <TextBlock Text="{Binding Main.AutoBypassMetrics}"/>
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Источник" Opacity="0.75"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Vm.UserDetails_Source}" TextWrapping="Wrap"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Статус" Opacity="0.75" Margin="0,4,0,0"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Vm.UserDetails_Status}" Margin="0,4,0,0"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Результат" Opacity="0.75" Margin="0,4,0,0"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Vm.UserDetails_Result}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Автоисправление" Opacity="0.75" Margin="0,4,0,0"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Vm.UserDetails_AutoFix}" Margin="0,4,0,0"/>
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Обход" Opacity="0.75" Margin="0,4,0,0"/>
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Vm.UserDetails_Bypass}" Margin="0,4,0,0"/>
+
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Последнее действие" Opacity="0.75" Margin="0,4,0,0"/>
+                                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Vm.UserDetails_LastAction}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                            </Grid>
+
+                            <Expander Header="Диагностика (сырое)" Margin="0,8,0,0" IsExpanded="False">
+                                <TextBlock Text="{Binding Vm.RawDetailsText}" TextWrapping="Wrap" Opacity="0.75"/>
+                            </Expander>
                         </StackPanel>
                     </Expander>
 
