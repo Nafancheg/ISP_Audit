@@ -2,6 +2,8 @@ namespace IspAudit;
 
 public partial class App : System.Windows.Application
 {
+    private IspAudit.ViewModels.MainViewModel? _sharedMainViewModel;
+
     public App()
     {
         // Загрузить ресурсы из XAML
@@ -22,8 +24,18 @@ public partial class App : System.Windows.Application
 
         try
         {
-            var mainWindow = new MainWindow();
-            mainWindow.Show();
+            // По умолчанию запускаем «Операторский» UI.
+            // Инженерный режим открывается по подтверждению и сохраняется в state/ui_mode.json.
+            var mode = IspAudit.Utils.UiModeStore.LoadOrDefault(IspAudit.Utils.UiMode.Operator);
+
+            if (mode == IspAudit.Utils.UiMode.Engineer)
+            {
+                ShowEngineerWindow();
+            }
+            else
+            {
+                ShowOperatorWindow();
+            }
         }
         catch (System.Exception ex)
         {
@@ -32,15 +44,49 @@ public partial class App : System.Windows.Application
         }
     }
 
+    internal IspAudit.ViewModels.MainViewModel GetSharedMainViewModel()
+    {
+        return _sharedMainViewModel ??= new IspAudit.ViewModels.MainViewModel();
+    }
+
+    internal async System.Threading.Tasks.Task EnsureInitializedAsync()
+    {
+        try
+        {
+            await GetSharedMainViewModel().InitializeAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    internal void ShowOperatorWindow()
+    {
+        var window = new IspAudit.Windows.OperatorWindow(GetSharedMainViewModel);
+        MainWindow = window;
+        _ = EnsureInitializedAsync();
+        window.Show();
+    }
+
+    internal void ShowEngineerWindow()
+    {
+        var window = new MainWindow();
+        window.DataContext = GetSharedMainViewModel();
+        MainWindow = window;
+        _ = EnsureInitializedAsync();
+        window.Show();
+    }
+
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
         try
         {
-            if (this.MainWindow?.DataContext is IspAudit.ViewModels.MainViewModel vm)
+            if (_sharedMainViewModel != null)
             {
                 // Критично: DNS/DoH должен откатываться при выходе из приложения.
                 // OnExit не async, поэтому выполняем синхронное ожидание завершения.
-                vm.ShutdownAsync().GetAwaiter().GetResult();
+                _sharedMainViewModel.ShutdownAsync().GetAwaiter().GetResult();
             }
         }
         catch

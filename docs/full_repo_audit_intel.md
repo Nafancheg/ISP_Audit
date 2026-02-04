@@ -42,7 +42,9 @@
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                     UI LAYER (WPF)                              │
-│  App.xaml → MainWindow.xaml → MainViewModel                     │
+│  App.xaml → OperatorWindow.xaml / MainWindow.xaml               │
+│                     ↓                                           │
+│              MainViewModel (shared)                             │
 │                              ↓                                  │
 │  ├── BypassController (прокси к BypassStateManager)            │
 │  ├── DiagnosticOrchestrator (запуск диагностики)               │

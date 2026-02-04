@@ -17,6 +17,19 @@ namespace IspAudit
         {
             InitializeComponent();
             Closing += Window_Closing;
+
+            // Если окно создано напрямую (без App.ShowEngineerWindow), подцепляем shared VM.
+            try
+            {
+                if (DataContext == null && System.Windows.Application.Current is App app)
+                {
+                    DataContext = app.GetSharedMainViewModel();
+                }
+            }
+            catch
+            {
+                // ignore
+            }
         }
 
         private async void Window_Closing(object? sender, CancelEventArgs e)
