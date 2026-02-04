@@ -12,6 +12,7 @@ namespace IspAudit
     {
         private bool _shutdownInProgress;
         private bool _shutdownCompleted;
+        private bool _switchingToOperator;
 
         public MainWindow()
         {
@@ -34,6 +35,13 @@ namespace IspAudit
 
         private async void Window_Closing(object? sender, CancelEventArgs e)
         {
+            // При переключении интерфейса закрываем окно без ShutdownAsync(),
+            // т.к. приложение продолжает работать в OperatorWindow с тем же shared VM.
+            if (_switchingToOperator)
+            {
+                return;
+            }
+
             // Если shutdown уже завершён, даём окну закрыться штатно.
             if (_shutdownCompleted)
             {
@@ -151,6 +159,40 @@ namespace IspAudit
                 {
                     viewModel.TogglePinDomainFromResultCommand.Execute(result);
                 }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void ReturnToOperator_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                IspAudit.Utils.UiModeStore.SaveBestEffort(IspAudit.Utils.UiMode.Operator);
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (System.Windows.Application.Current is App app)
+                {
+                    app.ShowOperatorWindow();
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                _switchingToOperator = true;
+                Close();
             }
             catch
             {

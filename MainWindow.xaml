@@ -39,6 +39,11 @@
                     <Grid Margin="0,0,0,12">
                         <TextBlock Text="🎮 Запуск диагностики" Style="{StaticResource H2Style}" VerticalAlignment="Center"/>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="← Оператор"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="ReturnToOperator_Click"
+                                    ToolTip="Вернуться в операторский режим"
+                                    Height="24" Padding="10,0" Margin="0,0,6,0"/>
                             <ToggleButton IsChecked="{Binding IsLeftPanelPinned, Mode=TwoWay}"
                                           Width="24" Height="24" Margin="0,0,6,0"
                                           ToolTip="Закрепить левую панель (PIN)"
