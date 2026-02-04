@@ -30,54 +30,6 @@ namespace IspAudit.Windows
             DataContext = new OperatorWindowDataContext(new OperatorViewModel(main), this);
         }
 
-        private void Bypass_Checked(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                var main = _getMainViewModel();
-                var bypass = main.Bypass;
-
-                // В операторском режиме включаем самый безопасный и понятный базовый обход:
-                // TLS Fragment (без агрессивных/глобальных действий).
-                // Если пользователь уже включил что-то в Engineer — не ломаем.
-                if (!bypass.IsBypassActive)
-                {
-                    var anyOptionEnabled = bypass.IsFragmentEnabled
-                        || bypass.IsDisorderEnabled
-                        || bypass.IsFakeEnabled
-                        || bypass.IsDropRstEnabled
-                        || bypass.IsQuicFallbackEnabled
-                        || bypass.IsAllowNoSniEnabled;
-
-                    if (!anyOptionEnabled)
-                    {
-                        bypass.IsFragmentEnabled = true;
-                    }
-                    else
-                    {
-                        _ = bypass.ApplyBypassOptionsAsync();
-                    }
-                }
-            }
-            catch
-            {
-                // ignore
-            }
-        }
-
-        private void Bypass_Unchecked(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                var main = _getMainViewModel();
-                _ = main.Bypass.DisableAllAsync();
-            }
-            catch
-            {
-                // ignore
-            }
-        }
-
         private async void Window_Closing(object? sender, CancelEventArgs e)
         {
             if (_switchingToEngineer)

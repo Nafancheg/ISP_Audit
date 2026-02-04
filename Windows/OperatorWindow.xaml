@@ -106,16 +106,14 @@
 
                 <StackPanel>
                     <TextBlock Text="Бортовой щит" FontWeight="SemiBold"/>
-                    <TextBlock Text="Переключатель обхода блокировок. Включайте только если есть проблемы." Opacity="0.75" FontSize="12"/>
+                    <TextBlock Text="Автопилот сам подберёт действия при проблемах. Стратегии не выбираются вручную в операторском режиме." Opacity="0.75" FontSize="12"/>
+                    <TextBlock Text="{Binding Main.Bypass.IsBypassActive, StringFormat=Текущий обход активен: {0}}" Opacity="0.75" FontSize="12"/>
                 </StackPanel>
 
                 <ToggleButton Grid.Column="1"
-                              Content="Обход"
+                              Content="Автопилот"
                               Style="{StaticResource BypassToggleButtonStyle}"
-                              IsChecked="{Binding Main.Bypass.IsBypassActive}"
-                              Visibility="{Binding Main.Bypass.ShowBypassPanel, Converter={StaticResource BoolToVisibilityConverter}}"
-                              Checked="Bypass_Checked"
-                              Unchecked="Bypass_Unchecked"
+                              IsChecked="{Binding Main.EnableAutoBypass, Mode=TwoWay}"
                               Margin="8,0,0,0"/>
             </Grid>
         </Border>
