@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 using IspAudit.Wpf;
 using IspAudit.Utils;
 using IspAudit.ViewModels;
@@ -36,23 +37,15 @@ namespace IspAudit.Windows
             DataContext = new OperatorWindowDataContext(new OperatorViewModel(main), this);
         }
 
-        private void DnsDohConsentToggle_Click(object sender, RoutedEventArgs e)
+        private void DnsDohConsentToggle_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            // Важно: перехватываем ДО того, как ToggleButton успеет поменять IsChecked.
+            // Так мы гарантируем, что при Cancel не будет даже кратковременной записи согласия в state.
+            e.Handled = true;
+
             try
             {
                 if (sender is not System.Windows.Controls.Primitives.ToggleButton tb)
-                {
-                    return;
-                }
-
-                // Интересует только включение.
-                if (tb.IsChecked != true)
-                {
-                    return;
-                }
-
-                // В рамках текущей сессии подтверждаем только один раз, чтобы не раздражать.
-                if (_dnsDohConsentConfirmedThisSession)
                 {
                     return;
                 }
@@ -62,23 +55,51 @@ namespace IspAudit.Windows
                     return;
                 }
 
-                var result = WpfMessageBox.Show(
-                    "Разрешить системные изменения DNS/DoH?\n\n" +
-                    "Это может изменять сетевые настройки Windows (DNS/DoH) и влиять на все приложения на компьютере.\n\n" +
-                    "Если вы не уверены — оставьте выключенным. Рекомендации обхода без этого продолжат применяться, а DoH будет пропущен.",
-                    "Подтверждение: DNS/DoH",
-                    MessageBoxButton.OKCancel,
-                    MessageBoxImage.Warning);
+                var currentlyAllowed = ctx.Main.AllowDnsDohSystemChanges;
 
-                if (result == MessageBoxResult.OK)
+                // Выключение — без подтверждения.
+                if (currentlyAllowed)
                 {
-                    _dnsDohConsentConfirmedThisSession = true;
+                    try
+                    {
+                        ctx.Main.AllowDnsDohSystemChanges = false;
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+
+                    _dnsDohConsentConfirmedThisSession = false;
                     return;
                 }
 
-                // Пользователь отменил — откатываем UI и состояние.
-                try { tb.IsChecked = false; } catch { }
-                try { ctx.Main.AllowDnsDohSystemChanges = false; } catch { }
+                // Включение — с подтверждением. В рамках сессии подтверждаем только один раз.
+                if (!_dnsDohConsentConfirmedThisSession)
+                {
+                    var result = WpfMessageBox.Show(
+                        "Разрешить системные изменения DNS/DoH?\n\n" +
+                        "Это может изменять сетевые настройки Windows (DNS/DoH) и влиять на все приложения на компьютере.\n\n" +
+                        "Если вы не уверены — оставьте выключенным. Рекомендации обхода без этого продолжат применяться, а DoH будет пропущен.",
+                        "Подтверждение: DNS/DoH",
+                        MessageBoxButton.OKCancel,
+                        MessageBoxImage.Warning);
+
+                    if (result != MessageBoxResult.OK)
+                    {
+                        return;
+                    }
+
+                    _dnsDohConsentConfirmedThisSession = true;
+                }
+
+                try
+                {
+                    ctx.Main.AllowDnsDohSystemChanges = true;
+                }
+                catch
+                {
+                    // ignore
+                }
             }
             catch
             {
