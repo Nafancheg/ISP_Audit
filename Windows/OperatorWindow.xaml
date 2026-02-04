@@ -56,16 +56,38 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
+                <!-- Hero статус -->
+                <Border Grid.Row="0" Padding="14" CornerRadius="10" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}" Margin="0,0,0,14">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <materialDesign:PackIcon Kind="{Binding Vm.HeroIconKind}"
+                                                Width="38" Height="38" Margin="0,0,12,0"
+                                                Foreground="{Binding Vm.HeroAccentBrush}"/>
+
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="{Binding Vm.Headline}" FontSize="22" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding Vm.SummaryLine}" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
                 <!-- Источник трафика (как в инженерном режиме) -->
-                <StackPanel Grid.Row="0" Margin="0,0,0,14">
+                <StackPanel Grid.Row="1" Margin="0,0,0,14"
+                            Visibility="{Binding Vm.IsSourceStepVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                     <TextBlock Text="Источник трафика" Opacity="0.85" Margin="0,0,0,6"/>
 
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                         <RadioButton Content="Быстрая проверка интернета"
                                      IsChecked="{Binding Main.IsBasicTestMode, Mode=TwoWay}"
+                                     IsEnabled="{Binding Vm.IsSourceSelectionEnabled}"
                                      Margin="0,0,14,0"/>
                         <RadioButton Content="Проверка выбранного приложения (.exe)"
-                                     IsChecked="{Binding Main.IsBasicTestMode, Mode=TwoWay, Converter={StaticResource InverseBoolConverter}}"/>
+                                     IsChecked="{Binding Main.IsBasicTestMode, Mode=TwoWay, Converter={StaticResource InverseBoolConverter}}"
+                                     IsEnabled="{Binding Vm.IsSourceSelectionEnabled}"/>
                     </StackPanel>
 
                     <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12" Margin="0,0,0,10">
@@ -82,6 +104,7 @@
                                  Style="{StaticResource ModernTextBoxStyle}"
                                  Text="{Binding Main.ExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  IsEnabled="{Binding Main.IsBasicTestMode, Converter={StaticResource InverseBoolConverter}}"
+                                 IsReadOnly="{Binding Vm.IsSourceSelectionEnabled, Converter={StaticResource InverseBoolConverter}}"
                                  Height="36"
                                  materialDesign:HintAssist.Hint="Путь к .exe приложения/игры"
                                  ToolTip="Выберите .exe приложения/игры. Если выбран режим базовых сервисов — поле отключено."/>
@@ -95,33 +118,45 @@
                     </Grid>
                 </StackPanel>
 
-                <TextBlock Grid.Row="1" Text="{Binding Vm.Headline}" FontSize="22" FontWeight="SemiBold"/>
-                <TextBlock Grid.Row="2" Text="{Binding Vm.SummaryLine}" Margin="0,6,0,0" Opacity="0.85"/>
+                <!-- Шаг 2: прогресс -->
+                <Border Grid.Row="2" Padding="12" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}" Margin="0,0,0,12"
+                        Visibility="{Binding Vm.IsProgressStepVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel>
+                        <TextBlock Text="Анализ сети…" FontWeight="SemiBold"/>
+                        <ProgressBar Height="10" Margin="0,8,0,0"
+                                     Minimum="0"
+                                     Maximum="{Binding Main.ProgressBarMax}"
+                                     Value="{Binding Main.CompletedTests}"/>
+                        <TextBlock Text="{Binding Main.RunningStatusText}" Opacity="0.8" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
 
-                <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,16,0,0">
-                        <Button Content="{Binding Vm.PrimaryButtonText}"
+                <!-- Шаг 3: итог -->
+                <Border Grid.Row="3" Padding="12" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}" Margin="0,0,0,12"
+                        Visibility="{Binding Vm.IsSummaryStepVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel>
+                        <TextBlock Text="Итог" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding Vm.SummaryLine}" Opacity="0.85" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- CTA: один главный -->
+                <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Top">
+                    <Button Content="{Binding Vm.PrimaryButtonText}"
                             Style="{StaticResource PrimaryButtonStyle}"
-                            MinWidth="160" Height="42"
+                            MinWidth="180" Height="44"
                             Command="{Binding Vm.PrimaryCommand}"
-                            Visibility="{Binding Vm.ShowPrimaryButton, Converter={StaticResource BoolToVisibilityConverter}}"/>
-
-                        <Button Content="{Binding Vm.FixButtonText}"
-                            Style="{StaticResource PrimaryButtonStyle}"
-                            MinWidth="160" Height="42"
-                            Margin="0,0,0,0"
-                            Command="{Binding Vm.FixCommand}"
-                            IsEnabled="{Binding Main.IsApplyRunning, Converter={StaticResource InverseBoolConverter}}"
-                            Visibility="{Binding Vm.ShowFixButton, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            IsEnabled="{Binding Main.IsApplyRunning, Converter={StaticResource InverseBoolConverter}}"/>
 
                     <Button Content="Откатить"
                             Style="{StaticResource SecondaryButtonStyle}"
-                            MinWidth="120" Height="42"
+                            MinWidth="120" Height="44"
                             Margin="12,0,0,0"
                             Command="{Binding RollbackCommand}"/>
                 </StackPanel>
 
                 <!-- Детали (пока минимально) -->
-                <Expander Grid.Row="4" Header="Подробности" Margin="0,18,0,0" IsExpanded="False">
+                <Expander Grid.Row="4" Header="Подробности" Margin="0,70,0,0" IsExpanded="False">
                     <StackPanel>
                         <TextBlock Text="Состояние:" FontWeight="SemiBold"/>
                         <TextBlock Text="{Binding Main.DiagnosticStatus}"/>
