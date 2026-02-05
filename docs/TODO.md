@@ -54,6 +54,7 @@
 - [x] 05.02.2026: smoke reg (non-admin) PASS 22/22 (REG-023: env var registry guard)
 - [x] 05.02.2026: smoke ui (non-admin) PASS 17/17
 - [x] 05.02.2026: Refactor: централизовано чтение/парсинг ENV в `Utils/EnvVar.cs` (dotnet build + smoke reg/ui OK)
+- [x] 05.02.2026: Refactor: тайминги `ISP_AUDIT_*_MS` (watchdog/activation/outcome) читаются через `EnvVar` (dotnet build + smoke reg/ui OK)
 
 ---
 

@@ -22,9 +22,8 @@ namespace IspAudit.Bypass
         {
             try
             {
-                var raw = Environment.GetEnvironmentVariable(name);
-                if (string.IsNullOrWhiteSpace(raw)) return fallback;
-                return int.TryParse(raw, out var v) && v > 0 ? v : fallback;
+                if (!IspAudit.Utils.EnvVar.TryReadInt32(name, out var v)) return fallback;
+                return v > 0 ? v : fallback;
             }
             catch
             {
@@ -36,9 +35,8 @@ namespace IspAudit.Bypass
         {
             try
             {
-                var raw = Environment.GetEnvironmentVariable(name);
-                if (string.IsNullOrWhiteSpace(raw)) return fallback;
-                return int.TryParse(raw, out var v) && v >= 0 ? v : fallback;
+                if (!IspAudit.Utils.EnvVar.TryReadInt32(name, out var v)) return fallback;
+                return v >= 0 ? v : fallback;
             }
             catch
             {
