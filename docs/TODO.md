@@ -1,6 +1,6 @@
 # ISP_Audit — TODO (только невыполненное)
 
-Дата: 02.02.2026 (актуализировано)
+Дата: 04.02.2026 (актуализировано)
 Назначение: список незакрытых задач и проблем. Всё выполненное и историческое — в CHANGELOG.md и ARCHITECTURE_CURRENT.md.
 
 ---
@@ -44,6 +44,9 @@
 - [x] 04.02.2026: dotnet build OK (строгое подтверждение разрешения DNS/DoH)
 - [x] 04.02.2026: smoke reg (non-admin) PASS 21/21 (consent gate + confirm)
 - [x] 04.02.2026: smoke ui (non-admin) PASS 17/17 (UI-017 consent toggle guard)
+- [x] 04.02.2026: dotnet build OK (DEBUG-only харднинг ISP_AUDIT_TEST_SKIP_TLS_APPLY)
+- [x] 04.02.2026: smoke reg (non-admin) PASS 21/21 (DEBUG-only харднинг ISP_AUDIT_TEST_SKIP_TLS_APPLY)
+- [x] 04.02.2026: smoke ui (non-admin) PASS 17/17 (DEBUG-only харднинг ISP_AUDIT_TEST_SKIP_TLS_APPLY)
 
 ---
 

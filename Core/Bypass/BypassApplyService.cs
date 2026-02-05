@@ -222,10 +222,13 @@ namespace IspAudit.Core.Bypass
 
                 ReportPhaseStart("apply_tls_options");
                 tracker.Start("apply_tls_options");
+                var skipTls = false;
+#if DEBUG
                 var skipTlsText = (Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY") ?? string.Empty).Trim();
-                var skipTls = skipTlsText.Equals("1", StringComparison.OrdinalIgnoreCase)
+                skipTls = skipTlsText.Equals("1", StringComparison.OrdinalIgnoreCase)
                     || skipTlsText.Equals("true", StringComparison.OrdinalIgnoreCase)
                     || skipTlsText.Equals("yes", StringComparison.OrdinalIgnoreCase);
+#endif
 
                 if (skipTls)
                 {
