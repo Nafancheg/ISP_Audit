@@ -47,6 +47,9 @@
 - [x] 04.02.2026: dotnet build OK (DEBUG-only харднинг ISP_AUDIT_TEST_SKIP_TLS_APPLY)
 - [x] 04.02.2026: smoke reg (non-admin) PASS 21/21 (DEBUG-only харднинг ISP_AUDIT_TEST_SKIP_TLS_APPLY)
 - [x] 04.02.2026: smoke ui (non-admin) PASS 17/17 (DEBUG-only харднинг ISP_AUDIT_TEST_SKIP_TLS_APPLY)
+- [x] 05.02.2026: smoke strict (admin) PASS 159/159, отчёт: [artifacts/smoke_strict_20260205_103623.json](artifacts/smoke_strict_20260205_103623.json)
+- [x] 05.02.2026: dotnet build -c Release OK
+- [x] 05.02.2026: dotnet publish -c Release OK
 
 ---
 
@@ -139,6 +142,13 @@
     - [ ] Аудит всех try/catch: stack trace + контекст состояния.
     - [ ] Global exception handler: необработанные исключения → crash report (и опционально диалог “Отправить отчёт”).
     - [ ] Подключить `TaskScheduler.UnobservedTaskException` (точка: `Program.cs`) и писать диагностический лог с `ex.ToString()`.
+
+- 🟡 P0.4: Харднинг тестовых хуков и Release-проверки
+  - Чек‑лист:
+    - [x] Прогнать `smoke strict (admin)` через `SmokeLauncher` и сохранить отчёт в `artifacts/`.
+    - [x] Выполнить `dotnet build -c Release` и `dotnet publish -c Release` (single-file), проверить что сборка проходит.
+    - [x] Убедиться, что тестовые хуки `ISP_AUDIT_TEST_*` не меняют поведение Release-сборки (как минимум: `ISP_AUDIT_TEST_SKIP_TLS_APPLY` должен быть DEBUG-only).
+    - [x] Аудит всех `ISP_AUDIT_TEST_*` в коде: классифицировать и ограничить DEBUG-only, либо оформить явный контракт/док.
 
 ---
 

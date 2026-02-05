@@ -208,6 +208,8 @@ namespace IspAudit.Core.Bypass
 
                 // Тестовый хук (smoke/regression): искусственная задержка, чтобы можно было
                 // детерминированно проверить сериализацию apply (P0.1 Step 13).
+                // Важно: только DEBUG, чтобы не допускать «скрытого» влияния на Release.
+#if DEBUG
                 var testDelayMsText = Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_APPLY_DELAY_MS");
                 if (int.TryParse(testDelayMsText, out var testDelayMs) && testDelayMs > 0)
                 {
@@ -217,6 +219,7 @@ namespace IspAudit.Core.Bypass
                     await Task.Delay(testDelayMs, linked.Token).ConfigureAwait(false);
                     tracker.FinalizeCurrent("OK");
                 }
+#endif
 
                 linked.Token.ThrowIfCancellationRequested();
 
