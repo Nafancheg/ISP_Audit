@@ -128,6 +128,8 @@ graph TD
 Согласие хранится рядом с приложением: `state\\operator_consent.json` (см. `Utils/OperatorConsentStore`).
 Если план включает `UseDoh`, но согласия нет — executor репортит фазу `apply_doh_skipped` и не вызывает `FixService`.
 
+Реестр переменных окружения проекта (включая DEBUG-only тестовые хуки `ISP_AUDIT_TEST_*`) — см. `docs/ENV_VARS.md`.
+
 Runtime Adaptation Layer: `ReactiveTargetSyncService` принимает runtime-сигналы (например UDP blockage) и синхронизирует
 execution-state (targets/snapshots) best-effort, без UI и без принятия политических решений.
 

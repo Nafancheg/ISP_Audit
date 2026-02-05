@@ -50,6 +50,7 @@
 - [x] 05.02.2026: smoke strict (admin) PASS 159/159, отчёт: [artifacts/smoke_strict_20260205_103623.json](artifacts/smoke_strict_20260205_103623.json)
 - [x] 05.02.2026: dotnet build -c Release OK
 - [x] 05.02.2026: dotnet publish -c Release OK
+- [x] 05.02.2026: Документация: добавлен реестр переменных окружения `docs/ENV_VARS.md`
 
 ---
 

@@ -34,6 +34,8 @@
 
 Дополнение (05.02.2026): харднинг тестовых хуков apply — переменные `ISP_AUDIT_TEST_*` (например, delay/skip фазы apply) ограничены DEBUG-only, чтобы не влиять на Release. Прогнан `smoke strict (admin)` PASS 159/159 (см. `artifacts/smoke_strict_20260205_103623.json`).
 
+Дополнение (05.02.2026): добавлен централизованный реестр переменных окружения проекта — `docs/ENV_VARS.md`.
+
 Примечание (04.02.2026): `state\\operator_events.json` (OperatorEventStore) оставлен как legacy/отладочный след и не является основной «историей» для Operator.
 
 ---
