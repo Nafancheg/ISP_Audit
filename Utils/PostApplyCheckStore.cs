@@ -38,7 +38,7 @@ namespace IspAudit.Utils
 
         public static string GetPersistPath()
         {
-            var overridePath = Environment.GetEnvironmentVariable("ISP_AUDIT_POST_APPLY_CHECKS_PATH");
+            var overridePath = EnvVar.GetTrimmedNonEmpty("ISP_AUDIT_POST_APPLY_CHECKS_PATH");
             if (!string.IsNullOrWhiteSpace(overridePath))
             {
                 return overridePath;

@@ -12,13 +12,7 @@ namespace IspAudit.Core.Bypass
         {
             try
             {
-                var raw = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_UDP443");
-                if (string.IsNullOrWhiteSpace(raw)) return false;
-
-                return string.Equals(raw, "1", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(raw, "yes", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(raw, "on", StringComparison.OrdinalIgnoreCase);
+                return IspAudit.Utils.EnvVar.ReadBool("ISP_AUDIT_POLICY_DRIVEN_UDP443", defaultValue: false);
             }
             catch
             {
@@ -35,13 +29,7 @@ namespace IspAudit.Core.Bypass
         {
             try
             {
-                var raw = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TTLBLOCK");
-                if (string.IsNullOrWhiteSpace(raw)) return false;
-
-                return string.Equals(raw, "1", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(raw, "yes", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(raw, "on", StringComparison.OrdinalIgnoreCase);
+                return IspAudit.Utils.EnvVar.ReadBool("ISP_AUDIT_POLICY_DRIVEN_TTLBLOCK", defaultValue: false);
             }
             catch
             {
@@ -58,13 +46,7 @@ namespace IspAudit.Core.Bypass
         {
             try
             {
-                var raw = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP80");
-                if (string.IsNullOrWhiteSpace(raw)) return false;
-
-                return string.Equals(raw, "1", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(raw, "yes", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(raw, "on", StringComparison.OrdinalIgnoreCase);
+                return IspAudit.Utils.EnvVar.ReadBool("ISP_AUDIT_POLICY_DRIVEN_TCP80", defaultValue: false);
             }
             catch
             {
@@ -81,13 +63,7 @@ namespace IspAudit.Core.Bypass
         {
             try
             {
-                var raw = Environment.GetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443");
-                if (string.IsNullOrWhiteSpace(raw)) return false;
-
-                return string.Equals(raw, "1", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(raw, "yes", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(raw, "on", StringComparison.OrdinalIgnoreCase);
+                return IspAudit.Utils.EnvVar.ReadBool("ISP_AUDIT_POLICY_DRIVEN_TCP443", defaultValue: false);
             }
             catch
             {

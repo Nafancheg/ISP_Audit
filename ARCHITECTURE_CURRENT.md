@@ -129,6 +129,7 @@ graph TD
 Если план включает `UseDoh`, но согласия нет — executor репортит фазу `apply_doh_skipped` и не вызывает `FixService`.
 
 Реестр переменных окружения проекта (включая DEBUG-only тестовые хуки `ISP_AUDIT_TEST_*`) — см. `docs/ENV_VARS.md`.
+Практика: чтение/trim/парсинг ENV централизованы в `Utils/EnvVar.cs` (best-effort), чтобы убрать расхождения между компонентами.
 
 Runtime Adaptation Layer: `ReactiveTargetSyncService` принимает runtime-сигналы (например UDP blockage) и синхронизирует
 execution-state (targets/snapshots) best-effort, без UI и без принятия политических решений.

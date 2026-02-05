@@ -210,8 +210,7 @@ namespace IspAudit.Core.Bypass
                 // детерминированно проверить сериализацию apply (P0.1 Step 13).
                 // Важно: только DEBUG, чтобы не допускать «скрытого» влияния на Release.
 #if DEBUG
-                var testDelayMsText = Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_APPLY_DELAY_MS");
-                if (int.TryParse(testDelayMsText, out var testDelayMs) && testDelayMs > 0)
+                if (IspAudit.Utils.EnvVar.TryReadInt32("ISP_AUDIT_TEST_APPLY_DELAY_MS", out var testDelayMs) && testDelayMs > 0)
                 {
                     ReportPhaseStart("test_delay", $"delayMs={testDelayMs}");
                     tracker.Start("test_delay", $"delayMs={testDelayMs}");
@@ -227,10 +226,7 @@ namespace IspAudit.Core.Bypass
                 tracker.Start("apply_tls_options");
                 var skipTls = false;
 #if DEBUG
-                var skipTlsText = (Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY") ?? string.Empty).Trim();
-                skipTls = skipTlsText.Equals("1", StringComparison.OrdinalIgnoreCase)
-                    || skipTlsText.Equals("true", StringComparison.OrdinalIgnoreCase)
-                    || skipTlsText.Equals("yes", StringComparison.OrdinalIgnoreCase);
+                skipTls = IspAudit.Utils.EnvVar.ReadBool("ISP_AUDIT_TEST_SKIP_TLS_APPLY", defaultValue: false);
 #endif
 
                 if (skipTls)

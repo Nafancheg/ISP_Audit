@@ -29,7 +29,7 @@ namespace IspAudit.Utils
 
         public static string GetPersistPath()
         {
-            var overridePath = Environment.GetEnvironmentVariable(EnvVarPathOverride);
+            var overridePath = EnvVar.GetTrimmedNonEmpty(EnvVarPathOverride);
             if (!string.IsNullOrWhiteSpace(overridePath))
             {
                 return overridePath;

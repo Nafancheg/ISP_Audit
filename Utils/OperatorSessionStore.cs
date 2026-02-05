@@ -34,7 +34,7 @@ namespace IspAudit.Utils
         {
             try
             {
-                var overridePath = (Environment.GetEnvironmentVariable(EnvPath) ?? string.Empty).Trim();
+                var overridePath = EnvVar.GetTrimmedNonEmpty(EnvPath);
                 if (!string.IsNullOrWhiteSpace(overridePath)) return overridePath;
             }
             catch

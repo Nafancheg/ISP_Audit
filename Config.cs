@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using IspAudit.Utils;
 
 namespace IspAudit
 {
@@ -45,7 +46,7 @@ namespace IspAudit
             /// По умолчанию false: INTEL может рекомендовать DoH, но применять его должен только пользователь вручную.
             /// </summary>
             public static bool EnableIntelDoHFromPlan
-                => ReadBoolEnv("ISP_AUDIT_ENABLE_INTEL_DOH", defaultValue: ReadBoolEnv(LegacyEnableDohEnv, defaultValue: false));
+                => EnvVar.ReadBool("ISP_AUDIT_ENABLE_INTEL_DOH", defaultValue: EnvVar.ReadBool(LegacyEnableDohEnv, defaultValue: false));
 
             private static string LegacyEnableDohEnv => "ISP_AUDIT_ENABLE_" + "V" + "2" + "_DOH";
 
@@ -57,17 +58,7 @@ namespace IspAudit
         }
 
         private static bool ReadBoolEnv(string name, bool defaultValue)
-        {
-            var raw = Environment.GetEnvironmentVariable(name);
-            if (string.IsNullOrWhiteSpace(raw)) return defaultValue;
-
-            var v = raw.Trim();
-            return v == "1"
-                || v.Equals("true", StringComparison.OrdinalIgnoreCase)
-                || v.Equals("yes", StringComparison.OrdinalIgnoreCase)
-                || v.Equals("y", StringComparison.OrdinalIgnoreCase)
-                || v.Equals("on", StringComparison.OrdinalIgnoreCase);
-        }
+            => EnvVar.ReadBool(name, defaultValue);
 
         public static Config Default() => new Config();
 

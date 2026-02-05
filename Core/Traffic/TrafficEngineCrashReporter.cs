@@ -49,10 +49,10 @@ internal static class TrafficEngineCrashReporter
 
     private static string GetCrashReportsDirectory()
     {
-        var overrideDir = Environment.GetEnvironmentVariable(EnvVarCrashDir);
+        var overrideDir = EnvVar.GetTrimmedNonEmpty(EnvVarCrashDir);
         if (!string.IsNullOrWhiteSpace(overrideDir))
         {
-            return overrideDir.Trim();
+            return overrideDir;
         }
 
         return Path.Combine(AppPaths.StateDirectory, "crash_reports", "traffic_engine");

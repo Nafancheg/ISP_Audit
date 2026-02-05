@@ -42,10 +42,10 @@ namespace IspAudit.Utils
 
         public static string GetEffectivePath()
         {
-            var overridePath = Environment.GetEnvironmentVariable(EnvVarPathOverride);
+            var overridePath = EnvVar.GetTrimmedNonEmpty(EnvVarPathOverride);
             if (!string.IsNullOrWhiteSpace(overridePath))
             {
-                return overridePath.Trim();
+                return overridePath;
             }
 
             return GetDefaultPath();

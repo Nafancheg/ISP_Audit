@@ -20,7 +20,7 @@ namespace IspAudit.Utils
         public static string GetPersistPath()
         {
             // Тестовый override пути.
-            var overridePath = (Environment.GetEnvironmentVariable("ISP_AUDIT_OPERATOR_CONSENT_PATH") ?? string.Empty).Trim();
+            var overridePath = EnvVar.GetTrimmedNonEmpty("ISP_AUDIT_OPERATOR_CONSENT_PATH");
             if (!string.IsNullOrWhiteSpace(overridePath)) return overridePath;
 
             return AppPaths.GetStateFilePath(FileName);
