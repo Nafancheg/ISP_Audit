@@ -51,6 +51,8 @@
 - [x] 05.02.2026: dotnet build -c Release OK
 - [x] 05.02.2026: dotnet publish -c Release OK
 - [x] 05.02.2026: Документация: добавлен реестр переменных окружения `docs/ENV_VARS.md`
+- [x] 05.02.2026: smoke reg (non-admin) PASS 22/22 (REG-023: env var registry guard)
+- [x] 05.02.2026: smoke ui (non-admin) PASS 17/17
 
 ---
 

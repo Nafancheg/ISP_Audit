@@ -1,11 +1,13 @@
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
@@ -429,8 +431,8 @@ namespace TestNetworkApp.Smoke
                         "Не удалось запустить tracert.exe");
                 }
 
-                var outputTask = p.StandardOutput.ReadToEndAsync();
-                var errTask = p.StandardError.ReadToEndAsync();
+                var outputTask = p.StandardOutput.ReadToEndAsync(ct);
+                var errTask = p.StandardError.ReadToEndAsync(ct);
 
                 await Task.WhenAny(Task.WhenAll(outputTask, errTask), Task.Delay(5000, ct)).ConfigureAwait(false);
 
@@ -1045,6 +1047,212 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> REG_EnvVars_AreDocumented_InEnvVarsMd(CancellationToken ct)
+            => RunAsync("REG-023", "REG: все ISP_AUDIT_* ENV перечислены в docs/ENV_VARS.md", () =>
+            {
+                try
+                {
+                    _ = ct;
+
+                    static string? TryFindRepoRoot()
+                    {
+                        var markers = new[]
+                        {
+                            "ISP_Audit.sln",
+                            "Directory.Build.props"
+                        };
+
+                        var startDirs = new[]
+                        {
+                            Environment.CurrentDirectory,
+                            AppContext.BaseDirectory,
+                            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..")),
+                            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."))
+                        };
+
+                        foreach (var start in startDirs.Distinct(StringComparer.OrdinalIgnoreCase))
+                        {
+                            if (string.IsNullOrWhiteSpace(start))
+                            {
+                                continue;
+                            }
+
+                            try
+                            {
+                                var dir = new DirectoryInfo(start);
+                                for (int i = 0; i < 8 && dir != null; i++)
+                                {
+                                    foreach (var marker in markers)
+                                    {
+                                        if (File.Exists(Path.Combine(dir.FullName, marker)))
+                                        {
+                                            return dir.FullName;
+                                        }
+                                    }
+
+                                    dir = dir.Parent;
+                                }
+                            }
+                            catch
+                            {
+                                // ignore
+                            }
+                        }
+
+                        return null;
+                    }
+
+                    static bool IsSkippablePath(string fullPath)
+                    {
+                        var p = fullPath.Replace('/', '\\');
+                        return p.Contains("\\\\bin\\\\", StringComparison.OrdinalIgnoreCase)
+                            || p.Contains("\\\\obj\\\\", StringComparison.OrdinalIgnoreCase)
+                            || p.Contains("\\\\publish\\\\", StringComparison.OrdinalIgnoreCase)
+                            || p.Contains("\\\\artifacts\\\\", StringComparison.OrdinalIgnoreCase)
+                            || p.Contains("\\\\.git\\\\", StringComparison.OrdinalIgnoreCase);
+                    }
+
+                    static HashSet<string> ExtractUsedEnvKeysFromCode(string text)
+                    {
+                        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                        // 1) Прямые string literal ключи в Get/SetEnvironmentVariable.
+                        var rxGet = new Regex(
+                            @"Environment\.GetEnvironmentVariable\(\s*""(?<key>ISP_AUDIT_[A-Z0-9_]+)""\s*\)",
+                            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                        var rxSet = new Regex(
+                            @"Environment\.SetEnvironmentVariable\(\s*""(?<key>ISP_AUDIT_[A-Z0-9_]+)""\s*,",
+                            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+                        foreach (Match m in rxGet.Matches(text))
+                        {
+                            var v = (m.Groups["key"].Value ?? string.Empty).Trim();
+                            if (!string.IsNullOrWhiteSpace(v))
+                            {
+                                keys.Add(v);
+                            }
+                        }
+
+                        foreach (Match m in rxSet.Matches(text))
+                        {
+                            var v = (m.Groups["key"].Value ?? string.Empty).Trim();
+                            if (!string.IsNullOrWhiteSpace(v))
+                            {
+                                keys.Add(v);
+                            }
+                        }
+
+                        // 2) Ключи, определённые как const string (частый паттерн: EnvVarPathOverride = "ISP_AUDIT_..."),
+                        // которые затем передаются в Get/SetEnvironmentVariable.
+                        var rxConst = new Regex(
+                            @"\bconst\s+string\s+\w+\s*=\s*""(?<key>ISP_AUDIT_[A-Z0-9_]+)""\s*;",
+                            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+                        foreach (Match m in rxConst.Matches(text))
+                        {
+                            var v = (m.Groups["key"].Value ?? string.Empty).Trim();
+                            if (!string.IsNullOrWhiteSpace(v))
+                            {
+                                keys.Add(v);
+                            }
+                        }
+
+                        return keys;
+                    }
+
+                    static HashSet<string> ExtractDocumentedEnvKeysFromDoc(string text)
+                    {
+                        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                        // В доке достаточно вытащить любые токены ISP_AUDIT_* (они обычно в backticks).
+                        var rx = new Regex(@"\bISP_AUDIT_[A-Z0-9_]+\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                        foreach (Match m in rx.Matches(text))
+                        {
+                            if (!m.Success)
+                            {
+                                continue;
+                            }
+
+                            var v = (m.Value ?? string.Empty).Trim();
+                            if (!string.IsNullOrWhiteSpace(v))
+                            {
+                                keys.Add(v);
+                            }
+                        }
+
+                        return keys;
+                    }
+
+                    var root = TryFindRepoRoot();
+                    if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+                    {
+                        return new SmokeTestResult("REG-023", "REG: все ISP_AUDIT_* ENV перечислены в docs/ENV_VARS.md",
+                            SmokeOutcome.Fail, TimeSpan.Zero, "Не удалось найти корень репозитория (ожидали ISP_Audit.sln/Directory.Build.props)" );
+                    }
+
+                    var docPath = Path.Combine(root, "docs", "ENV_VARS.md");
+                    if (!File.Exists(docPath))
+                    {
+                        return new SmokeTestResult("REG-023", "REG: все ISP_AUDIT_* ENV перечислены в docs/ENV_VARS.md",
+                            SmokeOutcome.Fail, TimeSpan.Zero, $"Не найден файл реестра: {docPath}" );
+                    }
+
+                    var docText = File.ReadAllText(docPath);
+                    var docKeys = ExtractDocumentedEnvKeysFromDoc(docText);
+                    if (docKeys.Count == 0)
+                    {
+                        return new SmokeTestResult("REG-023", "REG: все ISP_AUDIT_* ENV перечислены в docs/ENV_VARS.md",
+                            SmokeOutcome.Fail, TimeSpan.Zero, "В docs/ENV_VARS.md не нашли ни одной ISP_AUDIT_* переменной" );
+                    }
+
+                    var codeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var file in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
+                    {
+                        if (IsSkippablePath(file))
+                        {
+                            continue;
+                        }
+
+                        string text;
+                        try
+                        {
+                            text = File.ReadAllText(file);
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+
+                        foreach (var k in ExtractUsedEnvKeysFromCode(text))
+                        {
+                            codeKeys.Add(k);
+                        }
+                    }
+
+                    var missing = codeKeys
+                        .Where(k => !docKeys.Contains(k))
+                        .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
+
+                    if (missing.Length > 0)
+                    {
+                        var preview = string.Join(", ", missing.Take(12));
+                        var tail = missing.Length > 12 ? $" (+{missing.Length - 12} ещё)" : string.Empty;
+                        return new SmokeTestResult("REG-023", "REG: все ISP_AUDIT_* ENV перечислены в docs/ENV_VARS.md",
+                            SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Не задокументированы в docs/ENV_VARS.md: {preview}{tail}" );
+                    }
+
+                    return new SmokeTestResult("REG-023", "REG: все ISP_AUDIT_* ENV перечислены в docs/ENV_VARS.md",
+                        SmokeOutcome.Pass, TimeSpan.Zero, $"OK (codeKeys={codeKeys.Count}, docKeys={docKeys.Count})" );
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-023", "REG: все ISP_AUDIT_* ENV перечислены в docs/ENV_VARS.md",
+                        SmokeOutcome.Fail, TimeSpan.Zero, ex.Message);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> REG_GroupBypassAttachmentStore_DeterministicMerge_AndExcludedSticky(CancellationToken ct)
             => RunAsync("REG-013", "REG: GroupBypassAttachmentStore merge (union/OR) и excluded не сбрасывается", () =>
             {
@@ -1145,7 +1353,7 @@ namespace TestNetworkApp.Smoke
                     // Дадим файловой системе момент на flush в CI/медленных дисках.
                     for (var i = 0; i < 20 && !File.Exists(tempPath); i++)
                     {
-                        await Task.Delay(25).ConfigureAwait(false);
+                        await Task.Delay(25, CancellationToken.None).ConfigureAwait(false);
                     }
 
                     if (!File.Exists(tempPath))
