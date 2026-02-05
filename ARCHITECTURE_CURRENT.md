@@ -1,6 +1,6 @@
 # ISP_Audit — Архитектура (v3.0 Extended)
 
-**Дата обновления:** 02.02.2026
+**Дата обновления:** 05.02.2026
 **Версия:** 3.0 (Comprehensive)
 **Технологии:** .NET 9, WPF, WinDivert 2.2.0
 
@@ -408,6 +408,7 @@ Smoke-хелперы (для детерминированных проверок
 - `BypassController.ApplyIntelPlanAsync` делегирует исполнение (таймаут/отмена + безопасный rollback на snapshot состояния) в `Core/Bypass/BypassApplyService`.
 - P2.3: для UX добавлен best-effort прогресс Apply — `Core/Bypass/BypassApplyService` может репортить старт фаз через callback (phase events), а `DiagnosticOrchestrator` прокидывает это в UI (`IsApplyRunning` + `ApplyStatusText`).
 - P0.1: ручные apply-операции сериализованы (apply-gate) — параллельные вызовы `ApplyIntelPlanAsync` выполняются строго последовательно, чтобы исключить гонки.
+ - Безопасность релизов: тестовые хуки `ISP_AUDIT_TEST_*` (например, delay/skip фазы apply) работают только в DEBUG и не должны менять поведение Release-сборки.
  - Оркестратор не применяет «не тот» план: если рекомендации обновились и `hostKey` изменился, apply будет заблокирован.
  - `StrategyId.AggressiveFragment` при ручном apply выбирает пресет фрагментации «Агрессивный» и включает `AutoAdjustAggressive`.
  - `StrategyId.TlsFragment` может нести параметры (например, `TlsFragmentSizes`, `PresetName`, `AutoAdjustAggressive`). Парсинг параметров вынесен в `Core/Intelligence/Execution/TlsFragmentPlanParamsParser.cs`, применение выполняет `Core/Bypass/BypassApplyService` (вызывается из `BypassController.ApplyIntelPlanAsync`).
