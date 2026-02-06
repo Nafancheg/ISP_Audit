@@ -20,6 +20,8 @@ using IspAudit;
 using System.Windows.Media;
 using System.Net;
 using IspAudit.ViewModels.OrchestratorState;
+using System.Threading.Tasks.Sources;
+using System.Runtime.CompilerServices;
 
 // Явно указываем WPF вместо WinForms
 using Application = System.Windows.Application;
@@ -36,6 +38,33 @@ namespace IspAudit.ViewModels
     /// </summary>
     public partial class DiagnosticOrchestrator : INotifyPropertyChanged
     {
+        // P1.5: сериализация операций оркестратора.
+        // Цель: не допускать пересечений критических секций (cts/pipeline/collector dispose + start/stop).
+        private readonly SemaphoreSlim _operationGate = new(1, 1);
+
+        private sealed class GateLease : IDisposable
+        {
+            private SemaphoreSlim? _gate;
+
+            public GateLease(SemaphoreSlim gate)
+            {
+                _gate = gate;
+            }
+
+            public void Dispose()
+            {
+                var gate = Interlocked.Exchange(ref _gate, null);
+                if (gate == null) return;
+                try { gate.Release(); } catch { }
+            }
+        }
+
+        private async Task<GateLease> EnterOperationGateAsync()
+        {
+            await _operationGate.WaitAsync().ConfigureAwait(false);
+            return new GateLease(_operationGate);
+        }
+
         private CancellationTokenSource? _cts;
         private CancellationTokenSource? _applyCts;
 
@@ -108,6 +137,11 @@ namespace IspAudit.ViewModels
         // P2.3: прогресс Apply (чтобы не было ощущения "кнопка не работает").
         private bool _isApplyRunning;
         private string _applyStatusText = "";
+
+        // P1.5: защита от гонок manual vs auto apply.
+        // Внутренний gate BypassController защищает реальное применение, но этот флаг
+        // защищает UI/cts/обвязку Orchestrator от параллельного входа.
+        private int _applyInFlight;
 
         // Legacy (справочно): не влияет на основную рекомендацию INTEL
         private readonly HashSet<string> _legacyRecommendedStrategies = new(StringComparer.OrdinalIgnoreCase);

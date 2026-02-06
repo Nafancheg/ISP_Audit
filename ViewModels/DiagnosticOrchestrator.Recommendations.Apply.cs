@@ -244,6 +244,19 @@ namespace IspAudit.ViewModels
                 return null;
             }
 
+            // P1.5: не допускаем параллельного входа (manual vs auto apply).
+            // Это защищает обвязку Orchestrator (cts/UI) даже если ApplyIntelPlanAsync сериализован ниже.
+            if (Interlocked.CompareExchange(ref _applyInFlight, 1, 0) != 0)
+            {
+                Log($"[APPLY] Skip: apply уже выполняется (host='{hostKey}')");
+                return new ApplyOutcome(hostKey, string.Empty, string.Empty, plan.Reasoning)
+                {
+                    Status = "BUSY",
+                    Error = "Применение уже выполняется",
+                    RollbackStatus = string.Empty
+                };
+            }
+
             void UpdateApplyUi(Action action)
             {
                 try
@@ -412,6 +425,8 @@ namespace IspAudit.ViewModels
                     IsApplyRunning = false;
                     ApplyStatusText = string.Empty;
                 });
+
+                Interlocked.Exchange(ref _applyInFlight, 0);
 
                 _applyCts?.Dispose();
                 _applyCts = null;

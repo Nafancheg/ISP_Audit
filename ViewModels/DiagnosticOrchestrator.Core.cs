@@ -77,20 +77,24 @@ namespace IspAudit.ViewModels
                     return;
                 }
 
-                IsDiagnosticRunning = true;
-                DiagnosticStatus = "Инициализация...";
-                FlowEventsCount = 0;
-                ConnectionsDiscovered = 0;
-
-                _cts = new CancellationTokenSource();
-
-                // Если Cancel был нажат до создания _cts — применяем отмену сразу.
-                if (_cancelRequested)
+                // P1.5: атомарно поднимаем рантайм-структуры, чтобы Cancel/Retest не пересекались.
+                using (await EnterOperationGateAsync().ConfigureAwait(false))
                 {
-                    _stopReason = "UserCancel";
-                    LastRunWasUserCancelled = true;
-                    DiagnosticStatus = "Остановка...";
-                    _cts.Cancel();
+                    IsDiagnosticRunning = true;
+                    DiagnosticStatus = "Инициализация...";
+                    FlowEventsCount = 0;
+                    ConnectionsDiscovered = 0;
+
+                    _cts = new CancellationTokenSource();
+
+                    // Если Cancel был нажат до создания _cts — применяем отмену сразу.
+                    if (_cancelRequested)
+                    {
+                        _stopReason = "UserCancel";
+                        LastRunWasUserCancelled = true;
+                        DiagnosticStatus = "Остановка...";
+                        _cts.Cancel();
+                    }
                 }
 
                 // Инициализируем фильтр шумных хостов
@@ -360,13 +364,22 @@ namespace IspAudit.ViewModels
             finally
             {
                 _cancelRequested = false;
-                _testingPipeline?.Dispose();
-                _trafficCollector?.Dispose();
+                // P1.5: best-effort cleanup под gate (Cancel может делать dispose параллельно).
+                using (await EnterOperationGateAsync().ConfigureAwait(false))
+                {
+                    _testingPipeline?.Dispose();
+                    _testingPipeline = null;
+                    _trafficCollector?.Dispose();
+                    _trafficCollector = null;
+                }
                 DetachAutoBypassTelemetry();
                 await StopMonitoringServicesAsync();
                 IsDiagnosticRunning = false;
-                _cts?.Dispose();
-                _cts = null;
+                using (await EnterOperationGateAsync().ConfigureAwait(false))
+                {
+                    _cts?.Dispose();
+                    _cts = null;
+                }
                 OnDiagnosticComplete?.Invoke();
             }
         }
@@ -379,10 +392,14 @@ namespace IspAudit.ViewModels
             BypassController bypassController,
             string? correlationId = null)
         {
-            if (IsDiagnosticRunning)
+            // P1.5: сериализуем старт ретеста, чтобы параллельные клики не создавали две операции.
+            using (await EnterOperationGateAsync().ConfigureAwait(false))
             {
-                Log("[Orchestrator] Нельзя запустить ретест во время активной диагностики");
-                return;
+                if (IsDiagnosticRunning)
+                {
+                    Log("[Orchestrator] Нельзя запустить ретест во время активной диагностики");
+                    return;
+                }
             }
 
             var opId = string.IsNullOrWhiteSpace(correlationId)
@@ -394,9 +411,12 @@ namespace IspAudit.ViewModels
                 using var op = BypassOperationContext.Enter(opId, "retest_targets");
                 _cancelRequested = false;
                 Log($"[Orchestrator][Retest][op={opId}] Запуск ретеста проблемных целей...");
-                IsDiagnosticRunning = true;
-                DiagnosticStatus = "Ретест...";
-                _cts = new CancellationTokenSource();
+                using (await EnterOperationGateAsync().ConfigureAwait(false))
+                {
+                    IsDiagnosticRunning = true;
+                    DiagnosticStatus = "Ретест...";
+                    _cts = new CancellationTokenSource();
+                }
                 DetachAutoBypassTelemetry();
                 ResetAutoBypassUi(false);
 
@@ -480,8 +500,32 @@ namespace IspAudit.ViewModels
                     }
                 }
 
-                // Ждем завершения
-                await _testingPipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(15)).ConfigureAwait(false);
+                // Ждём завершения, но уважаем Cancel.
+                var pipeline = _testingPipeline;
+                var cts = _cts;
+                if (pipeline != null)
+                {
+                    var drainTask = pipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(15));
+                    if (cts != null)
+                    {
+                        try
+                        {
+                            await Task.WhenAny(drainTask, Task.Delay(Timeout.InfiniteTimeSpan, cts.Token)).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+                        {
+                        }
+                    }
+
+                    // Если отменили — best-effort: быстро гасим воркеры.
+                    if (cts?.IsCancellationRequested == true)
+                    {
+                        try { pipeline.Dispose(); } catch { }
+                    }
+
+                    // Дожидаемся drain (может уже завершиться после dispose).
+                    try { await drainTask.ConfigureAwait(false); } catch { }
+                }
 
                 Log($"[Orchestrator][Retest][op={opId}] Ретест завершен");
                 DiagnosticStatus = "Ретест завершен";
@@ -493,11 +537,14 @@ namespace IspAudit.ViewModels
             finally
             {
                 _cancelRequested = false;
-                _testingPipeline?.Dispose();
-                _testingPipeline = null;
-                IsDiagnosticRunning = false;
-                _cts?.Dispose();
-                _cts = null;
+                using (await EnterOperationGateAsync().ConfigureAwait(false))
+                {
+                    _testingPipeline?.Dispose();
+                    _testingPipeline = null;
+                    IsDiagnosticRunning = false;
+                    _cts?.Dispose();
+                    _cts = null;
+                }
                 OnDiagnosticComplete?.Invoke();
             }
         }
@@ -697,9 +744,23 @@ namespace IspAudit.ViewModels
                 // Сначала отменяем токен — это прервёт await foreach в CollectAsync
                 _cts.Cancel();
 
-                // Потом останавливаем компоненты
-                _testingPipeline?.Dispose();
-                _trafficCollector?.Dispose();
+                // Потом best-effort останавливаем компоненты под gate (не блокируя UI)
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using (await EnterOperationGateAsync().ConfigureAwait(false))
+                        {
+                            _testingPipeline?.Dispose();
+                            _testingPipeline = null;
+                            _trafficCollector?.Dispose();
+                            _trafficCollector = null;
+                        }
+                    }
+                    catch
+                    {
+                    }
+                });
                 cancelledAnything = true;
             }
             else if (IsDiagnosticRunning)

@@ -195,6 +195,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
         - `BadChecksum` → для фейковых TCP пакетов используется расширенный send без пересчёта checksum и со сбросом checksum-флагов адреса.
 - Step 4 INTEL Executor (MVP) подключён: `BypassExecutorMvp` формирует компактный, читаемый пользователем вывод (диагноз + уверенность + 1 короткое объяснение + список стратегий) и **не** применяет обход.
 - Реальный executor INTEL: `LiveTestingPipeline` публикует объектный `BypassPlan` через `OnPlanBuilt`, `DiagnosticOrchestrator` хранит план и может применить его либо по клику пользователя, либо автоматически при включённом `EnableAutoBypass`. Применение выполняется через `BypassController.ApplyIntelPlanAsync(...)`, который делегирует apply/timeout/rollback в `Core/Bypass/BypassApplyService`.
+- P1.5: критические секции операций `DiagnosticOrchestrator` сериализуются (cts/pipeline/collector lifecycle + обвязка apply), чтобы быстрые клики Start/Cancel/Retest/Apply не создавали две активные операции и не приводили к гонкам.
 - UX-гейт для корректности: `OnPlanBuilt` публикуется только для хостов, которые реально прошли фильтр отображения как проблема (попали в UI как issue), чтобы кнопка apply не применяла план, построенный по шумовому/успешному хосту.
 
 Актуализация (Runtime, 29.12.2025): Bypass State Manager (2.INTEL.12)

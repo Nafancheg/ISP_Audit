@@ -48,6 +48,7 @@ namespace TestNetworkApp.Smoke
                 ["ORCH-005"] = Orch_ProcessExit_StopsMonitoring,
                 ["ORCH-006"] = Orch_PidTracker_AddRemovePid,
                 ["ORCH-007"] = Orch_PidTracker_IsPidTracked,
+                ["ORCH-008"] = Orch_OperationsAreSerialized_RapidRetestCancel,
 
                 ["ERR-001"] = Err_DnsFailure_DoesNotCrash,
                 ["ERR-002"] = Err_VpnDetected_WarningIsConsistent,

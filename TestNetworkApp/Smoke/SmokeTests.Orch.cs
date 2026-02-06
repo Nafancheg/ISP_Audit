@@ -14,6 +14,57 @@ namespace TestNetworkApp.Smoke
 {
     internal static partial class SmokeTests
     {
+        public static async Task<SmokeTestResult> Orch_OperationsAreSerialized_RapidRetestCancel(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+
+            using var engine = new TrafficEngine();
+            var orchestrator = new DiagnosticOrchestrator(engine);
+            var bypass = new BypassController(engine);
+
+            var targets = new List<Target>
+            {
+                new Target { Host = "203.0.113.1", Name = "test-net", Service = "443", Critical = false }
+            };
+
+            try
+            {
+                // Два параллельных клика по «Ретест» не должны запускать две операции.
+                var t1 = orchestrator.RetestTargetsAsync(targets, bypass);
+                var t2 = orchestrator.RetestTargetsAsync(targets, bypass);
+
+                var t2Done = await Task.WhenAny(t2, Task.Delay(2000, ct)).ConfigureAwait(false);
+                if (t2Done != t2)
+                {
+                    return new SmokeTestResult("ORCH-008", "P1.5: операции оркестратора сериализованы (rapid retest/cancel)", SmokeOutcome.Fail, sw.Elapsed,
+                        "Второй параллельный ретест не завершился быстро (вероятно, запустилась вторая операция)");
+                }
+
+                // Cancel должен быть безопасен и не ронять фоновые задачи.
+                orchestrator.Cancel();
+
+                var t1Done = await Task.WhenAny(t1, Task.Delay(6000, ct)).ConfigureAwait(false);
+                if (t1Done != t1)
+                {
+                    return new SmokeTestResult("ORCH-008", "P1.5: операции оркестратора сериализованы (rapid retest/cancel)", SmokeOutcome.Fail, sw.Elapsed,
+                        "Таймаут: ретест не завершился после Cancel (ожидали быстрый выход)");
+                }
+
+                if (orchestrator.IsDiagnosticRunning)
+                {
+                    return new SmokeTestResult("ORCH-008", "P1.5: операции оркестратора сериализованы (rapid retest/cancel)", SmokeOutcome.Fail, sw.Elapsed,
+                        "Ожидали IsDiagnosticRunning=false после отмены/завершения");
+                }
+
+                return new SmokeTestResult("ORCH-008", "P1.5: операции оркестратора сериализованы (rapid retest/cancel)", SmokeOutcome.Pass, sw.Elapsed,
+                    "OK: второй ретест не стартует, Cancel безопасно завершает операцию");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("ORCH-008", "P1.5: операции оркестратора сериализованы (rapid retest/cancel)", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
         public static Task<SmokeTestResult> Orch_Pipeline_StartStop_ViaRetestTargets(CancellationToken ct)
             => RunAsync("ORCH-001", "DiagnosticOrchestrator: ретест создает/завершает pipeline", () =>
             {
