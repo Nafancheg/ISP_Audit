@@ -477,6 +477,125 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Ui_OperatorEngineerModeSwitch_Wired(CancellationToken ct)
+            => RunAsync("UI-018", "P1.11: Operator↔Engineer mode switch wired (XAML + handlers)", () =>
+            {
+                try
+                {
+                    static string? TryFindRepoRoot()
+                    {
+                        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+                        for (var i = 0; i < 10 && dir != null; i++)
+                        {
+                            if (File.Exists(Path.Combine(dir.FullName, "ISP_Audit.sln")))
+                            {
+                                return dir.FullName;
+                            }
+
+                            dir = dir.Parent;
+                        }
+
+                        return null;
+                    }
+
+                    var root = TryFindRepoRoot();
+                    if (string.IsNullOrWhiteSpace(root))
+                    {
+                        return new SmokeTestResult("UI-018", "P1.11: Operator↔Engineer mode switch wired (XAML + handlers)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Не удалось определить корень репозитория (нет ISP_Audit.sln рядом с BaseDirectory)");
+                    }
+
+                    var operatorXamlPath = Path.Combine(root!, "Windows", "OperatorWindow.xaml");
+                    var operatorCodeBehindPath = Path.Combine(root!, "Windows", "OperatorWindow.xaml.cs");
+                    var mainXamlPath = Path.Combine(root!, "MainWindow.xaml");
+                    var mainCodeBehindPath = Path.Combine(root!, "MainWindow.xaml.cs");
+
+                    foreach (var path in new[] { operatorXamlPath, operatorCodeBehindPath, mainXamlPath, mainCodeBehindPath })
+                    {
+                        if (!File.Exists(path))
+                        {
+                            return new SmokeTestResult("UI-018", "P1.11: Operator↔Engineer mode switch wired (XAML + handlers)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"Не найден файл: {path}");
+                        }
+                    }
+
+                    var operatorXaml = File.ReadAllText(operatorXamlPath);
+                    var operatorCode = File.ReadAllText(operatorCodeBehindPath);
+                    var mainXaml = File.ReadAllText(mainXamlPath);
+                    var mainCode = File.ReadAllText(mainCodeBehindPath);
+
+                    var requiredOperatorXaml = new List<string>
+                    {
+                        "Content=\"Инженерный режим\"",
+                        "Command=\"{Binding EngineerCommand}\""
+                    };
+
+                    foreach (var r in requiredOperatorXaml)
+                    {
+                        if (!operatorXaml.Contains(r, StringComparison.Ordinal))
+                        {
+                            return new SmokeTestResult("UI-018", "P1.11: Operator↔Engineer mode switch wired (XAML + handlers)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"OperatorWindow.xaml: не нашли обязательный фрагмент: {r}");
+                        }
+                    }
+
+                    var requiredOperatorCode = new List<string>
+                    {
+                        "UiModeStore.SaveBestEffort(UiMode.Engineer)",
+                        "app.ShowEngineerWindow()",
+                        "_switchingToEngineer"
+                    };
+
+                    foreach (var r in requiredOperatorCode)
+                    {
+                        if (!operatorCode.Contains(r, StringComparison.Ordinal))
+                        {
+                            return new SmokeTestResult("UI-018", "P1.11: Operator↔Engineer mode switch wired (XAML + handlers)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"OperatorWindow.xaml.cs: не нашли обязательный фрагмент: {r}");
+                        }
+                    }
+
+                    var requiredMainXaml = new List<string>
+                    {
+                        "Content=\"← Оператор\"",
+                        "Click=\"ReturnToOperator_Click\""
+                    };
+
+                    foreach (var r in requiredMainXaml)
+                    {
+                        if (!mainXaml.Contains(r, StringComparison.Ordinal))
+                        {
+                            return new SmokeTestResult("UI-018", "P1.11: Operator↔Engineer mode switch wired (XAML + handlers)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"MainWindow.xaml: не нашли обязательный фрагмент: {r}");
+                        }
+                    }
+
+                    var requiredMainCode = new List<string>
+                    {
+                        "UiModeStore.SaveBestEffort(IspAudit.Utils.UiMode.Operator)",
+                        "app.ShowOperatorWindow()",
+                        "_switchingToOperator"
+                    };
+
+                    foreach (var r in requiredMainCode)
+                    {
+                        if (!mainCode.Contains(r, StringComparison.Ordinal))
+                        {
+                            return new SmokeTestResult("UI-018", "P1.11: Operator↔Engineer mode switch wired (XAML + handlers)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"MainWindow.xaml.cs: не нашли обязательный фрагмент: {r}");
+                        }
+                    }
+
+                    return new SmokeTestResult("UI-018", "P1.11: Operator↔Engineer mode switch wired (XAML + handlers)", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("UI-018", "P1.11: Operator↔Engineer mode switch wired (XAML + handlers)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        ex.Message);
+                }
+            }, ct);
+
         public static async Task<SmokeTestResult> Ui_BypassMetrics_UpdatesFromService(CancellationToken ct)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();

@@ -821,6 +821,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** Проверка XAML как текста
 **Ожидаемый результат:** В XAML присутствуют `Mode=OneWay` и `PreviewMouseLeftButtonDown=...`, и отсутствует `Mode=TwoWay`/`Click=...`
 
+**Test ID:** `UI-018`
+**Что проверяет:** P1.11 — переключение Operator↔Engineer: wiring кнопок и обработчиков
+**Для чего:** Чтобы кнопки переключения режимов не «отвалились» при рефакторингах XAML/code-behind
+**Критерий успеха:** В XAML и code-behind присутствуют ожидаемые фрагменты (команда/handler + сохранение `UiMode` + вызов `Show*Window`)
+**Входные данные:** Проверка XAML/CS файлов как текста
+**Ожидаемый результат:** Найдены `Инженерный режим` + `EngineerCommand` в Operator, и `← Оператор` + `ReturnToOperator_Click` в Engineer, плюс соответствующие вызовы в code-behind
+
 ---
 
 ## 7. Orchestration & Process Tracking

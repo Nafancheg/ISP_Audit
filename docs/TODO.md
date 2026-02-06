@@ -339,7 +339,7 @@
       - [ ] Словарь “код → человеческий текст” для основных причин (DNS/TCP/TLS/QUIC/RST/Redirect) + короткая рекомендация.
       - [ ] Единые формулировки CTA и статусов (без жаргона: QUIC/DoH можно упоминать только в “Подробнее”).
     - [ ] Тесты/смоки:
-      - [ ] Добавить smoke сценарий запуска Operator UI (non-admin) + проверка переключения в Engineer.
+      - [x] Добавить smoke сценарий запуска Operator UI (non-admin) + проверка переключения в Engineer (UI-018: wiring XAML/handlers).
       - [x] Smoke/ui: `UI-015` — round-trip истории Operator (persist/load `state/operator_events.json`).
       - [ ] Регресс на shutdown: при закрытии Operator окна гарантированно вызывается безопасный `ShutdownAsync` (DNS/DoH rollback).
       - [ ] Добавить минимальные unit/регресс тесты на AutoPilot policy (не допускаем DNS/DoH без consent).
