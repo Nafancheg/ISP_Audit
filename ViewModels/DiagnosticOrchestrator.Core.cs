@@ -77,9 +77,17 @@ namespace IspAudit.ViewModels
                     return;
                 }
 
-                // P1.5: атомарно поднимаем рантайм-структуры, чтобы Cancel/Retest не пересекались.
+                // P1.5: атомарно поднимаем рантайм-структуры, чтобы:
+                // - двойной Start не запускал две диагностики;
+                // - Cancel не пересекался с созданием cts/pipeline.
                 using (await EnterOperationGateAsync().ConfigureAwait(false))
                 {
+                    if (IsDiagnosticRunning)
+                    {
+                        Log("[Orchestrator] Диагностика уже запущена");
+                        return;
+                    }
+
                     IsDiagnosticRunning = true;
                     DiagnosticStatus = "Инициализация...";
                     FlowEventsCount = 0;
@@ -392,16 +400,6 @@ namespace IspAudit.ViewModels
             BypassController bypassController,
             string? correlationId = null)
         {
-            // P1.5: сериализуем старт ретеста, чтобы параллельные клики не создавали две операции.
-            using (await EnterOperationGateAsync().ConfigureAwait(false))
-            {
-                if (IsDiagnosticRunning)
-                {
-                    Log("[Orchestrator] Нельзя запустить ретест во время активной диагностики");
-                    return;
-                }
-            }
-
             var opId = string.IsNullOrWhiteSpace(correlationId)
                 ? Guid.NewGuid().ToString("N")
                 : correlationId.Trim();
@@ -409,10 +407,20 @@ namespace IspAudit.ViewModels
             try
             {
                 using var op = BypassOperationContext.Enter(opId, "retest_targets");
-                _cancelRequested = false;
-                Log($"[Orchestrator][Retest][op={opId}] Запуск ретеста проблемных целей...");
+
+                // P1.5: сериализуем старт ретеста (check+set под одним gate), чтобы
+                // параллельные клики не запускали две операции.
                 using (await EnterOperationGateAsync().ConfigureAwait(false))
                 {
+                    if (IsDiagnosticRunning)
+                    {
+                        Log("[Orchestrator] Нельзя запустить ретест во время активной диагностики");
+                        return;
+                    }
+
+                    _cancelRequested = false;
+                    Log($"[Orchestrator][Retest][op={opId}] Запуск ретеста проблемных целей...");
+
                     IsDiagnosticRunning = true;
                     DiagnosticStatus = "Ретест...";
                     _cts = new CancellationTokenSource();
