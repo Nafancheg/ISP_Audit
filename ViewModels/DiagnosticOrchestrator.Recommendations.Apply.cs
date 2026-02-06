@@ -244,6 +244,38 @@ namespace IspAudit.ViewModels
                 return null;
             }
 
+            // P1.1: дедупликация повторного apply по цели.
+            // Формируем сигнатуру плана и сравниваем с последним успешным применением.
+            var planTokens = plan.Strategies
+                .Select(s => MapStrategyToken(s.Id.ToString()))
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .ToList();
+            if (plan.DropUdp443) planTokens.Add("DROP_UDP_443");
+            if (plan.AllowNoSni) planTokens.Add("ALLOW_NO_SNI");
+            var planStrategies = planTokens.Count == 0 ? "(none)" : string.Join(", ", planTokens);
+
+            var appliedUiText = planTokens.Count == 0
+                ? string.Empty
+                : string.Join(" + ", planTokens.Select(FormatStrategyTokenForUi).Where(t => !string.IsNullOrWhiteSpace(t)));
+
+            var targetKey = ResolveAutoApplyTargetHost(hostKey);
+            var planSig = BuildPlanSignature(plan);
+            var desiredAlreadyEffective = planTokens.Count > 0 && planTokens.All(t => IsStrategyActive(t, bypassController));
+            if (desiredAlreadyEffective
+                && !string.IsNullOrWhiteSpace(targetKey)
+                && !string.IsNullOrWhiteSpace(planSig)
+                && _lastAppliedPlanSignatureByTarget.TryGetValue(targetKey, out var lastSig)
+                && string.Equals(lastSig, planSig, StringComparison.OrdinalIgnoreCase))
+            {
+                Log($"[APPLY] Skip: уже применено (target='{targetKey}'; sig='{planSig}')");
+                return new ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
+                {
+                    Status = "ALREADY_APPLIED",
+                    Error = string.Empty,
+                    RollbackStatus = string.Empty
+                };
+            }
+
             // P1.5: не допускаем параллельного входа (manual vs auto apply).
             // Это защищает обвязку Orchestrator (cts/UI) даже если ApplyIntelPlanAsync сериализован ниже.
             if (Interlocked.CompareExchange(ref _applyInFlight, 1, 0) != 0)
@@ -305,18 +337,6 @@ namespace IspAudit.ViewModels
 
             var ct = linked.Token;
 
-            var planTokens = plan.Strategies
-                .Select(s => MapStrategyToken(s.Id.ToString()))
-                .Where(t => !string.IsNullOrWhiteSpace(t))
-                .ToList();
-            if (plan.DropUdp443) planTokens.Add("DROP_UDP_443");
-            if (plan.AllowNoSni) planTokens.Add("ALLOW_NO_SNI");
-            var planStrategies = planTokens.Count == 0 ? "(none)" : string.Join(", ", planTokens);
-
-            var appliedUiText = planTokens.Count == 0
-                ? string.Empty
-                : string.Join(" + ", planTokens.Select(FormatStrategyTokenForUi).Where(t => !string.IsNullOrWhiteSpace(t)));
-
             var beforeState = BuildBypassStateSummary(bypassController);
 
             try
@@ -351,6 +371,12 @@ namespace IspAudit.ViewModels
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[APPLY] OK; after={afterState}");
                 ResetRecommendations();
+
+                // P1.1: фиксируем сигнатуру последнего успешного применения для дедупликации.
+                if (!string.IsNullOrWhiteSpace(targetKey) && !string.IsNullOrWhiteSpace(planSig))
+                {
+                    _lastAppliedPlanSignatureByTarget[targetKey] = planSig;
+                }
 
                 if (!string.IsNullOrWhiteSpace(appliedUiText))
                 {

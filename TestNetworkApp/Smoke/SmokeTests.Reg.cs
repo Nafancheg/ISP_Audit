@@ -863,6 +863,74 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> REG_Orchestrator_ApplyDedup_SameDomain_SkipsSecondApply(CancellationToken ct)
+            => RunAsyncAwait("REG-024", "REG: Orchestrator Apply дедуплицируется для домена (ALREADY_APPLIED)", async innerCt =>
+            {
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    using var engine = new TrafficEngine();
+                    var bypass = new BypassController(engine);
+                    var orch = new DiagnosticOrchestrator(engine);
+
+                    var storePlan = typeof(DiagnosticOrchestrator)
+                        .GetMethod("StorePlan", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    if (storePlan == null)
+                    {
+                        return new SmokeTestResult("REG-024", "REG: Orchestrator Apply дедуплицируется для домена (ALREADY_APPLIED)",
+                            SmokeOutcome.Fail, sw.Elapsed, "Не нашли StorePlan через reflection");
+                    }
+
+                    var plan = new BypassPlan
+                    {
+                        ForDiagnosis = DiagnosisId.SilentDrop,
+                        PlanConfidence = 100,
+                        Strategies =
+                        {
+                            new BypassStrategy { Id = StrategyId.TlsFragment }
+                        }
+                    };
+
+                    storePlan.Invoke(orch, new object?[] { "sub.example.com", plan, bypass });
+
+                    var first = await orch.ApplyRecommendationsForDomainAsync(bypass, "example.com").ConfigureAwait(false);
+                    if (first == null)
+                    {
+                        return new SmokeTestResult("REG-024", "REG: Orchestrator Apply дедуплицируется для домена (ALREADY_APPLIED)",
+                            SmokeOutcome.Fail, sw.Elapsed, "Первый Apply вернул null (ожидали outcome)"
+                        );
+                    }
+
+                    if (!string.Equals(first.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-024", "REG: Orchestrator Apply дедуплицируется для домена (ALREADY_APPLIED)",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Первый Apply: ожидали Status=APPLIED, получили '{first.Status}'");
+                    }
+
+                    var second = await orch.ApplyRecommendationsForDomainAsync(bypass, "example.com").ConfigureAwait(false);
+                    if (second == null)
+                    {
+                        return new SmokeTestResult("REG-024", "REG: Orchestrator Apply дедуплицируется для домена (ALREADY_APPLIED)",
+                            SmokeOutcome.Fail, sw.Elapsed, "Второй Apply вернул null (ожидали ALREADY_APPLIED)"
+                        );
+                    }
+
+                    if (!string.Equals(second.Status, "ALREADY_APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-024", "REG: Orchestrator Apply дедуплицируется для домена (ALREADY_APPLIED)",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Второй Apply: ожидали Status=ALREADY_APPLIED, получили '{second.Status}'");
+                    }
+
+                    return new SmokeTestResult("REG-024", "REG: Orchestrator Apply дедуплицируется для домена (ALREADY_APPLIED)",
+                        SmokeOutcome.Pass, sw.Elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-024", "REG: Orchestrator Apply дедуплицируется для домена (ALREADY_APPLIED)",
+                        SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> REG_ApplyIntelPlan_Timeout_HasPhaseDiagnostics(CancellationToken ct)
             => RunAsyncAwait("REG-016", "REG: ApplyIntelPlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)", async _ =>
             {

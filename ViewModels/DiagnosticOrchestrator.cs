@@ -143,6 +143,10 @@ namespace IspAudit.ViewModels
         // защищает UI/cts/обвязку Orchestrator от параллельного входа.
         private int _applyInFlight;
 
+        // P1.1: дедупликация apply — не применяем повторно одинаковый план для той же цели.
+        // Ключ: нормализованная цель (для доменов — SLD+TLD эвристика, как в auto-apply).
+        private readonly ConcurrentDictionary<string, string> _lastAppliedPlanSignatureByTarget = new(StringComparer.OrdinalIgnoreCase);
+
         // Legacy (справочно): не влияет на основную рекомендацию INTEL
         private readonly HashSet<string> _legacyRecommendedStrategies = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _legacyManualRecommendations = new(StringComparer.OrdinalIgnoreCase);
