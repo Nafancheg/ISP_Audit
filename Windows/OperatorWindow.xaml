@@ -55,10 +55,12 @@
                                     Height="30" Width="34" Margin="0,0,8,0">
                                 <materialDesign:PackIcon Kind="ThemeLightDark" Width="20" Height="20"/>
                             </Button>
-                            <Button Content="Инженерный режим"
-                                    Style="{StaticResource SecondaryButtonStyle}"
-                                    Padding="12,6"
-                                    Command="{Binding EngineerCommand}"/>
+                            <Button Style="{StaticResource ThemeToggleButtonStyle}"
+                                    ToolTip="Расширенный режим"
+                                    Command="{Binding EngineerCommand}"
+                                    Height="30" Width="34">
+                                <materialDesign:PackIcon Kind="Wrench" Width="20" Height="20"/>
+                            </Button>
                         </StackPanel>
                     </DockPanel>
 

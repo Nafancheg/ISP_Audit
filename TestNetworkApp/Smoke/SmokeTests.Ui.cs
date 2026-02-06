@@ -526,8 +526,9 @@ namespace TestNetworkApp.Smoke
 
                     var requiredOperatorXaml = new List<string>
                     {
-                        "Content=\"Инженерный режим\"",
-                        "Command=\"{Binding EngineerCommand}\""
+                        "ToolTip=\"Расширенный режим\"",
+                        "Command=\"{Binding EngineerCommand}\"",
+                        "Kind=\"Wrench\""
                     };
 
                     foreach (var r in requiredOperatorXaml)
