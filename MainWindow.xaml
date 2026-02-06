@@ -410,6 +410,9 @@
 
                                                 <TextBlock Text="🧭 QUIC→TCP (наблюдаемость)" FontWeight="SemiBold" FontSize="13" Margin="0,10,0,6"/>
                                                 <TextBlock Text="{Binding Bypass.QuicModeText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                                                <TextBlock Text="{Binding Bypass.QuicDropTargetsText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,6"
+                                                           Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                           Visibility="{Binding Bypass.QuicDropTargetsText, Converter={StaticResource StringToVisibilityConverter}}"/>
 
                                                 <Border Background="{Binding Bypass.QuicRuntimeStatusBrush}" CornerRadius="4" Padding="8" Margin="0,0,0,6">
                                                     <TextBlock Text="{Binding Bypass.QuicRuntimeStatusText}" FontSize="12" TextWrapping="Wrap"/>

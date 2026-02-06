@@ -197,7 +197,11 @@
                             </Grid>
 
                             <Expander Header="Диагностика (сырое)" Margin="0,8,0,0" IsExpanded="False">
-                                <TextBlock Text="{Binding Vm.RawDetailsText}" TextWrapping="Wrap" Opacity="0.75"/>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Vm.RawDetailsText}" TextWrapping="Wrap" Opacity="0.75"/>
+                                    <TextBlock Text="{Binding Main.Bypass.QuicDropTargetsText}" TextWrapping="Wrap" Opacity="0.75" Margin="0,8,0,0"
+                                               Visibility="{Binding Main.Bypass.QuicDropTargetsText, Converter={StaticResource StringToVisibilityConverter}}"/>
+                                </StackPanel>
                             </Expander>
 
                             <Expander Header="История (сессии)" Margin="0,8,0,0" IsExpanded="False"

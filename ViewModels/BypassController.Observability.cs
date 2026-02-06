@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Media;
@@ -23,17 +25,46 @@ namespace IspAudit.ViewModels
                     QuicModeText = "QUIC→TCP: выключен";
                     QuicRuntimeStatusText = "UDP/443 не глушится";
                     QuicRuntimeStatusBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
+                    QuicDropTargetsText = string.Empty;
                     return;
                 }
 
                 if (IsQuicFallbackGlobal)
                 {
                     QuicModeText = "QUIC→TCP: ВКЛ (GLOBAL) — глушим весь UDP/443";
+                    QuicDropTargetsText = "Targets: ALL (GLOBAL)";
                 }
                 else
                 {
                     var targetText = string.IsNullOrWhiteSpace(host) ? "цель не задана" : host;
                     QuicModeText = $"QUIC→TCP: ВКЛ (селективно) — цель: {targetText}; IPv4 IPs: {ipCount}";
+
+                    try
+                    {
+                        var ips = _stateManager.GetUdp443DropTargetIpsSnapshot();
+                        if (ips == null || ips.Length == 0)
+                        {
+                            QuicDropTargetsText = "Targets IPv4: (пока пусто)";
+                        }
+                        else
+                        {
+                            // Ограничиваем вывод, чтобы не раздувать UI.
+                            const int max = 8;
+                            var shown = ips.Take(max)
+                                .Where(v => v != 0)
+                                .Select(v => new IPAddress((long)v).ToString())
+                                .ToArray();
+
+                            var suffix = ips.Length > max ? $" … +{ips.Length - max}" : string.Empty;
+                            QuicDropTargetsText = shown.Length == 0
+                                ? "Targets IPv4: (пусто)"
+                                : "Targets IPv4: " + string.Join(", ", shown) + suffix;
+                        }
+                    }
+                    catch
+                    {
+                        QuicDropTargetsText = "Targets IPv4: (не удалось прочитать)";
+                    }
                 }
 
                 if (latestMetrics == null)

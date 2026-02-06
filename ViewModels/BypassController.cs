@@ -58,6 +58,7 @@ namespace IspAudit.ViewModels
         // Наблюдаемость QUIC→TCP и ретест outcome
         private string _quicModeText = "QUIC→TCP: выключен";
         private string _quicRuntimeStatusText = "";
+        private string _quicDropTargetsText = "";
         private System.Windows.Media.Brush _quicRuntimeStatusBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(243, 244, 246));
         private long _lastUdp443Dropped;
         private DateTime _lastUdp443DroppedUtc = DateTime.MinValue;
@@ -78,6 +79,17 @@ namespace IspAudit.ViewModels
         };
         // QUIC fallback scope
         public ICommand SetQuicFallbackScopeCommand { get; private set; } = null!;
+
+        public string QuicDropTargetsText
+        {
+            get => _quicDropTargetsText;
+            private set
+            {
+                if (string.Equals(_quicDropTargetsText, value, StringComparison.Ordinal)) return;
+                _quicDropTargetsText = value ?? string.Empty;
+                OnPropertyChanged(nameof(QuicDropTargetsText));
+            }
+        }
 
         public ICommand SetDnsPresetCommand { get; private set; } = null!;
         public ICommand RunOutcomeProbeNowCommand { get; private set; } = null!;

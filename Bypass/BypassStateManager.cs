@@ -346,6 +346,24 @@ namespace IspAudit.Bypass
             }
         }
 
+        /// <summary>
+        /// Получить observed IPv4 адреса цели для QUIC fallback (DROP UDP/443).
+        /// Возвращает массив uint (network byte order, как в PacketParser/PacketHelper).
+        /// </summary>
+        public uint[] GetUdp443DropTargetIpsSnapshot()
+        {
+            try
+            {
+                using var scope = BypassStateManagerGuard.EnterScope();
+                var list = _tlsService.GetUdp443DropTargetIpsSnapshot();
+                return list == null || list.Length == 0 ? Array.Empty<uint>() : list;
+            }
+            catch
+            {
+                return Array.Empty<uint>();
+            }
+        }
+
         // Outcome/Activation вынесены в partial-файлы.
 
         public void RegisterEngineFilter(IspAudit.Core.Traffic.IPacketFilter filter)

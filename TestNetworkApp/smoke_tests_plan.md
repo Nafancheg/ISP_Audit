@@ -835,6 +835,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** Проверка XAML/CS файлов как текста
 **Ожидаемый результат:** Найдены фрагменты в `MainWindow.xaml`, `Windows/OperatorWindow.xaml` и `ViewModels/MainViewModel.*.cs`
 
+**Test ID:** `UI-020`
+**Что проверяет:** P1.3 — видимость селективного QUIC→TCP (targets) в UI
+**Для чего:** Чтобы было ясно, что UDP/443 дропается по конкретным target IP, а не «где-то в системе»
+**Критерий успеха:** В Engineer (вкладка Метрики) и Operator (raw details) есть binding на `QuicDropTargetsText`
+**Входные данные:** Проверка XAML файлов как текста
+**Ожидаемый результат:** Найдены `Bypass.QuicDropTargetsText` и `Main.Bypass.QuicDropTargetsText`
+
 ---
 
 ## 7. Orchestration & Process Tracking

@@ -738,6 +738,73 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Ui_QuicDropTargets_AreVisibleInUiBindings(CancellationToken ct)
+            => RunAsync("UI-020", "P1.3: QUIC→TCP targets отображаются в UI (Engineer + Operator)", () =>
+            {
+                try
+                {
+                    static string? TryFindRepoRoot()
+                    {
+                        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+                        for (var i = 0; i < 10 && dir != null; i++)
+                        {
+                            if (File.Exists(Path.Combine(dir.FullName, "ISP_Audit.sln")))
+                            {
+                                return dir.FullName;
+                            }
+
+                            dir = dir.Parent;
+                        }
+
+                        return null;
+                    }
+
+                    var root = TryFindRepoRoot();
+                    if (string.IsNullOrWhiteSpace(root))
+                    {
+                        return new SmokeTestResult("UI-020", "P1.3: QUIC→TCP targets отображаются в UI (Engineer + Operator)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Не удалось определить корень репозитория (нет ISP_Audit.sln рядом с BaseDirectory)");
+                    }
+
+                    var mainXamlPath = Path.Combine(root!, "MainWindow.xaml");
+                    var operatorXamlPath = Path.Combine(root!, "Windows", "OperatorWindow.xaml");
+
+                    foreach (var path in new[] { mainXamlPath, operatorXamlPath })
+                    {
+                        if (!File.Exists(path))
+                        {
+                            return new SmokeTestResult("UI-020", "P1.3: QUIC→TCP targets отображаются в UI (Engineer + Operator)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"Не найден файл: {path}");
+                        }
+                    }
+
+                    var mainXaml = File.ReadAllText(mainXamlPath);
+                    var operatorXaml = File.ReadAllText(operatorXamlPath);
+
+                    // Engineer: вкладка Метрики должна показывать список targets.
+                    if (!mainXaml.Contains("Bypass.QuicDropTargetsText", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult("UI-020", "P1.3: QUIC→TCP targets отображаются в UI (Engineer + Operator)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "MainWindow.xaml: не нашли binding на Bypass.QuicDropTargetsText");
+                    }
+
+                    // Operator: в raw expander показываем targets (если есть).
+                    if (!operatorXaml.Contains("Main.Bypass.QuicDropTargetsText", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult("UI-020", "P1.3: QUIC→TCP targets отображаются в UI (Engineer + Operator)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "OperatorWindow.xaml: не нашли binding на Main.Bypass.QuicDropTargetsText");
+                    }
+
+                    return new SmokeTestResult("UI-020", "P1.3: QUIC→TCP targets отображаются в UI (Engineer + Operator)", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("UI-020", "P1.3: QUIC→TCP targets отображаются в UI (Engineer + Operator)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        ex.Message);
+                }
+            }, ct);
+
         public static async Task<SmokeTestResult> Ui_BypassMetrics_UpdatesFromService(CancellationToken ct)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
