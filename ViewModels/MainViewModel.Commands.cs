@@ -43,6 +43,10 @@ namespace IspAudit.ViewModels
         public ICommand NetworkDisableBypassCommand { get; }
         public ICommand NetworkIgnoreCommand { get; }
 
+        // P1.4: Post-crash диагнозы (баннер про crash-reports)
+        public ICommand CrashReportsOpenFolderCommand { get; }
+        public ICommand CrashReportsDismissCommand { get; }
+
         #endregion
     }
 }

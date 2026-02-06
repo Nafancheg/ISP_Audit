@@ -28,6 +28,12 @@ namespace IspAudit.ViewModels
         private readonly NetworkChangeMonitor? _networkChangeMonitor;
         private volatile bool _pendingNetworkChangePrompt;
 
+        // P1.4: Post-crash диагнозы — баннер про crash-reports.
+        private volatile bool _pendingCrashReportsPrompt;
+        private string _pendingCrashReportsPromptText = "";
+        private CrashReportsDetectionResult? _pendingCrashReportsDetection;
+        private CrashReportsDetectionResult? _crashReportsDetectionForPrompt;
+
         private volatile bool _pendingRetestAfterRun;
         private string _pendingRetestReason = "";
 
@@ -131,6 +137,21 @@ namespace IspAudit.ViewModels
                 {
                     _pendingNetworkChangePrompt = false;
                     ShowNetworkChangePrompt();
+                }
+
+                if (_pendingCrashReportsPrompt)
+                {
+                    _pendingCrashReportsPrompt = false;
+
+                    var detection = _pendingCrashReportsDetection;
+                    var text = _pendingCrashReportsPromptText;
+                    _pendingCrashReportsDetection = null;
+                    _pendingCrashReportsPromptText = "";
+
+                    if (detection != null && !string.IsNullOrWhiteSpace(text))
+                    {
+                        ShowCrashReportsPrompt(detection, text);
+                    }
                 }
 
                 // Per-card ручные ретесты, запрошенные во время диагностики.
@@ -322,6 +343,9 @@ namespace IspAudit.ViewModels
             NetworkDisableBypassCommand = new RelayCommand(async _ => await DisableBypassFromNetworkPromptAsync(), _ => ShowBypassPanel && IsNetworkChangePromptVisible);
             NetworkIgnoreCommand = new RelayCommand(_ => HideNetworkChangePrompt(), _ => IsNetworkChangePromptVisible);
 
+            CrashReportsOpenFolderCommand = new RelayCommand(_ => OpenCrashReportsFoldersFromPromptBestEffort(), _ => IsCrashReportsPromptVisible);
+            CrashReportsDismissCommand = new RelayCommand(_ => DismissCrashReportsPromptBestEffort(), _ => IsCrashReportsPromptVisible);
+
             // NetworkChange monitor (P0.6): запускаем только когда есть WPF Application.
             // В smoke/console окружении Application.Current обычно null, и мы избегаем подписок на системные события.
             if (Application.Current != null)
@@ -339,6 +363,13 @@ namespace IspAudit.ViewModels
                     }
                 };
                 _networkChangeMonitor.Start();
+            }
+
+            // P1.4: После старта (и только в GUI окружении) проверяем, были ли crash-reports.
+            // В smoke/console окружении (Application.Current == null) это намеренно не запускаем.
+            if (Application.Current != null)
+            {
+                _ = Task.Run(() => CheckCrashReportsOnStartupBestEffort());
             }
 
             // Step 7/9: авто-обновление per-card статусов/деталей.
@@ -417,6 +448,112 @@ namespace IspAudit.ViewModels
             LoadPostApplyChecksFromDiskBestEffort();
 
             Log("✓ MainViewModel инициализирован");
+        }
+
+        private void CheckCrashReportsOnStartupBestEffort()
+        {
+            try
+            {
+                var lastSeen = CrashReportsSeenStore.LoadLastSeenOrDefault(defaultValue: DateTimeOffset.MinValue);
+                var detection = CrashReportsDetector.DetectNewSince(lastSeen);
+                if (!detection.HasNew)
+                {
+                    return;
+                }
+
+                var text = BuildCrashReportsPromptText(detection);
+
+                UiBeginInvoke(() =>
+                {
+                    try
+                    {
+                        if (IsRunning || IsApplyingRecommendations)
+                        {
+                            _pendingCrashReportsPrompt = true;
+                            _pendingCrashReportsDetection = detection;
+                            _pendingCrashReportsPromptText = text;
+                            return;
+                        }
+
+                        ShowCrashReportsPrompt(detection, text);
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                });
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private static string BuildCrashReportsPromptText(CrashReportsDetectionResult detection)
+        {
+            try
+            {
+                var latestText = detection.LatestNewUtc != null
+                    ? detection.LatestNewUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                    : "неизвестно";
+
+                return
+                    "Обнаружены новые отчёты о падении.\n" +
+                    $"app: {detection.NewAppCount}, traffic_engine: {detection.NewTrafficEngineCount}.\n" +
+                    $"Последний отчёт: {latestText}.\n" +
+                    "Действия: «Открыть папку» (чтобы приложить к баг-репорту) или «Скрыть».";
+            }
+            catch
+            {
+                return "Обнаружены новые отчёты о падении. Действие: «Открыть папку» или «Скрыть».";
+            }
+        }
+
+        private void ShowCrashReportsPrompt(CrashReportsDetectionResult detection, string text)
+        {
+            _crashReportsDetectionForPrompt = detection;
+            CrashReportsPromptText = text;
+            IsCrashReportsPromptVisible = true;
+        }
+
+        private void HideCrashReportsPrompt()
+        {
+            IsCrashReportsPromptVisible = false;
+        }
+
+        private void OpenCrashReportsFoldersFromPromptBestEffort()
+        {
+            try
+            {
+                var detection = _crashReportsDetectionForPrompt;
+                CrashReportsDetector.OpenCrashReportFoldersBestEffort(detection);
+            }
+            catch
+            {
+                // ignore
+            }
+            finally
+            {
+                DismissCrashReportsPromptBestEffort();
+            }
+        }
+
+        private void DismissCrashReportsPromptBestEffort()
+        {
+            try
+            {
+                var ts = _crashReportsDetectionForPrompt?.LatestNewUtc ?? DateTimeOffset.UtcNow;
+                CrashReportsSeenStore.SaveBestEffort(ts);
+            }
+            catch
+            {
+                // ignore
+            }
+            finally
+            {
+                _crashReportsDetectionForPrompt = null;
+                HideCrashReportsPrompt();
+            }
         }
 
         private void PersistManualParticipationBestEffort()

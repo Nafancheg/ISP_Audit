@@ -38,6 +38,7 @@ namespace TestNetworkApp.Smoke
                 ["UI-016"] = Ui_OperatorSessionStore_RoundTrip,
                 ["UI-017"] = Ui_Operator_DnsDohConsentToggle_IsGuardedAgainstAccidentalPersist,
                 ["UI-018"] = Ui_OperatorEngineerModeSwitch_Wired,
+                ["UI-019"] = Ui_CrashReportsPrompt_Wired,
 
                 ["ORCH-001"] = Orch_Pipeline_StartStop_ViaRetestTargets,
                 ["ORCH-002"] = Orch_MonitoringServices_StartStop_AdminGated,

@@ -62,6 +62,26 @@
                         </StackPanel>
                     </DockPanel>
 
+                    <!-- P1.4: Post-crash диагнозы (crash-reports) -->
+                    <Border Padding="10" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}" Margin="0,0,0,10"
+                            Visibility="{Binding Main.IsCrashReportsPromptVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <materialDesign:PackIcon Kind="AlertCircleOutline" Width="16" Height="16" Margin="0,0,6,0"/>
+                                <TextBlock Text="Отчёты о падении" FontWeight="SemiBold"/>
+                            </StackPanel>
+
+                            <TextBlock Text="{Binding Main.CrashReportsPromptText}" TextWrapping="Wrap" Opacity="0.85"/>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button Content="Открыть папку" Style="{StaticResource PrimaryButtonStyle}" Padding="12,6" MinWidth="150"
+                                        Command="{Binding Main.CrashReportsOpenFolderCommand}" Margin="0,0,10,0"/>
+                                <Button Content="Скрыть" Style="{StaticResource SecondaryButtonStyle}" Padding="12,6" MinWidth="110"
+                                        Command="{Binding Main.CrashReportsDismissCommand}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Источник трафика (без большого заголовка/описания) -->
                     <Border Padding="10" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}" Margin="0,0,0,10"
                             Visibility="{Binding Vm.IsSourceStepVisible, Converter={StaticResource BoolToVisibilityConverter}}">

@@ -109,6 +109,8 @@ graph TD
 
 Также на уровне приложения включён best-effort crash-report для необработанных исключений (UI thread / AppDomain / UnobservedTaskException): отчёты сохраняются в `state\\crash_reports\\app\\` через `Utils/AppCrashReporter.cs`.
 
+P1.4 (UX post-crash): при запуске в GUI окружении `MainViewModel` проверяет наличие **новых** crash-report JSON (app + traffic_engine) и показывает баннер «Отчёты о падении» с CTA «Открыть папку». Отметка «просмотрено» хранится в `state\\crash_reports_seen.json` (см. `Utils/CrashReportsSeenStore.cs`).
+
 Примечание: экземпляр `MainViewModel` создаётся единоразово в `App` и переиспользуется в обоих окнах (Operator/Engineer), чтобы исключить дублирование `TrafficEngine` и двойной shutdown.
 *   **`BypassController`**: ViewModel, отвечающая за настройки обхода.
     *   Связывает UI-тумблеры (Fragment/Disorder/Fake/Drop RST/DoH + assist-флаги `QUIC→TCP` и `No SNI`) с `TlsBypassService` (регистрация фильтра управляется сервисом).

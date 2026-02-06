@@ -138,6 +138,9 @@ namespace IspAudit.ViewModels
         private bool _isNetworkRevalidating;
         private System.Threading.CancellationTokenSource? _networkRevalidateCts;
 
+        private bool _isCrashReportsPromptVisible;
+        private string _crashReportsPromptText = string.Empty;
+
         public bool IsNetworkChangePromptVisible
         {
             get => _isNetworkChangePromptVisible;
@@ -157,6 +160,28 @@ namespace IspAudit.ViewModels
                 if (string.Equals(_networkChangePromptText, value, StringComparison.Ordinal)) return;
                 _networkChangePromptText = value;
                 OnPropertyChanged(nameof(NetworkChangePromptText));
+            }
+        }
+
+        public bool IsCrashReportsPromptVisible
+        {
+            get => _isCrashReportsPromptVisible;
+            private set
+            {
+                if (_isCrashReportsPromptVisible == value) return;
+                _isCrashReportsPromptVisible = value;
+                OnPropertyChanged(nameof(IsCrashReportsPromptVisible));
+            }
+        }
+
+        public string CrashReportsPromptText
+        {
+            get => _crashReportsPromptText;
+            private set
+            {
+                if (string.Equals(_crashReportsPromptText, value, StringComparison.Ordinal)) return;
+                _crashReportsPromptText = value;
+                OnPropertyChanged(nameof(CrashReportsPromptText));
             }
         }
 

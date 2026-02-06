@@ -596,6 +596,148 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Ui_CrashReportsPrompt_Wired(CancellationToken ct)
+            => RunAsync("UI-019", "P1.4: Crash-reports prompt wired (XAML + ViewModel)", () =>
+            {
+                try
+                {
+                    static string? TryFindRepoRoot()
+                    {
+                        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+                        for (var i = 0; i < 10 && dir != null; i++)
+                        {
+                            if (File.Exists(Path.Combine(dir.FullName, "ISP_Audit.sln")))
+                            {
+                                return dir.FullName;
+                            }
+
+                            dir = dir.Parent;
+                        }
+
+                        return null;
+                    }
+
+                    var root = TryFindRepoRoot();
+                    if (string.IsNullOrWhiteSpace(root))
+                    {
+                        return new SmokeTestResult("UI-019", "P1.4: Crash-reports prompt wired (XAML + ViewModel)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Не удалось определить корень репозитория (нет ISP_Audit.sln рядом с BaseDirectory)");
+                    }
+
+                    var mainXamlPath = Path.Combine(root!, "MainWindow.xaml");
+                    var operatorXamlPath = Path.Combine(root!, "Windows", "OperatorWindow.xaml");
+                    var vmStatePath = Path.Combine(root!, "ViewModels", "MainViewModel.State.cs");
+                    var vmCommandsPath = Path.Combine(root!, "ViewModels", "MainViewModel.Commands.cs");
+                    var vmCtorPath = Path.Combine(root!, "ViewModels", "MainViewModel.Constructor.cs");
+
+                    foreach (var path in new[] { mainXamlPath, operatorXamlPath, vmStatePath, vmCommandsPath, vmCtorPath })
+                    {
+                        if (!File.Exists(path))
+                        {
+                            return new SmokeTestResult("UI-019", "P1.4: Crash-reports prompt wired (XAML + ViewModel)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"Не найден файл: {path}");
+                        }
+                    }
+
+                    var mainXaml = File.ReadAllText(mainXamlPath);
+                    var operatorXaml = File.ReadAllText(operatorXamlPath);
+                    var vmState = File.ReadAllText(vmStatePath);
+                    var vmCommands = File.ReadAllText(vmCommandsPath);
+                    var vmCtor = File.ReadAllText(vmCtorPath);
+
+                    var requiredMainXaml = new List<string>
+                    {
+                        "Отчёты о падении",
+                        "Visibility=\"{Binding IsCrashReportsPromptVisible",
+                        "Text=\"{Binding CrashReportsPromptText}\"",
+                        "Command=\"{Binding CrashReportsOpenFolderCommand}\"",
+                        "Command=\"{Binding CrashReportsDismissCommand}\""
+                    };
+
+                    foreach (var r in requiredMainXaml)
+                    {
+                        if (!mainXaml.Contains(r, StringComparison.Ordinal))
+                        {
+                            return new SmokeTestResult("UI-019", "P1.4: Crash-reports prompt wired (XAML + ViewModel)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"MainWindow.xaml: не нашли обязательный фрагмент: {r}");
+                        }
+                    }
+
+                    var requiredOperatorXaml = new List<string>
+                    {
+                        "Отчёты о падении",
+                        "Main.IsCrashReportsPromptVisible",
+                        "Main.CrashReportsPromptText",
+                        "Main.CrashReportsOpenFolderCommand",
+                        "Main.CrashReportsDismissCommand"
+                    };
+
+                    foreach (var r in requiredOperatorXaml)
+                    {
+                        if (!operatorXaml.Contains(r, StringComparison.Ordinal))
+                        {
+                            return new SmokeTestResult("UI-019", "P1.4: Crash-reports prompt wired (XAML + ViewModel)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"OperatorWindow.xaml: не нашли обязательный фрагмент: {r}");
+                        }
+                    }
+
+                    var requiredVmState = new List<string>
+                    {
+                        "IsCrashReportsPromptVisible",
+                        "CrashReportsPromptText"
+                    };
+
+                    foreach (var r in requiredVmState)
+                    {
+                        if (!vmState.Contains(r, StringComparison.Ordinal))
+                        {
+                            return new SmokeTestResult("UI-019", "P1.4: Crash-reports prompt wired (XAML + ViewModel)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"MainViewModel.State.cs: не нашли обязательный фрагмент: {r}");
+                        }
+                    }
+
+                    var requiredVmCommands = new List<string>
+                    {
+                        "CrashReportsOpenFolderCommand",
+                        "CrashReportsDismissCommand"
+                    };
+
+                    foreach (var r in requiredVmCommands)
+                    {
+                        if (!vmCommands.Contains(r, StringComparison.Ordinal))
+                        {
+                            return new SmokeTestResult("UI-019", "P1.4: Crash-reports prompt wired (XAML + ViewModel)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"MainViewModel.Commands.cs: не нашли обязательный фрагмент: {r}");
+                        }
+                    }
+
+                    var requiredVmCtor = new List<string>
+                    {
+                        "CrashReportsSeenStore.LoadLastSeenOrDefault",
+                        "CrashReportsDetector.DetectNewSince",
+                        "CrashReportsOpenFolderCommand",
+                        "CrashReportsDismissCommand"
+                    };
+
+                    foreach (var r in requiredVmCtor)
+                    {
+                        if (!vmCtor.Contains(r, StringComparison.Ordinal))
+                        {
+                            return new SmokeTestResult("UI-019", "P1.4: Crash-reports prompt wired (XAML + ViewModel)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"MainViewModel.Constructor.cs: не нашли обязательный фрагмент: {r}");
+                        }
+                    }
+
+                    return new SmokeTestResult("UI-019", "P1.4: Crash-reports prompt wired (XAML + ViewModel)", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("UI-019", "P1.4: Crash-reports prompt wired (XAML + ViewModel)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        ex.Message);
+                }
+            }, ct);
+
         public static async Task<SmokeTestResult> Ui_BypassMetrics_UpdatesFromService(CancellationToken ct)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();

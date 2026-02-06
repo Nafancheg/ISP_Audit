@@ -828,6 +828,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** Проверка XAML/CS файлов как текста
 **Ожидаемый результат:** Найдены `Инженерный режим` + `EngineerCommand` в Operator, и `← Оператор` + `ReturnToOperator_Click` в Engineer, плюс соответствующие вызовы в code-behind
 
+**Test ID:** `UI-019`
+**Что проверяет:** P1.4 — баннер «Отчёты о падении»: wiring XAML + команды + VM свойства
+**Для чего:** Чтобы пользователь после рестарта видел, что было падение, и мог открыть папку отчётов
+**Критерий успеха:** В MainWindow и OperatorWindow есть баннер + bindings на `IsCrashReportsPromptVisible/CrashReportsPromptText` и команды `CrashReports*Command`
+**Входные данные:** Проверка XAML/CS файлов как текста
+**Ожидаемый результат:** Найдены фрагменты в `MainWindow.xaml`, `Windows/OperatorWindow.xaml` и `ViewModels/MainViewModel.*.cs`
+
 ---
 
 ## 7. Orchestration & Process Tracking

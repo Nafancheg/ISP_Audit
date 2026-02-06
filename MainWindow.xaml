@@ -110,6 +110,27 @@
 
                     <Separator Margin="0,0,0,16"/>
 
+                    <!-- P1.4: Post-crash диагнозы (crash-reports) -->
+                    <Border Background="{DynamicResource MaterialDesignPaper}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="4"
+                            Padding="10" Margin="0,0,0,16"
+                            Visibility="{Binding IsCrashReportsPromptVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <materialDesign:PackIcon Kind="AlertCircleOutline" Width="16" Height="16" Margin="0,0,6,0"/>
+                                <TextBlock Text="Отчёты о падении" FontWeight="SemiBold" FontSize="14"/>
+                            </StackPanel>
+
+                            <TextBlock Text="{Binding CrashReportsPromptText}" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Открыть папку" Command="{Binding CrashReportsOpenFolderCommand}"
+                                        Style="{StaticResource PrimaryButtonStyle}" Padding="12,6" FontSize="13" Height="32" Margin="0,0,6,0"/>
+                                <Button Content="Скрыть" Command="{Binding CrashReportsDismissCommand}"
+                                        Style="{StaticResource SecondaryButtonStyle}" Padding="12,6" FontSize="13" Height="32"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Bypass Control - Вкладки вместо одной большой панели -->
                     <Border Background="{DynamicResource MaterialDesignPaper}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="8"
                             Padding="12"
