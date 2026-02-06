@@ -107,6 +107,8 @@ graph TD
     *   При закрытии приложения выполняет безопасный shutdown: отменяет диагностику, отключает bypass и восстанавливает DNS/DoH (если был включён через `FixService` и существует backup рядом с приложением: `state\\dns_backup.json`). Важно: `App.OnExit` синхронно дожидается `ShutdownAsync`, чтобы откат успел завершиться до завершения процесса.
     *   Crash-recovery: при старте `BypassController.InitializeOnStartupAsync` пытается восстановить DNS из backup, если он остался от прошлой незавершённой сессии (например, после падения процесса).
 
+Также на уровне приложения включён best-effort crash-report для необработанных исключений (UI thread / AppDomain / UnobservedTaskException): отчёты сохраняются в `state\\crash_reports\\app\\` через `Utils/AppCrashReporter.cs`.
+
 Примечание: экземпляр `MainViewModel` создаётся единоразово в `App` и переиспользуется в обоих окнах (Operator/Engineer), чтобы исключить дублирование `TrafficEngine` и двойной shutdown.
 *   **`BypassController`**: ViewModel, отвечающая за настройки обхода.
     *   Связывает UI-тумблеры (Fragment/Disorder/Fake/Drop RST/DoH + assist-флаги `QUIC→TCP` и `No SNI`) с `TlsBypassService` (регистрация фильтра управляется сервисом).

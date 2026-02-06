@@ -10,12 +10,75 @@ public partial class App : System.Windows.Application
         InitializeComponent();
 
         this.DispatcherUnhandledException += App_DispatcherUnhandledException;
+
+        // Глобальные обработчики: фиксируем необработанные исключения в crash-report.
+        AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
     }
 
     private void App_DispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
     {
-        System.Windows.MessageBox.Show($"Ошибка: {e.Exception.Message}\n\nStack trace:\n{e.Exception.StackTrace}", "Ошибка приложения", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+        try
+        {
+            IspAudit.Utils.AppCrashReporter.TryWrite(e.Exception, source: "DispatcherUnhandledException", isTerminating: false);
+        }
+        catch
+        {
+            // ignore
+        }
+
+        System.Windows.MessageBox.Show(
+            "Произошла критическая ошибка. Приложение будет закрыто.\n\n" +
+            "Отчёт сохранён в папке state\\crash_reports\\app\\ рядом с приложением.",
+            "Критическая ошибка",
+            System.Windows.MessageBoxButton.OK,
+            System.Windows.MessageBoxImage.Error);
+
+        // Важно: лучше завершиться контролируемо, чем продолжать в неопределённом состоянии.
         e.Handled = true;
+        try
+        {
+            Shutdown(-1);
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    private static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        try
+        {
+            if (e.ExceptionObject is Exception ex)
+            {
+                IspAudit.Utils.AppCrashReporter.TryWrite(ex, source: "AppDomain.UnhandledException", isTerminating: e.IsTerminating);
+            }
+            else
+            {
+                IspAudit.Utils.AppCrashReporter.TryWrite(
+                    new Exception($"UnhandledException (non-Exception): {e.ExceptionObject}"),
+                    source: "AppDomain.UnhandledException",
+                    isTerminating: e.IsTerminating);
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    private static void TaskScheduler_UnobservedTaskException(object? sender, System.Threading.Tasks.UnobservedTaskExceptionEventArgs e)
+    {
+        try
+        {
+            IspAudit.Utils.AppCrashReporter.TryWrite(e.Exception, source: "TaskScheduler.UnobservedTaskException", isTerminating: null);
+            e.SetObserved();
+        }
+        catch
+        {
+            // ignore
+        }
     }
 
     protected override void OnStartup(System.Windows.StartupEventArgs e)
