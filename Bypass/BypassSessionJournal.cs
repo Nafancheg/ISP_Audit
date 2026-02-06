@@ -37,7 +37,7 @@ namespace IspAudit.Bypass
 
         public static string GetDefaultPath()
         {
-            var overridePath = EnvVar.GetTrimmedNonEmpty("ISP_AUDIT_BYPASS_SESSION_PATH");
+            var overridePath = EnvVar.GetTrimmedNonEmpty(EnvKeys.BypassSessionPath);
             if (!string.IsNullOrWhiteSpace(overridePath))
             {
                 return overridePath;

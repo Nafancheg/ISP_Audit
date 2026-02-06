@@ -17,7 +17,7 @@ namespace IspAudit.Utils
     {
         private const int DefaultMaxEntries = 128;
         private const int DefaultMaxBytes = 512 * 1024;
-        private const string EnvPath = "ISP_AUDIT_OPERATOR_SESSIONS_PATH";
+        private const string EnvPath = EnvKeys.OperatorSessionsPath;
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {

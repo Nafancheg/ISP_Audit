@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using IspAudit.Utils;
 
 namespace IspAudit.Bypass
 {
@@ -70,7 +71,7 @@ namespace IspAudit.Bypass
             // Отменяем отложенную проверку (если была запланирована), и выполняем probe прямо сейчас.
             CancelOutcomeProbe();
 
-            var timeoutMs = ReadMsEnvAllowZero("ISP_AUDIT_OUTCOME_TIMEOUT_MS", (int)OutcomeDefaultTimeout.TotalMilliseconds);
+            var timeoutMs = ReadMsEnvAllowZero(EnvKeys.OutcomeTimeoutMs, (int)OutcomeDefaultTimeout.TotalMilliseconds);
             var timeout = timeoutOverride ?? TimeSpan.FromMilliseconds(timeoutMs);
 
             _lastOutcomeSnapshot = new OutcomeStatusSnapshot(OutcomeStatus.Unknown, "UNKNOWN", "выполняю outcome-probe");
@@ -128,8 +129,8 @@ namespace IspAudit.Bypass
             _outcomeCts = new CancellationTokenSource();
             var ct = _outcomeCts.Token;
 
-            var delayMs = ReadMsEnvAllowZero("ISP_AUDIT_OUTCOME_DELAY_MS", (int)OutcomeDefaultDelay.TotalMilliseconds);
-            var timeoutMs = ReadMsEnvAllowZero("ISP_AUDIT_OUTCOME_TIMEOUT_MS", (int)OutcomeDefaultTimeout.TotalMilliseconds);
+            var delayMs = ReadMsEnvAllowZero(EnvKeys.OutcomeDelayMs, (int)OutcomeDefaultDelay.TotalMilliseconds);
+            var timeoutMs = ReadMsEnvAllowZero(EnvKeys.OutcomeTimeoutMs, (int)OutcomeDefaultTimeout.TotalMilliseconds);
 
             var delay = TimeSpan.FromMilliseconds(delayMs);
             var timeout = TimeSpan.FromMilliseconds(timeoutMs);

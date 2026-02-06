@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using IspAudit.Utils;
 
 namespace IspAudit.Bypass
 {
@@ -48,7 +49,7 @@ namespace IspAudit.Bypass
         {
             if (_watchdogTimer != null) return;
 
-            var tick = ReadMsEnv("ISP_AUDIT_WATCHDOG_TICK_MS", (int)WatchdogDefaultTick.TotalMilliseconds);
+            var tick = ReadMsEnv(EnvKeys.WatchdogTickMs, (int)WatchdogDefaultTick.TotalMilliseconds);
             _watchdogTimer = new System.Threading.Timer(_ => _ = WatchdogTickAsync(), null, dueTime: tick, period: tick);
         }
 
@@ -67,7 +68,7 @@ namespace IspAudit.Bypass
                 _journal.SetBypassActive(true, "bypass_active");
 
                 var nowUtc = DateTime.UtcNow;
-                var staleMs = ReadMsEnv("ISP_AUDIT_WATCHDOG_STALE_MS", (int)WatchdogDefaultStale.TotalMilliseconds);
+                var staleMs = ReadMsEnv(EnvKeys.WatchdogStaleMs, (int)WatchdogDefaultStale.TotalMilliseconds);
                 var stale = TimeSpan.FromMilliseconds(staleMs);
 
                 // Если bypass активен, но метрики/heartbeat не обновлялись слишком долго — fail-safe отключаем.

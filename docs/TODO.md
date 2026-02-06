@@ -57,6 +57,11 @@
 - [x] 05.02.2026: Refactor: тайминги `ISP_AUDIT_*_MS` (watchdog/activation/outcome) читаются через `EnvVar` (dotnet build + smoke reg/ui OK)
 - [x] 05.02.2026: Refactor: Program использует `EnvVar` для gate-check `ISP_AUDIT_POLICY_DRIVEN_TCP443` (dotnet build + smoke reg/ui OK)
 
+- [x] 06.02.2026: dotnet build OK (EnvKeys)
+- [x] 06.02.2026: smoke reg (non-admin) PASS 22/22 (EnvKeys)
+- [x] 06.02.2026: smoke ui (non-admin) PASS 17/17 (EnvKeys)
+- [x] 06.02.2026: Refactor: централизованы строковые ключи ENV в `Utils/EnvKeys.cs` (dotnet build + smoke reg/ui OK)
+
 ---
 
 ## P0 — Стабилизация обхода и рантайма (КРИТИЧЕСКОЕ)

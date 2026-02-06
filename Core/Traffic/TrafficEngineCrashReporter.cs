@@ -9,7 +9,7 @@ namespace IspAudit.Core.Traffic;
 
 internal static class TrafficEngineCrashReporter
 {
-    private const string EnvVarCrashDir = "ISP_AUDIT_TRAFFICENGINE_CRASH_DIR";
+    private const string EnvVarCrashDir = IspAudit.Utils.EnvKeys.TrafficEngineCrashDir;
 
     internal static void TryWrite(Exception exception, string? lastMutationForLog)
     {

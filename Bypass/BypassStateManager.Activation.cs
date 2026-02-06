@@ -1,4 +1,5 @@
 using System;
+using IspAudit.Utils;
 
 namespace IspAudit.Bypass
 {
@@ -18,10 +19,10 @@ namespace IspAudit.Bypass
 
             var nowUtc = DateTime.UtcNow;
 
-            var engineGraceMs = ReadMsEnvAllowZero("ISP_AUDIT_ACTIVATION_ENGINE_GRACE_MS", (int)ActivationDefaultWarmup.TotalMilliseconds);
-            var warmupMs = ReadMsEnvAllowZero("ISP_AUDIT_ACTIVATION_WARMUP_MS", (int)ActivationDefaultWarmup.TotalMilliseconds);
-            var noTrafficMs = ReadMsEnvAllowZero("ISP_AUDIT_ACTIVATION_NO_TRAFFIC_MS", (int)ActivationDefaultNoTraffic.TotalMilliseconds);
-            var staleMs = ReadMsEnvAllowZero("ISP_AUDIT_ACTIVATION_STALE_MS", (int)ActivationDefaultStale.TotalMilliseconds);
+            var engineGraceMs = ReadMsEnvAllowZero(EnvKeys.ActivationEngineGraceMs, (int)ActivationDefaultWarmup.TotalMilliseconds);
+            var warmupMs = ReadMsEnvAllowZero(EnvKeys.ActivationWarmupMs, (int)ActivationDefaultWarmup.TotalMilliseconds);
+            var noTrafficMs = ReadMsEnvAllowZero(EnvKeys.ActivationNoTrafficMs, (int)ActivationDefaultNoTraffic.TotalMilliseconds);
+            var staleMs = ReadMsEnvAllowZero(EnvKeys.ActivationStaleMs, (int)ActivationDefaultStale.TotalMilliseconds);
 
             var engineGrace = TimeSpan.FromMilliseconds(engineGraceMs);
             var warmup = TimeSpan.FromMilliseconds(warmupMs);

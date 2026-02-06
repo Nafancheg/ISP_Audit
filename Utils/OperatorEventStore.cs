@@ -18,7 +18,7 @@ namespace IspAudit.Utils
         private const int MaxJsonBytes = 256 * 1024; // best-effort защита от раздувания
         private const string DefaultFileName = "operator_events.json";
 
-        private const string EnvVarPathOverride = "ISP_AUDIT_OPERATOR_EVENTS_PATH";
+        private const string EnvVarPathOverride = EnvKeys.OperatorEventsPath;
 
         private sealed record PersistedStateV1
         {

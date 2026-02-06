@@ -12,7 +12,7 @@ namespace IspAudit.Core.Bypass
         {
             try
             {
-                return IspAudit.Utils.EnvVar.ReadBool("ISP_AUDIT_POLICY_DRIVEN_UDP443", defaultValue: false);
+                return IspAudit.Utils.EnvVar.ReadBool(IspAudit.Utils.EnvKeys.PolicyDrivenUdp443, defaultValue: false);
             }
             catch
             {
@@ -29,7 +29,7 @@ namespace IspAudit.Core.Bypass
         {
             try
             {
-                return IspAudit.Utils.EnvVar.ReadBool("ISP_AUDIT_POLICY_DRIVEN_TTLBLOCK", defaultValue: false);
+                return IspAudit.Utils.EnvVar.ReadBool(IspAudit.Utils.EnvKeys.PolicyDrivenTtlBlock, defaultValue: false);
             }
             catch
             {
@@ -46,7 +46,7 @@ namespace IspAudit.Core.Bypass
         {
             try
             {
-                return IspAudit.Utils.EnvVar.ReadBool("ISP_AUDIT_POLICY_DRIVEN_TCP80", defaultValue: false);
+                return IspAudit.Utils.EnvVar.ReadBool(IspAudit.Utils.EnvKeys.PolicyDrivenTcp80, defaultValue: false);
             }
             catch
             {
@@ -63,7 +63,7 @@ namespace IspAudit.Core.Bypass
         {
             try
             {
-                return IspAudit.Utils.EnvVar.ReadBool("ISP_AUDIT_POLICY_DRIVEN_TCP443", defaultValue: false);
+                return IspAudit.Utils.EnvVar.ReadBool(IspAudit.Utils.EnvKeys.PolicyDrivenTcp443, defaultValue: false);
             }
             catch
             {

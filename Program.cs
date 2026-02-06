@@ -19,9 +19,9 @@ namespace IspAudit
 
             // P0.1 Step 1: продуктовый режим — DecisionGraph выбирает TLS стратегию по признакам пакета.
             // Гейт можно переопределить снаружи (env var уже задана) — тогда не трогаем.
-            if (string.IsNullOrWhiteSpace(EnvVar.GetRaw("ISP_AUDIT_POLICY_DRIVEN_TCP443")))
+            if (string.IsNullOrWhiteSpace(EnvVar.GetRaw(EnvKeys.PolicyDrivenTcp443)))
             {
-                Environment.SetEnvironmentVariable("ISP_AUDIT_POLICY_DRIVEN_TCP443", "1");
+                Environment.SetEnvironmentVariable(EnvKeys.PolicyDrivenTcp443, "1");
             }
 
             // Загружаем профиль по умолчанию

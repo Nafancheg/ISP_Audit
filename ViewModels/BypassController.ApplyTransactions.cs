@@ -366,7 +366,7 @@ namespace IspAudit.ViewModels
 
         private static string GetApplyTransactionsPersistPath()
         {
-            var overridePath = EnvVar.GetTrimmedNonEmpty("ISP_AUDIT_APPLY_TRANSACTIONS_PATH");
+            var overridePath = EnvVar.GetTrimmedNonEmpty(EnvKeys.ApplyTransactionsPath);
             if (!string.IsNullOrWhiteSpace(overridePath))
             {
                 return overridePath;

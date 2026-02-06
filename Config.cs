@@ -46,15 +46,15 @@ namespace IspAudit
             /// По умолчанию false: INTEL может рекомендовать DoH, но применять его должен только пользователь вручную.
             /// </summary>
             public static bool EnableIntelDoHFromPlan
-                => EnvVar.ReadBool("ISP_AUDIT_ENABLE_INTEL_DOH", defaultValue: EnvVar.ReadBool(LegacyEnableDohEnv, defaultValue: false));
+                => EnvVar.ReadBool(EnvKeys.EnableIntelDoh, defaultValue: EnvVar.ReadBool(LegacyEnableDohEnv, defaultValue: false));
 
-            private static string LegacyEnableDohEnv => "ISP_AUDIT_ENABLE_" + "V" + "2" + "_DOH";
+            private static string LegacyEnableDohEnv => EnvKeys.EnableV2Doh;
 
             /// <summary>
             /// Разрешить авто-ретест после изменения тумблеров bypass в UI.
             /// По умолчанию false: ретест должен запускаться явно пользователем.
             /// </summary>
-            public static bool EnableAutoRetestOnBypassChange => ReadBoolEnv("ISP_AUDIT_ENABLE_AUTO_RETEST", defaultValue: false);
+            public static bool EnableAutoRetestOnBypassChange => ReadBoolEnv(EnvKeys.EnableAutoRetest, defaultValue: false);
         }
 
         private static bool ReadBoolEnv(string name, bool defaultValue)

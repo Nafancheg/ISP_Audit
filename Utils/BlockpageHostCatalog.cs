@@ -24,7 +24,7 @@ namespace IspAudit.Utils
 
     public static class BlockpageHostCatalog
     {
-        private const string EnvVarPathOverride = "ISP_AUDIT_BLOCKPAGE_HOSTS_PATH";
+        private const string EnvVarPathOverride = EnvKeys.BlockpageHostsPath;
         private const string DefaultFileName = "blockpage_hosts.json";
 
         private sealed class CachedRules
