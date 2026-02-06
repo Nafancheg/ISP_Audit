@@ -169,15 +169,19 @@ namespace IspAudit.Windows
 
         private void SwitchToEngineer()
         {
-            var result = WpfMessageBox.Show(
-                "Открыть инженерный режим?\n\nТам больше настроек и деталей.",
-                "Переход в инженерный режим",
-                MessageBoxButton.OKCancel,
-                MessageBoxImage.Question);
-
-            if (result != MessageBoxResult.OK)
+            // В smoke/не-GUI контекстах не показываем модальные окна.
+            if (WpfApplication.Current is not null)
             {
-                return;
+                var result = WpfMessageBox.Show(
+                    "Вы переходите в расширенный режим — здесь доступны технические детали и настройки.\n\nПродолжить?",
+                    "Расширенный режим",
+                    MessageBoxButton.OKCancel,
+                    MessageBoxImage.Question);
+
+                if (result != MessageBoxResult.OK)
+                {
+                    return;
+                }
             }
 
             try

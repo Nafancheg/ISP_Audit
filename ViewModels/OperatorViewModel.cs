@@ -30,6 +30,61 @@ namespace IspAudit.ViewModels
             Fixing
         }
 
+        private sealed record OperatorStatusPresentation(
+            string Headline,
+            string UserDetailsStatus,
+            PackIconKind HeroIconKind,
+            System.Windows.Media.Brush HeroAccentBrush,
+            string DefaultPrimaryButtonText);
+
+        private static OperatorStatusPresentation GetPresentation(OperatorStatus status)
+        {
+            return status switch
+            {
+                OperatorStatus.Checking => new OperatorStatusPresentation(
+                    Headline: "Идёт проверка",
+                    UserDetailsStatus: "Идёт проверка",
+                    HeroIconKind: PackIconKind.Radar,
+                    HeroAccentBrush: System.Windows.Media.Brushes.DodgerBlue,
+                    DefaultPrimaryButtonText: "Остановить"),
+
+                OperatorStatus.Fixing => new OperatorStatusPresentation(
+                    Headline: "Исправляю…",
+                    UserDetailsStatus: "Идёт исправление",
+                    HeroIconKind: PackIconKind.Wrench,
+                    HeroAccentBrush: System.Windows.Media.Brushes.DodgerBlue,
+                    DefaultPrimaryButtonText: "Исправляю…"),
+
+                OperatorStatus.Blocked => new OperatorStatusPresentation(
+                    Headline: "Найдены проблемы",
+                    UserDetailsStatus: "Есть блокировки",
+                    HeroIconKind: PackIconKind.ShieldAlert,
+                    HeroAccentBrush: System.Windows.Media.Brushes.IndianRed,
+                    DefaultPrimaryButtonText: "Исправить"),
+
+                OperatorStatus.Warn => new OperatorStatusPresentation(
+                    Headline: "Есть ограничения",
+                    UserDetailsStatus: "Есть ограничения",
+                    HeroIconKind: PackIconKind.ShieldOutline,
+                    HeroAccentBrush: System.Windows.Media.Brushes.DarkOrange,
+                    DefaultPrimaryButtonText: "Исправить"),
+
+                OperatorStatus.Ok => new OperatorStatusPresentation(
+                    Headline: "Всё в порядке",
+                    UserDetailsStatus: "Норма",
+                    HeroIconKind: PackIconKind.ShieldCheck,
+                    HeroAccentBrush: System.Windows.Media.Brushes.SeaGreen,
+                    DefaultPrimaryButtonText: "Проверить снова"),
+
+                _ => new OperatorStatusPresentation(
+                    Headline: "Готов к проверке",
+                    UserDetailsStatus: "Ожидание",
+                    HeroIconKind: PackIconKind.Shield,
+                    HeroAccentBrush: System.Windows.Media.Brushes.Gray,
+                    DefaultPrimaryButtonText: "Проверить")
+            };
+        }
+
         public MainViewModel Main { get; }
 
         private const int MaxHistoryEntries = 256;
@@ -203,15 +258,7 @@ namespace IspAudit.ViewModels
         {
             get
             {
-                return Status switch
-                {
-                    OperatorStatus.Checking => "Идёт проверка",
-                    OperatorStatus.Fixing => "Исправляю…",
-                    OperatorStatus.Blocked => "Найдены проблемы",
-                    OperatorStatus.Warn => "Есть ограничения",
-                    OperatorStatus.Ok => "Всё в порядке",
-                    _ => "Готов к проверке"
-                };
+                return GetPresentation(Status).Headline;
             }
         }
 
@@ -276,15 +323,7 @@ namespace IspAudit.ViewModels
         {
             get
             {
-                return Status switch
-                {
-                    OperatorStatus.Checking => "Идёт проверка",
-                    OperatorStatus.Fixing => "Идёт исправление",
-                    OperatorStatus.Blocked => "Есть блокировки",
-                    OperatorStatus.Warn => "Есть ограничения",
-                    OperatorStatus.Ok => "Норма",
-                    _ => "Ожидание"
-                };
+                return GetPresentation(Status).UserDetailsStatus;
             }
         }
 
@@ -380,15 +419,7 @@ namespace IspAudit.ViewModels
         {
             get
             {
-                return Status switch
-                {
-                    OperatorStatus.Checking => PackIconKind.Radar,
-                    OperatorStatus.Fixing => PackIconKind.Wrench,
-                    OperatorStatus.Blocked => PackIconKind.ShieldAlert,
-                    OperatorStatus.Warn => PackIconKind.ShieldOutline,
-                    OperatorStatus.Ok => PackIconKind.ShieldCheck,
-                    _ => PackIconKind.Shield
-                };
+                return GetPresentation(Status).HeroIconKind;
             }
         }
 
@@ -396,15 +427,7 @@ namespace IspAudit.ViewModels
         {
             get
             {
-                return Status switch
-                {
-                    OperatorStatus.Checking => System.Windows.Media.Brushes.DodgerBlue,
-                    OperatorStatus.Fixing => System.Windows.Media.Brushes.DodgerBlue,
-                    OperatorStatus.Blocked => System.Windows.Media.Brushes.IndianRed,
-                    OperatorStatus.Warn => System.Windows.Media.Brushes.DarkOrange,
-                    OperatorStatus.Ok => System.Windows.Media.Brushes.SeaGreen,
-                    _ => System.Windows.Media.Brushes.Gray
-                };
+                return GetPresentation(Status).HeroAccentBrush;
             }
         }
 
@@ -506,14 +529,16 @@ namespace IspAudit.ViewModels
         {
             get
             {
-                if (Status == OperatorStatus.Checking) return "Остановить";
-                if (Status == OperatorStatus.Fixing) return "Исправляю…";
-                if (Status == OperatorStatus.Ok) return "Проверить снова";
-                if (Status == OperatorStatus.Warn || Status == OperatorStatus.Blocked)
+                var p = GetPresentation(Status);
+
+                // Единственное исключение из таблицы: если "Исправить" недоступно, предлагаем повторную проверку.
+                if ((Status == OperatorStatus.Warn || Status == OperatorStatus.Blocked)
+                    && !Main.HasAnyRecommendations)
                 {
-                    return Main.HasAnyRecommendations ? "Исправить" : "Проверить снова";
+                    return "Проверить снова";
                 }
-                return "Проверить";
+
+                return p.DefaultPrimaryButtonText;
             }
         }
 
