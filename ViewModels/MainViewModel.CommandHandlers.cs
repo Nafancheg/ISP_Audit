@@ -191,6 +191,95 @@ namespace IspAudit.ViewModels
             }
         }
 
+        private async Task ApplyEscalationAsync()
+        {
+            if (IsApplyingRecommendations)
+            {
+                return;
+            }
+
+            if (!ShowBypassPanel)
+            {
+                Log("[APPLY][ESCALATE] Bypass недоступен (нужны права администратора)");
+                return;
+            }
+
+            IsApplyingRecommendations = true;
+            try
+            {
+                var preferredHostKey = GetPreferredHostKey(SelectedTestResult);
+                var txId = Guid.NewGuid().ToString("N");
+                using var op = BypassOperationContext.Enter(txId, "ui_apply_escalation", preferredHostKey);
+
+                var outcome = await Orchestrator.ApplyEscalationAsync(Bypass, preferredHostKey).ConfigureAwait(false);
+                if (outcome == null)
+                {
+                    Log("[APPLY][ESCALATE] Нет доступной ступени усиления");
+                    return;
+                }
+
+                // Практический UX: сразу запускаем короткий пост-Apply ретест по цели.
+                if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                {
+                    var groupKeyForCheck = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
+                    SetPostApplyCheckStatusForGroupKey(groupKeyForCheck, IsRunning ? PostApplyCheckStatus.Queued : PostApplyCheckStatus.Running);
+                }
+
+                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, preferredHostKey, txId);
+
+                if (Bypass.IsBypassActive && SelectedTestResult != null)
+                {
+                    var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
+
+                    if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
+                        MarkAppliedBypassTargetsForGroupKey(groupKey);
+
+                        // Step 11: user-initiated apply фиксирует groupKey для этой цели.
+                        PinHostKeyToGroupKeyBestEffort(outcome.HostKey, groupKey);
+                        PersistManualParticipationBestEffort();
+                    }
+
+                    var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
+                    if (endpoints.Count == 0)
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
+                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                    }
+
+                    if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _groupBypassAttachmentStore.UpdateAttachmentFromApply(groupKey, outcome.HostKey, endpoints, outcome.PlanText);
+                        PersistManualParticipationBestEffort();
+                    }
+
+                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, outcome.Reasoning,
+                        transactionIdOverride: txId,
+                        resultStatus: outcome.Status,
+                        error: outcome.Error,
+                        rollbackStatus: outcome.RollbackStatus,
+                        cancelReason: outcome.CancelReason,
+                        applyCurrentPhase: outcome.ApplyCurrentPhase,
+                        applyTotalElapsedMs: outcome.ApplyTotalElapsedMs,
+                        applyPhases: outcome.ApplyPhases);
+                    UpdateLastApplyTransactionTextForGroupKey(groupKey);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Log("[APPLY][ESCALATE] Отмена усиления");
+            }
+            catch (Exception ex)
+            {
+                Log($"[APPLY][ESCALATE] Ошибка усиления: {ex.Message}");
+            }
+            finally
+            {
+                IsApplyingRecommendations = false;
+            }
+        }
+
         private async Task ApplyDomainRecommendationsAsync(string? domainOverride = null)
         {
             if (IsApplyingRecommendations)

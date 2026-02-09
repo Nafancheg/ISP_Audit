@@ -304,6 +304,7 @@ namespace IspAudit.ViewModels
                 _ => ShowBypassPanel && (IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled || IsDropRstEnabled));
 
             ApplyRecommendationsCommand = new RelayCommand(async _ => await ApplyRecommendationsAsync(), _ => HasRecommendations && !IsApplyingRecommendations);
+            ApplyEscalationCommand = new RelayCommand(async _ => await ApplyEscalationAsync(), _ => ShowBypassPanel && !IsApplyingRecommendations);
             ApplyDomainRecommendationsCommand = new RelayCommand(async _ => await ApplyDomainRecommendationsAsync(), _ => HasDomainSuggestion && !IsApplyingRecommendations);
             ApplyDomainGroupRecommendationsCommand = new RelayCommand(async _ => await ApplyDomainGroupRecommendationsAsync(), _ => HasDomainGroupSuggestion && !IsApplyingRecommendations);
 

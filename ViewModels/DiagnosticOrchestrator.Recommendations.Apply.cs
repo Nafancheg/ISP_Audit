@@ -236,6 +236,170 @@ namespace IspAudit.ViewModels
             return await ApplyPlanInternalAsync(bypassController, hostKey, _lastIntelPlan).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// P1.11: «Эскалация ступенями» для Operator UX.
+        /// Детерминированно усиливает уже применённые обходы, добавляя по одному действию за раз.
+        /// Важно: это не auto-bypass, а ручная кнопка «Усилить».
+        /// </summary>
+        public async Task<ApplyOutcome?> ApplyEscalationAsync(BypassController bypassController, string? preferredHostKey)
+        {
+            if (bypassController == null) return null;
+
+            // Выбираем план так же, как в обычном Apply: сначала preferredHostKey, затем fallback.
+            string? hostKey = null;
+            BypassPlan? basePlan = null;
+
+            if (!string.IsNullOrWhiteSpace(preferredHostKey)
+                && _intelPlansByHost.TryGetValue(preferredHostKey.Trim(), out var preferredPlan)
+                && PlanHasApplicableActions(preferredPlan))
+            {
+                hostKey = preferredHostKey.Trim();
+                basePlan = preferredPlan;
+            }
+            else if (_lastIntelPlan != null && PlanHasApplicableActions(_lastIntelPlan))
+            {
+                hostKey = !string.IsNullOrWhiteSpace(_lastIntelPlanHostKey)
+                    ? _lastIntelPlanHostKey
+                    : _lastIntelDiagnosisHostKey;
+                basePlan = _lastIntelPlan;
+            }
+
+            hostKey = (hostKey ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(hostKey) || basePlan == null)
+            {
+                Log("[APPLY][ESCALATE] Skip: нет базового плана/цели");
+                return null;
+            }
+
+            if (!TryBuildEscalationPlan(basePlan, bypassController, out var escalationPlan, out var escalationReason))
+            {
+                Log($"[APPLY][ESCALATE] Skip: нечего усиливать (host='{hostKey}'; reason='{escalationReason}')");
+                return null;
+            }
+
+            Log($"[APPLY][ESCALATE] host='{hostKey}'; step='{escalationReason}'");
+            return await ApplyPlanInternalAsync(bypassController, hostKey, escalationPlan).ConfigureAwait(false);
+        }
+
+        private static bool TryBuildEscalationPlan(BypassPlan basePlan, BypassController bypassController, out BypassPlan escalationPlan, out string reason)
+        {
+            escalationPlan = basePlan;
+            reason = string.Empty;
+
+            try
+            {
+                // Эскалируем только safe-only (без DoH и без high-risk).
+                // Шаги (по одному действию за раз):
+                // 1) Fragment -> Disorder
+                // 2) включить DropRst
+                // 3) включить QUIC fallback (DROP UDP/443)
+                // 4) включить AllowNoSNI
+
+                var hasFragment = bypassController.IsFragmentEnabled;
+                var hasDisorder = bypassController.IsDisorderEnabled;
+                var hasDropRst = bypassController.IsDropRstEnabled;
+                var hasQuicFallback = bypassController.IsQuicFallbackEnabled;
+                var hasAllowNoSni = bypassController.IsAllowNoSniEnabled;
+
+                var plan = new BypassPlan
+                {
+                    ForDiagnosis = basePlan.ForDiagnosis,
+                    PlanConfidence = Math.Clamp(basePlan.PlanConfidence, 0, 100),
+                    PlannedAtUtc = DateTimeOffset.UtcNow,
+                    Reasoning = string.IsNullOrWhiteSpace(basePlan.Reasoning)
+                        ? "усиление"
+                        : basePlan.Reasoning + "; усиление",
+
+                    // Не переносим deferred: эскалация должна быть исполнимой.
+                    Strategies = new List<BypassStrategy>(),
+                    DeferredStrategies = new List<DeferredBypassStrategy>(),
+
+                    DropUdp443 = false,
+                    AllowNoSni = false,
+                };
+
+                // Шаг 1: если сейчас включён Fragment, но Disorder нет — усиливаем до Disorder.
+                if (hasFragment && !hasDisorder)
+                {
+                    plan.Strategies.Add(new BypassStrategy
+                    {
+                        Id = StrategyId.TlsDisorder,
+                        BasePriority = 100,
+                        Risk = RiskLevel.Medium,
+                        Parameters = new Dictionary<string, object?>()
+                    });
+
+                    escalationPlan = plan;
+                    reason = "tls_disorder";
+                    return true;
+                }
+
+                // Шаг 2: если DropRst ещё не включён — добавляем его.
+                if (!hasDropRst)
+                {
+                    plan.Strategies.Add(new BypassStrategy
+                    {
+                        Id = StrategyId.DropRst,
+                        BasePriority = 50,
+                        Risk = RiskLevel.Medium,
+                        Parameters = new Dictionary<string, object?>()
+                    });
+
+                    escalationPlan = plan;
+                    reason = "drop_rst";
+                    return true;
+                }
+
+                // Шаг 3: если QUIC fallback ещё не включён — включаем (assist-флаг).
+                if (!hasQuicFallback)
+                {
+                    escalationPlan = new BypassPlan
+                    {
+                        ForDiagnosis = plan.ForDiagnosis,
+                        PlanConfidence = plan.PlanConfidence,
+                        PlannedAtUtc = plan.PlannedAtUtc,
+                        Reasoning = plan.Reasoning,
+                        Strategies = plan.Strategies,
+                        DeferredStrategies = plan.DeferredStrategies,
+                        DropUdp443 = true,
+                        AllowNoSni = false,
+                    };
+
+                    reason = "drop_udp_443";
+                    return true;
+                }
+
+                // Шаг 4: последняя ступень — AllowNoSNI.
+                if (!hasAllowNoSni)
+                {
+                    escalationPlan = new BypassPlan
+                    {
+                        ForDiagnosis = plan.ForDiagnosis,
+                        PlanConfidence = plan.PlanConfidence,
+                        PlannedAtUtc = plan.PlannedAtUtc,
+                        Reasoning = plan.Reasoning,
+                        Strategies = plan.Strategies,
+                        DeferredStrategies = plan.DeferredStrategies,
+                        DropUdp443 = false,
+                        AllowNoSni = true,
+                    };
+
+                    reason = "allow_no_sni";
+                    return true;
+                }
+
+                escalationPlan = plan;
+                reason = "already_max";
+                return false;
+            }
+            catch (Exception ex)
+            {
+                escalationPlan = basePlan;
+                reason = "error: " + ex.Message;
+                return false;
+            }
+        }
+
         private async Task<ApplyOutcome?> ApplyPlanInternalAsync(BypassController bypassController, string hostKey, BypassPlan plan)
         {
             if (NoiseHostFilter.Instance.IsNoiseHost(hostKey))

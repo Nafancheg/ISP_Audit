@@ -545,6 +545,34 @@ namespace IspAudit.ViewModels
 
         public bool HasFixStepOutcome => !string.IsNullOrWhiteSpace(_lastPostApplyVerdict);
 
+        private bool IsEscalationAvailableNow
+        {
+            get
+            {
+                // «Усилить» показываем только после неуспешного пост-apply ретеста.
+                var v = (_lastPostApplyVerdict ?? string.Empty).Trim().ToUpperInvariant();
+                if (v != "FAIL" && v != "PARTIAL") return false;
+
+                // В non-admin режиме применить байпас нельзя.
+                if (!Main.ShowBypassPanel) return false;
+
+                // Если идёт apply/ретест — не эскалируем.
+                if (Main.IsApplyRunning || Main.IsPostApplyRetestRunning) return false;
+
+                // Детерминированная лестница должна совпадать с Orchestrator.TryBuildEscalationPlan:
+                // 1) Fragment -> Disorder
+                // 2) DropRst
+                // 3) QUIC fallback
+                // 4) AllowNoSNI
+                if (Main.IsFragmentEnabled && !Main.IsDisorderEnabled) return true;
+                if (!Main.IsDropRstEnabled) return true;
+                if (!Main.IsQuicFallbackEnabled) return true;
+                if (!Main.IsAllowNoSniEnabled) return true;
+
+                return false;
+            }
+        }
+
         public string FixStepOutcomeText
         {
             get
@@ -569,7 +597,7 @@ namespace IspAudit.ViewModels
 
         public bool ShowFixButton =>
             (Status == OperatorStatus.Warn || Status == OperatorStatus.Blocked)
-            && Main.HasAnyRecommendations
+            && (Main.HasAnyRecommendations || IsEscalationAvailableNow)
             && !Main.IsApplyRunning;
 
         public bool ShowPrimaryButton => !ShowFixButton;
@@ -600,7 +628,12 @@ namespace IspAudit.ViewModels
             }
         }
 
-        public string FixButtonText => Main.IsApplyRunning ? "Исправляю…" : "Исправить";
+        public string FixButtonText
+            => Main.IsApplyRunning
+                ? "Исправляю…"
+                : IsEscalationAvailableNow
+                    ? "Усилить"
+                    : "Исправить";
         public ICommand FixCommand => new RelayCommand(_ => ExecuteFix());
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -700,7 +733,8 @@ namespace IspAudit.ViewModels
 
         private void ExecutePrimary()
         {
-            if ((Status == OperatorStatus.Warn || Status == OperatorStatus.Blocked) && Main.HasAnyRecommendations)
+            if ((Status == OperatorStatus.Warn || Status == OperatorStatus.Blocked)
+                && (Main.HasAnyRecommendations || IsEscalationAvailableNow))
             {
                 ExecuteFix();
                 return;
@@ -728,7 +762,15 @@ namespace IspAudit.ViewModels
             try
             {
                 _pendingFixTriggeredByUser = true;
-                Main.ApplyRecommendationsCommand.Execute(null);
+
+                if (IsEscalationAvailableNow)
+                {
+                    Main.ApplyEscalationCommand.Execute(null);
+                }
+                else
+                {
+                    Main.ApplyRecommendationsCommand.Execute(null);
+                }
             }
             catch (Exception ex)
             {

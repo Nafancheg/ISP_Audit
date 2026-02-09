@@ -116,6 +116,8 @@ graph TD
 P1.4 (UX post-crash): при запуске в GUI окружении `MainViewModel` проверяет наличие **новых** crash-report JSON (app + traffic_engine) и показывает баннер «Отчёты о падении» с CTA «Открыть папку». Отметка «просмотрено» хранится в `state\\crash_reports_seen.json` (см. `Utils/CrashReportsSeenStore.cs`).
 
 Примечание: экземпляр `MainViewModel` создаётся единоразово в `App` и переиспользуется в обоих окнах (Operator/Engineer), чтобы исключить дублирование `TrafficEngine` и двойной shutdown.
+
+P1.11 (Operator UX): после ручного Apply запускается post-apply ретест. Если вердикт `FAIL` или `PARTIAL`, Operator UI предлагает единственное действие «Усилить» (без выбора стратегий) — применяется следующая safe-only ступень обхода (Disorder → DropRst → QUIC fallback → AllowNoSNI). Маршрут: `OperatorViewModel` → `MainViewModel.ApplyEscalationCommand` → `DiagnosticOrchestrator.ApplyEscalationAsync`.
 *   **`BypassController`**: ViewModel, отвечающая за настройки обхода.
     *   Связывает UI-тумблеры (Fragment/Disorder/Fake/Drop RST/DoH + assist-флаги `QUIC→TCP` и `No SNI`) с `TlsBypassService` (регистрация фильтра управляется сервисом).
     *   Восстанавливает пресет/автокоррекцию и assist-флаги из `bypass_profile.json`; сохраняет выбранный пресет отдельно (обновляя только поля фрагментации) и assist-флаги отдельно (без перезаписи TTL/redirect rules).

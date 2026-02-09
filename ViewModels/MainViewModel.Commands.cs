@@ -23,6 +23,7 @@ namespace IspAudit.ViewModels
         public ICommand ToggleDoHCommand { get; }
         public ICommand DisableAllBypassCommand { get; }
         public ICommand ApplyRecommendationsCommand { get; }
+        public ICommand ApplyEscalationCommand { get; }
         public ICommand ApplyDomainRecommendationsCommand { get; }
         public ICommand ApplyDomainGroupRecommendationsCommand { get; }
         public ICommand PromoteDomainGroupSuggestionCommand { get; }
