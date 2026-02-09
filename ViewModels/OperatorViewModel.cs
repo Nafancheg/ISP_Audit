@@ -42,8 +42,8 @@ namespace IspAudit.ViewModels
             return status switch
             {
                 OperatorStatus.Checking => new OperatorStatusPresentation(
-                    Headline: "Идёт проверка",
-                    UserDetailsStatus: "Идёт проверка",
+                    Headline: "Анализ сети…",
+                    UserDetailsStatus: "Проверка",
                     HeroIconKind: PackIconKind.Radar,
                     HeroAccentBrush: System.Windows.Media.Brushes.DodgerBlue,
                     DefaultPrimaryButtonText: "Остановить"),
@@ -56,32 +56,32 @@ namespace IspAudit.ViewModels
                     DefaultPrimaryButtonText: "Исправляю…"),
 
                 OperatorStatus.Blocked => new OperatorStatusPresentation(
-                    Headline: "Найдены проблемы",
-                    UserDetailsStatus: "Есть блокировки",
+                    Headline: "Доступ заблокирован",
+                    UserDetailsStatus: "Блокировка",
                     HeroIconKind: PackIconKind.ShieldAlert,
                     HeroAccentBrush: System.Windows.Media.Brushes.IndianRed,
                     DefaultPrimaryButtonText: "Исправить"),
 
                 OperatorStatus.Warn => new OperatorStatusPresentation(
-                    Headline: "Есть ограничения",
-                    UserDetailsStatus: "Есть ограничения",
+                    Headline: "Некоторые сервисы нестабильны",
+                    UserDetailsStatus: "Ограничения",
                     HeroIconKind: PackIconKind.ShieldOutline,
                     HeroAccentBrush: System.Windows.Media.Brushes.DarkOrange,
                     DefaultPrimaryButtonText: "Исправить"),
 
                 OperatorStatus.Ok => new OperatorStatusPresentation(
-                    Headline: "Всё в порядке",
+                    Headline: "Сеть работает нормально",
                     UserDetailsStatus: "Норма",
                     HeroIconKind: PackIconKind.ShieldCheck,
                     HeroAccentBrush: System.Windows.Media.Brushes.SeaGreen,
                     DefaultPrimaryButtonText: "Проверить снова"),
 
                 _ => new OperatorStatusPresentation(
-                    Headline: "Готов к проверке",
+                    Headline: "Нажмите для проверки",
                     UserDetailsStatus: "Ожидание",
                     HeroIconKind: PackIconKind.Shield,
                     HeroAccentBrush: System.Windows.Media.Brushes.Gray,
-                    DefaultPrimaryButtonText: "Проверить")
+                    DefaultPrimaryButtonText: "Проверить сеть")
             };
         }
 
