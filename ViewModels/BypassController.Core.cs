@@ -2,6 +2,8 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.Core.Traffic;
+using IspAudit.Utils;
 
 // Явно указываем WPF Application вместо WinForms
 using Application = System.Windows.Application;
@@ -154,6 +156,76 @@ namespace IspAudit.ViewModels
             // Важно: DisableAll должен быть «жёстким» выключением.
             // ApplyBypassOptionsAsync может снова включить capabilities из remembered active targets (policy-driven union).
             await _stateManager.DisableTlsAsync("manual_disable_all", cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Быстрый «Откатить всё»: выключить bypass и восстановить DNS/DoH,
+        /// если приложение ранее создавало backup и меняло системные настройки.
+        /// </summary>
+        public async Task RollbackAllAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                await DisableAllAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // best-effort: даже если TLS disable упал, всё равно пробуем вернуть DNS.
+                Log($"[Rollback] DisableAll failed: {ex.Message}");
+            }
+
+            try
+            {
+                // DNS/DoH: если есть backup, значит приложение ранее трогало системные настройки.
+                // В этом случае «Откатить» должен попытаться восстановить их независимо от текущей галочки UI.
+                if (!FixService.HasBackupFile)
+                {
+                    // Если backup нет — просто синхронизируем UI-галочку best-effort.
+                    if (_isDoHEnabled)
+                    {
+                        await DisableDoHAsync().ConfigureAwait(false);
+                    }
+
+                    return;
+                }
+
+                if (!TrafficEngine.HasAdministratorRights)
+                {
+                    Log("[DoH] Rollback requested, but no admin rights to restore DNS.");
+                    return;
+                }
+
+                Log("[DoH] Rollback: restoring original DNS settings...");
+                var (success, error) = await FixService.RestoreDnsAsync(reason: "rollback_all", cancellationToken: cancellationToken).ConfigureAwait(false);
+
+                if (success)
+                {
+                    Log("[DoH] Rollback: DNS restored.");
+
+                    _isDoHEnabled = false;
+                    SafeUiInvoke(() =>
+                    {
+                        OnPropertyChanged(nameof(IsDoHEnabled));
+                        OnPropertyChanged(nameof(IsDoHActive));
+                    });
+                }
+                else
+                {
+                    Log($"[DoH] Rollback: restore failed: {error}");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Log($"[DoH] Rollback exception: {ex.Message}");
+            }
         }
 
         public string GetOutcomeTargetHost() => _stateManager.GetOutcomeTargetHost();

@@ -32,6 +32,8 @@
 
 Дополнение (09.02.2026): P1.11 (Operator UX) — поддерживается «эскалация ступенями» после post-apply ретеста: при вердикте `FAIL/PARTIAL` оператору предлагается одно действие «Усилить», которое применяет следующую safe-only ступень (Disorder → DropRst → QUIC fallback → AllowNoSNI).
 
+Дополнение (09.02.2026): P1.11 (Operator UX) — кнопка «Откатить» выполняет полный rollback: выключение bypass + best-effort восстановление DNS/DoH при наличии backup (через `BypassController.RollbackAllAsync`).
+
 Дополнение (04.02.2026): P1.11 — добавлен UX‑контракт Operator UI (`docs/P1_11_operator_ui_contract.md`) и wizard‑скелет OperatorWindow (выбор источника трафика → прогресс → итог) на базе вычисляемого операторского состояния в `OperatorViewModel`.
 
 Дополнение (04.02.2026): P1.11 — история Operator UI реализована как список **сессий** (полный цикл: проверка → проблемы → что применили → итог post‑apply ретеста) с best-effort персистом в `state\\operator_sessions.json`.

@@ -786,7 +786,7 @@ namespace IspAudit.ViewModels
 
             try
             {
-                await Main.Bypass.DisableAllAsync().ConfigureAwait(false);
+                await Main.Bypass.RollbackAllAsync().ConfigureAwait(false);
                 _activeSession?.Actions.Add("Откат: выполнено (обход выключен)");
 
                 // Rollback часто является «закрывающим» действием. Если сессия без проверки — закрываем сразу.

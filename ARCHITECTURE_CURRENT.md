@@ -118,6 +118,8 @@ P1.4 (UX post-crash): при запуске в GUI окружении `MainViewM
 Примечание: экземпляр `MainViewModel` создаётся единоразово в `App` и переиспользуется в обоих окнах (Operator/Engineer), чтобы исключить дублирование `TrafficEngine` и двойной shutdown.
 
 P1.11 (Operator UX): после ручного Apply запускается post-apply ретест. Если вердикт `FAIL` или `PARTIAL`, Operator UI предлагает единственное действие «Усилить» (без выбора стратегий) — применяется следующая safe-only ступень обхода (Disorder → DropRst → QUIC fallback → AllowNoSNI). Маршрут: `OperatorViewModel` → `MainViewModel.ApplyEscalationCommand` → `DiagnosticOrchestrator.ApplyEscalationAsync`.
+
+P1.11 (Operator UX): быстрый откат «Откатить» выполняет жёсткое выключение bypass и best-effort восстановление DNS/DoH (если ранее был создан backup). Маршрут: `OperatorViewModel.RollbackCommand` → `BypassController.RollbackAllAsync`.
 *   **`BypassController`**: ViewModel, отвечающая за настройки обхода.
     *   Связывает UI-тумблеры (Fragment/Disorder/Fake/Drop RST/DoH + assist-флаги `QUIC→TCP` и `No SNI`) с `TlsBypassService` (регистрация фильтра управляется сервисом).
     *   Восстанавливает пресет/автокоррекцию и assist-флаги из `bypass_profile.json`; сохраняет выбранный пресет отдельно (обновляя только поля фрагментации) и assist-флаги отдельно (без перезаписи TTL/redirect rules).
