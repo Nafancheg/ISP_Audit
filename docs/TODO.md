@@ -328,7 +328,7 @@
       - [ ] Ручная проверка (GUI): после Apply и вердикта пост‑проверки FAIL/PARTIAL кнопка меняется на «Усилить», выполняется ApplyEscalation и повторный Post‑Apply Retest; зафиксировать результат (дата/окружение/наблюдения).
       - [x] Всегда доступен быстрый rollback («Откатить всё» + auto‑cleanup DNS/DoH).
       - [ ] Конфликт Autopilot vs ручные действия (Operator/Engineer):
-        - [ ] Ввести ownership в транзакциях/состоянии: `appliedBy=autopilot|user` (или аналог) + `scope` (группа/цель).
+        - [x] Ввести ownership в транзакциях/состоянии: `appliedBy=autopilot|user` (или аналог) + `scope` (группа/цель).
         - [ ] Правило rollback в Operator: откатывает только то, что включил Autopilot (по ownership), не ломая ручные настройки Engineer.
         - [ ] Явная кнопка «Снять всё (включая ручное)» — только в Engineer и с подтверждением.
     - [ ] Визуальный дизайн (MaterialDesign):

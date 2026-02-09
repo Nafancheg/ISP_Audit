@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using IspAudit.Bypass;
 using IspAudit.Core.Intelligence.Contracts;
 using IspAudit.Utils;
 
@@ -305,7 +306,10 @@ namespace IspAudit.ViewModels
                 _autoApplyLastAttemptUtcByTarget[targetHost] = DateTimeOffset.UtcNow;
                 _autoApplyLastPlanSignatureByTarget[targetHost] = planSig;
 
-                Log($"[AUTO_APPLY] Start: target={targetHost}; source={sourceHostKey}");
+                var txId = Guid.NewGuid().ToString("N");
+                using var op = BypassOperationContext.Enter(txId, "auto_apply", targetHost);
+
+                Log($"[AUTO_APPLY] Start: target={targetHost}; source={sourceHostKey}; tx={txId}");
 
                 try
                 {
@@ -322,6 +326,41 @@ namespace IspAudit.ViewModels
                 {
                     Log($"[AUTO_APPLY] Done: no-op/skip (outcome null): target={targetHost}");
                     return;
+                }
+
+                // Наблюдаемость: фиксируем авто-применение как apply-транзакцию,
+                // чтобы позже можно было выборочно откатывать только autopilot.
+                try
+                {
+                    var endpoints = GetCachedCandidateIpEndpointsSnapshot(targetHost);
+                    if (endpoints.Count == 0)
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
+                        endpoints = await ResolveCandidateIpEndpointsSnapshotAsync(targetHost, cts.Token).ConfigureAwait(false);
+                    }
+
+                    bypassController.RecordApplyTransaction(
+                        initiatorHostKey: targetHost,
+                        groupKey: targetHost,
+                        candidateIpEndpoints: endpoints,
+                        appliedStrategyText: outcome.AppliedStrategyText,
+                        planText: outcome.PlanText,
+                        reasoning: outcome.Reasoning,
+                        transactionIdOverride: txId,
+                        resultStatus: outcome.Status,
+                        error: outcome.Error,
+                        rollbackStatus: outcome.RollbackStatus,
+                        cancelReason: outcome.CancelReason,
+                        applyCurrentPhase: outcome.ApplyCurrentPhase,
+                        applyTotalElapsedMs: outcome.ApplyTotalElapsedMs,
+                        applyPhases: outcome.ApplyPhases,
+                        appliedBy: "autopilot",
+                        scope: "target",
+                        scopeKey: targetHost);
+                }
+                catch
+                {
+                    // best-effort
                 }
 
                 if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))

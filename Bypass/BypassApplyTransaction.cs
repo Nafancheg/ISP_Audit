@@ -14,6 +14,22 @@ namespace IspAudit.Bypass
     {
         public string Version { get; init; } = "v1";
 
+        /// <summary>
+        /// Кто инициировал транзакцию: user | autopilot.
+        /// Нужен для разруливания конфликтов Autopilot vs ручные действия (P1.11).
+        /// </summary>
+        public string AppliedBy { get; init; } = "user";
+
+        /// <summary>
+        /// Область действия: group | target.
+        /// </summary>
+        public string Scope { get; init; } = "group";
+
+        /// <summary>
+        /// Ключ области действия: для group обычно GroupKey, для target — hostKey цели.
+        /// </summary>
+        public string ScopeKey { get; init; } = string.Empty;
+
         public string TransactionId { get; init; } = Guid.NewGuid().ToString("N");
         public string CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow.ToString("u").TrimEnd();
 

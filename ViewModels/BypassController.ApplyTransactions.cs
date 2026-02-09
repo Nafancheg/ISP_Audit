@@ -203,7 +203,10 @@ namespace IspAudit.ViewModels
             string? cancelReason = null,
             string? applyCurrentPhase = null,
             long? applyTotalElapsedMs = null,
-            IReadOnlyList<BypassApplyPhaseTiming>? applyPhases = null)
+            IReadOnlyList<BypassApplyPhaseTiming>? applyPhases = null,
+            string? appliedBy = null,
+            string? scope = null,
+            string? scopeKey = null)
         {
             try
             {
@@ -255,6 +258,12 @@ namespace IspAudit.ViewModels
                 var safePlanText = planText ?? string.Empty;
                 var safeReasoning = reasoning ?? string.Empty;
 
+                var safeAppliedBy = string.IsNullOrWhiteSpace(appliedBy) ? "user" : appliedBy.Trim();
+                var safeScope = string.IsNullOrWhiteSpace(scope) ? "group" : scope.Trim();
+                var safeScopeKey = string.IsNullOrWhiteSpace(scopeKey)
+                    ? (string.Equals(safeScope, "target", StringComparison.OrdinalIgnoreCase) ? safeInitiator : safeGroup)
+                    : scopeKey.Trim();
+
                 var request = new BypassApplyRequest
                 {
                     InitiatorHostKey = safeInitiator,
@@ -298,6 +307,10 @@ namespace IspAudit.ViewModels
                 var tx = new BypassApplyTransaction
                 {
                     Version = "intel",
+
+                    AppliedBy = safeAppliedBy,
+                    Scope = safeScope,
+                    ScopeKey = safeScopeKey,
 
                     TransactionId = string.IsNullOrWhiteSpace(transactionIdOverride)
                         ? Guid.NewGuid().ToString("N")
