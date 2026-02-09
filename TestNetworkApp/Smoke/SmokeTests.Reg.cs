@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -1107,6 +1108,125 @@ namespace TestNetworkApp.Smoke
                 catch (Exception ex)
                 {
                     return new SmokeTestResult("REG-022", "REG: INTEL apply пропускает DoH/DNS без явного согласия (apply_doh_skipped)",
+                        SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY", prevSkipTls);
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> REG_AutoBypass_DoH_Skipped_WithoutConsent(CancellationToken ct)
+            => RunAsyncAwait("REG-025", "REG: AutoBypass не применяет DoH/DNS без явного согласия (apply_doh_skipped)", async _ =>
+            {
+                var sw = Stopwatch.StartNew();
+                string? prevSkipTls = null;
+
+                try
+                {
+                    prevSkipTls = Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY", "1");
+
+                    var baseProfile = BypassProfile.CreateDefault();
+                    using var engine = new TrafficEngine(progress: null);
+                    using var manager = BypassStateManager.GetOrCreate(engine, baseProfile: baseProfile, log: null);
+                    manager.AllowDnsDohSystemChanges = false;
+
+                    var bypass = new BypassController(manager)
+                    {
+                        SelectedDnsPreset = "Cloudflare"
+                    };
+
+                    var orch = new DiagnosticOrchestrator(manager);
+
+                    var observedApplyStatuses = new List<string>();
+                    void OnOrchPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+                    {
+                        if (!string.Equals(e.PropertyName, nameof(DiagnosticOrchestrator.ApplyStatusText), StringComparison.Ordinal)) return;
+
+                        var v = (orch.ApplyStatusText ?? string.Empty).Trim();
+                        if (string.IsNullOrWhiteSpace(v)) return;
+
+                        lock (observedApplyStatuses)
+                        {
+                            observedApplyStatuses.Add(v);
+                        }
+                    }
+
+                    orch.PropertyChanged += OnOrchPropertyChanged;
+
+                    var plan = new BypassPlan
+                    {
+                        ForDiagnosis = DiagnosisId.DnsHijack,
+                        PlanConfidence = 90,
+                        PlannedAtUtc = DateTimeOffset.UtcNow,
+                        Reasoning = "smoke",
+                        Strategies = new List<BypassStrategy>
+                        {
+                            new BypassStrategy { Id = StrategyId.UseDoh, BasePriority = 100, Risk = RiskLevel.Medium }
+                        }
+                    };
+
+                    // Путь автопилота — private, поэтому вызываем через reflection.
+                    var mi = typeof(DiagnosticOrchestrator).GetMethod(
+                        "AutoApplyFromPlanAsync",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+
+                    if (mi == null)
+                    {
+                        return new SmokeTestResult("REG-025", "REG: AutoBypass не применяет DoH/DNS без явного согласия (apply_doh_skipped)",
+                            SmokeOutcome.Fail, sw.Elapsed, "Не нашли private метод DiagnosticOrchestrator.AutoApplyFromPlanAsync (изменился контракт/имя)");
+                    }
+
+                    var planSig = "UseDoh|U0|N0";
+
+                    var t = mi.Invoke(orch, new object[] { "example.com", "sub.example.com", plan, planSig, bypass });
+                    if (t is not Task task)
+                    {
+                        return new SmokeTestResult("REG-025", "REG: AutoBypass не применяет DoH/DNS без явного согласия (apply_doh_skipped)",
+                            SmokeOutcome.Fail, sw.Elapsed, "AutoApplyFromPlanAsync вернул не Task (неожиданный контракт)");
+                    }
+
+                    // Safety-net на случай зависания внутри Apply.
+                    var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(4), ct)).ConfigureAwait(false);
+                    if (completed != task)
+                    {
+                        return new SmokeTestResult("REG-025", "REG: AutoBypass не применяет DoH/DNS без явного согласия (apply_doh_skipped)",
+                            SmokeOutcome.Fail, sw.Elapsed, "Таймаут ожидания AutoApplyFromPlanAsync (возможное зависание apply)" );
+                    }
+
+                    await task.ConfigureAwait(false);
+
+                    // Контракт: без согласия DoH не включается.
+                    if (bypass.IsDoHEnabled)
+                    {
+                        return new SmokeTestResult("REG-025", "REG: AutoBypass не применяет DoH/DNS без явного согласия (apply_doh_skipped)",
+                            SmokeOutcome.Fail, sw.Elapsed, "Ожидали IsDoHEnabled=false при AllowDnsDohSystemChanges=false" );
+                    }
+
+                    string[] statuses;
+                    lock (observedApplyStatuses)
+                    {
+                        statuses = observedApplyStatuses.ToArray();
+                    }
+
+                    // Контракт наблюдаемости: должна быть явная фаза apply_doh_skipped.
+                    var sawSkipped = statuses.Any(s => s.Contains("DoH", StringComparison.OrdinalIgnoreCase)
+                        && s.Contains("пропущ", StringComparison.OrdinalIgnoreCase));
+
+                    if (!sawSkipped)
+                    {
+                        var got = statuses.Length == 0 ? "(none)" : string.Join(" | ", statuses);
+                        return new SmokeTestResult("REG-025", "REG: AutoBypass не применяет DoH/DNS без явного согласия (apply_doh_skipped)",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Не увидели статус apply_doh_skipped в ApplyStatusText. Got=[{got}]" );
+                    }
+
+                    return new SmokeTestResult("REG-025", "REG: AutoBypass не применяет DoH/DNS без явного согласия (apply_doh_skipped)",
+                        SmokeOutcome.Pass, sw.Elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-025", "REG: AutoBypass не применяет DoH/DNS без явного согласия (apply_doh_skipped)",
                         SmokeOutcome.Fail, sw.Elapsed, ex.Message);
                 }
                 finally

@@ -95,6 +95,7 @@ namespace TestNetworkApp.Smoke
                 ["REG-022"] = REG_IntelPlan_DoH_Skipped_WithoutConsent,
                 ["REG-023"] = REG_EnvVars_AreDocumented_InEnvVarsMd,
                 ["REG-024"] = REG_Orchestrator_ApplyDedup_SameDomain_SkipsSecondApply,
+                ["REG-025"] = REG_AutoBypass_DoH_Skipped_WithoutConsent,
 
                 ["PIPE-005"] = Pipe_UnifiedFilter_LoopbackDropped,
                 ["PIPE-006"] = Pipe_UnifiedFilter_NoiseOnlyOnDisplay,

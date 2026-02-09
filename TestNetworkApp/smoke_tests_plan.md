@@ -1244,6 +1244,20 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** Синтетический remembered active target policy (AllowNoSni=true) + вызов DisableAllAsync
 **Ожидаемый результат:** `IsAnyEnabled=false`, active targets count=0, в логах нет `engine_start`
 
+**Test ID:** `REG-022`
+**Что проверяет:** INTEL apply пропускает DoH/DNS без явного согласия (apply_doh_skipped)
+**Для чего:** Контракт безопасности: системные изменения (DNS/DoH) не применяются без явного consent
+**Критерий успеха:** В фазах apply есть `apply_doh_skipped`, при этом отсутствуют `apply_doh_enable/disable`, а `PlannedDoHEnabled=false`
+**Входные данные:** План INTEL с `StrategyId.UseDoh` и `allowDnsDohChanges=false`
+**Ожидаемый результат:** DoH не включается, наблюдаемость фиксирует `apply_doh_skipped`
+
+**Test ID:** `REG-025`
+**Что проверяет:** AutoBypass (autopilot) не применяет DoH/DNS без явного согласия (apply_doh_skipped)
+**Для чего:** P1.11: автопилот обязан уважать consent-гейт так же, как ручной Apply
+**Критерий успеха:** После auto-apply `IsDoHEnabled=false`, а в `ApplyStatusText` наблюдается фаза DoH «пропущено»
+**Входные данные:** Вызов private `DiagnosticOrchestrator.AutoApplyFromPlanAsync` (через reflection) с планом `UseDoh` и `AllowDnsDohSystemChanges=false`
+**Ожидаемый результат:** DoH не включается, есть явный статус «пропущено (нужно разрешение)»
+
 **Test ID:** `REG-023`
 **Что проверяет:** Реестр ENV переменных не расходится с кодом
 **Для чего:** Не допустить появления новых `ISP_AUDIT_*` переменных без документирования (контракт для runtime/debug knobs)
