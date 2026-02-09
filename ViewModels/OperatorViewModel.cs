@@ -404,14 +404,63 @@ namespace IspAudit.ViewModels
                 if (Main.IsApplyRunning || Main.IsPostApplyRetestRunning) return OperatorStatus.Fixing;
                 if (Main.IsRunning) return OperatorStatus.Checking;
 
-                if (Main.IsDone)
+                // P1.11: операторский статус должен отражать "первичную семантику" (P1.8),
+                // т.е. учитывать пост‑проверку после Apply как главный итог.
+                try
                 {
-                    if (Main.FailCount > 0) return OperatorStatus.Blocked;
-                    if (Main.WarnCount > 0) return OperatorStatus.Warn;
-                    return OperatorStatus.Ok;
-                }
+                    var results = Main.TestResults;
+                    if (results == null || results.Count == 0) return OperatorStatus.Idle;
 
-                return OperatorStatus.Idle;
+                    var hasAnyNonIdle = false;
+                    var hasFail = false;
+                    var hasWarn = false;
+                    var hasPass = false;
+
+                    foreach (var tr in results)
+                    {
+                        if (tr == null) continue;
+
+                        // Если по какой-то карточке идёт post-apply ретест (queued/running),
+                        // показываем "Исправляем…" даже если глобальный флаг IsPostApplyRetestRunning не поднят.
+                        if (tr.PostApplyCheckStatus == PostApplyCheckStatus.Queued
+                            || tr.PostApplyCheckStatus == PostApplyCheckStatus.Running)
+                        {
+                            return OperatorStatus.Fixing;
+                        }
+
+                        var s = tr.PrimaryStatus;
+                        if (s == TestStatus.Running) return OperatorStatus.Checking;
+                        if (s == TestStatus.Idle) continue;
+
+                        hasAnyNonIdle = true;
+                        if (s == TestStatus.Fail)
+                        {
+                            hasFail = true;
+                            break;
+                        }
+                        if (s == TestStatus.Warn) hasWarn = true;
+                        if (s == TestStatus.Pass) hasPass = true;
+                    }
+
+                    if (!hasAnyNonIdle) return OperatorStatus.Idle;
+                    if (hasFail) return OperatorStatus.Blocked;
+                    if (hasWarn) return OperatorStatus.Warn;
+                    if (hasPass) return OperatorStatus.Ok;
+
+                    return OperatorStatus.Idle;
+                }
+                catch
+                {
+                    // Best-effort fallback на старую семантику (счётчики от пайплайна), если коллекция меняется во время перечисления.
+                    if (Main.IsDone)
+                    {
+                        if (Main.FailCount > 0) return OperatorStatus.Blocked;
+                        if (Main.WarnCount > 0) return OperatorStatus.Warn;
+                        return OperatorStatus.Ok;
+                    }
+
+                    return OperatorStatus.Idle;
+                }
             }
         }
 
