@@ -826,7 +826,7 @@ Legacy-классификатор удалён. Классификацию и ф
 **Для чего:** Чтобы кнопки переключения режимов не «отвалились» при рефакторингах XAML/code-behind
 **Критерий успеха:** В XAML и code-behind присутствуют ожидаемые фрагменты (команда/handler + сохранение `UiMode` + вызов `Show*Window`)
 **Входные данные:** Проверка XAML/CS файлов как текста
-**Ожидаемый результат:** Найдены `Инженерный режим` + `EngineerCommand` в Operator, и `← Оператор` + `ReturnToOperator_Click` в Engineer, плюс соответствующие вызовы в code-behind
+**Ожидаемый результат:** Найдены `Расширенный режим` + `EngineerCommand` в Operator, и `← Оператор` + `ReturnToOperator_Click` в Engineer, плюс соответствующие вызовы в code-behind
 
 **Test ID:** `UI-019`
 **Что проверяет:** P1.4 — баннер «Отчёты о падении»: wiring XAML + команды + VM свойства
@@ -841,6 +841,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Критерий успеха:** В Engineer (вкладка Метрики) и Operator (raw details) есть binding на `QuicDropTargetsText`
 **Входные данные:** Проверка XAML файлов как текста
 **Ожидаемый результат:** Найдены `Bypass.QuicDropTargetsText` и `Main.Bypass.QuicDropTargetsText`
+
+**Test ID:** `UI-021`
+**Что проверяет:** P1.11 — shutdown на закрытии Operator окна: best-effort `ShutdownAsync` + rollback DNS/DoH
+**Для чего:** Чтобы при закрытии Operator UI гарантированно выполнялся безопасный shutdown и откат системных изменений (DNS/DoH), даже при рефакторингах
+**Критерий успеха:** В `Windows/OperatorWindow.xaml.cs` есть подписка на `Closing`, отмена закрытия (`e.Cancel = true`) и `await main.ShutdownAsync()` (с guard на переключение в Engineer)
+**Входные данные:** Проверка code-behind как текста
+**Ожидаемый результат:** Найдены фрагменты `Closing += Window_Closing`, `e.Cancel = true`, `await main.ShutdownAsync` и guard `_switchingToEngineer`
 
 ---
 

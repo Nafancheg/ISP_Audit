@@ -597,6 +597,71 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Ui_OperatorWindow_ShutdownOnClose_Wired(CancellationToken ct)
+            => RunAsync("UI-021", "P1.11: Operator shutdown wired (Window.Closing → ShutdownAsync best-effort)", () =>
+            {
+                try
+                {
+                    static string? TryFindRepoRoot()
+                    {
+                        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+                        for (var i = 0; i < 10 && dir != null; i++)
+                        {
+                            if (File.Exists(Path.Combine(dir.FullName, "ISP_Audit.sln")))
+                            {
+                                return dir.FullName;
+                            }
+
+                            dir = dir.Parent;
+                        }
+
+                        return null;
+                    }
+
+                    var root = TryFindRepoRoot();
+                    if (string.IsNullOrWhiteSpace(root))
+                    {
+                        return new SmokeTestResult("UI-021", "P1.11: Operator shutdown wired (Window.Closing → ShutdownAsync best-effort)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Не удалось определить корень репозитория (нет ISP_Audit.sln рядом с BaseDirectory)");
+                    }
+
+                    var operatorCodeBehindPath = Path.Combine(root!, "Windows", "OperatorWindow.xaml.cs");
+                    if (!File.Exists(operatorCodeBehindPath))
+                    {
+                        return new SmokeTestResult("UI-021", "P1.11: Operator shutdown wired (Window.Closing → ShutdownAsync best-effort)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Не найден файл: {operatorCodeBehindPath}");
+                    }
+
+                    var operatorCode = File.ReadAllText(operatorCodeBehindPath);
+
+                    var requiredOperatorCode = new List<string>
+                    {
+                        "Closing += Window_Closing",
+                        "private async void Window_Closing",
+                        "e.Cancel = true",
+                        "await main.ShutdownAsync",
+                        "_switchingToEngineer"
+                    };
+
+                    foreach (var r in requiredOperatorCode)
+                    {
+                        if (!operatorCode.Contains(r, StringComparison.Ordinal))
+                        {
+                            return new SmokeTestResult("UI-021", "P1.11: Operator shutdown wired (Window.Closing → ShutdownAsync best-effort)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"OperatorWindow.xaml.cs: не нашли обязательный фрагмент: {r}");
+                        }
+                    }
+
+                    return new SmokeTestResult("UI-021", "P1.11: Operator shutdown wired (Window.Closing → ShutdownAsync best-effort)", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("UI-021", "P1.11: Operator shutdown wired (Window.Closing → ShutdownAsync best-effort)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        ex.Message);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> Ui_CrashReportsPrompt_Wired(CancellationToken ct)
             => RunAsync("UI-019", "P1.4: Crash-reports prompt wired (XAML + ViewModel)", () =>
             {
