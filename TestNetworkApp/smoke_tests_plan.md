@@ -849,6 +849,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** Проверка code-behind как текста
 **Ожидаемый результат:** Найдены фрагменты `Closing += Window_Closing`, `e.Cancel = true`, `await main.ShutdownAsync` и guard `_switchingToEngineer`
 
+**Test ID:** `UI-022`
+**Что проверяет:** P1.11 — минималистичный header Operator UI: ⚙️ Настройки и ? Справка
+**Для чего:** Чтобы wiring header/диалогов не «отвалился» при правках XAML
+**Критерий успеха:** В `Windows/OperatorWindow.xaml` есть кнопки ⚙️/? с командами `SettingsCommand`/`HelpCommand`, а окна `OperatorSettingsWindow`/`OperatorHelpWindow` содержат ожидаемые элементы
+**Входные данные:** Проверка XAML файлов как текста
+**Ожидаемый результат:** Найдены `ToolTip="Настройки"`, `ToolTip="Справка"`, и в справке есть «Открыть расширенный режим»
+
 ---
 
 ## 7. Orchestration & Process Tracking

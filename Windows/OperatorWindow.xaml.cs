@@ -155,6 +155,8 @@ namespace IspAudit.Windows
             public MainViewModel Main => Vm.Main;
 
             public RelayCommand EngineerCommand { get; }
+            public RelayCommand SettingsCommand { get; }
+            public RelayCommand HelpCommand { get; }
 
             public OperatorWindowDataContext(OperatorViewModel vm, OperatorWindow window)
             {
@@ -164,6 +166,51 @@ namespace IspAudit.Windows
                 {
                     window.SwitchToEngineer();
                 });
+
+                SettingsCommand = new RelayCommand(_ =>
+                {
+                    window.OpenSettings();
+                });
+
+                HelpCommand = new RelayCommand(_ =>
+                {
+                    window.OpenHelp();
+                });
+            }
+        }
+
+        private void OpenSettings()
+        {
+            try
+            {
+                var main = _getMainViewModel();
+                var w = new OperatorSettingsWindow(main)
+                {
+                    Owner = this
+                };
+
+                w.ShowDialog();
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void OpenHelp()
+        {
+            try
+            {
+                var w = new OperatorHelpWindow(() => SwitchToEngineer())
+                {
+                    Owner = this
+                };
+
+                w.ShowDialog();
+            }
+            catch
+            {
+                // ignore
             }
         }
 

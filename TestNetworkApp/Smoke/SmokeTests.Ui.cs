@@ -662,6 +662,106 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Ui_Operator_MinimalHeader_SettingsHelp_Wired(CancellationToken ct)
+            => RunAsync("UI-022", "P1.11: Operator minimal header wired (⚙️ settings + ? help)", () =>
+            {
+                try
+                {
+                    static string? TryFindRepoRoot()
+                    {
+                        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+                        for (var i = 0; i < 10 && dir != null; i++)
+                        {
+                            if (File.Exists(Path.Combine(dir.FullName, "ISP_Audit.sln")))
+                            {
+                                return dir.FullName;
+                            }
+
+                            dir = dir.Parent;
+                        }
+
+                        return null;
+                    }
+
+                    var root = TryFindRepoRoot();
+                    if (string.IsNullOrWhiteSpace(root))
+                    {
+                        return new SmokeTestResult("UI-022", "P1.11: Operator minimal header wired (⚙️ settings + ? help)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Не удалось определить корень репозитория (нет ISP_Audit.sln рядом с BaseDirectory)");
+                    }
+
+                    var operatorXamlPath = Path.Combine(root!, "Windows", "OperatorWindow.xaml");
+                    var settingsXamlPath = Path.Combine(root!, "Windows", "OperatorSettingsWindow.xaml");
+                    var helpXamlPath = Path.Combine(root!, "Windows", "OperatorHelpWindow.xaml");
+
+                    foreach (var path in new[] { operatorXamlPath, settingsXamlPath, helpXamlPath })
+                    {
+                        if (!File.Exists(path))
+                        {
+                            return new SmokeTestResult("UI-022", "P1.11: Operator minimal header wired (⚙️ settings + ? help)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"Не найден файл: {path}");
+                        }
+                    }
+
+                    var operatorXaml = File.ReadAllText(operatorXamlPath);
+                    var settingsXaml = File.ReadAllText(settingsXamlPath);
+                    var helpXaml = File.ReadAllText(helpXamlPath);
+
+                    var requiredOperatorXaml = new List<string>
+                    {
+                        "ToolTip=\"Настройки\"",
+                        "Command=\"{Binding SettingsCommand}\"",
+                        "Kind=\"Cog\"",
+                        "ToolTip=\"Справка\"",
+                        "Command=\"{Binding HelpCommand}\"",
+                        "Kind=\"HelpCircleOutline\""
+                    };
+
+                    foreach (var r in requiredOperatorXaml)
+                    {
+                        if (!operatorXaml.Contains(r, StringComparison.Ordinal))
+                        {
+                            return new SmokeTestResult("UI-022", "P1.11: Operator minimal header wired (⚙️ settings + ? help)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"OperatorWindow.xaml: не нашли обязательный фрагмент: {r}");
+                        }
+                    }
+
+                    // Настройки: минимум один operator-safe параметр должен быть доступен.
+                    var requiredSettingsXaml = new List<string>
+                    {
+                        "Content=\"Автоисправление\"",
+                        "IsChecked=\"{Binding EnableAutoBypass, Mode=TwoWay}\"",
+                        "Content=\"Разрешить DNS/DoH\"",
+                        "IsChecked=\"{Binding AllowDnsDohSystemChanges, Mode=OneWay}\"",
+                        "PreviewMouseLeftButtonDown=\"DnsDohConsentToggle_PreviewMouseLeftButtonDown\""
+                    };
+
+                    foreach (var r in requiredSettingsXaml)
+                    {
+                        if (!settingsXaml.Contains(r, StringComparison.Ordinal))
+                        {
+                            return new SmokeTestResult("UI-022", "P1.11: Operator minimal header wired (⚙️ settings + ? help)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"OperatorSettingsWindow.xaml: не нашли обязательный фрагмент: {r}");
+                        }
+                    }
+
+                    // Справка: должна содержать явное действие для перехода в Engineer.
+                    if (!helpXaml.Contains("Открыть расширенный режим", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult("UI-022", "P1.11: Operator minimal header wired (⚙️ settings + ? help)", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "OperatorHelpWindow.xaml: не нашли кнопку/текст 'Открыть расширенный режим'");
+                    }
+
+                    return new SmokeTestResult("UI-022", "P1.11: Operator minimal header wired (⚙️ settings + ? help)", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("UI-022", "P1.11: Operator minimal header wired (⚙️ settings + ? help)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        ex.Message);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> Ui_CrashReportsPrompt_Wired(CancellationToken ct)
             => RunAsync("UI-019", "P1.4: Crash-reports prompt wired (XAML + ViewModel)", () =>
             {

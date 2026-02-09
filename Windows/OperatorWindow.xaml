@@ -22,6 +22,26 @@
         <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="12">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
+                    <!-- Минималистичный header: название + ⚙️/? -->
+                    <DockPanel Margin="0,0,0,10" LastChildFill="False">
+                        <TextBlock DockPanel.Dock="Left" Text="ISP Audit" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Style="{StaticResource ThemeToggleButtonStyle}"
+                                    ToolTip="Настройки"
+                                    Command="{Binding SettingsCommand}"
+                                    Height="30" Width="34" Margin="0,0,8,0">
+                                <materialDesign:PackIcon Kind="Cog" Width="20" Height="20"/>
+                            </Button>
+                            <Button Style="{StaticResource ThemeToggleButtonStyle}"
+                                    ToolTip="Справка"
+                                    Command="{Binding HelpCommand}"
+                                    Height="30" Width="34">
+                                <materialDesign:PackIcon Kind="HelpCircleOutline" Width="20" Height="20"/>
+                            </Button>
+                        </StackPanel>
+                    </DockPanel>
+
                     <!-- Компактная шапка: статус + действия -->
                     <DockPanel Margin="0,0,0,10" LastChildFill="False">
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
