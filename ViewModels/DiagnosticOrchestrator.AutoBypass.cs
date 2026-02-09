@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Core.Intelligence.Contracts;
@@ -20,6 +22,26 @@ namespace IspAudit.ViewModels
         private static readonly TimeSpan AutoApplySuccessCooldown = TimeSpan.FromMinutes(3);
         private static readonly TimeSpan AutoApplyMinInterval = TimeSpan.FromSeconds(5);
 
+        // P1.11: execution policy автопилота.
+        // Авто-применение должно быть консервативным: только безопасные/обратимые действия.
+        private const int AutoApplyMinConfidence = 70;
+
+        private static readonly HashSet<StrategyId> AutoApplyAllowedStrategyIds = new()
+        {
+            // TLS стратегии — основной MVP обход DPI; считаем обратимыми.
+            StrategyId.TlsFragment,
+            StrategyId.TlsDisorder,
+
+            // HTTP host tricks — селективная техника на TCP/80.
+            StrategyId.HttpHostTricks,
+
+            // QUIC fallback — селективная техника (target IP list) через DROP UDP/443.
+            StrategyId.QuicObfuscation,
+
+            // DropRst — обратимая техника (фильтр), но не системное изменение.
+            StrategyId.DropRst,
+        };
+
         private void ResetAutoApplyState()
         {
             _autoApplyLastAttemptUtcByTarget.Clear();
@@ -38,6 +60,96 @@ namespace IspAudit.ViewModels
                 : string.Join(",", plan.Strategies.ConvertAll(s => s.Id.ToString()));
 
             return $"{strategies}|U{(plan.DropUdp443 ? 1 : 0)}|N{(plan.AllowNoSni ? 1 : 0)}";
+        }
+
+        private bool TryBuildAutoApplyPlan(BypassPlan plan, out BypassPlan autoPlan, out string reason)
+        {
+            autoPlan = plan;
+            reason = string.Empty;
+
+            if (plan == null)
+            {
+                reason = "plan=null";
+                return false;
+            }
+
+            var conf = Math.Clamp(plan.PlanConfidence, 0, 100);
+            if (conf < AutoApplyMinConfidence)
+            {
+                reason = $"confidence<{AutoApplyMinConfidence}";
+                return false;
+            }
+
+            var allowDnsDoh = false;
+            try
+            {
+                allowDnsDoh = _stateManager.AllowDnsDohSystemChanges;
+            }
+            catch
+            {
+                allowDnsDoh = false;
+            }
+
+            var filtered = new List<BypassStrategy>(capacity: plan.Strategies.Count);
+            foreach (var s in plan.Strategies)
+            {
+                if (s == null) continue;
+
+                // DNS/DoH — системное изменение. Автопилот может применять только при явном consent.
+                if (s.Id == StrategyId.UseDoh)
+                {
+                    if (allowDnsDoh)
+                    {
+                        filtered.Add(s);
+                    }
+                    continue;
+                }
+
+                // Агрессивные/небезопасные стратегии не auto-apply.
+                if (!AutoApplyAllowedStrategyIds.Contains(s.Id))
+                {
+                    continue;
+                }
+
+                // High-risk стратегии запрещены в автопилоте (даже если selector их когда-то вернул).
+                if (s.Risk == RiskLevel.High)
+                {
+                    continue;
+                }
+
+                filtered.Add(s);
+            }
+
+            // Assist-флаги:
+            // - DROP_UDP_443 считаем допустимым, т.к. реализован селективно (target IP list).
+            // - ALLOW_NO_SNI не включаем автоматически: может расширить охват действия.
+            var allowDropUdp443 = plan.DropUdp443;
+            var allowNoSni = false;
+
+            if (filtered.Count == 0 && !allowDropUdp443)
+            {
+                reason = allowDnsDoh
+                    ? "no eligible actions"
+                    : "no eligible actions (or DoH requires consent)";
+                return false;
+            }
+
+            // Не мутируем исходный план: создаём “auto plan” со строгими ограничениями.
+            autoPlan = new BypassPlan
+            {
+                ForDiagnosis = plan.ForDiagnosis,
+                PlanConfidence = conf,
+                PlannedAtUtc = plan.PlannedAtUtc,
+                Reasoning = plan.Reasoning,
+
+                Strategies = filtered,
+                DeferredStrategies = plan.DeferredStrategies ?? new List<DeferredBypassStrategy>(),
+
+                DropUdp443 = allowDropUdp443,
+                AllowNoSni = allowNoSni,
+            };
+
+            return true;
         }
 
         private string ResolveAutoApplyTargetHost(string hostKey)
@@ -101,7 +213,24 @@ namespace IspAudit.ViewModels
         private void TryStartAutoApplyFromPlan(string hostKey, BypassPlan plan, BypassController bypassController)
         {
             if (bypassController == null) return;
-            if (!PlanHasApplicableActions(plan)) return;
+
+            // Не накапливаем очередь фоновых задач: автопилот «мягкий». Если уже занят — пропускаем.
+            if (_autoApplyGate.CurrentCount == 0)
+            {
+                return;
+            }
+
+            if (!TryBuildAutoApplyPlan(plan, out var autoPlan, out var policyReason))
+            {
+                if (!string.IsNullOrWhiteSpace(policyReason))
+                {
+                    Log($"[AUTO_APPLY] Skip (policy {policyReason}): from={hostKey}");
+                }
+
+                return;
+            }
+
+            if (!PlanHasApplicableActions(autoPlan)) return;
 
             // Диагностика должна быть активна: auto-apply имеет смысл только в live-сценарии.
             if (!IsDiagnosticRunning) return;
@@ -112,7 +241,7 @@ namespace IspAudit.ViewModels
             var targetHost = ResolveAutoApplyTargetHost(hostKey);
             if (string.IsNullOrWhiteSpace(targetHost)) return;
 
-            var planSig = BuildPlanSignature(plan);
+            var planSig = BuildPlanSignature(autoPlan);
             var planChanged = !_autoApplyLastPlanSignatureByTarget.TryGetValue(targetHost, out var lastSig)
                 || !string.Equals(lastSig, planSig, StringComparison.OrdinalIgnoreCase);
 
@@ -127,7 +256,7 @@ namespace IspAudit.ViewModels
             _autoApplyLastPlanSignatureByTarget[targetHost] = planSig;
 
             // Fire-and-forget: внутри есть gate + уважение Cancel.
-            _ = Task.Run(() => AutoApplyFromPlanAsync(targetHost, hostKey, plan, planSig, bypassController));
+            _ = Task.Run(() => AutoApplyFromPlanAsync(targetHost, hostKey, autoPlan, planSig, bypassController));
         }
 
         private async Task AutoApplyFromPlanAsync(string targetHost, string sourceHostKey, BypassPlan plan, string planSig, BypassController bypassController)
@@ -138,6 +267,24 @@ namespace IspAudit.ViewModels
             try
             {
                 if (_cts?.IsCancellationRequested == true) return;
+
+                // P1.11: enforcement policy (confidence/risk/allowlist/consent) на этапе исполнения.
+                if (!TryBuildAutoApplyPlan(plan, out var autoPlan, out var policyReason))
+                {
+                    Log($"[AUTO_APPLY] Skip (policy {policyReason}): target={targetHost}; from={sourceHostKey}");
+                    return;
+                }
+
+                // На всякий случай используем сигнатуру auto-плана.
+                var effectiveSig = BuildPlanSignature(autoPlan);
+                if (string.IsNullOrWhiteSpace(effectiveSig))
+                {
+                    Log($"[AUTO_APPLY] Skip (empty sig): target={targetHost}; from={sourceHostKey}");
+                    return;
+                }
+
+                planSig = effectiveSig;
+                plan = autoPlan;
 
                 // Если пользователь уже вручную жмёт Apply, не мешаем.
                 if (IsApplyRunning)

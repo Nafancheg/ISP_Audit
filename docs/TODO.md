@@ -62,6 +62,9 @@
 - [x] 06.02.2026: smoke ui (non-admin) PASS 17/17 (EnvKeys)
 - [x] 06.02.2026: Refactor: централизованы строковые ключи ENV в `Utils/EnvKeys.cs` (dotnet build + smoke reg/ui OK)
 
+- [x] 09.02.2026: dotnet build OK
+- [x] 09.02.2026: smoke reg (non-admin) PASS 27/27 (AutoBypass execution policy)
+
 ---
 
 ## P0 — Стабилизация обхода и рантайма (КРИТИЧЕСКОЕ)
@@ -317,9 +320,10 @@
       - [ ] Сводка вместо таблицы по умолчанию: «проверено N / проблемных M», список проблем — карточками.
       - [ ] Сортировка/приоритизация: сначала блокировки/провалы, затем предупреждения, OK — скрыть или свернуть.
     - [ ] Автопилот (execution policy):
-      - [ ] Правила авто‑применения на базе INTEL/diagnosis (confidence/risk) + debounce/anti‑storm.
-      - [ ] По умолчанию: только селективные/обратимые действия (например QUIC→TCP по target IP, TTL endpoint block, TCP/80 host tricks).
-      - [ ] Запрещено по умолчанию: DNS/DoH и глобальные воздействия (требуют явного consent‑диалога).
+      - [x] Правила авто‑применения на базе INTEL/diagnosis (confidence/risk) + debounce/anti‑storm.
+      - [x] По умолчанию: только селективные/обратимые действия (safe-only allowlist стратегий).
+      - [x] Запрещено по умолчанию: DNS/DoH и глобальные воздействия (требуют явного consent‑диалога).
+      - [x] Regression smokes: REG-025/REG-026/REG-027 (DoH consent + confidence + high-risk).
       - [ ] Эскалация ступенями: применить → post‑apply retest → при неуспехе предложить “усилить” (одно действие, без выбора стратегии).
       - [ ] Всегда доступен быстрый rollback («Откатить всё» + auto‑cleanup DNS/DoH).
       - [ ] Конфликт Autopilot vs ручные действия (Operator/Engineer):

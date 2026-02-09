@@ -1021,11 +1021,16 @@ namespace TestNetworkApp.Smoke
             {
                 var sw = Stopwatch.StartNew();
                 string? prevSkipTls = null;
+                string? prevApplyTxPath = null;
 
                 try
                 {
                     prevSkipTls = Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY");
                     Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY", "1");
+
+                    prevApplyTxPath = Environment.GetEnvironmentVariable(EnvKeys.ApplyTransactionsPath);
+                    var tempApplyTxPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"isp_audit_applytx_{Guid.NewGuid():N}.json");
+                    Environment.SetEnvironmentVariable(EnvKeys.ApplyTransactionsPath, tempApplyTxPath);
 
                     var phases = new System.Collections.Generic.List<BypassApplyPhaseTiming>();
                     void OnPhase(BypassApplyPhaseTiming e)
@@ -1113,19 +1118,25 @@ namespace TestNetworkApp.Smoke
                 finally
                 {
                     Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY", prevSkipTls);
+                    Environment.SetEnvironmentVariable(EnvKeys.ApplyTransactionsPath, prevApplyTxPath);
                 }
             }, ct);
 
         public static Task<SmokeTestResult> REG_AutoBypass_DoH_Skipped_WithoutConsent(CancellationToken ct)
-            => RunAsyncAwait("REG-025", "REG: AutoBypass не применяет DoH/DNS без явного согласия (apply_doh_skipped)", async _ =>
+            => RunAsyncAwait("REG-025", "REG: AutoBypass policy: DoH/DNS не auto-apply без явного согласия", async _ =>
             {
                 var sw = Stopwatch.StartNew();
                 string? prevSkipTls = null;
+                string? prevApplyTxPath = null;
 
                 try
                 {
                     prevSkipTls = Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY");
                     Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY", "1");
+
+                    prevApplyTxPath = Environment.GetEnvironmentVariable(EnvKeys.ApplyTransactionsPath);
+                    var tempApplyTxPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"isp_audit_applytx_{Guid.NewGuid():N}.json");
+                    Environment.SetEnvironmentVariable(EnvKeys.ApplyTransactionsPath, tempApplyTxPath);
 
                     var baseProfile = BypassProfile.CreateDefault();
                     using var engine = new TrafficEngine(progress: null);
@@ -1137,23 +1148,9 @@ namespace TestNetworkApp.Smoke
                         SelectedDnsPreset = "Cloudflare"
                     };
 
+                    var beforeTxCount = bypass.ApplyTransactions.Count;
+
                     var orch = new DiagnosticOrchestrator(manager);
-
-                    var observedApplyStatuses = new List<string>();
-                    void OnOrchPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-                    {
-                        if (!string.Equals(e.PropertyName, nameof(DiagnosticOrchestrator.ApplyStatusText), StringComparison.Ordinal)) return;
-
-                        var v = (orch.ApplyStatusText ?? string.Empty).Trim();
-                        if (string.IsNullOrWhiteSpace(v)) return;
-
-                        lock (observedApplyStatuses)
-                        {
-                            observedApplyStatuses.Add(v);
-                        }
-                    }
-
-                    orch.PropertyChanged += OnOrchPropertyChanged;
 
                     var plan = new BypassPlan
                     {
@@ -1200,38 +1197,199 @@ namespace TestNetworkApp.Smoke
                     // Контракт: без согласия DoH не включается.
                     if (bypass.IsDoHEnabled)
                     {
-                        return new SmokeTestResult("REG-025", "REG: AutoBypass не применяет DoH/DNS без явного согласия (apply_doh_skipped)",
+                        return new SmokeTestResult("REG-025", "REG: AutoBypass policy: DoH/DNS не auto-apply без явного согласия",
                             SmokeOutcome.Fail, sw.Elapsed, "Ожидали IsDoHEnabled=false при AllowDnsDohSystemChanges=false" );
                     }
 
-                    string[] statuses;
-                    lock (observedApplyStatuses)
+                    // Контракт: policy запрещает даже попытку apply (без consent), поэтому транзакций быть не должно.
+                        if (bypass.ApplyTransactions.Count != beforeTxCount)
                     {
-                        statuses = observedApplyStatuses.ToArray();
+                        return new SmokeTestResult("REG-025", "REG: AutoBypass policy: DoH/DNS не auto-apply без явного согласия",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Не ожидали новых apply-транзакций при отсутствии consent. Before={beforeTxCount}, After={bypass.ApplyTransactions.Count}" );
                     }
 
-                    // Контракт наблюдаемости: должна быть явная фаза apply_doh_skipped.
-                    var sawSkipped = statuses.Any(s => s.Contains("DoH", StringComparison.OrdinalIgnoreCase)
-                        && s.Contains("пропущ", StringComparison.OrdinalIgnoreCase));
-
-                    if (!sawSkipped)
-                    {
-                        var got = statuses.Length == 0 ? "(none)" : string.Join(" | ", statuses);
-                        return new SmokeTestResult("REG-025", "REG: AutoBypass не применяет DoH/DNS без явного согласия (apply_doh_skipped)",
-                            SmokeOutcome.Fail, sw.Elapsed, $"Не увидели статус apply_doh_skipped в ApplyStatusText. Got=[{got}]" );
-                    }
-
-                    return new SmokeTestResult("REG-025", "REG: AutoBypass не применяет DoH/DNS без явного согласия (apply_doh_skipped)",
+                    return new SmokeTestResult("REG-025", "REG: AutoBypass policy: DoH/DNS не auto-apply без явного согласия",
                         SmokeOutcome.Pass, sw.Elapsed, "OK");
                 }
                 catch (Exception ex)
                 {
-                    return new SmokeTestResult("REG-025", "REG: AutoBypass не применяет DoH/DNS без явного согласия (apply_doh_skipped)",
+                    return new SmokeTestResult("REG-025", "REG: AutoBypass policy: DoH/DNS не auto-apply без явного согласия",
                         SmokeOutcome.Fail, sw.Elapsed, ex.Message);
                 }
                 finally
                 {
                     Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY", prevSkipTls);
+                    Environment.SetEnvironmentVariable(EnvKeys.ApplyTransactionsPath, prevApplyTxPath);
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> REG_AutoBypass_Policy_Skips_LowConfidence(CancellationToken ct)
+            => RunAsyncAwait("REG-026", "REG: AutoBypass policy: confidence < 70 не auto-apply", async _ =>
+            {
+                var sw = Stopwatch.StartNew();
+                string? prevSkipTls = null;
+                string? prevApplyTxPath = null;
+
+                try
+                {
+                    prevSkipTls = Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY", "1");
+
+                    prevApplyTxPath = Environment.GetEnvironmentVariable(EnvKeys.ApplyTransactionsPath);
+                    var tempApplyTxPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"isp_audit_applytx_{Guid.NewGuid():N}.json");
+                    Environment.SetEnvironmentVariable(EnvKeys.ApplyTransactionsPath, tempApplyTxPath);
+
+                    var baseProfile = BypassProfile.CreateDefault();
+                    using var engine = new TrafficEngine(progress: null);
+                    using var manager = BypassStateManager.GetOrCreate(engine, baseProfile: baseProfile, log: null);
+
+                    var bypass = new BypassController(manager);
+                    var orch = new DiagnosticOrchestrator(manager);
+
+                    var beforeTxCount = bypass.ApplyTransactions.Count;
+
+                    var plan = new BypassPlan
+                    {
+                        ForDiagnosis = DiagnosisId.SilentDrop,
+                        PlanConfidence = 60,
+                        PlannedAtUtc = DateTimeOffset.UtcNow,
+                        Reasoning = "smoke",
+                        Strategies = new List<BypassStrategy>
+                        {
+                            new BypassStrategy { Id = StrategyId.TlsFragment, BasePriority = 100, Risk = RiskLevel.Medium }
+                        }
+                    };
+
+                    var mi = typeof(DiagnosticOrchestrator).GetMethod(
+                        "AutoApplyFromPlanAsync",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+
+                    if (mi == null)
+                    {
+                        return new SmokeTestResult("REG-026", "REG: AutoBypass policy: confidence < 70 не auto-apply",
+                            SmokeOutcome.Fail, sw.Elapsed, "Не нашли private метод DiagnosticOrchestrator.AutoApplyFromPlanAsync (изменился контракт/имя)");
+                    }
+
+                    var planSig = "TlsFragment|U0|N0";
+                    var t = mi.Invoke(orch, new object[] { "example.com", "sub.example.com", plan, planSig, bypass });
+                    if (t is not Task task)
+                    {
+                        return new SmokeTestResult("REG-026", "REG: AutoBypass policy: confidence < 70 не auto-apply",
+                            SmokeOutcome.Fail, sw.Elapsed, "AutoApplyFromPlanAsync вернул не Task (неожиданный контракт)");
+                    }
+
+                    var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(2), ct)).ConfigureAwait(false);
+                    if (completed != task)
+                    {
+                        return new SmokeTestResult("REG-026", "REG: AutoBypass policy: confidence < 70 не auto-apply",
+                            SmokeOutcome.Fail, sw.Elapsed, "Таймаут ожидания AutoApplyFromPlanAsync");
+                    }
+
+                    await task.ConfigureAwait(false);
+
+                    if (bypass.ApplyTransactions.Count != beforeTxCount)
+                    {
+                        return new SmokeTestResult("REG-026", "REG: AutoBypass policy: confidence < 70 не auto-apply",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Не ожидали новых apply-транзакций при confidence < 70. Before={beforeTxCount}, After={bypass.ApplyTransactions.Count}");
+                    }
+
+                    return new SmokeTestResult("REG-026", "REG: AutoBypass policy: confidence < 70 не auto-apply",
+                        SmokeOutcome.Pass, sw.Elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-026", "REG: AutoBypass policy: confidence < 70 не auto-apply",
+                        SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY", prevSkipTls);
+                    Environment.SetEnvironmentVariable(EnvKeys.ApplyTransactionsPath, prevApplyTxPath);
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> REG_AutoBypass_Policy_Skips_HighRiskStrategy(CancellationToken ct)
+            => RunAsyncAwait("REG-027", "REG: AutoBypass policy: High-risk стратегия не auto-apply", async _ =>
+            {
+                var sw = Stopwatch.StartNew();
+                string? prevSkipTls = null;
+                string? prevApplyTxPath = null;
+
+                try
+                {
+                    prevSkipTls = Environment.GetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY");
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY", "1");
+
+                    prevApplyTxPath = Environment.GetEnvironmentVariable(EnvKeys.ApplyTransactionsPath);
+                    var tempApplyTxPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"isp_audit_applytx_{Guid.NewGuid():N}.json");
+                    Environment.SetEnvironmentVariable(EnvKeys.ApplyTransactionsPath, tempApplyTxPath);
+
+                    var baseProfile = BypassProfile.CreateDefault();
+                    using var engine = new TrafficEngine(progress: null);
+                    using var manager = BypassStateManager.GetOrCreate(engine, baseProfile: baseProfile, log: null);
+
+                    var bypass = new BypassController(manager);
+                    var orch = new DiagnosticOrchestrator(manager);
+
+                    var beforeTxCount = bypass.ApplyTransactions.Count;
+
+                    var plan = new BypassPlan
+                    {
+                        ForDiagnosis = DiagnosisId.SilentDrop,
+                        PlanConfidence = 100,
+                        PlannedAtUtc = DateTimeOffset.UtcNow,
+                        Reasoning = "smoke",
+                        Strategies = new List<BypassStrategy>
+                        {
+                            new BypassStrategy { Id = StrategyId.TlsFragment, BasePriority = 100, Risk = RiskLevel.High }
+                        }
+                    };
+
+                    var mi = typeof(DiagnosticOrchestrator).GetMethod(
+                        "AutoApplyFromPlanAsync",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+
+                    if (mi == null)
+                    {
+                        return new SmokeTestResult("REG-027", "REG: AutoBypass policy: High-risk стратегия не auto-apply",
+                            SmokeOutcome.Fail, sw.Elapsed, "Не нашли private метод DiagnosticOrchestrator.AutoApplyFromPlanAsync (изменился контракт/имя)");
+                    }
+
+                    var planSig = "TlsFragment|U0|N0";
+                    var t = mi.Invoke(orch, new object[] { "example.com", "sub.example.com", plan, planSig, bypass });
+                    if (t is not Task task)
+                    {
+                        return new SmokeTestResult("REG-027", "REG: AutoBypass policy: High-risk стратегия не auto-apply",
+                            SmokeOutcome.Fail, sw.Elapsed, "AutoApplyFromPlanAsync вернул не Task (неожиданный контракт)");
+                    }
+
+                    var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(2), ct)).ConfigureAwait(false);
+                    if (completed != task)
+                    {
+                        return new SmokeTestResult("REG-027", "REG: AutoBypass policy: High-risk стратегия не auto-apply",
+                            SmokeOutcome.Fail, sw.Elapsed, "Таймаут ожидания AutoApplyFromPlanAsync");
+                    }
+
+                    await task.ConfigureAwait(false);
+
+                    if (bypass.ApplyTransactions.Count != beforeTxCount)
+                    {
+                        return new SmokeTestResult("REG-027", "REG: AutoBypass policy: High-risk стратегия не auto-apply",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Не ожидали новых apply-транзакций для High-risk стратегии. Before={beforeTxCount}, After={bypass.ApplyTransactions.Count}");
+                    }
+
+                    return new SmokeTestResult("REG-027", "REG: AutoBypass policy: High-risk стратегия не auto-apply",
+                        SmokeOutcome.Pass, sw.Elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-027", "REG: AutoBypass policy: High-risk стратегия не auto-apply",
+                        SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("ISP_AUDIT_TEST_SKIP_TLS_APPLY", prevSkipTls);
+                    Environment.SetEnvironmentVariable(EnvKeys.ApplyTransactionsPath, prevApplyTxPath);
                 }
             }, ct);
 

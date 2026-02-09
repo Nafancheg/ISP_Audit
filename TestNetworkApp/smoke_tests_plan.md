@@ -1252,11 +1252,25 @@ Legacy-классификатор удалён. Классификацию и ф
 **Ожидаемый результат:** DoH не включается, наблюдаемость фиксирует `apply_doh_skipped`
 
 **Test ID:** `REG-025`
-**Что проверяет:** AutoBypass (autopilot) не применяет DoH/DNS без явного согласия (apply_doh_skipped)
-**Для чего:** P1.11: автопилот обязан уважать consent-гейт так же, как ручной Apply
-**Критерий успеха:** После auto-apply `IsDoHEnabled=false`, а в `ApplyStatusText` наблюдается фаза DoH «пропущено»
+**Что проверяет:** AutoBypass (autopilot) не пытается применять DoH/DNS без явного согласия (policy-level блок)
+**Для чего:** P1.11: автопилот обязан уважать consent-гейт так же, как ручной Apply — и быть консервативным (не делать «лишних попыток»)
+**Критерий успеха:** После auto-apply `IsDoHEnabled=false` и отсутствуют apply-транзакции
 **Входные данные:** Вызов private `DiagnosticOrchestrator.AutoApplyFromPlanAsync` (через reflection) с планом `UseDoh` и `AllowDnsDohSystemChanges=false`
-**Ожидаемый результат:** DoH не включается, есть явный статус «пропущено (нужно разрешение)»
+**Ожидаемый результат:** DoH не включается, попытка apply не стартует
+
+**Test ID:** `REG-026`
+**Что проверяет:** AutoBypass policy: low confidence не auto-apply (консервативный порог)
+**Для чего:** P1.11: автопилот применяет только при достаточной уверенности, чтобы не расширять blast radius при слабом сигнале
+**Критерий успеха:** При `PlanConfidence < 70` отсутствуют apply-транзакции
+**Входные данные:** Вызов private `DiagnosticOrchestrator.AutoApplyFromPlanAsync` с планом `TlsFragment`, `PlanConfidence=60`
+**Ожидаемый результат:** Попытка apply не стартует
+
+**Test ID:** `REG-027`
+**Что проверяет:** AutoBypass policy: high-risk стратегия не auto-apply
+**Для чего:** P1.11: автопилот применяет только safe-only техники; high-risk остаётся ручным действием
+**Критерий успеха:** Для стратегии с `RiskLevel.High` отсутствуют apply-транзакции
+**Входные данные:** Вызов private `DiagnosticOrchestrator.AutoApplyFromPlanAsync` с планом `TlsFragment`, `Risk=High`, `PlanConfidence=100`
+**Ожидаемый результат:** Попытка apply не стартует
 
 **Test ID:** `REG-023`
 **Что проверяет:** Реестр ENV переменных не расходится с кодом

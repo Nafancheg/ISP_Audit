@@ -181,7 +181,10 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Введён дизайн-план “DPI Intelligence INTEL” в docs/phase2_plan.md: слой между диагностикой и обходом.
 - Ключевое отличие: сигналы рассматриваются как **цепочки событий во времени** (не разовый снимок), правила диагнозов внедряются поэтапно (сначала только по доступным данным).
 - `LiveTestingPipeline` не применяет обход автоматически: пайплайн вычисляет сигналы/диагноз/план и публикует `BypassPlan` наружу.
-- Auto-apply может быть включён **на уровне оркестратора** (`EnableAutoBypass=true`): оркестратор принимает `BypassPlan` через `OnPlanBuilt` и может применить его через `BypassController.ApplyIntelPlanAsync(...)` (с cooldown/gate).
+- Auto-apply может быть включён **на уровне оркестратора** (`EnableAutoBypass=true`): оркестратор принимает `BypassPlan` через `OnPlanBuilt` и может применить его через `BypassController.ApplyIntelPlanAsync(...)`.
+    - Execution policy (P1.11): auto-apply консервативный — минимум `PlanConfidence>=70`, запрещены `RiskLevel.High`, применяется allowlist «safe-only» стратегий.
+    - DNS/DoH (StrategyId.UseDoh) — системное изменение: auto-apply допускается только при явном consent (`BypassStateManager.AllowDnsDohSystemChanges=true`), иначе фильтруется.
+    - Anti-storm: cooldown + gate; если auto-apply уже выполняется — новые задачи не накапливаются (soft-skip).
 
 Актуализация (Runtime, 16.12.2025):
 - Step 1 INTEL Signals подключён: `SignalsAdapter` пишет события в `InMemorySignalSequenceStore` на этапе Classification в `LiveTestingPipeline`. Инспекционные факты берутся через `IInspectionSignalsProvider` в виде `InspectionSignalsSnapshot` (INTEL-only, без legacy типов).

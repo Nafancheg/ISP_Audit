@@ -601,7 +601,10 @@ Smoke-хелперы (для детерминированных проверок
 11. **Отчет (Report)**: Результат отправляется в UI через `TestResultsManager`.
     *   Примечание: `NoiseHostFilter` используется на этапе отображения, чтобы не засорять UI «успешными» результатами (Status OK), но не скрывать реальные проблемы.
 12. **Реакция (React)**: Если включен авто-обход, `DiagnosticOrchestrator` включает преемптивный TLS bypass через `BypassController.TlsService.ApplyPreemptiveAsync` (обычно `TLS_DISORDER + DROP_RST`); сам `TlsBypassService` регистрирует/удаляет `BypassFilter` в `TrafficEngine` и через события отдаёт план/метрики/вердикт в UI и оркестратору.
-    *   Дополнительно, если пользователь включил `EnableAutoBypass`, оркестратор может выполнять **auto-apply** INTEL плана, полученного через `LiveTestingPipeline.OnPlanBuilt` (с cooldown/gate, чтобы не было apply-storm).
+    *   Дополнительно, если пользователь включил `EnableAutoBypass`, оркестратор может выполнять **auto-apply** INTEL плана, полученного через `LiveTestingPipeline.OnPlanBuilt`.
+        *   Execution policy (P1.11): auto-apply **консервативный** — минимальная уверенность `>= 70`, запрещены `RiskLevel.High`, а также применяется allowlist «safe-only» стратегий.
+        *   DNS/DoH — системное изменение: auto-apply допускается только при явном consent (`BypassStateManager.AllowDnsDohSystemChanges=true`), иначе такие стратегии фильтруются.
+        *   Anti-storm: cooldown + gate; если gate занят, новые auto-apply задачи не накапливаются (soft-skip вместо очереди).
     *   После auto-apply выполняется быстрый outcome-probe и «мягкий» ретест через повторный enqueue целей в пайплайн.
     *   Примечание (практика): после ручного `Apply` в UI запускается короткий **пост-Apply ретест** (чтобы быстро увидеть эффект), а также доступна кнопка **«Рестарт коннекта»** — кратковременный drop трафика к целевым IP:443, чтобы приложение переподключилось уже под новым режимом.
 
