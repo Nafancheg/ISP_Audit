@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Media;
+using IspAudit;
 using IspAudit.Models;
 using IspAudit.Utils;
 using IspAudit.Wpf;
@@ -36,6 +37,11 @@ namespace IspAudit.ViewModels
             PackIconKind HeroIconKind,
             System.Windows.Media.Brush HeroAccentBrush,
             string DefaultPrimaryButtonText);
+
+        public sealed record OperatorTargetOption(
+            string Key,
+            string Title,
+            string Subtitle);
 
         private static OperatorStatusPresentation GetPresentation(OperatorStatus status)
         {
@@ -124,6 +130,9 @@ namespace IspAudit.ViewModels
 
         public ObservableCollection<OperatorSessionEntry> Sessions { get; } = new();
 
+        public ObservableCollection<OperatorTargetOption> PopularTargets { get; } = new();
+        public ObservableCollection<OperatorTargetOption> AllTargets { get; } = new();
+
         private OperatorHistoryTimeRange _historyTimeRange = OperatorHistoryTimeRange.Last7Days;
         private OperatorHistoryTypeFilter _historyTypeFilter = OperatorHistoryTypeFilter.All;
         private string _historyGroupKey = AllHistoryGroupsKey;
@@ -138,6 +147,12 @@ namespace IspAudit.ViewModels
 
         private bool _isSourceSectionExpanded = true;
         private bool _didAutoCollapseSourceSection;
+
+        private bool _isTargetBrowseExpanded;
+        private string _selectedTargetKey = string.Empty;
+
+        public ICommand SelectTargetCommand { get; }
+        public ICommand ToggleTargetBrowseCommand { get; }
 
         public ICommand RollbackCommand { get; }
         public ICommand ClearHistoryCommand { get; }
@@ -186,9 +201,41 @@ namespace IspAudit.ViewModels
             _isSourceSectionExpanded = Status == OperatorStatus.Idle;
             _didAutoCollapseSourceSection = Status != OperatorStatus.Idle;
 
+            // Шаг 1 (Operator): выбор цели (сервис/игра). Best-effort.
+            RefreshTargetsBestEffort();
+            try
+            {
+                var persisted = OperatorTargetStore.LoadOrDefault(string.Empty);
+                if (!string.IsNullOrWhiteSpace(persisted) && AllTargets.Any(t => string.Equals(t.Key, persisted, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _selectedTargetKey = persisted;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            // Если цель не задана, берём первую из популярных/доступных.
+            if (string.IsNullOrWhiteSpace(_selectedTargetKey))
+            {
+                _selectedTargetKey = PopularTargets.FirstOrDefault()?.Key
+                    ?? AllTargets.FirstOrDefault()?.Key
+                    ?? string.Empty;
+            }
+
+            ApplySelectedTargetToBypassBestEffort(persist: false);
+
             RollbackCommand = new RelayCommand(async _ => await RollbackAsync().ConfigureAwait(false));
             ClearHistoryCommand = new RelayCommand(_ => ClearHistoryBestEffort());
             ClearSessionsCommand = new RelayCommand(_ => ClearSessionsBestEffort());
+
+            SelectTargetCommand = new RelayCommand(param => SelectTargetBestEffort(param as string));
+            ToggleTargetBrowseCommand = new RelayCommand(_ =>
+            {
+                _isTargetBrowseExpanded = !_isTargetBrowseExpanded;
+                OnPropertyChanged(nameof(IsTargetBrowseExpanded));
+            });
 
             Main.PropertyChanged += MainOnPropertyChanged;
 
@@ -288,9 +335,10 @@ namespace IspAudit.ViewModels
                 }
 
                 // Idle
+                var targetPrefix = BuildTargetPrefixForIdleBestEffort();
                 if (Main.IsBasicTestMode)
                 {
-                    return "Источник: быстрая проверка интернета. Нажмите «Проверить».";
+                    return targetPrefix + "Источник: быстрая проверка интернета. Нажмите «Проверить».";
                 }
 
                 var exePath = (Main.ExePath ?? string.Empty).Trim();
@@ -298,15 +346,24 @@ namespace IspAudit.ViewModels
                 {
                     try
                     {
-                        return $"Источник: {Path.GetFileName(exePath)}. Нажмите «Проверить».";
+                        return targetPrefix + $"Источник: {Path.GetFileName(exePath)}. Нажмите «Проверить».";
                     }
                     catch
                     {
-                        return "Источник: выбранное приложение (.exe). Нажмите «Проверить».";
+                        return targetPrefix + "Источник: выбранное приложение (.exe). Нажмите «Проверить».";
                     }
                 }
 
-                return "Выберите источник трафика и нажмите «Проверить».";
+                return targetPrefix + "Выберите источник трафика и нажмите «Проверить».";
+            }
+        }
+
+        public string UserDetails_Target
+        {
+            get
+            {
+                var t = SelectedTargetTitle;
+                return string.IsNullOrWhiteSpace(t) ? "—" : t;
             }
         }
 
@@ -316,6 +373,48 @@ namespace IspAudit.ViewModels
             {
                 var t = BuildTrafficSourceText();
                 return string.IsNullOrWhiteSpace(t) ? "—" : t;
+            }
+        }
+
+        public bool IsTargetStepVisible => IsSourceStepVisible;
+
+        public bool IsTargetSelectionEnabled => IsSourceSelectionEnabled;
+
+        public bool IsTargetBrowseExpanded => _isTargetBrowseExpanded;
+
+        public string SelectedTargetKey
+        {
+            get => _selectedTargetKey;
+            set
+            {
+                var next = (value ?? string.Empty).Trim();
+                if (string.Equals(_selectedTargetKey, next, StringComparison.OrdinalIgnoreCase)) return;
+                _selectedTargetKey = next;
+                OnPropertyChanged(nameof(SelectedTargetKey));
+                OnPropertyChanged(nameof(SelectedTargetTitle));
+                OnPropertyChanged(nameof(UserDetails_Target));
+                OnPropertyChanged(nameof(SummaryLine));
+
+                ApplySelectedTargetToBypassBestEffort(persist: true);
+            }
+        }
+
+        public string SelectedTargetTitle
+        {
+            get
+            {
+                try
+                {
+                    var key = (SelectedTargetKey ?? string.Empty).Trim();
+                    if (string.IsNullOrWhiteSpace(key)) return string.Empty;
+
+                    var found = AllTargets.FirstOrDefault(t => string.Equals(t.Key, key, StringComparison.OrdinalIgnoreCase));
+                    return (found?.Title ?? string.Empty).Trim();
+                }
+                catch
+                {
+                    return string.Empty;
+                }
             }
         }
 
@@ -680,10 +779,12 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(HeroIconKind));
             OnPropertyChanged(nameof(HeroAccentBrush));
             OnPropertyChanged(nameof(IsSourceStepVisible));
+            OnPropertyChanged(nameof(IsTargetStepVisible));
             OnPropertyChanged(nameof(IsProgressStepVisible));
             OnPropertyChanged(nameof(IsSummaryStepVisible));
             OnPropertyChanged(nameof(IsFixingStepVisible));
             OnPropertyChanged(nameof(IsSourceSelectionEnabled));
+            OnPropertyChanged(nameof(IsTargetSelectionEnabled));
             OnPropertyChanged(nameof(IsPrimaryActionEnabled));
             OnPropertyChanged(nameof(IsFixStepCardVisible));
             OnPropertyChanged(nameof(FixStepTitle));
@@ -692,7 +793,9 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(FixStepOutcomeText));
             OnPropertyChanged(nameof(Headline));
             OnPropertyChanged(nameof(SummaryLine));
+            OnPropertyChanged(nameof(SelectedTargetTitle));
             OnPropertyChanged(nameof(UserDetails_Source));
+            OnPropertyChanged(nameof(UserDetails_Target));
             OnPropertyChanged(nameof(UserDetails_Status));
             OnPropertyChanged(nameof(UserDetails_Result));
             OnPropertyChanged(nameof(UserDetails_AutoFix));
@@ -968,7 +1071,7 @@ namespace IspAudit.ViewModels
                 _activeSession = new SessionDraft
                 {
                     StartedAtUtc = DateTimeOffset.UtcNow,
-                    TrafficSource = BuildTrafficSourceText(),
+                    TrafficSource = BuildSessionTrafficDescriptorTextBestEffort(),
                     AutoFixEnabledAtStart = Main.EnableAutoBypass
                 };
                 _activeSession.Actions.Add("Проверка: началась");
@@ -1025,7 +1128,7 @@ namespace IspAudit.ViewModels
                 _activeSession = new SessionDraft
                 {
                     StartedAtUtc = DateTimeOffset.UtcNow,
-                    TrafficSource = BuildTrafficSourceText(),
+                    TrafficSource = BuildSessionTrafficDescriptorTextBestEffort(),
                     AutoFixEnabledAtStart = Main.EnableAutoBypass
                 };
 
@@ -1037,6 +1140,208 @@ namespace IspAudit.ViewModels
             catch
             {
                 // ignore
+            }
+        }
+
+        private void SelectTargetBestEffort(string? key)
+        {
+            try
+            {
+                if (!IsTargetSelectionEnabled) return;
+
+                var normalized = (key ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(normalized)) return;
+
+                SelectedTargetKey = normalized;
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void ApplySelectedTargetToBypassBestEffort(bool persist)
+        {
+            try
+            {
+                var key = (SelectedTargetKey ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    Main.Bypass.SetOutcomeTargetHost(null);
+                }
+                else
+                {
+                    Main.Bypass.SetOutcomeTargetHost(key);
+                }
+
+                if (persist)
+                {
+                    OperatorTargetStore.SaveBestEffort(key);
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void RefreshTargetsBestEffort()
+        {
+            try
+            {
+                PopularTargets.Clear();
+                AllTargets.Clear();
+
+                var targets = new List<TargetDefinition>();
+                try
+                {
+                    if (Config.ActiveProfile?.Targets != null && Config.ActiveProfile.Targets.Count > 0)
+                    {
+                        targets.AddRange(Config.ActiveProfile.Targets);
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                // Fallback: если профиль не загружен, используем Program.Targets (совместимость).
+                if (targets.Count == 0)
+                {
+                    try
+                    {
+                        foreach (var kv in Program.Targets)
+                        {
+                            targets.Add(kv.Value);
+                        }
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                }
+
+                static string NormalizeKey(TargetDefinition t)
+                {
+                    var host = (t.Host ?? string.Empty).Trim();
+                    if (!string.IsNullOrWhiteSpace(host)) return host;
+                    return (t.Name ?? string.Empty).Trim();
+                }
+
+                foreach (var t in targets)
+                {
+                    var key = NormalizeKey(t);
+                    if (string.IsNullOrWhiteSpace(key)) continue;
+
+                    var title = (t.Name ?? string.Empty).Trim();
+                    if (string.IsNullOrWhiteSpace(title)) title = key;
+
+                    var service = (t.Service ?? string.Empty).Trim();
+                    var subtitle = string.IsNullOrWhiteSpace(service) ? key : $"{service} • {key}";
+
+                    AllTargets.Add(new OperatorTargetOption(key, title, subtitle));
+                }
+
+                // Дедуп и сортировка для стабильного UI.
+                var dedup = AllTargets
+                    .GroupBy(t => (t.Key ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.First())
+                    .OrderBy(t => t.Title, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(t => t.Key, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                AllTargets.Clear();
+                foreach (var t in dedup)
+                {
+                    AllTargets.Add(t);
+                }
+
+                // Популярные: сначала critical из профиля, затем fallback на первые элементы списка.
+                var popular = new List<OperatorTargetOption>();
+
+                try
+                {
+                    foreach (var t in targets.Where(t => t.Critical))
+                    {
+                        var key = NormalizeKey(t);
+                        var match = AllTargets.FirstOrDefault(x => string.Equals(x.Key, key, StringComparison.OrdinalIgnoreCase));
+                        if (match != null) popular.Add(match);
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                // Добавляем «последнюю» цель, если есть, и её ещё нет в списке.
+                try
+                {
+                    var persisted = OperatorTargetStore.LoadOrDefault(string.Empty);
+                    if (!string.IsNullOrWhiteSpace(persisted))
+                    {
+                        var match = AllTargets.FirstOrDefault(x => string.Equals(x.Key, persisted, StringComparison.OrdinalIgnoreCase));
+                        if (match != null && popular.All(p => !string.Equals(p.Key, match.Key, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            popular.Insert(0, match);
+                        }
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                foreach (var t in AllTargets)
+                {
+                    if (popular.Count >= 6) break;
+                    if (popular.Any(p => string.Equals(p.Key, t.Key, StringComparison.OrdinalIgnoreCase))) continue;
+                    popular.Add(t);
+                }
+
+                foreach (var t in popular)
+                {
+                    PopularTargets.Add(t);
+                }
+
+                OnPropertyChanged(nameof(SelectedTargetTitle));
+                OnPropertyChanged(nameof(UserDetails_Target));
+                OnPropertyChanged(nameof(SummaryLine));
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private string BuildTargetPrefixForIdleBestEffort()
+        {
+            try
+            {
+                var t = SelectedTargetTitle;
+                if (string.IsNullOrWhiteSpace(t)) return string.Empty;
+                return $"Цель: {t}. ";
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private string BuildSessionTrafficDescriptorTextBestEffort()
+        {
+            try
+            {
+                var target = SelectedTargetTitle;
+                var source = BuildTrafficSourceText();
+
+                if (string.IsNullOrWhiteSpace(target)) return source;
+                if (string.IsNullOrWhiteSpace(source)) return $"Цель: {target}";
+
+                return $"Цель: {target}; {source}";
+            }
+            catch
+            {
+                return BuildTrafficSourceText();
             }
         }
 

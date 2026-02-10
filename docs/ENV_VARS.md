@@ -37,6 +37,9 @@
 - `ISP_AUDIT_OPERATOR_SESSIONS_PATH`
   - Перенаправляет историю Operator-сессий (по умолчанию `state\\operator_sessions.json`).
 
+- `ISP_AUDIT_OPERATOR_TARGET_PATH`
+  - Перенаправляет файл выбранной цели (сервис/игра) в Operator UI (по умолчанию `state\\operator_target.json`).
+
 - `ISP_AUDIT_POST_APPLY_CHECKS_PATH`
   - Перенаправляет файл результатов пост‑проверки (по умолчанию `state\\post_apply_checks.json`).
 

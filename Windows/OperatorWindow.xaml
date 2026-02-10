@@ -104,6 +104,51 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Шаг 1: выбор цели (сервис/игра) -->
+                    <Border Padding="10" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}" Margin="0,0,0,10"
+                            Visibility="{Binding Vm.IsTargetStepVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <WrapPanel Margin="0,0,0,6">
+                                <TextBlock Text="Цель:" Opacity="0.75" VerticalAlignment="Center" Margin="0,0,10,0"/>
+
+                                <ItemsControl ItemsSource="{Binding Vm.PopularTargets}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Content="{Binding Title}"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Margin="0,0,8,8" Padding="12,6" MinWidth="140"
+                                                    IsEnabled="{Binding DataContext.Vm.IsTargetSelectionEnabled, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    Command="{Binding DataContext.Vm.SelectTargetCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding Key}"
+                                                    ToolTip="{Binding Subtitle}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Button Content="Обзор..."
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="0,0,0,8" Padding="12,6" MinWidth="110"
+                                        IsEnabled="{Binding Vm.IsTargetSelectionEnabled}"
+                                        Command="{Binding Vm.ToggleTargetBrowseCommand}"/>
+                            </WrapPanel>
+
+                            <ComboBox Style="{StaticResource ModernComboBoxStyle}"
+                                      Height="36"
+                                      Visibility="{Binding Vm.IsTargetBrowseExpanded, Converter={StaticResource BoolToVisibilityConverter}}"
+                                      IsEnabled="{Binding Vm.IsTargetSelectionEnabled}"
+                                      ItemsSource="{Binding Vm.AllTargets}"
+                                      SelectedValuePath="Key"
+                                      SelectedValue="{Binding Vm.SelectedTargetKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      DisplayMemberPath="Title"
+                                      ToolTip="Выберите сервис/игру"/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Источник трафика (без большого заголовка/описания) -->
                     <Border Padding="10" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}" Margin="0,0,0,10"
                             Visibility="{Binding Vm.IsSourceStepVisible, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -193,6 +238,7 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="180"/>
@@ -202,20 +248,23 @@
                                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Источник" Opacity="0.75"/>
                                 <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Vm.UserDetails_Source}" TextWrapping="Wrap"/>
 
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Статус" Opacity="0.75" Margin="0,4,0,0"/>
-                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Vm.UserDetails_Status}" Margin="0,4,0,0"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Цель" Opacity="0.75" Margin="0,4,0,0"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Vm.UserDetails_Target}" Margin="0,4,0,0" TextWrapping="Wrap"/>
 
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Результат" Opacity="0.75" Margin="0,4,0,0"/>
-                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Vm.UserDetails_Result}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Статус" Opacity="0.75" Margin="0,4,0,0"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Vm.UserDetails_Status}" Margin="0,4,0,0"/>
 
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Автоисправление" Opacity="0.75" Margin="0,4,0,0"/>
-                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Vm.UserDetails_AutoFix}" Margin="0,4,0,0"/>
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Результат" Opacity="0.75" Margin="0,4,0,0"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Vm.UserDetails_Result}" Margin="0,4,0,0" TextWrapping="Wrap"/>
 
-                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Обход" Opacity="0.75" Margin="0,4,0,0"/>
-                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Vm.UserDetails_Bypass}" Margin="0,4,0,0"/>
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Автоисправление" Opacity="0.75" Margin="0,4,0,0"/>
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Vm.UserDetails_AutoFix}" Margin="0,4,0,0"/>
 
-                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Последнее действие" Opacity="0.75" Margin="0,4,0,0"/>
-                                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Vm.UserDetails_LastAction}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Обход" Opacity="0.75" Margin="0,4,0,0"/>
+                                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Vm.UserDetails_Bypass}" Margin="0,4,0,0"/>
+
+                                <TextBlock Grid.Row="6" Grid.Column="0" Text="Последнее действие" Opacity="0.75" Margin="0,4,0,0"/>
+                                <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding Vm.UserDetails_LastAction}" Margin="0,4,0,0" TextWrapping="Wrap"/>
                             </Grid>
 
                             <Expander Header="Диагностика (сырое)" Margin="0,8,0,0" IsExpanded="False">
