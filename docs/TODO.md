@@ -65,6 +65,8 @@
 - [x] 09.02.2026: dotnet build OK
 - [x] 09.02.2026: smoke reg (non-admin) PASS 27/27 (AutoBypass execution policy)
 
+- [x] 10.02.2026: smoke strict (admin) PASS 172/172, отчёт: [artifacts/smoke_strict_20260210_161528.json](artifacts/smoke_strict_20260210_161528.json)
+
 ---
 
 ## P0 — Стабилизация обхода и рантайма (КРИТИЧЕСКОЕ)
