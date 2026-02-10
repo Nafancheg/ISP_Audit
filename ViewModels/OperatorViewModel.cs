@@ -142,9 +142,13 @@ namespace IspAudit.ViewModels
         private bool _isSourceSectionExpanded = true;
         private bool _didAutoCollapseSourceSection;
 
+        private bool _isDetailsExpanded;
+
         public ICommand RollbackCommand { get; }
         public ICommand ClearHistoryCommand { get; }
         public ICommand ClearSessionsCommand { get; }
+
+        public ICommand ToggleDetailsCommand { get; }
 
         public OperatorViewModel(MainViewModel main)
         {
@@ -193,6 +197,7 @@ namespace IspAudit.ViewModels
             RollbackCommand = new RelayCommand(async _ => await RollbackAsync().ConfigureAwait(false));
             ClearHistoryCommand = new RelayCommand(_ => ClearHistoryBestEffort());
             ClearSessionsCommand = new RelayCommand(_ => ClearSessionsBestEffort());
+            ToggleDetailsCommand = new RelayCommand(_ => IsDetailsExpanded = !IsDetailsExpanded);
 
             Main.PropertyChanged += MainOnPropertyChanged;
 
@@ -215,6 +220,17 @@ namespace IspAudit.ViewModels
                 if (_isSourceSectionExpanded == value) return;
                 _isSourceSectionExpanded = value;
                 OnPropertyChanged(nameof(IsSourceSectionExpanded));
+            }
+        }
+
+        public bool IsDetailsExpanded
+        {
+            get => _isDetailsExpanded;
+            set
+            {
+                if (_isDetailsExpanded == value) return;
+                _isDetailsExpanded = value;
+                OnPropertyChanged(nameof(IsDetailsExpanded));
             }
         }
 
@@ -1330,14 +1346,83 @@ namespace IspAudit.ViewModels
             }
         }
 
+        private void SortSessionsBestEffort()
+        {
+            try
+            {
+                if (Sessions.Count <= 1) return;
+
+                var sorted = Sessions
+                    .OrderBy(e => GetOutcomeRank(e?.Outcome))
+                    .ThenByDescending(e => GetSessionTimeUtc(e))
+                    .ToList();
+
+                for (var targetIndex = 0; targetIndex < sorted.Count; targetIndex++)
+                {
+                    var desired = sorted[targetIndex];
+                    var currentIndex = Sessions.IndexOf(desired);
+                    if (currentIndex >= 0 && currentIndex != targetIndex)
+                    {
+                        Sessions.Move(currentIndex, targetIndex);
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private static int GetOutcomeRank(string? outcome)
+        {
+            var v = (outcome ?? string.Empty).Trim().ToUpperInvariant();
+            return v switch
+            {
+                "FAIL" => 0,
+                "WARN" => 1,
+                "PARTIAL" => 1,
+                "UNKNOWN" => 2,
+                "OK" => 3,
+                "CANCELLED" => 4,
+                _ => 2
+            };
+        }
+
+        private static DateTimeOffset GetSessionTimeUtc(OperatorSessionEntry? entry)
+        {
+            if (entry == null) return DateTimeOffset.MinValue;
+
+            if (TryParseUtc(entry.EndedAtUtc, out var endedUtc))
+            {
+                return endedUtc;
+            }
+
+            if (TryParseUtc(entry.StartedAtUtc, out var startedUtc))
+            {
+                return startedUtc;
+            }
+
+            return DateTimeOffset.MinValue;
+        }
+
+        private static bool TryParseUtc(string? text, out DateTimeOffset value)
+        {
+            value = default;
+            if (string.IsNullOrWhiteSpace(text)) return false;
+
+            return DateTimeOffset.TryParse(
+                text,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out value);
+        }
+
         private void RebuildHistoryGroupOptionsBestEffort()
         {
             try
             {
                 var keys = _historyAll
                     .Where(e => e != null)
-        private void SortSessionsBestEffort()
-        {
                     .Select(e => (e.GroupKey ?? string.Empty).Trim())
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(k => string.IsNullOrWhiteSpace(k) ? "" : k, StringComparer.OrdinalIgnoreCase)
@@ -1364,8 +1449,6 @@ namespace IspAudit.ViewModels
                 // Если выбранная группа исчезла — откатываемся на "Все".
                 var exists = HistoryGroupOptions.Any(o => string.Equals(o.Key, selected, StringComparison.Ordinal));
                 if (!exists)
-        private static int GetOutcomeRank(string? outcome)
-        {
                 {
                     _historyGroupKey = AllHistoryGroupsKey;
                     OnPropertyChanged(nameof(HistoryGroupKey));
@@ -1381,8 +1464,6 @@ namespace IspAudit.ViewModels
         {
             try
             {
-        private static DateTimeOffset GetSessionTimeUtc(OperatorSessionEntry? entry)
-        {
                 var nowLocal = DateTimeOffset.Now;
                 DateTimeOffset? cutoff = null;
 
@@ -1399,8 +1480,6 @@ namespace IspAudit.ViewModels
                 {
                     var cat = (e.Category ?? string.Empty).Trim();
                     if (HistoryTypeFilter == OperatorHistoryTypeFilter.All) return true;
-        private static bool TryParseUtc(string? text, out DateTimeOffset value)
-        {
                     if (HistoryTypeFilter == OperatorHistoryTypeFilter.Checks) return cat.Equals("check", StringComparison.OrdinalIgnoreCase);
                     if (HistoryTypeFilter == OperatorHistoryTypeFilter.Fixes) return cat.Equals("fix", StringComparison.OrdinalIgnoreCase) || cat.Equals("rollback", StringComparison.OrdinalIgnoreCase);
                     if (HistoryTypeFilter == OperatorHistoryTypeFilter.Errors) return cat.Equals("error", StringComparison.OrdinalIgnoreCase);

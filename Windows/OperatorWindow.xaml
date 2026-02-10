@@ -177,10 +177,16 @@
                                 MinWidth="120" Height="44"
                                 Margin="12,0,0,0"
                                 Command="{Binding Vm.RollbackCommand}"/>
+
+                        <Button Content="Подробнее"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            MinWidth="120" Height="44"
+                            Margin="12,0,0,0"
+                            Command="{Binding Vm.ToggleDetailsCommand}"/>
                     </StackPanel>
 
                     <!-- Подробности + история под одним раскрытием -->
-                    <Expander Header="Подробнее" Margin="0,10,0,0" IsExpanded="False">
+                        <Expander Header="Подробнее" Margin="0,10,0,0" IsExpanded="{Binding Vm.IsDetailsExpanded, Mode=TwoWay}">
                         <StackPanel>
                             <Grid>
                                 <Grid.RowDefinitions>
