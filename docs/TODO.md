@@ -232,9 +232,9 @@
 - [ ] Убрать все MessageBox.Show и Dispatcher зависимости из Orchestrator
 
 ### 4.4 Разделение документации
-- [ ] `docs/ARCHITECTURE_REFERENCE.md` — стабильная часть (компоненты, потоки, контракты)
-- [ ] В ARCHITECTURE_CURRENT.md оставить только дельты/изменения с датами
-- [ ] Обновить ссылки в README, copilot-instructions, TODO
+- [x] `ARCHITECTURE_CURRENT.md` — теперь чистый архитектурный справочник (725→444 строк: убраны все датированные записи и inline-changelog)
+- [x] `docs/full_repo_audit_intel.md` — убрана спам-шапка «Дополнение» (942→891 строк), добавлены перекрёстные ссылки
+- [x] Ссылки в README, copilot-instructions, TODO — проверены, без изменений (файл не переименован)
 
 ---
 
