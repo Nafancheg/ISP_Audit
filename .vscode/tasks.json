@@ -87,7 +87,9 @@
 				"TestNetworkApp/TestNetworkApp.csproj",
 				"--",
 				"--smoke",
-				"reg"
+				"reg",
+				"--json",
+				"artifacts\\smoke_reg_latest.json"
 			],
 			"isBackground": false
 		},
