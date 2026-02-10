@@ -103,7 +103,9 @@
 				"TestNetworkApp/TestNetworkApp.csproj",
 				"--",
 				"--smoke",
-				"ui"
+				"ui",
+				"--json",
+				"artifacts\\smoke_ui_latest.json"
 			],
 			"isBackground": false
 		}

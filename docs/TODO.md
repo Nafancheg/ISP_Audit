@@ -66,6 +66,7 @@
 - [x] 09.02.2026: smoke reg (non-admin) PASS 27/27 (AutoBypass execution policy)
 
 - [x] 10.02.2026: smoke strict (admin) PASS 172/172, отчёт: [artifacts/smoke_strict_20260210_161528.json](artifacts/smoke_strict_20260210_161528.json)
+- [x] 10.02.2026: smoke ui (non-admin) PASS 22, FAIL 0, SKIP 1 (UI-023 admin-only), отчёт: [artifacts/smoke_ui_latest.json](artifacts/smoke_ui_latest.json)
 
 ---
 
