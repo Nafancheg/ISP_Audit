@@ -1,6 +1,65 @@
 # Changelog
 
-## [Unreleased] - 2026-01-20
+## [Unreleased] - 2026-02-10
+
+### 🔴 Критические исправления
+- **DNS hang fix**: `Dns.GetHostEntryAsync` мог зависнуть навсегда (игнорирует `CancellationToken` на Windows/VPN). Заменено на жёсткий таймаут через `Task.WhenAny` + наблюдение исключений (`StandardHostTester.WithTimeoutAsync`).
+- **UnobservedTaskException**: устранены утечки необработанных исключений из фоновых задач Orchestrator (silence monitor) и DNS-таймаутов.
+- **Crash reporting**: глобальный обработчик `TaskScheduler.UnobservedTaskException` + best-effort JSON в `state/crash_reports/app/` и `state/crash_reports/traffic_engine/`.
+- **TrafficEngine crash fix** (`Collection was modified`): snapshot iteration `_filtersSnapshot`, per-packet catch, hotfix — единичные исключения/реэнтрантные фильтры не валят loop.
+- **Транзакционность Start/Cancel**: ранний Cancel до создания CTS не терялся; единый async-lock для критических секций Orchestrator.
+
+### ✨ Operator UI (P1.11)
+- **Второй UI «Operator»**: антивирус-метафора (статус → CTA → итог), автопилот, понятный язык.
+- **OperatorViewModel**: 5 операторских состояний (Ожидание/Проверка/Норма/Ограничения/Блокировка), маппинг из существующей семантики.
+- **Wizard flow**: выбор .exe → прогресс → итог → «Исправляем» → пост-проверка → результат.
+- **Автопилот**: safe-only allowlist стратегий, consent gate для DNS/DoH, эскалация ступенями, ownership `appliedBy=autopilot|user`.
+- **История сессий**: persist `state/operator_sessions.json`, карточки-сессии + Expander «Подробнее», фильтры по сервису/типу/времени.
+- **Навигация**: Operator как отдельное окно, shared `MainViewModel`, переключение Operator↔Engineer с подтверждением, persist режима в `state/ui_mode.json`.
+- **Настройки**: модальное окно «Настройки» (Operator-safe), краткая справка «?».
+- **Smokes**: UI-018 (Operator launch), UI-015 (история persist), UI-019 (crash banner), UI-020 (QUIC targets), UI-023 (escalation).
+
+### ✨ INTEL / Диагностика
+- **INTEL feedback store**: persist `state/feedback_store.json`, запись после Post-Apply Retest.
+- **H3 probe**: реальный probe HTTP/3 (QUIC) → сигнал `QuicInterference`, UI `H3:✓/✗/-`, приоритизация `DropUdp443`.
+- **INTEL HttpRedirect**: план обхода `HttpHostTricks` при redirect.
+- **Blockpage hosts**: справочник во внешнем JSON `state/blockpage_hosts.json`.
+- **CDN aggregation**: groupKey для UI-ключа строки, бейдж `×N`, Intel-рекомендации по `UiKey`.
+- **Де-версионирование**: единый формат INTEL (`[INTEL]`, `intel:`, `plan:`).
+- **Нормализация dedupKey**: санитизация + strip `www.`, case-insensitive кэш.
+- **Post-Apply Retest**: гарантированная перепроверка после Apply, persist `state/post_apply_checks.json`, статус `OK/FAIL/PARTIAL/UNKNOWN`.
+- **PrimaryStatus/PrimaryStatusText**: семантика «работает» отделена от `TestStatus`.
+
+### ✨ Bypass / TrafficEngine
+- **Snapshot iteration**: immutable массивы `TlsFragmentSizes/RedirectRules/Hosts` в профиле.
+- **Correlation ID**: Apply/Retest привязан к crash-логам через `BypassOperationContext`.
+- **Фазовое логирование Apply**: фазы + длительности в `TlsBypassService.Engine.cs` и `BypassStateManager`.
+- **Watchdog**: grace от момента реальной остановки движка (не от старого Apply).
+- **DisableAll**: очищает per-target union, не даёт bypass «воскреснуть».
+- **ReactiveTargetSyncService**: bounded queue + coalescing + retry для селективного QUIC→TCP.
+- **Apply dedup**: не выполнять повторное применение при идентичном effective config.
+- **FixService**: отмена/timeout для DNS/DoH, возврат DoH-профилей/`EnableAutoDoh`.
+
+### ✨ Группировка доменов
+- **Pinned groups**: `state/domain_groups.json`, агрегация карточек, Apply к anchor-домену.
+- **Learned groups**: co-occurrence, suggest-only, ignore/promote UX.
+
+### 🛠 Инфраструктура / Тесты
+- **172 smoke теста** (strict PASS), 22 UI, 27 reg — все зелёные.
+- **Hardening тестовых хуков**: `ISP_AUDIT_TEST_*` ограничены DEBUG-only, env registry `docs/ENV_VARS.md`.
+- **Централизация ENV**: `Utils/EnvVar.cs` + `Utils/EnvKeys.cs`.
+- **Параллельный тестер**: `MaxConcurrentTests` через SemaphoreSlim.
+- **Consent gate**: строгое подтверждение DNS/DoH, persist `state/operator_consent.json`.
+- **Smoke tasks**: `--json artifacts/smoke_*_latest.json` для ui и reg.
+
+### 📚 Документация
+- **Полный аудит #4**: `docs/audit4.md` — архитектура, антипаттерны, рекомендации.
+- **Operator UI контракт**: `docs/P1_11_operator_ui_contract.md`.
+- **ENV vars registry**: `docs/ENV_VARS.md`.
+
+---
+
+## [v0.6.0-alpha] - 2026-01-20
 
 ### ✨ Ключевые изменения
 - **Policy-driven execution plane (FlowPolicy/DecisionGraph)**: метрики matched/applied и экспорт policy snapshot для репорта.
