@@ -32,7 +32,7 @@
 
 Дополнение (09.02.2026): P1.11 (Operator UX) — поддерживается «эскалация ступенями» после post-apply ретеста: при вердикте `FAIL/PARTIAL` оператору предлагается одно действие «Усилить», которое применяет следующую safe-only ступень (Disorder → DropRst → QUIC fallback → AllowNoSNI).
 
-Дополнение (09.02.2026): P1.11 (Operator UX) — кнопка «Откатить» выполняет полный rollback: выключение bypass + best-effort восстановление DNS/DoH при наличии backup (через `BypassController.RollbackAllAsync`).
+Дополнение (09.02.2026): P1.11 (Operator UX) — кнопка «Откатить» откатывает **только изменения Autopilot**: восстанавливается последний зафиксированный snapshot ручного apply (по apply-транзакциям), чтобы не ломать ручные настройки Engineer (через `BypassController.RollbackAutopilotOnlyAsync`). Полный rollback (bypass off + DNS/DoH restore при наличии backup) остаётся отдельным действием/методом `BypassController.RollbackAllAsync`.
 
 Дополнение (09.02.2026): P1.11 (Operator UX) — apply-транзакции помечаются ownership-метаданными (`appliedBy=user|autopilot`, `scope=group|target`), а Auto-apply пишет транзакцию для последующего выборочного rollback.
 

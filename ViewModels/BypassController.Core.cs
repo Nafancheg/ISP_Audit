@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
@@ -13,6 +14,13 @@ namespace IspAudit.ViewModels
     public partial class BypassController
     {
         private sealed record BypassStateSnapshot(TlsBypassOptions Options, bool DoHEnabled, string SelectedDnsPreset);
+
+        private static bool IsAppliedBy(BypassApplyTransaction tx, string expected)
+        {
+            if (tx == null) return false;
+            var v = (tx.AppliedBy ?? string.Empty).Trim();
+            return string.Equals(v, expected, StringComparison.OrdinalIgnoreCase);
+        }
 
         private BypassStateSnapshot CaptureStateSnapshot()
         {
@@ -225,6 +233,100 @@ namespace IspAudit.ViewModels
             catch (Exception ex)
             {
                 Log($"[DoH] Rollback exception: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Откатить только то, что включил Autopilot (P1.11):
+        /// восстанавливаем последний зафиксированный snapshot от пользователя,
+        /// чтобы не ломать ручные настройки из Engineer.
+        ///
+        /// Важно: здесь НЕ делаем принудительный RestoreDnsAsync по backup-файлу,
+        /// потому что Autopilot по умолчанию не имеет права трогать DNS/DoH.
+        /// </summary>
+        public async Task RollbackAutopilotOnlyAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var all = _applyTransactionsJournal.Snapshot();
+                if (all == null || all.Count == 0)
+                {
+                    Log("[Rollback][Autopilot] Нет apply-транзакций: откатывать нечего.");
+                    return;
+                }
+
+                var latestAuto = all
+                    .Where(t => IsAppliedBy(t, "autopilot"))
+                    .OrderByDescending(t => ParseCreatedAtUtcOrMin(t.CreatedAtUtc))
+                    .FirstOrDefault();
+
+                if (latestAuto == null)
+                {
+                    Log("[Rollback][Autopilot] Нет автопилотных apply-транзакций: откатывать нечего.");
+                    return;
+                }
+
+                var autoAt = ParseCreatedAtUtcOrMin(latestAuto.CreatedAtUtc);
+
+                // Если после последнего автопилота уже был ручной apply, значит пользователь "взял владение".
+                // В этом случае откат автопилота ничего не должен менять.
+                var manualAfterAuto = all
+                    .Where(t => IsAppliedBy(t, "user"))
+                    .Where(t => ParseCreatedAtUtcOrMin(t.CreatedAtUtc) > autoAt)
+                    .OrderByDescending(t => ParseCreatedAtUtcOrMin(t.CreatedAtUtc))
+                    .FirstOrDefault();
+
+                if (manualAfterAuto != null)
+                {
+                    Log("[Rollback][Autopilot] После автопилота есть ручной apply: откат не требуется.");
+                    return;
+                }
+
+                var baseline = all
+                    .Where(t => IsAppliedBy(t, "user"))
+                    .Where(t => ParseCreatedAtUtcOrMin(t.CreatedAtUtc) < autoAt)
+                    .OrderByDescending(t => ParseCreatedAtUtcOrMin(t.CreatedAtUtc))
+                    .FirstOrDefault();
+
+                if (baseline?.Snapshot != null)
+                {
+                    // Делаем "жёсткое" выключение, чтобы очистить remembered union,
+                    // затем восстанавливаем пользовательский снимок.
+                    try
+                    {
+                        await DisableAllAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"[Rollback][Autopilot] Prepare DisableAll failed: {ex.Message}");
+                    }
+
+                    Log($"[Rollback][Autopilot] Restoring user snapshot (tx={baseline.TransactionId}).");
+                    var snap = new BypassStateSnapshot(
+                        Options: baseline.Snapshot.OptionsSnapshot,
+                        DoHEnabled: baseline.Snapshot.DoHEnabled,
+                        SelectedDnsPreset: baseline.Snapshot.SelectedDnsPreset);
+
+                    await RestoreSnapshotAsync(snap).ConfigureAwait(false);
+                    Log("[Rollback][Autopilot] Done: user snapshot restored.");
+                    return;
+                }
+
+                // Нет baseline от пользователя: безопасный откат = просто выключить bypass.
+                Log("[Rollback][Autopilot] Нет user-snapshot: выключаю bypass (без DNS отката)." );
+                await DisableAllAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Log($"[Rollback][Autopilot] Ошибка отката: {ex.Message}");
             }
         }
 
