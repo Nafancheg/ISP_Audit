@@ -80,17 +80,18 @@ namespace IspAudit.Core.Modules
                 // ВАЖНО: reverse DNS не используем как "достоверное" имя для TLS/SNI.
                 try
                 {
-                    var rdnsTask = System.Net.Dns.GetHostEntryAsync(ipString, ct);
-                    var timeoutTask = Task.Delay(1500, ct);
-                    var completedTask = await Task.WhenAny(rdnsTask, timeoutTask).ConfigureAwait(false);
-                    if (completedTask == rdnsTask)
+                    using var rdnsCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    rdnsCts.CancelAfter(1500);
+
+                    var hostEntry = await System.Net.Dns.GetHostEntryAsync(ipString, rdnsCts.Token).ConfigureAwait(false);
+                    if (!string.IsNullOrWhiteSpace(hostEntry.HostName))
                     {
-                        var hostEntry = await rdnsTask.ConfigureAwait(false);
-                        if (!string.IsNullOrWhiteSpace(hostEntry.HostName))
-                        {
-                            reverseDnsHostname = hostEntry.HostName;
-                        }
+                        reverseDnsHostname = hostEntry.HostName;
                     }
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    // Таймаут reverse DNS — это нормально.
                 }
                 catch
                 {
@@ -107,21 +108,18 @@ namespace IspAudit.Core.Modules
                 {
                     try
                     {
-                        var dnsCheckTask = System.Net.Dns.GetHostEntryAsync(hostname, ct);
                         var dnsTimeoutMs = (int)Math.Clamp(_testTimeout.TotalMilliseconds, 2000, 4000);
-                        var timeoutTask = Task.Delay(dnsTimeoutMs, ct);
 
-                        var completedTask = await Task.WhenAny(dnsCheckTask, timeoutTask).ConfigureAwait(false);
-                        if (completedTask != dnsCheckTask)
-                        {
-                            dnsOk = false;
-                            dnsStatus = BlockageCode.DnsTimeout;
-                        }
-                        else
-                        {
-                            await dnsCheckTask.ConfigureAwait(false);
-                            // Если успешно разрезолвилось - DNS работает
-                        }
+                        using var dnsCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        dnsCts.CancelAfter(dnsTimeoutMs);
+
+                        await System.Net.Dns.GetHostEntryAsync(hostname, dnsCts.Token).ConfigureAwait(false);
+                        // Если успешно разрезолвилось - DNS работает
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        dnsOk = false;
+                        dnsStatus = BlockageCode.DnsTimeout;
                     }
                     catch
                     {
