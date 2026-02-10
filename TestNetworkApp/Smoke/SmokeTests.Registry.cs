@@ -42,6 +42,7 @@ namespace TestNetworkApp.Smoke
                 ["UI-020"] = Ui_QuicDropTargets_AreVisibleInUiBindings,
                 ["UI-021"] = Ui_OperatorWindow_ShutdownOnClose_Wired,
                 ["UI-022"] = Ui_Operator_MinimalHeader_SettingsHelp_Wired,
+                ["UI-023"] = Ui_Operator_EscalationButton_AndApplyEscalation_Works_AdminOnly,
 
                 ["ORCH-001"] = Orch_Pipeline_StartStop_ViaRetestTargets,
                 ["ORCH-002"] = Orch_MonitoringServices_StartStop_AdminGated,

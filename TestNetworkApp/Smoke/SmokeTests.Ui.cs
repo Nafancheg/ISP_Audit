@@ -597,6 +597,89 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Ui_Operator_EscalationButton_AndApplyEscalation_Works_AdminOnly(CancellationToken ct)
+            => RunAsyncAwait("UI-023", "P1.11: Operator — «Усилить» после FAIL/PARTIAL запускает ApplyEscalation (admin-only, skip TLS apply)", async innerCt =>
+            {
+                if (!TrafficEngine.HasAdministratorRights)
+                {
+                    return new SmokeTestResult("UI-023",
+                        "P1.11: Operator — «Усилить» после FAIL/PARTIAL запускает ApplyEscalation (admin-only, skip TLS apply)",
+                        SmokeOutcome.Skip,
+                        TimeSpan.Zero,
+                        "Требуются права администратора (в non-admin режиме «Усилить» недоступно)" );
+                }
+
+                string? prevSkipTls = null;
+                try
+                {
+                    // Важно: в smoke не трогаем реальный WinDivert/TrafficEngine.
+                    // Используем DEBUG-only хук, который пропускает фазу ApplyTlsOptionsAsync.
+                    prevSkipTls = Environment.GetEnvironmentVariable(IspAudit.Utils.EnvKeys.TestSkipTlsApply);
+                    Environment.SetEnvironmentVariable(IspAudit.Utils.EnvKeys.TestSkipTlsApply, "1");
+
+                    var vm = new MainViewModel();
+                    var op = new OperatorViewModel(vm);
+
+                    var hostKey = "example.com";
+                    var basePlan = new IspAudit.Core.Intelligence.Contracts.BypassPlan
+                    {
+                        ForDiagnosis = IspAudit.Core.Intelligence.Contracts.DiagnosisId.TlsInterference,
+                        PlanConfidence = 80,
+                        Reasoning = "smoke",
+                        PlannedAtUtc = DateTimeOffset.UtcNow,
+                        Strategies = new List<IspAudit.Core.Intelligence.Contracts.BypassStrategy>
+                        {
+                            new IspAudit.Core.Intelligence.Contracts.BypassStrategy
+                            {
+                                Id = IspAudit.Core.Intelligence.Contracts.StrategyId.TlsFragment,
+                                BasePriority = 100,
+                                Risk = IspAudit.Core.Intelligence.Contracts.RiskLevel.Medium
+                            }
+                        }
+                    };
+
+                    // Подкладываем план в оркестратор так, чтобы ApplyEscalationAsync нашёл базовую цель/план.
+                    SetPrivateField(vm.Orchestrator, "_lastIntelPlan", basePlan);
+                    SetPrivateField(vm.Orchestrator, "_lastIntelPlanHostKey", hostKey);
+                    SetPrivateField(vm.Orchestrator, "_lastIntelDiagnosisHostKey", hostKey);
+
+                    // Эмулируем, что предыдущий post-apply ретест был FAIL — тогда Operator должен перейти в режим «Усилить».
+                    SetPrivateField(op, "_lastPostApplyVerdict", "FAIL");
+
+                    if (!string.Equals(op.FixButtonText, "Усилить", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult("UI-023",
+                            "P1.11: Operator — «Усилить» после FAIL/PARTIAL запускает ApplyEscalation (admin-only, skip TLS apply)",
+                            SmokeOutcome.Fail,
+                            TimeSpan.Zero,
+                            $"Ожидали FixButtonText='Усилить', получили '{op.FixButtonText}'" );
+                    }
+
+                    // Выполняем ApplyEscalation по приватному async-методу (без RelayCommand async-void).
+                    var task = (Task)InvokePrivateMethod(vm, "ApplyEscalationAsync")!;
+                    await task.ConfigureAwait(false);
+
+                    if (vm.IsApplyingRecommendations)
+                    {
+                        return new SmokeTestResult("UI-023",
+                            "P1.11: Operator — «Усилить» после FAIL/PARTIAL запускает ApplyEscalation (admin-only, skip TLS apply)",
+                            SmokeOutcome.Fail,
+                            TimeSpan.Zero,
+                            "IsApplyingRecommendations=true после завершения ApplyEscalationAsync (ожидали сброс в false)" );
+                    }
+
+                    return new SmokeTestResult("UI-023",
+                        "P1.11: Operator — «Усилить» после FAIL/PARTIAL запускает ApplyEscalation (admin-only, skip TLS apply)",
+                        SmokeOutcome.Pass,
+                        TimeSpan.Zero,
+                        "OK" );
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable(IspAudit.Utils.EnvKeys.TestSkipTlsApply, prevSkipTls);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> Ui_OperatorWindow_ShutdownOnClose_Wired(CancellationToken ct)
             => RunAsync("UI-021", "P1.11: Operator shutdown wired (Window.Closing → ShutdownAsync best-effort)", () =>
             {

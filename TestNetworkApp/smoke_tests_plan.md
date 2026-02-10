@@ -856,6 +856,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** Проверка XAML файлов как текста
 **Ожидаемый результат:** Найдены `ToolTip="Настройки"`, `ToolTip="Справка"`, и в справке есть «Открыть расширенный режим»
 
+**Test ID:** `UI-023`
+**Что проверяет:** P1.11 — режим «Усилить» после пост‑проверки FAIL/PARTIAL: переключение CTA и запуск ApplyEscalation
+**Для чего:** Чтобы операторский поток эскалации не «сломался» (кнопка должна меняться на «Усилить», а обработчик должен запускать ApplyEscalation)
+**Критерий успеха:** При admin правах и вердикте post‑apply `FAIL` кнопка `FixButtonText` становится `Усилить`, а вызов `ApplyEscalationAsync` завершается без зависаний
+**Входные данные:** Инъекция lastIntelPlan/hostKey через reflection + принудительный `post‑apply verdict=FAIL` в `OperatorViewModel`
+**Ожидаемый результат:** `FixButtonText == "Усилить"`, `ApplyEscalationAsync` завершился, `IsApplyingRecommendations == false`
+
 ---
 
 ## 7. Orchestration & Process Tracking

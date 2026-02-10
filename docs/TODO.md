@@ -325,6 +325,7 @@
       - [x] Regression smokes: REG-025/REG-026/REG-027 (DoH consent + confidence + high-risk).
       - [x] Эскалация ступенями: применить → post‑apply retest → при неуспехе предложить “усилить” (одно действие, без выбора стратегии).
       - [ ] Ручная проверка (GUI): после Apply и вердикта пост‑проверки FAIL/PARTIAL кнопка меняется на «Усилить», выполняется ApplyEscalation и повторный Post‑Apply Retest; зафиксировать результат (дата/окружение/наблюдения).
+        - [x] Smoke (admin): UI-023 — проверка переключения CTA на «Усилить» и выполнения ApplyEscalation (с DEBUG-хуком skip TLS apply).
       - [x] Всегда доступен быстрый rollback («Откатить всё» + auto‑cleanup DNS/DoH).
       - [ ] Конфликт Autopilot vs ручные действия (Operator/Engineer):
         - [x] Ввести ownership в транзакциях/состоянии: `appliedBy=autopilot|user` (или аналог) + `scope` (группа/цель).
