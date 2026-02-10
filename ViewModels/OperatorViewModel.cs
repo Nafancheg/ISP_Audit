@@ -4,10 +4,12 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Globalization;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Media;
 using IspAudit;
+using System.Threading;
 using IspAudit.Models;
 using IspAudit.Utils;
 using IspAudit.Wpf;
@@ -156,6 +158,7 @@ namespace IspAudit.ViewModels
                 {
                     Sessions.Add(s);
                 }
+                SortSessionsBestEffort();
             }
             catch
             {
@@ -1233,6 +1236,7 @@ namespace IspAudit.ViewModels
 
                 // Новые сверху.
                 Sessions.Insert(0, entry);
+                SortSessionsBestEffort();
                 while (Sessions.Count > MaxSessionsEntries)
                 {
                     Sessions.RemoveAt(Sessions.Count - 1);
@@ -1332,6 +1336,8 @@ namespace IspAudit.ViewModels
             {
                 var keys = _historyAll
                     .Where(e => e != null)
+        private void SortSessionsBestEffort()
+        {
                     .Select(e => (e.GroupKey ?? string.Empty).Trim())
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(k => string.IsNullOrWhiteSpace(k) ? "" : k, StringComparer.OrdinalIgnoreCase)
@@ -1358,6 +1364,8 @@ namespace IspAudit.ViewModels
                 // Если выбранная группа исчезла — откатываемся на "Все".
                 var exists = HistoryGroupOptions.Any(o => string.Equals(o.Key, selected, StringComparison.Ordinal));
                 if (!exists)
+        private static int GetOutcomeRank(string? outcome)
+        {
                 {
                     _historyGroupKey = AllHistoryGroupsKey;
                     OnPropertyChanged(nameof(HistoryGroupKey));
@@ -1373,6 +1381,8 @@ namespace IspAudit.ViewModels
         {
             try
             {
+        private static DateTimeOffset GetSessionTimeUtc(OperatorSessionEntry? entry)
+        {
                 var nowLocal = DateTimeOffset.Now;
                 DateTimeOffset? cutoff = null;
 
@@ -1389,6 +1399,8 @@ namespace IspAudit.ViewModels
                 {
                     var cat = (e.Category ?? string.Empty).Trim();
                     if (HistoryTypeFilter == OperatorHistoryTypeFilter.All) return true;
+        private static bool TryParseUtc(string? text, out DateTimeOffset value)
+        {
                     if (HistoryTypeFilter == OperatorHistoryTypeFilter.Checks) return cat.Equals("check", StringComparison.OrdinalIgnoreCase);
                     if (HistoryTypeFilter == OperatorHistoryTypeFilter.Fixes) return cat.Equals("fix", StringComparison.OrdinalIgnoreCase) || cat.Equals("rollback", StringComparison.OrdinalIgnoreCase);
                     if (HistoryTypeFilter == OperatorHistoryTypeFilter.Errors) return cat.Equals("error", StringComparison.OrdinalIgnoreCase);
