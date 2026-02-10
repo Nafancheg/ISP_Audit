@@ -1,4 +1,4 @@
-# ISP_Audit — TODO
+﻿# ISP_Audit — TODO
 
 Дата актуализации: 10.02.2026
 Выполненное → [CHANGELOG.md](../CHANGELOG.md). Архитектура → [ARCHITECTURE_CURRENT.md](../ARCHITECTURE_CURRENT.md). Аудит → [docs/audit4.md](audit4.md).
@@ -15,37 +15,52 @@
 ## 🔴 P0 — Критические
 
 ### P0.1 `async void` не-event handler (CRASH RISK)
-- `MainViewModel.Helpers.cs:94` — `CheckAndRetestFailedTargets` не является event handler. Необработанное исключение = крэш процесса.
-- **Фикс**: `async Task` + `_ = CheckAndRetestFailedTargetsAsync(...)` с обёрткой.
+- [ ] Изменить сигнатуру `CheckAndRetestFailedTargets` → `async Task CheckAndRetestFailedTargetsAsync` в `ViewModels/MainViewModel.Helpers.cs:94`
+- [ ] На вызывающей стороне: обернуть в `_ = SafeFireAndForget(CheckAndRetestFailedTargetsAsync(...))` с try/catch + логированием
+- [ ] Проверить отсутствие других `async void` не-event handler (grep `async void` по ViewModels/)
+- [ ] Smoke reg: убедиться что ретест по-прежнему работает (PASS)
 - Источник: audit4 §2.1
 
 ### P0.2 Sync-over-async deadlock (App.OnExit)
-- `App.xaml.cs` — `ShutdownAsync().GetAwaiter().GetResult()` на UI-потоке. Если цепочка содержит `Dispatcher.Invoke` → deadlock.
-- Аналогично: `TrafficEngine.Dispose`, `ConnectionMonitorService.Dispose`, `DnsSnifferService.Dispose`, `PidTrackerService.Dispose`.
-- **Фикс**: `Task.Run(() => ShutdownAsync()).GetAwaiter().GetResult()` или `IAsyncDisposable`.
+- [ ] `App.xaml.cs` ~L152: заменить `ShutdownAsync().GetAwaiter().GetResult()` → `Task.Run(() => ShutdownAsync()).Wait(TimeSpan.FromSeconds(10))`
+- [ ] `TrafficEngine.cs` Dispose(): аналогичная обёртка `Task.Run(() => StopAsync()).Wait(timeout)`
+- [ ] `ConnectionMonitorService.cs` Dispose(): аналогичная обёртка
+- [ ] `DnsSnifferService.cs` Dispose(): аналогичная обёртка
+- [ ] `PidTrackerService.cs` Dispose(): аналогичная обёртка
+- [ ] Smoke strict: убедиться что shutdown не зависает (PASS)
 - Источник: audit4 §2.2
 
 ### P0.3 `MessageBox.Show` в ViewModel (MVVM нарушение)
-- `DiagnosticOrchestrator.Core.cs` ~L76-81, L407 — блокирует тестируемость и может зависнуть в headless-сценарии.
-- **Фикс**: заменить на `Func<string, string, bool>` callback или event.
+- [ ] В `DiagnosticOrchestrator` добавить свойство `Func<string, string, bool> ConfirmAction` (инъекция через конструктор или property)
+- [ ] Заменить `MessageBox.Show` ~L76-81 на вызов `ConfirmAction?.Invoke(title, message) ?? false`
+- [ ] Заменить `MessageBox.Show` ~L407 аналогично
+- [ ] В `MainViewModel` при создании Orchestrator: привязать `ConfirmAction` к `MessageBox.Show` (production) или no-op (тесты)
+- [ ] Grep `MessageBox` по проекту — убедиться что нет других вызовов из ViewModel/Service слоёв
 - Источник: audit4 §1.4
 
 ### P0.4 TrafficEngine — воспроизведение и стресс-тесты
-- Собрать контекст: ±100 строк лога вокруг краша `Collection was modified`.
-- Описать ручной сценарий воспроизведения (точная последовательность действий).
-- Stress: ≥1000 Apply/Rollback за минуту + проверка утечек и стабильности.
-- Зафиксировать baseline hot path (latency p50/p95/p99, alloc rate, CPU).
-- Unit/регресс тесты на concurrent read/write.
+- [ ] Собрать контекст: при следующем краше сохранить ±100 строк лога → issue/docs
+- [ ] Написать сценарий воспроизведения: README шаги (профиль, браузер, частота кликов Apply)
+- [ ] Stress smoke: `INFRA-010` — 1000 rapid Apply/Rollback за 60с, проверка: нет утечек `GC.GetTotalMemory`, нет падений
+- [ ] Perf smoke: `PERF-002` — замерить p50/p95/p99 latency ProcessPacket при 10K пакетов, baseline
+- [ ] Unit-тест: concurrent RegisterFilter/RemoveFilter + ProcessPacket из разных потоков
 
-### P0.5 Apply timeout — диагностика причин на реальных зависаниях
-- Собрать логи с детализацией на реальном таймауте.
-- Классифицировать причину (WinDivert stop, DNS, deadlock, connectivity check).
-- Проверить зависания `TrafficEngine.StopAsync/StartAsync`, добавить таймауты.
-- KPI: Apply <3с в 95% случаев.
+### P0.5 Apply timeout — диагностика причин
+- [ ] При следующем реальном зависании: сохранить полный лог с фазовой диагностикой → issue/docs
+- [ ] По логу: классифицировать фазу зависания (WinDivert stop / DNS resolve / Dispatcher deadlock / connectivity check)
+- [ ] Для найденной фазы: добавить CancellationToken с таймаутом или Task.WhenAny + deadline
+- [ ] KPI smoke: `PERF-003` — 10 последовательных Apply/Disable, каждый <3с (95-й перцентиль)
+- [ ] Проверить `TrafficEngine.StopAsync`: добавить CTS с таймаутом 5с
 
-### P0.6 Аудит всех try/catch — пустые `catch { }`
-- 20+ пустых `catch { }` без логирования (особенно `FixService` — 6 мест, `DiagnosticOrchestrator`, `DnsSnifferService`).
-- **Фикс**: в каждый пустой `catch` добавить `Debug.WriteLine` / `_progress?.Report`.
+### P0.6 Аудит пустых `catch { }`
+- [ ] `FixService.cs`: 6 пустых catch → в каждый `Debug.WriteLine` с контекстом операции
+- [ ] `DiagnosticOrchestrator.Core.cs`: 3+ пустых catch → `_progress?.Report` с ex.Message
+- [ ] `DnsSnifferService.cs`: 2+ пустых catch → `Debug.WriteLine`
+- [ ] `TestResultsManager.DnsResolution.cs`: 1 пустой catch → `Debug.WriteLine`
+- [ ] `MainViewModel.Logging.cs`: 1 пустой catch → `Debug.WriteLine`
+- [ ] `App.xaml.cs`: 1 пустой catch EnsureInitializedAsync → `Debug.WriteLine`
+- [ ] `StandardHostTester.cs`: 2 catch в DNS reverse → `Debug.WriteLine`
+- [ ] Финальный grep `catch\s*\{?\s*\}` — убедиться что не осталось полностью пустых
 - Источник: audit4 §2.3
 
 ---
@@ -53,143 +68,204 @@
 ## 🟡 P1 — Важные
 
 ### P1.1 `DateTime.UtcNow` на hot path TrafficEngine
-- Два вызова `DateTime.UtcNow` на каждый пакет — syscall.
-- **Фикс**: `Stopwatch.GetTimestamp()` + `Stopwatch.Frequency`.
+- [ ] В `Core/Traffic/TrafficEngine.cs` ~L395: заменить `DateTime.UtcNow.Ticks` → `Stopwatch.GetTimestamp()`
+- [ ] ~L396: аналогично для endTicks
+- [ ] Пересчёт elapsed: `(endTs - startTs) * 1_000_000 / Stopwatch.Frequency`
+- [ ] Добавить `using System.Diagnostics` если отсутствует
+- [ ] Smoke strict: PASS
 - Источник: audit4 §3.1
 
 ### P1.2 Унификация маршалинга в UI-поток
-- 20+ мест `Dispatcher.Invoke` (синхронный) из фоновых потоков — risk deadlock.
-- Несколько мест `Dispatcher.BeginInvoke` (асинхронный).
-- `IProgress<T>` только в pipeline.
-- **Фикс**: унифицировать на `BeginInvoke` или `IProgress<T>`. Синхронный `Invoke` — только где нужен результат.
+- [ ] Grep `Dispatcher\.Invoke\b` по ViewModels/ — составить список всех 20+ мест
+- [ ] Каждый без возвращаемого результата → заменить на `Dispatcher.BeginInvoke`
+- [ ] Где нужен результат → оставить Invoke с комментарием `// Invoke: нужен результат`
+- [ ] `TestResultsManager.cs`: заменить `Application.Current.Dispatcher` на IProgress или SynchronizationContext
+- [ ] Smoke ui + smoke reg: PASS
 - Источник: audit4 §7.1
 
 ### P1.3 `IDisposable` для MainViewModel
-- Владеет `TrafficEngine`, `BypassStateManager`, `NetworkChangeMonitor` (все `IDisposable`), но сам не реализует `IDisposable`.
-- **Фикс**: реализовать `IDisposable`, вызывать из `App.OnExit`.
+- [ ] Добавить `: IDisposable` к MainViewModel
+- [ ] Реализовать Dispose(): `_trafficEngine?.Dispose()`, `_bypassStateManager?.Dispose()`, `_networkChangeMonitor?.Dispose()`
+- [ ] В `App.xaml.cs` OnExit: `(_sharedMainViewModel as IDisposable)?.Dispose()` после ShutdownAsync
+- [ ] Smoke strict: PASS
 - Источник: audit4 §2.4
 
 ### P1.4 OperatorViewModel декомпозиция
-- 1631 строк в одном файле: wizard, история, сессии, фильтры, escalation.
-- **Фикс**: разбить на partial-файлы (OperatorViewModel.Wizard.cs, .History.cs, .Sessions.cs, .Filters.cs).
+- [ ] Создать `ViewModels/OperatorViewModel.Wizard.cs` (partial) — wizard flow шаги 1-4 (~300 строк)
+- [ ] Создать `ViewModels/OperatorViewModel.History.cs` (partial) — история сессий + фильтры (~400 строк)
+- [ ] Создать `ViewModels/OperatorViewModel.Sessions.cs` (partial) — persist/load сессий (~200 строк)
+- [ ] Создать `ViewModels/OperatorViewModel.AutoPilot.cs` (partial) — execution policy + escalation (~300 строк)
+- [ ] В основном OperatorViewModel.cs оставить: свойства состояния, конструктор, маппинг (<400 строк)
+- [ ] Smoke ui + smoke strict: PASS
 - Источник: audit4 §1.3
 
 ### P1.5 Приоритизация и деградация очередей Pipeline
-- Разделить входную очередь на high/low priority (два `Channel<HostDiscovered>`).
-- Политика дропа при переполнении low-очереди.
-- «Degrade mode» при росте `PendingCount`: снижение таймаутов для low-priority.
-- Метрики задержек: enqueue→start test→classified.
-- Smoke/perf: сценарий перегруза.
+- [ ] В `LiveTestingPipeline`: второй `Channel<HostDiscovered>` для high-priority (manual retest, профильные цели, повторные фейлы)
+- [ ] TesterWorker: читать high первым (TryRead high → затем low)
+- [ ] Политика дропа: при low.Count > 50 → discard oldest
+- [ ] Degrade mode: PendingCount > 20 три тика → timeout low = timeout/2
+- [ ] Метрика QueueAgeMs (Stopwatch на enqueue, diff на dequeue) → лог p95
+- [ ] Smoke: `PIPE-010` — высокий enq rate, high-priority проходят за <5с
 
 ### P1.6 CDN-подхосты — детали по раскрытию
-- В агрегированной строке ×N показывать детали по подхостам при раскрытии/в отдельной панели.
+- [ ] В XAML Engineer таблицы: при клике на строку ×N → раскрыть ItemsControl с подхостами (host, IP, статус)
+- [ ] В `TestResultsManager`: метод `GetGroupMembers(string groupKey)` → `IReadOnlyList<TestResult>`
+- [ ] В Operator UI: подхосты в Expander «Подробнее» внутри карточки группы
+- [ ] Smoke ui: агрегированная карточка с 3+ подхостами рендерится без ошибок
 
 ### P1.7 Operator UI — визуальный дизайн
-- Тёмная тема по умолчанию в Operator UI.
-- Hero-элемент: большой индикатор (щит/радар) + крупный статус-текст.
-- Компоновка: Header → Статус → CTA → Expander деталей → Footer (bypass toggle).
-- Компактный индикатор «последний статус» (серый/зелёный/жёлтый/красный).
-- Метафора «командный центр/бортовой щит».
+- [ ] Создать `Wpf/Themes/OperatorDarkTheme.xaml` — тёмная палитра MaterialDesign
+- [ ] `OperatorWindow.xaml`: применять тёмную тему через MergedDictionaries
+- [ ] Hero-элемент: Viewbox + Path (щит SVG) + TextBlock крупный статус-текст, центрирование
+- [ ] Компоновка Grid: Header 48px / Hero+Status Star / CTA Auto / Expander / Footer toggle
+- [ ] Компактный индикатор: Ellipse 12px с цветом по OperatorStatus (серый/зелёный/жёлтый/красный)
 
 ### P1.8 Operator UI — локализация/тексты
-- Словарь «код → человеческий текст» для DNS/TCP/TLS/QUIC/RST/Redirect.
-- Единые формулировки CTA и статусов без жаргона.
+- [ ] Создать `Utils/OperatorTextMapper.cs` — static Dictionary код→текст (DNS_ERROR, TCP_RESET, TLS_HANDSHAKE_TIMEOUT, QUIC_INTERFERENCE, HTTP_REDIRECT_DPI, UDP_BLOCKAGE)
+- [ ] Каждому коду: человеческая формулировка + краткая рекомендация (1 строка)
+- [ ] OperatorViewModel: использовать OperatorTextMapper для сводки вместо raw кодов
+- [ ] CTA тексты: единые формулировки (Проверить / Исправить / Усилить / Откатить / Проверить снова)
+- [ ] Smoke ui: Operator UI не показывает raw-коды типа TLS_AUTH_FAILURE
 
 ### P1.9 Operator UI — wins-библиотека
-- `(host+SNI) → победивший план` с persist и валидацией post-apply ретестом.
+- [ ] Создать `Models/WinsEntry.cs`: record WinsEntry(Host, Sni, StrategyId, PlanText, WonAt)
+- [ ] Создать `Utils/WinsStore.cs`: persist в `state/wins_store.json`, RecordWin, GetWin(host, sni)
+- [ ] После post-apply retest OK → WinsStore.RecordWin(...)
+- [ ] При повторной встрече хоста: если есть Win → предложить «Применить проверенный обход?»
+- [ ] Smoke: `REG-028` — wins round-trip (record + retrieve + apply)
 
 ### P1.10 Operator UI — escalation GUI
-- После Apply и FAIL/PARTIAL: CTA «Усилить» → `ApplyEscalation` → повторный Post-Apply Retest.
-- Зафиксировать результат (дата/окружение/наблюдения).
+- [ ] При PostApplyStatus == FAIL/PARTIAL → IsEscalationAvailable = true, CTA = «Усилить»
+- [ ] EscalateCommand: ApplyEscalation(currentGroupKey) → более агрессивная стратегия
+- [ ] После escalation: авто post-apply retest → обновление статуса
+- [ ] Лог: `[ESCALATION] group={key} from={old} to={new} result={OK/FAIL}`
+- [ ] Smoke: `UI-024` — escalation flow (apply → FAIL → escalate → retest)
 
 ### P1.11 Стабилизация YouTube/Google (эталонные сценарии)
-- Зафиксировать 1–2 эталонных сценария воспроизведения (браузер/провайдер/профиль).
-- Регресс-bisect: найти период «когда работало лучше» и сравнить Bypass/TrafficEngine/DNS.
-- Режим «classic/минимальный набор» (фиксированный набор техник) для baseline.
+- [ ] Документ `docs/scenarios/youtube_baseline.md`: браузер, провайдер, профиль, QUIC вкл/выкл, ожидаемый результат
+- [ ] Прогнать вручную оба сценария, зафиксировать логи + скриншоты → docs
+- [ ] По логам: если хуже предыдущей версии — git bisect до коммита
+- [ ] При необходимости: режим classic — фиксированный набор (TLS fragment + DNS), env `ISP_AUDIT_CLASSIC_MODE`
 
 ### P1.12 Policy-driven — незакрытое
-- Advanced режим: ручное создание/редактирование FlowPolicy (с валидацией и предупреждениями).
-- Измерить overhead lookup в decision graph на hot path.
-- Ограничения по памяти/количеству политик (cap) и деградация.
+- [ ] Advanced UI: SettingsWindow → вкладка «Политики» — DataGrid для FlowPolicy (add/edit/delete + валидация)
+- [ ] Perf: замерить DecisionGraph.Evaluate() при 100/500/1000 политик → smoke `PERF-004`
+- [ ] Cap: max 200 политик, при превышении WARN + отказ
+- [ ] Async recompile: DecisionGraph.RecompileAsync() на фоновом потоке
 
 ### P1.13 Стратегии обхода — долги
-- **BadChecksum**: оформить в UX/доках критерии/ожидаемый эффект (только для фейковых пакетов).
-- **QuicObfuscation**: реальная обфускация QUIC (если потребуется) как отдельная техника.
-- **HttpHostTricks**: следующий уровень интеграции в наблюдаемость.
-- **Auto-hostlist**: влияние на диагноз/план.
+- [ ] BadChecksum: tooltip в Engineer UI «Только для фейковых пакетов (TTL=1)» + раздел README
+- [ ] QuicObfuscation: stub `Bypass/Strategies/QuicObfuscationStrategy.cs` с TODO
+- [ ] HttpHostTricks: метрики applied/matched в наблюдаемость
+- [ ] Auto-hostlist: в StandardBlockageClassifier учитывать принадлежность к hostlist при рекомендации
 
 ### P1.14 INTEL — доминирование/веса планов
-- Если план A активен, планы B где B ⊂ A не рассматриваются.
-- Разделить ранжирование на strength/cost, учитывать feedback.
+- [ ] В IntelPlanSelector: если новый план ⊂ активного → skip с логом «dominated by {activeId}»
+- [ ] PlanWeight = strength × confidence / cost → сортировка при выборе
+- [ ] Feedback boost: WinRate > 70% → weight ×1.5; WinRate < 30% → ×0.5
+- [ ] Smoke: `REG-029` — dominated plan не применяется повторно
 
 ---
 
 ## 🟢 P2 — Низкий приоритет / UX / Рефакторинг
 
 ### P2.1 AutoRetest debounce
-- Ограничить частоту ретестов/авто-действий.
+- [ ] В MainViewModel.Helpers.cs: `_lastAutoRetestTime` + минимальный интервал 5с
+- [ ] При попытке ретеста раньше интервала: skip + лог `[RETEST] Throttled`
+- [ ] ENV override: `ISP_AUDIT_RETEST_DEBOUNCE_MS` (default 5000)
 
 ### P2.2 Early noise filter
-- Раннее подавление шумных карточек и ложных срабатываний до отображения в UI.
+- [ ] В ClassifierWorker: перед эмитом проверять NoiseHostFilter.IsNoise(host)
+- [ ] noise + OK → не эмитить в UI (только детальный лог)
+- [ ] noise + FAIL → эмитить как WARN (понизить приоритет)
+- [ ] Smoke: `PIPE-011` — шумовой хост с OK не появляется в results
 
 ### P2.3 История транзакций для карточки
-- История apply/rollback/retest по выбранной карточке (не только последняя транзакция).
+- [ ] В TestResult: `List<ApplyTransaction> TransactionHistory` (max 10)
+- [ ] В BypassController.ApplyIntelPlan: добавлять запись в TransactionHistory
+- [ ] В Engineer UI: двойной клик → DataGrid с TransactionHistory (время, план, результат)
 
 ### P2.4 Smoke-тесты на fail-path FixService
-- DNS/DoH rollback при ошибке — нет тестов на fail-path.
-- Источник: audit4 §9.10
+- [ ] `ERR-010`: RestoreDns при отсутствии snapshot → graceful error, не crash
+- [ ] `ERR-011`: ApplyDoH при невалидном URL → graceful error + лог
+- [ ] `ERR-012`: RemoveDoH при отсутствии профиля → no-op + лог
 
 ### P2.5 `HttpClient` на каждый H3 probe
-- `StandardHostTester.ProbeHttp3Async` создаёт `new HttpClient()` на каждый тест.
-- **Фикс**: пул или общий `SocketsHttpHandler` с `PooledConnectionLifetime`.
-- Источник: audit4 §3.2
+- [ ] Статический SocketsHttpHandler с PooledConnectionLifetime = 2 min в StandardHostTester
+- [ ] Единый static HttpClient с Version30 + этим handler
+- [ ] Убрать per-call создание handler+client из ProbeHttp3Async
+- [ ] Smoke strict: PASS
 
 ### P2.6 Event subscriptions без отписки
-- ~8 подписок в `MainViewModel.Constructor.cs` нигде не снимаются.
-- На практике утечки нет (singleton), но структурный дефект.
-- Источник: audit4 §2.5
+- [ ] В ShutdownAsync (или Dispose): отписаться от всех 8 событий (-=)
+- [ ] Список: OnLog, PropertyChanged, OnPerformanceUpdate, OnPipelineMessage, OnDiagnosticComplete + остальные
+- [ ] Сохранять handler-ы в поля для отписки
 
 ### P2.7 State persistence — race conditions
-- Каждый store пишет файлы без блокировок. При быстром apply/disable — теоретический race.
-- **Фикс**: `FileAtomicWriter` (write-to-temp + rename) + единый `IStatePersister<T>`.
+- [ ] Создать `Utils/FileAtomicWriter.cs`: serialize → temp file → File.Move(overwrite: true)
+- [ ] Заменить File.WriteAllText в state stores на FileAtomicWriter
+- [ ] Stores: operator_sessions, feedback_store, operator_consent, domain_groups, post_apply_checks, ui_mode
+- [ ] Smoke reg: PASS (state round-trip)
 
 ---
 
 ## Phase 4 — Рефакторинг (архитектурный долг)
 
 ### 4.1 DI container
-- Переход на `Microsoft.Extensions.DependencyInjection`, уход от ручного wiring.
+- [ ] NuGet: `Microsoft.Extensions.DependencyInjection`
+- [ ] `Utils/ServiceCollectionExtensions.cs`: регистрация всех сервисов
+- [ ] `App.xaml.cs`: ServiceCollection → ConfigureServices → BuildServiceProvider
+- [ ] Постепенно: `new Service()` → `GetRequiredService<T>()`
+- [ ] Начать с NoiseHostFilter: AddSingleton → инъекция через конструктор
 
 ### 4.2 Устранение глобального состояния
-- `Config.ActiveProfile`, `Program.Targets` → сервисы.
-- `NoiseHostFilter.Instance` → инъекция через конструктор (начать с этого).
-- Источник: audit4 §1.2
+- [ ] Config.ActiveProfile → IProfileService.Current (injectable singleton)
+- [ ] Program.Targets → ITargetRegistry (injectable, заполняется через IProfileService)
+- [ ] NoiseHostFilter.Instance → убрать static, принимать через конструктор (DI)
+- [ ] BypassStateManager.GetOrCreate → registered factory в DI
 
 ### 4.3 Декомпозиция DiagnosticOrchestrator
-- Выделение: Pipeline / Recommendations / CardActions / State.
-- Убрать `MessageBox.Show` и `Dispatcher` зависимости.
+- [ ] Выделить `Core/Pipeline/PipelineManager.cs` — lifecycle LiveTestingPipeline
+- [ ] Выделить `Core/Recommendations/RecommendationEngine.cs` — INTEL plan selection/emit
+- [ ] Выделить `ViewModels/CardActionHandler.cs` — Apply/Retest/Details по карточкам
+- [ ] В Orchestrator оставить: координация фаз (start/stop/warmup/silence) + делегирование
+- [ ] Убрать все MessageBox.Show и Dispatcher зависимости из Orchestrator
 
 ### 4.4 Разделение документации
-- `ARCHITECTURE_CURRENT.md` → стабильная часть (Architecture Reference) + дельты (Change Log).
-- Источник: audit4 §1.1
+- [ ] `docs/ARCHITECTURE_REFERENCE.md` — стабильная часть (компоненты, потоки, контракты)
+- [ ] В ARCHITECTURE_CURRENT.md оставить только дельты/изменения с датами
+- [ ] Обновить ссылки в README, copilot-instructions, TODO
 
 ---
 
 ## Phase 5 — Native Core (Rust DLL)
 
 ### 5.0 Инфраструктура Rust
-- MSBuild для автоматической сборки Rust DLL.
-- Копирование `isp_audit_native.dll` в output directory.
+- [ ] `cargo init native/isp_audit_native --lib` с crate-type = ["cdylib"]
+- [ ] В ISP_Audit.csproj: Target BuildRust → cargo build --release
+- [ ] Post-build: копировать DLL в output directory
+- [ ] CI: Rust toolchain в build pipeline (если есть)
 
 ### 5.1 WinDivert FFI обёртка
-- `DivertIpHdr`, `DivertTcpHdr`, `divert_calc_checksums`.
-- `WinDivertNativeRust.cs` + feature flag.
+- [ ] `native/src/windivert.rs`: repr(C) struct DivertIpHdr (IPv4 header fields)
+- [ ] repr(C) struct DivertTcpHdr (TCP header fields)
+- [ ] no_mangle fn divert_calc_checksums(buf, len) с валидацией bounds
+- [ ] `WinDivertNativeRust.cs`: P/Invoke DllImport + feature flag ISP_AUDIT_USE_RUST_NATIVE
 
 ### 5.2 Packet parser (zero-copy)
-- IP/TCP/UDP с bounds checking, интеграция в hot path.
+- [ ] `native/src/parser.rs`: parse_ip_header(buf) → Result<IpHeader, ParseError>
+- [ ] parse_tcp_header, parse_udp_header аналогично
+- [ ] FFI: no_mangle fn parse_packet → заполнение C-struct
+- [ ] Интеграция в TrafficEngine hot path через P/Invoke
 
 ### 5.3 TLS/SNI parser
-- Безопасный парсинг ClientHello + извлечение SNI.
+- [ ] `native/src/tls.rs`: extract_sni(buf) → Option<str> — ClientHello + SNI extension
+- [ ] Bounds checking: не паниковать на malformed TLS, возвращать None
+- [ ] FFI: no_mangle fn extract_sni(buf, len, out, out_len) → i32
+- [ ] Rust unit тесты: valid ClientHello, truncated, garbage, no SNI
 
 ### 5.4 Bypass как отдельная .NET DLL
-- Выделить bypass-код в отдельную сборку (опционально).
+- [ ] Создать `ISP_Audit.Bypass.csproj` (Class Library)
+- [ ] Перенести Bypass/, Core/Traffic/ в новый проект
+- [ ] ISP_Audit.csproj → ProjectReference
+- [ ] Smoke strict: PASS
