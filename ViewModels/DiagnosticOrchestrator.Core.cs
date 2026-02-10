@@ -321,6 +321,33 @@ namespace IspAudit.ViewModels
                     // Игнорируем здесь, обработка ниже
                 }
 
+                // Важно: остальные задачи могли продолжить работу и/или упасть.
+                // Чтобы не получать TaskScheduler.UnobservedTaskException, best-effort:
+                // 1) инициируем отмену
+                // 2) дожидаемся завершения всех задач
+                try
+                {
+                    _cts.Cancel();
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                try
+                {
+                    await Task.WhenAll(collectorTask, silenceMonitorTask, processMonitorTask).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Нормальное завершение при отмене.
+                }
+                catch (Exception ex)
+                {
+                    // Best-effort: не валим завершение диагностики из-за фоновой задачи.
+                    Log($"[Orchestrator] Ошибка фоновой задачи: {ex}");
+                }
+
                 // 9. Закрываем оверлей
                 Application.Current?.Dispatcher.Invoke(() => overlay?.Close());
 
@@ -622,8 +649,26 @@ namespace IspAudit.ViewModels
                         Log($"[Silence] Нет новых соединений более {SilenceTimeoutSeconds}с");
 
                         // Показываем запрос пользователю
-                        var extend = await Application.Current!.Dispatcher.Invoke(async () =>
-                            await overlay.ShowSilencePromptAsync(SilenceTimeoutSeconds));
+                        bool extend;
+                        try
+                        {
+                            var app = Application.Current;
+                            if (app?.Dispatcher == null)
+                            {
+                                // Бывает при shutdown/тестовом контексте без UI.
+                                Log("[Silence] Application.Current == null, пропускаю prompt");
+                                break;
+                            }
+
+                            extend = await app.Dispatcher.Invoke(async () =>
+                                await overlay.ShowSilencePromptAsync(SilenceTimeoutSeconds)).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            // Overlay мог быть закрыт/разрушен, или UI-поток в процессе завершения.
+                            Log($"[Silence] Ошибка показа prompt: {ex.Message}");
+                            break;
+                        }
 
                         if (extend)
                         {

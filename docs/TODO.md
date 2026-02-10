@@ -158,6 +158,7 @@
     - [ ] Аудит всех try/catch: stack trace + контекст состояния.
     - [x] Global exception handler: необработанные исключения → crash report (best-effort JSON в `state\\crash_reports\\app\\`).
     - [x] Подключить `TaskScheduler.UnobservedTaskException` (точка: `App`) и сохранять `ex.ToString()` в crash report.
+    - [x] Fix: не допускать `UnobservedTaskException` из фоновых задач Orchestrator (silence monitor), best-effort await/логирование.
 
 - 🟡 P0.4: Харднинг тестовых хуков и Release-проверки
   - Чек‑лист:
