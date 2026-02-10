@@ -80,13 +80,14 @@ namespace IspAudit.Core.Modules
                 // ВАЖНО: reverse DNS не используем как "достоверное" имя для TLS/SNI.
                 try
                 {
-                    using var rdnsCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    rdnsCts.CancelAfter(1500);
-
-                    var hostEntry = await System.Net.Dns.GetHostEntryAsync(ipString, rdnsCts.Token).ConfigureAwait(false);
-                    if (!string.IsNullOrWhiteSpace(hostEntry.HostName))
+                    // Важно: Dns.GetHostEntryAsync иногда игнорирует CancellationToken (зависит от ОС/резолвера).
+                    // Поэтому делаем жёсткий таймаут через WhenAny и не блокируем тест.
+                    var rdnsTimeout = TimeSpan.FromMilliseconds(1500);
+                    var rdnsTask = System.Net.Dns.GetHostEntryAsync(ipString, CancellationToken.None);
+                    var (rdnsCompleted, rdnsEntry) = await WithTimeoutAsync(rdnsTask, rdnsTimeout, ct).ConfigureAwait(false);
+                    if (rdnsCompleted && rdnsEntry != null && !string.IsNullOrWhiteSpace(rdnsEntry.HostName))
                     {
-                        reverseDnsHostname = hostEntry.HostName;
+                        reverseDnsHostname = rdnsEntry.HostName;
                     }
                 }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -109,11 +110,15 @@ namespace IspAudit.Core.Modules
                     try
                     {
                         var dnsTimeoutMs = (int)Math.Clamp(_testTimeout.TotalMilliseconds, 2000, 4000);
+                        var dnsTimeout = TimeSpan.FromMilliseconds(dnsTimeoutMs);
 
-                        using var dnsCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                        dnsCts.CancelAfter(dnsTimeoutMs);
-
-                        await System.Net.Dns.GetHostEntryAsync(hostname, dnsCts.Token).ConfigureAwait(false);
+                        var dnsTask = System.Net.Dns.GetHostEntryAsync(hostname, CancellationToken.None);
+                        var (dnsCompleted, _) = await WithTimeoutAsync(dnsTask, dnsTimeout, ct).ConfigureAwait(false);
+                        if (!dnsCompleted)
+                        {
+                            dnsOk = false;
+                            dnsStatus = BlockageCode.DnsTimeout;
+                        }
                         // Если успешно разрезолвилось - DNS работает
                     }
                     catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -282,6 +287,35 @@ namespace IspAudit.Core.Modules
                 http3LatencyMs,
                 http3Error
             );
+
+            static async Task<(bool Completed, T? Result)> WithTimeoutAsync<T>(Task<T> task, TimeSpan timeout, CancellationToken ct)
+            {
+                // ct: уважать внешнюю отмену (например пользователь нажал Stop)
+                if (ct.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(ct);
+                }
+
+                var delayTask = Task.Delay(timeout, ct);
+                var completed = await Task.WhenAny(task, delayTask).ConfigureAwait(false);
+                if (completed == task)
+                {
+                    return (true, await task.ConfigureAwait(false));
+                }
+
+                // Таймаут: не ждём дальше, но обязательно «наблюдаем» возможные исключения,
+                // чтобы не получить UnobservedTaskException, когда DNS завершится позже.
+                _ = task.ContinueWith(
+                    t =>
+                    {
+                        _ = t.Exception;
+                    },
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
+                    TaskScheduler.Default);
+
+                return (false, default);
+            }
 
             async Task ProbeHttp3Async(string targetHost, TimeSpan timeout, CancellationToken outerCt)
             {
