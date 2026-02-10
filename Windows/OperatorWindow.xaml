@@ -163,6 +163,26 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Шаг 3: итог — сводка + проблемы карточками (по умолчанию вместо таблицы) -->
+                    <Border Padding="10" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}" Margin="0,0,0,10"
+                            Visibility="{Binding Vm.IsSummaryStepVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Vm.CheckedProblemsLine}" Opacity="0.85" TextWrapping="Wrap"/>
+
+                            <ItemsControl ItemsSource="{Binding Vm.SummaryProblemCards}" Margin="0,8,0,0"
+                                          Visibility="{Binding Vm.HasSummaryProblems, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Padding="10" Margin="0,0,0,8" CornerRadius="8"
+                                                BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}">
+                                            <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
                     <StackPanel Margin="0,0,0,0">
                     <!-- CTA: один главный -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Top">

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
@@ -144,11 +145,27 @@ namespace IspAudit.ViewModels
 
         private bool _isDetailsExpanded;
 
+        private readonly ObservableCollection<string> _summaryProblemCards = new();
+
         public ICommand RollbackCommand { get; }
         public ICommand ClearHistoryCommand { get; }
         public ICommand ClearSessionsCommand { get; }
 
         public ICommand ToggleDetailsCommand { get; }
+
+        public ObservableCollection<string> SummaryProblemCards => _summaryProblemCards;
+
+        public bool HasSummaryProblems => _summaryProblemCards.Count > 0;
+
+        public string CheckedProblemsLine
+        {
+            get
+            {
+                var checkedCount = Math.Max(0, Main.PassCount) + Math.Max(0, Main.WarnCount) + Math.Max(0, Main.FailCount);
+                var problemCount = Math.Max(0, Main.WarnCount) + Math.Max(0, Main.FailCount);
+                return $"Проверено {checkedCount} / проблемных {problemCount}";
+            }
+        }
 
         public OperatorViewModel(MainViewModel main)
         {
@@ -201,10 +218,34 @@ namespace IspAudit.ViewModels
 
             Main.PropertyChanged += MainOnPropertyChanged;
 
+            try
+            {
+                Main.TestResults.CollectionChanged += TestResultsOnCollectionChanged;
+            }
+            catch
+            {
+                // ignore
+            }
+
+            RefreshSummaryProblemsBestEffort();
+
             // Семантика итогов post-apply ретеста (OK/FAIL/PARTIAL/UNKNOWN).
             try
             {
                 Main.Orchestrator.OnPostApplyCheckVerdict += OrchestratorOnPostApplyCheckVerdict;
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void TestResultsOnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            try
+            {
+                RefreshSummaryProblemsBestEffort();
+                OnPropertyChanged(nameof(CheckedProblemsLine));
             }
             catch
             {
@@ -702,6 +743,7 @@ namespace IspAudit.ViewModels
                 {
                     // На завершении диагностики могут прилетать счётчики отдельно.
                     // Обновим фильтры/derived без логирования.
+                    RefreshSummaryProblemsBestEffort();
                 }
             }
             catch
@@ -728,6 +770,8 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(FixStepOutcomeText));
             OnPropertyChanged(nameof(Headline));
             OnPropertyChanged(nameof(SummaryLine));
+            OnPropertyChanged(nameof(CheckedProblemsLine));
+            OnPropertyChanged(nameof(HasSummaryProblems));
             OnPropertyChanged(nameof(UserDetails_Source));
             OnPropertyChanged(nameof(UserDetails_Anchor));
             OnPropertyChanged(nameof(UserDetails_Status));
@@ -742,6 +786,27 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(FixButtonText));
             OnPropertyChanged(nameof(HasHistory));
             OnPropertyChanged(nameof(HasSessions));
+        }
+
+        private void RefreshSummaryProblemsBestEffort()
+        {
+            try
+            {
+                var lines = BuildProblemsSnapshotLines(maxItems: 10).ToList();
+
+                _summaryProblemCards.Clear();
+                foreach (var line in lines)
+                {
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+                    _summaryProblemCards.Add(line);
+                }
+
+                OnPropertyChanged(nameof(HasSummaryProblems));
+            }
+            catch
+            {
+                // ignore
+            }
         }
 
         private void AutoCollapseSourceSectionBestEffort()
