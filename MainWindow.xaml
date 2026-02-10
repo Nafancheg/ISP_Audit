@@ -377,6 +377,10 @@
                                             </Button>
                                         </UniformGrid>
 
+                                        <Button Content="Снять всё (включая ручное)" Command="{Binding EngineerResetAllBypassCommand}"
+                                            Style="{StaticResource SecondaryButtonStyle}" Height="34" FontSize="12" Margin="0,8,0,0"
+                                            ToolTip="Полный откат: выключить обход и (если был backup) восстановить DNS/DoH"/>
+
                                         <TextBlock Text="Примечание: «Фрагментация» и «Фрагментация + беспорядок» — взаимно исключающие режимы (нельзя включать одновременно)."
                                                    FontSize="12"
                                                    Foreground="{DynamicResource MaterialDesignBodyLight}"

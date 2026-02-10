@@ -34,6 +34,8 @@
 
 Дополнение (09.02.2026): P1.11 (Operator UX) — кнопка «Откатить» откатывает **только изменения Autopilot**: восстанавливается последний зафиксированный snapshot ручного apply (по apply-транзакциям), чтобы не ломать ручные настройки Engineer (через `BypassController.RollbackAutopilotOnlyAsync`). Полный rollback (bypass off + DNS/DoH restore при наличии backup) остаётся отдельным действием/методом `BypassController.RollbackAllAsync`.
 
+Дополнение (10.02.2026): P1.11 (Engineer UX) — добавлена явная кнопка «Снять всё (включая ручное)» с подтверждением, которая выполняет полный rollback через `BypassController.RollbackAllAsync`.
+
 Дополнение (09.02.2026): P1.11 (Operator UX) — apply-транзакции помечаются ownership-метаданными (`appliedBy=user|autopilot`, `scope=group|target`), а Auto-apply пишет транзакцию для последующего выборочного rollback.
 
 Дополнение (04.02.2026): P1.11 — добавлен UX‑контракт Operator UI (`docs/P1_11_operator_ui_contract.md`) и wizard‑скелет OperatorWindow (выбор источника трафика → прогресс → итог) на базе вычисляемого операторского состояния в `OperatorViewModel`.

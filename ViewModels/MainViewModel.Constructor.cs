@@ -303,6 +303,34 @@ namespace IspAudit.ViewModels
             },
                 _ => ShowBypassPanel && (IsFragmentEnabled || IsDisorderEnabled || IsFakeEnabled || IsDropRstEnabled));
 
+            EngineerResetAllBypassCommand = new RelayCommand(async _ =>
+            {
+                try
+                {
+                    var result = System.Windows.MessageBox.Show(
+                        "Снять всё (включая ручные настройки Engineer)?\n\n" +
+                        "Действие выключит обход и, при наличии backup, попытается восстановить исходные DNS/DoH настройки Windows.\n\n" +
+                        "Если вы не уверены — нажмите Отмена.",
+                        "Подтверждение: полный откат",
+                        System.Windows.MessageBoxButton.OKCancel,
+                        System.Windows.MessageBoxImage.Warning);
+
+                    if (result != System.Windows.MessageBoxResult.OK)
+                    {
+                        return;
+                    }
+                }
+                catch
+                {
+                    // Best-effort: не ломаем UI из-за диалога.
+                }
+
+                await Bypass.RollbackAllAsync();
+                EnableAutoBypass = false;
+                ClearAppliedBypassMarkers();
+            },
+                _ => ShowBypassPanel);
+
             ApplyRecommendationsCommand = new RelayCommand(async _ => await ApplyRecommendationsAsync(), _ => HasRecommendations && !IsApplyingRecommendations);
             ApplyEscalationCommand = new RelayCommand(async _ => await ApplyEscalationAsync(), _ => ShowBypassPanel && !IsApplyingRecommendations);
             ApplyDomainRecommendationsCommand = new RelayCommand(async _ => await ApplyDomainRecommendationsAsync(), _ => HasDomainSuggestion && !IsApplyingRecommendations);
