@@ -223,8 +223,8 @@
 - [ ] Начать с NoiseHostFilter: AddSingleton → инъекция через конструктор
 
 ### 4.2 Устранение глобального состояния
-- [ ] Config.ActiveProfile → IProfileService.Current (injectable singleton)
-- [ ] Program.Targets → ITargetRegistry (injectable, заполняется через IProfileService)
+- [x] Удалить legacy `Config.ActiveProfile` (Profiles/*.json loader для целей диагностики)
+- [x] Удалить legacy `Program.Targets`
 - [ ] NoiseHostFilter.Instance → убрать static, принимать через конструктор (DI)
 - [ ] BypassStateManager.GetOrCreate → registered factory в DI
 

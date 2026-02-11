@@ -21,13 +21,15 @@ Smoke: strict 172/172 PASS, ui 22/22 PASS (1 SKIP), reg 27/27 PASS.
 
 | Проблема | Файл | Риск |
 |----------|------|------|
-| `Config.ActiveProfile` — static property, глобальное на весь процесс | Config.cs | Скрытая связь, нетестируемость |
-| `Program.Targets` — static Dictionary, заполняется побочным эффектом `SetActiveProfile` | Config.cs | Скрытая зависимость Config → Program |
+| (legacy удалено 11.02.2026) `Config.ActiveProfile` | Config.cs | Скрытая связь, нетестируемость |
+| (legacy удалено 11.02.2026) `Program.Targets` | Config.cs | Скрытая зависимость Config → Program |
 | `NoiseHostFilter.Instance` — Singleton, используется из 20+ мест | Utils/NoiseHostFilter.cs | Нельзя мокировать, скрытые зависимости |
 | `BypassStateManager.GetOrCreate` — фабрика с кэшированием | Bypass/BypassStateManager.cs | Скрытый lifecycle |
 | Нет DI-контейнера: граф собирается вручную в `MainViewModel` | ViewModels/MainViewModel.Constructor.cs | Рост сложности wiring |
 
-Всё задокументировано в TODO Phase 4, но не реализовано. **Рекомендация**: начать с `NoiseHostFilter` — заменить Singleton на инъекцию через конструктор, это даст наибольший эффект при минимальных усилиях.
+UPD (11.02.2026): legacy `Config.ActiveProfile`/`Program.Targets` выпилены из кода.
+
+Всё остальное задокументировано в TODO Phase 4. **Рекомендация**: начать с `NoiseHostFilter` — заменить Singleton на инъекцию через конструктор, это даст наибольший эффект при минимальных усилиях.
 
 ### 1.3 God classes
 

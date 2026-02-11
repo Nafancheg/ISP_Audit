@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using IspAudit.Utils;
 
 namespace IspAudit
@@ -12,11 +10,9 @@ namespace IspAudit
     /// </summary>
     public class Config
     {
-        public List<string> Targets { get; set; } = new();
-        public Dictionary<string, TargetDefinition> TargetMap { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-
-        // Управление профилями диагностики
-        public static DiagnosticProfile? ActiveProfile { get; set; }
+        // Legacy: ранее поддерживались профили целей диагностики (Profiles/*.json).
+        // Сейчас приложение работает в режиме динамических целей (по фактическому трафику);
+        // сохраняются только «снятые снимки» после диагностики (см. DiagnosticOrchestrator.SaveProfileAsync).
 
         // Профиль окружения: normal|vpn (влияет на классификацию/пороги)
         public string Profile { get; set; } = "normal";
@@ -61,139 +57,5 @@ namespace IspAudit
             => EnvVar.ReadBool(name, defaultValue);
 
         public static Config Default() => new Config();
-
-        public List<TargetDefinition> ResolveTargets()
-        {
-            // Если профиль загружен, используем цели из профиля напрямую
-            if (ActiveProfile?.Targets != null && ActiveProfile.Targets.Count > 0)
-            {
-                System.Diagnostics.Debug.WriteLine($"ResolveTargets: Using ActiveProfile targets ({ActiveProfile.Targets.Count} targets)");
-                var result = new List<TargetDefinition>();
-                foreach (var profileTarget in ActiveProfile.Targets)
-                {
-                    // Проверяем есть ли этот хост в Config.Targets (если Targets указаны явно)
-                    if (Targets.Count > 0 && !Targets.Any(t => string.Equals(t, profileTarget.Host, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        continue; // Пропускаем цели не из списка
-                    }
-
-                    result.Add(new TargetDefinition
-                    {
-                        Name = profileTarget.Name,
-                        Host = profileTarget.Host,
-                        Service = profileTarget.Service ?? "Неизвестно",
-                        Critical = profileTarget.Critical,
-                        FallbackIp = profileTarget.FallbackIp
-                    });
-                    System.Diagnostics.Debug.WriteLine($"  Added from profile: {profileTarget.Name} -> {profileTarget.Host}");
-                }
-                return result;
-            }
-
-            // Fallback: если нет активного профиля — строим цели только из явного списка Targets
-            System.Diagnostics.Debug.WriteLine($"ResolveTargets: Using explicit Targets fallback");
-            var map = TargetMap;
-
-            var fallbackResult = new List<TargetDefinition>();
-            foreach (var host in Targets)
-            {
-                var matched = map.Values.FirstOrDefault(t => string.Equals(t.Host, host, StringComparison.OrdinalIgnoreCase));
-                if (matched != null)
-                {
-                    fallbackResult.Add(matched.Copy());
-                    continue;
-                }
-
-                fallbackResult.Add(new TargetDefinition
-                {
-                    Name = host,
-                    Host = host,
-                    Service = "Пользовательский"
-                });
-            }
-            return fallbackResult;
-        }
-
-        public static void LoadGameProfile(string profileName)
-        {
-            try
-            {
-                // Сначала пробуем прямой путь (Default.json, Custom.json)
-                string profilePath = Path.Combine("Profiles", $"{profileName}.json");
-
-                if (!File.Exists(profilePath))
-                {
-                    // Если не нашли, ищем по имени профиля внутри JSON
-                    var profilesDir = "Profiles";
-                    if (Directory.Exists(profilesDir))
-                    {
-                        foreach (var file in Directory.GetFiles(profilesDir, "*.json"))
-                        {
-                            try
-                            {
-                                string json = File.ReadAllText(file);
-                                var testProfile = System.Text.Json.JsonSerializer.Deserialize<DiagnosticProfile>(json);
-                                if (testProfile?.Name == profileName)
-                                {
-                                    profilePath = file;
-                                    break;
-                                }
-                            }
-                            catch
-                            {
-                                // Игнорируем битые файлы
-                            }
-                        }
-                    }
-                }
-
-                if (!File.Exists(profilePath))
-                {
-                    throw new FileNotFoundException($"Профиль '{profileName}' не найден");
-                }
-
-                string profileJson = File.ReadAllText(profilePath);
-                var profile = System.Text.Json.JsonSerializer.Deserialize<DiagnosticProfile>(profileJson);
-
-                if (profile == null)
-                {
-                    throw new InvalidOperationException($"Не удалось десериализовать профиль '{profileName}'");
-                }
-
-                ActiveProfile = profile;
-            }
-            catch (FileNotFoundException ex)
-            {
-                Console.WriteLine($"⚠️ Ошибка загрузки профиля: {ex.Message}");
-                ActiveProfile = null;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"⚠️ Ошибка при загрузке профиля '{profileName}': {ex.Message}");
-                ActiveProfile = null;
-            }
-        }
-
-        public static void SetActiveProfile(string profileName)
-        {
-            LoadGameProfile(profileName);
-
-            // Обновить Program.Targets для совместимости с GUI
-            if (ActiveProfile != null && ActiveProfile.Targets.Count > 0)
-            {
-                Program.Targets = ActiveProfile.Targets.ToDictionary(
-                    t => t.Name,
-                    t => new TargetDefinition
-                    {
-                        Name = t.Name,
-                        Host = t.Host,
-                        Service = t.Service,
-                        Critical = t.Critical,
-                        FallbackIp = t.FallbackIp
-                    },
-                    StringComparer.OrdinalIgnoreCase
-                );
-            }
-        }
     }
 }

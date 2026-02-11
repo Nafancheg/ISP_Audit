@@ -18,7 +18,6 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                        ТОЧКА ВХОДА                               │
 │                       Program.cs                                 │
-│              ↓ Config.SetActiveProfile("Default")               │
 │              ↓ new App().Run()                                  │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
@@ -439,9 +438,9 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 | Глобальный элемент | Используется в | Риск |
 |-------------------|----------------|------|
 | `NoiseHostFilter.Instance` | TrafficCollector, TestResultsManager, LiveTestingPipeline | Singleton, сложно тестировать |
-| `Program.Targets` | Config.SetActiveProfile | Статический словарь целей |
 | `FixService` (файлы бэкапа) | BypassController | Состояние на диске |
-| `Config.ActiveProfile` | Многие компоненты | Статическое свойство |
+| (legacy удалён) `Program.Targets` | - | Статический словарь целей (удалён) |
+| (legacy удалён) `Config.ActiveProfile` | - | Статическое свойство (удалено) |
 
 ### 1.4 Циклические зависимости
 
@@ -532,7 +531,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 | Проблема | Детали |
 |----------|--------|
 | Namespace смешивание | `IspAudit`, `ISPAudit`, `ISPAudit.ViewModels`, `IspAudit.Utils` |
-| Глобальное состояние | `Program.Targets`, `Config.ActiveProfile`, `NoiseHostFilter.Instance` |
+| Глобальное состояние | `NoiseHostFilter.Instance` |
 | Дублирование моделей | `Target` (Models/), `TargetDefinition` (root), `Target` (ISPAudit.Models) |
 
 ### 3.4 Требуют рефакторинга
@@ -766,8 +765,6 @@ IspAudit.* везде (единый регистр)
 
 ```
 Program.cs
-└── Config.SetActiveProfile
-    └── DiagnosticProfile (Profiles/Default.json)
 └── App.xaml
     └── MainWindow.xaml
         └── MainViewModel
@@ -798,8 +795,6 @@ Program.cs
                 └── NoiseHostFilter.Instance
 
 ГЛОБАЛЬНЫЕ:
-- Config.ActiveProfile (static)
-- Program.Targets (static)
 - NoiseHostFilter.Instance (singleton)
 
 Примечание (16.12.2025):
