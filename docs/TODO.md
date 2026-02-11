@@ -50,7 +50,7 @@
 - [ ] По логу: классифицировать фазу зависания (WinDivert stop / DNS resolve / Dispatcher deadlock / connectivity check)
 - [ ] Для найденной фазы: добавить CancellationToken с таймаутом или Task.WhenAny + deadline
 - [ ] KPI smoke: `PERF-003` — 10 последовательных Apply/Disable, каждый <3с (95-й перцентиль)
-- [ ] Проверить `TrafficEngine.StopAsync`: добавить CTS с таймаутом 5с
+- [x] Проверить `TrafficEngine.StopAsync`: добавить CTS/дедлайн с таймаутом 5с
 
 ### P0.6 Аудит пустых `catch { }`
 - [x] `FixService.cs`: 8 пустых catch → в каждый `Debug.WriteLine` с контекстом операции

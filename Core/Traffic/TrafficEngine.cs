@@ -254,6 +254,8 @@ namespace IspAudit.Core.Traffic
         {
             BypassStateManagerGuard.WarnIfBypassed(_progress, "TrafficEngine.StopAsync");
             var swTotal = Stopwatch.StartNew();
+            var stopTimeout = TimeSpan.FromSeconds(5);
+            var warnAfter = TimeSpan.FromSeconds(3);
             Task? loopTask;
             lock (_stateLock)
             {
@@ -267,7 +269,7 @@ namespace IspAudit.Core.Traffic
                 }
             }
 
-            _progress?.Report("[TrafficEngine] Stopping...");
+            _progress?.Report($"[TrafficEngine] Stopping... timeout={stopTimeout.TotalSeconds:0.#}s{FormatLastMutationForLog()}");
             _cts?.Cancel();
 
             // Closing handle breaks the Recv loop
@@ -283,20 +285,78 @@ namespace IspAudit.Core.Traffic
                     _progress?.Report($"[TrafficEngine][WARN] WinDivert handle dispose is slow: {swDispose.ElapsedMilliseconds}ms{FormatLastMutationForLog()}");
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Игнорируем ошибки при закрытии handle во время остановки
+                // Best-effort: не даём ошибке закрытия handle ломать остановку.
+                System.Diagnostics.Debug.WriteLine($"[TrafficEngine] StopAsync: handle dispose error: {ex.Message}");
             }
 
             if (loopTask != null)
             {
                 try
                 {
-                    var warnDelay = Task.Delay(TimeSpan.FromSeconds(3));
-                    var first = await Task.WhenAny(loopTask, warnDelay).ConfigureAwait(false);
+                    // P0.5: дедлайн на остановку, чтобы диагностировать «зависания» и не ждать бесконечно.
+                    // Важно: при таймауте оставляем движок в состоянии stopping до позднего завершения.
+                    var remaining = stopTimeout - swTotal.Elapsed;
+                    if (remaining <= TimeSpan.Zero)
+                    {
+                        remaining = TimeSpan.FromMilliseconds(1);
+                    }
+
+                    var warnDelay = Task.Delay(warnAfter);
+                    var timeoutDelay = Task.Delay(remaining);
+                    var first = await Task.WhenAny(loopTask, warnDelay, timeoutDelay).ConfigureAwait(false);
                     if (first == warnDelay)
                     {
-                        _progress?.Report($"[TrafficEngine][WARN] StopAsync taking too long (>3s){FormatLastMutationForLog()}");
+                        _progress?.Report($"[TrafficEngine][WARN] StopAsync taking too long (>{warnAfter.TotalSeconds:0.#}s){FormatLastMutationForLog()}");
+
+                        remaining = stopTimeout - swTotal.Elapsed;
+                        if (remaining <= TimeSpan.Zero)
+                        {
+                            remaining = TimeSpan.FromMilliseconds(1);
+                        }
+                        first = await Task.WhenAny(loopTask, Task.Delay(remaining)).ConfigureAwait(false);
+                    }
+
+                    if (first != loopTask)
+                    {
+                        _progress?.Report($"[TrafficEngine][ERROR] StopAsync timeout after {swTotal.ElapsedMilliseconds}ms; leaving engine in stopping state{FormatLastMutationForLog()}");
+
+                        // Late cleanup: если loop завершится позже — аккуратно домоет состояние.
+                        _ = loopTask.ContinueWith(t =>
+                        {
+                            try
+                            {
+                                lock (_stateLock)
+                                {
+                                    if (!ReferenceEquals(_loopTask, t))
+                                    {
+                                        return;
+                                    }
+
+                                    _loopTask = null;
+                                    _handle = null;
+                                    _cts?.Dispose();
+                                    _cts = null;
+                                    _isStopping = false;
+                                }
+
+                                try
+                                {
+                                    _progress?.Report($"[TrafficEngine] Stopped (late completion after timeout): {swTotal.ElapsedMilliseconds}ms{FormatLastMutationForLog()}");
+                                }
+                                catch
+                                {
+                                    // best-effort
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"[TrafficEngine] StopAsync late cleanup error: {ex.Message}");
+                            }
+                        }, TaskScheduler.Default);
+
+                        return;
                     }
 
                     await loopTask.ConfigureAwait(false);
