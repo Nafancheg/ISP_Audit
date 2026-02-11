@@ -416,7 +416,7 @@ namespace IspAudit.ViewModels
                 foreach (var h in hosts)
                 {
                     if (_cts?.IsCancellationRequested == true) break;
-                    await _testingPipeline.EnqueueHostAsync(h).ConfigureAwait(false);
+                    await _testingPipeline.EnqueueHostAsync(h, IspAudit.Utils.LiveTestingPipeline.HostPriority.High).ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
