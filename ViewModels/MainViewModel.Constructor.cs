@@ -28,6 +28,9 @@ namespace IspAudit.ViewModels
         private readonly NetworkChangeMonitor? _networkChangeMonitor;
         private volatile bool _pendingNetworkChangePrompt;
 
+        // Защита от повторного Dispose().
+        private int _disposeSignaled;
+
         // P1.4: Post-crash диагнозы — баннер про crash-reports.
         private volatile bool _pendingCrashReportsPrompt;
         private string _pendingCrashReportsPromptText = "";
@@ -787,6 +790,77 @@ namespace IspAudit.ViewModels
             {
                 // ignore
             }
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposeSignaled, 1) != 0)
+            {
+                return;
+            }
+
+            // Dispose не должен зависать: только best-effort cleanup.
+            try
+            {
+                Orchestrator.Cancel();
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                _networkRevalidateCts?.Cancel();
+                _networkRevalidateCts?.Dispose();
+            }
+            catch
+            {
+                // ignore
+            }
+            finally
+            {
+                _networkRevalidateCts = null;
+            }
+
+            try
+            {
+                _bypassState.MarkCleanShutdown();
+                Log("[Bypass][Watchdog] Clean shutdown отмечен");
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                _networkChangeMonitor?.Dispose();
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                _bypassState.Dispose();
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                _trafficEngine.Dispose();
+            }
+            catch
+            {
+                // ignore
+            }
+
+            GC.SuppressFinalize(this);
         }
 
         public void OnAppExit()

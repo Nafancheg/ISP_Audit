@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel;
 using IspAudit.Bypass;
 
@@ -8,7 +9,7 @@ namespace IspAudit.ViewModels
     /// Тонкий координатор между BypassController,
     /// DiagnosticOrchestrator и TestResultsManager.
     /// </summary>
-    public partial class MainViewModel : INotifyPropertyChanged
+    public partial class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         #region Controllers (Composition)
 

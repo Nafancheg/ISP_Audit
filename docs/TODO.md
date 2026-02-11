@@ -44,10 +44,10 @@
 - Источник: audit4 §7.1
 
 ### P1.3 `IDisposable` для MainViewModel
-- [ ] Добавить `: IDisposable` к MainViewModel
-- [ ] Реализовать Dispose(): `_trafficEngine?.Dispose()`, `_bypassStateManager?.Dispose()`, `_networkChangeMonitor?.Dispose()`
-- [ ] В `App.xaml.cs` OnExit: `(_sharedMainViewModel as IDisposable)?.Dispose()` после ShutdownAsync
-- [ ] Smoke strict: PASS
+- [x] Добавить `: IDisposable` к MainViewModel
+- [x] Реализовать Dispose(): `_trafficEngine?.Dispose()`, `_bypassStateManager?.Dispose()`, `_networkChangeMonitor?.Dispose()`
+- [x] В `App.xaml.cs` OnExit: `(_sharedMainViewModel as IDisposable)?.Dispose()` после ShutdownAsync
+- [x] Smoke strict: PASS
 - Источник: audit4 §2.4
 
 ### P1.4 OperatorViewModel декомпозиция

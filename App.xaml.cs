@@ -150,6 +150,15 @@ public partial class App : System.Windows.Application
                 // Критично: DNS/DoH должен откатываться при выходе из приложения.
                 // OnExit не async — используем Task.Run чтобы избежать deadlock SynchronizationContext.
                 Task.Run(() => _sharedMainViewModel.ShutdownAsync()).Wait(TimeSpan.FromSeconds(10));
+
+                try
+                {
+                    (_sharedMainViewModel as IDisposable)?.Dispose();
+                }
+                catch
+                {
+                    // ignore
+                }
             }
         }
         catch
