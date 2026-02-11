@@ -22,9 +22,7 @@ using System.Net;
 
 // Явно указываем WPF вместо WinForms
 using Application = System.Windows.Application;
-using MessageBox = System.Windows.MessageBox;
-using MessageBoxButton = System.Windows.MessageBoxButton;
-using MessageBoxImage = System.Windows.MessageBoxImage;
+
 using IspAudit.Core.RuntimeAdaptation;
 
 namespace IspAudit.ViewModels
@@ -68,12 +66,10 @@ namespace IspAudit.ViewModels
 
                 if (!OperatingSystem.IsWindows() || !IsAdministrator())
                 {
-                    MessageBox.Show(
-                        "Для захвата трафика требуются права администратора.\n\n" +
-                        "Запустите приложение от имени администратора",
+                    ShowError?.Invoke(
                         "Требуются права администратора",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Warning);
+                        "Для захвата трафика требуются права администратора.\n\n" +
+                        "Запустите приложение от имени администратора");
                     return;
                 }
 
@@ -287,8 +283,9 @@ namespace IspAudit.ViewModels
                             {
                                 secondaryTarget = TryResolveHostFromIpBestEffort(ip);
                             }
-                            catch
+                            catch (Exception ex)
                             {
+                                System.Diagnostics.Debug.WriteLine($"[Orchestrator] ResolveHostFromIp: {ex.Message}");
                             }
 
                             var context = new ReactiveTargetSyncContext(
@@ -299,9 +296,10 @@ namespace IspAudit.ViewModels
 
                             _stateManager.ReactiveTargetSync.OnUdpBlockage(ip, context);
                         }
-                        catch
+                        catch (Exception ex)
                         {
                             // Не даём вспомогательной логике ломать диагностику.
+                            System.Diagnostics.Debug.WriteLine($"[Orchestrator] ReactiveTargetSync: {ex.Message}");
                         }
                     };
                 }
@@ -329,9 +327,9 @@ namespace IspAudit.ViewModels
                 {
                     _cts.Cancel();
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // ignore
+                    System.Diagnostics.Debug.WriteLine($"[Orchestrator] CTS.Cancel: {ex.Message}");
                 }
 
                 try
@@ -392,8 +390,7 @@ namespace IspAudit.ViewModels
             catch (Exception ex)
             {
                 Log($"[Orchestrator] Ошибка: {ex.Message}");
-                MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка диагностики",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowError?.Invoke("Ошибка диагностики", $"Ошибка: {ex.Message}");
                 DiagnosticStatus = $"Ошибка: {ex.Message}";
             }
             finally
@@ -531,7 +528,7 @@ namespace IspAudit.ViewModels
                                 await _testingPipeline.EnqueueHostAsync(host).ConfigureAwait(false);
                             }
                         }
-                        catch { }
+                        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Orchestrator] Retest DNS resolve: {ex.Message}"); }
                     }
                 }
 
@@ -555,11 +552,11 @@ namespace IspAudit.ViewModels
                     // Если отменили — best-effort: быстро гасим воркеры.
                     if (cts?.IsCancellationRequested == true)
                     {
-                        try { pipeline.Dispose(); } catch { }
+                        try { pipeline.Dispose(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Orchestrator] Pipeline dispose: {ex.Message}"); }
                     }
 
                     // Дожидаемся drain (может уже завершиться после dispose).
-                    try { await drainTask.ConfigureAwait(false); } catch { }
+                    try { await drainTask.ConfigureAwait(false); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Orchestrator] DrainTask: {ex.Message}"); }
                 }
 
                 Log($"[Orchestrator][Retest][op={opId}] Ретест завершен");
@@ -718,7 +715,10 @@ namespace IspAudit.ViewModels
                                 break;
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[Orchestrator] ProcessMonitor GetProcessById({pid}): {ex.Message}");
+                        }
                     }
 
                     if (!anyAlive && _pidTracker.TrackedPids.Count > 0)
@@ -810,8 +810,9 @@ namespace IspAudit.ViewModels
                             _trafficCollector = null;
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
+                        System.Diagnostics.Debug.WriteLine($"[Orchestrator] Cancel cleanup: {ex.Message}");
                     }
                 });
                 cancelledAnything = true;

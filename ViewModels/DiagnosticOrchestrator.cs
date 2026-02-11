@@ -193,6 +193,18 @@ namespace IspAudit.ViewModels
         // P1.8: семантика Post-Apply проверки (OK/FAIL/PARTIAL/UNKNOWN) для UI.
         public event Action<string, string, string, string?>? OnPostApplyCheckVerdict;
 
+        /// <summary>
+        /// Делегат для подтверждения действия (заголовок, текст) → true/false.
+        /// Инъектируется из View-слоя для соблюдения MVVM.
+        /// </summary>
+        public Func<string, string, bool>? ConfirmAction { get; set; }
+
+        /// <summary>
+        /// Делегат для показа ошибки/предупреждения (заголовок, текст).
+        /// Инъектируется из View-слоя для соблюдения MVVM.
+        /// </summary>
+        public Action<string, string>? ShowError { get; set; }
+
         public DiagnosticOrchestrator(BypassStateManager stateManager)
         {
             _stateManager = stateManager ?? throw new ArgumentNullException(nameof(stateManager));

@@ -13,6 +13,7 @@ Smoke: strict 172/172 PASS, ui 22/22 PASS (1 SKIP), reg 27/27 PASS.
 Документация (`ARCHITECTURE_CURRENT.md`, `docs/full_repo_audit_intel.md`) **достоверно** описывает архитектуру. Поток данных Pipeline, роли компонентов совпадают с кодом.
 
 **Замечания:**
+
 - Документация содержит десятки «дополнений» (актуализаций), которые превращают её в гибрид architecture reference + changelog. Навигация затруднена.
 - Рекомендация: разделить на «Architecture Reference» (стабильная часть) и «Change Log» (дельты).
 
@@ -77,6 +78,7 @@ _sharedMainViewModel.ShutdownAsync().GetAwaiter().GetResult();
 `OnExit` вызывается на UI-потоке. `ShutdownAsync` → `DisableAllAsync` → цепочка await-ов. Если где-то внутри цепочки `Dispatcher.Invoke` — **deadlock**. Текущий код полагается на `ConfigureAwait(false)` в цепочке, но это хрупко.
 
 **Аналогичная проблема:**
+
 | Файл | Метод |
 |------|-------|
 | TrafficEngine.cs ~L471 | `Dispose()` → `StopAsync().GetAwaiter().GetResult()` |
@@ -142,11 +144,13 @@ var endTicks = DateTime.UtcNow.Ticks;
 Собственный smoke runner (не xUnit/NUnit). Всего ~172 теста по категориям: `infra`, `pipe`, `insp`, `bypass`, `dpi2`, `orch`, `cfg`, `err`, `e2e`, `perf`, `reg`, `ui`.
 
 **Плюсы:**
+
 - Детерминированные (без реальной сети)
 - Покрывают интеграцию: pipeline, diagnosis, strategy selection, serialization
 - Строгий режим (`--strict`): SKIP = FAIL
 
 **Минусы:**
+
 - Нет настоящих unit-тестов — нет изоляции через моки
 - Нет тестирования конкурентных сценариев (открыто в P0.1)
 - Нет property-based тестов для парсеров/фильтров
@@ -232,6 +236,7 @@ Config.cs содержит:
 ### 7.1 `Dispatcher.Invoke` vs `Dispatcher.BeginInvoke`
 
 Нет единого паттерна маршалинга в UI-поток:
+
 - `Application.Current?.Dispatcher.Invoke(...)` — синхронный, 20+ мест
 - `Application.Current?.Dispatcher.BeginInvoke(...)` — асинхронный, несколько мест
 - `IProgress<string>` — через Report, в pipeline

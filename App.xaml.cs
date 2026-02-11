@@ -118,9 +118,9 @@ public partial class App : System.Windows.Application
         {
             await GetSharedMainViewModel().InitializeAsync().ConfigureAwait(false);
         }
-        catch
+        catch (System.Exception ex)
         {
-            // ignore
+            System.Diagnostics.Debug.WriteLine($"[App] EnsureInitializedAsync: {ex.Message}");
         }
     }
 
@@ -148,8 +148,8 @@ public partial class App : System.Windows.Application
             if (_sharedMainViewModel != null)
             {
                 // Критично: DNS/DoH должен откатываться при выходе из приложения.
-                // OnExit не async, поэтому выполняем синхронное ожидание завершения.
-                _sharedMainViewModel.ShutdownAsync().GetAwaiter().GetResult();
+                // OnExit не async — используем Task.Run чтобы избежать deadlock SynchronizationContext.
+                Task.Run(() => _sharedMainViewModel.ShutdownAsync()).Wait(TimeSpan.FromSeconds(10));
             }
         }
         catch

@@ -24,7 +24,7 @@ namespace IspAudit.Utils
         private readonly TaskCompletionSource<bool> _readySignal = new();
         private readonly TcpConnectionWatcher _watcher = new();
         private static readonly bool VerboseSocketLogging = false;
-        
+
         /// <summary>Время открытия мониторинга (UTC)</summary>
         public DateTime? MonitorStartedUtc { get; private set; }
         /// <summary>Время первого события (UTC)</summary>
@@ -33,11 +33,11 @@ namespace IspAudit.Utils
         public int TotalEventsCount => _totalEventsCount;
 
         /// <summary>
-        /// Режим polling через IP Helper API (fallback). 
+        /// Режим polling через IP Helper API (fallback).
         /// false = WinDivert Socket Layer (основной режим).
         /// </summary>
         public bool UsePollingMode { get; set; }
-        
+
         /// <summary>
         /// Событие нового соединения.
         /// Args: (eventCount, pid, protocol, remoteIp, remotePort, localPort)
@@ -72,7 +72,7 @@ namespace IspAudit.Utils
                 // WinDivert Socket Layer — основной режим (событийная модель)
                 _socketTask = Task.Run(() => RunSocketLoop(_cts.Token), _cts.Token);
             }
-            
+
             return _readySignal.Task;
         }
 
@@ -89,11 +89,11 @@ namespace IspAudit.Utils
                 while (!token.IsCancellationRequested)
                 {
                     var snapshot = await _watcher.GetSnapshotAsync(token).ConfigureAwait(false);
-                    
+
                     foreach (var conn in snapshot)
                     {
                         var key = $"{conn.RemoteIp}:{conn.RemotePort}:{conn.LocalPort}:{conn.Protocol}";
-                        
+
                         if (seenConnections.Add(key))
                         {
                             int count = Interlocked.Increment(ref _totalEventsCount);
@@ -125,16 +125,16 @@ namespace IspAudit.Utils
             try
             {
                 _progress?.Report("[ConnectionMonitor] Открытие WinDivert Socket Layer...");
-                
-                const string socketFilter = "true"; 
-                _socketHandle = WinDivertNative.Open(socketFilter, WinDivertNative.Layer.Socket, -1000, 
+
+                const string socketFilter = "true";
+                _socketHandle = WinDivertNative.Open(socketFilter, WinDivertNative.Layer.Socket, -1000,
                     WinDivertNative.OpenFlags.Sniff | WinDivertNative.OpenFlags.RecvOnly);
-                
+
                 MonitorStartedUtc = DateTime.UtcNow;
                 _progress?.Report($"[ConnectionMonitor] ✓ Socket Layer активен");
-                
+
                 _readySignal.TrySetResult(true);
-                
+
                 var addr = new WinDivertNative.Address();
 
                 while (!token.IsCancellationRequested)
@@ -144,7 +144,7 @@ namespace IspAudit.Utils
                         var error = Marshal.GetLastWin32Error();
                         if (error == WinDivertNative.ErrorNoData || error == WinDivertNative.ErrorOperationAborted)
                             break;
-                        
+
                         Thread.Sleep(50);
                         continue;
                     }
@@ -158,18 +158,18 @@ namespace IspAudit.Utils
 
                     var pid = (int)addr.Data.Socket.ProcessId;
                     var protocol = addr.Data.Socket.Protocol;
-                    
+
                     IPAddress remoteIp;
                     if (addr.IPv6)
                     {
-                        var parts = new uint[] 
-                        { 
-                            addr.Data.Socket.RemoteAddr1, 
-                            addr.Data.Socket.RemoteAddr2, 
-                            addr.Data.Socket.RemoteAddr3, 
-                            addr.Data.Socket.RemoteAddr4 
+                        var parts = new uint[]
+                        {
+                            addr.Data.Socket.RemoteAddr1,
+                            addr.Data.Socket.RemoteAddr2,
+                            addr.Data.Socket.RemoteAddr3,
+                            addr.Data.Socket.RemoteAddr4
                         };
-                        
+
                         var bytes = new byte[16];
                         for (int i = 0; i < 4; i++)
                         {
@@ -202,21 +202,21 @@ namespace IspAudit.Utils
                     }
 
                     int count = Interlocked.Increment(ref _totalEventsCount);
-                    
+
                     if (count == 1)
                     {
                         FirstEventUtc = DateTime.UtcNow;
                         var delta = (FirstEventUtc.Value - MonitorStartedUtc!.Value).TotalMilliseconds;
                         _progress?.Report($"[ConnectionMonitor] Первое событие через {delta:F0}ms");
                     }
-                    
+
                     OnConnectionEvent?.Invoke(count, pid, protocol, remoteIp, remotePort, localPort);
                 }
             }
             catch (System.ComponentModel.Win32Exception wx)
             {
                 _readySignal.TrySetException(wx);
-                
+
                 if (wx.NativeErrorCode == 1058)
                 {
                     _progress?.Report("[ConnectionMonitor] Ошибка: служба драйвера отключена (код 1058). Требуются права администратора.");
@@ -245,10 +245,11 @@ namespace IspAudit.Utils
                 return;
 
             _cts?.Cancel();
-            
+
             // Force close handle to unblock WinDivertRecv
-            try { _socketHandle?.Dispose(); } catch { }
-            
+            try { _socketHandle?.Dispose(); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[ConnectionMonitor] Dispose socket handle: {ex.Message}"); }
+
             var tasks = new List<Task>();
             if (_pollingTask != null) tasks.Add(_pollingTask);
             if (_socketTask != null) tasks.Add(_socketTask);
@@ -266,7 +267,8 @@ namespace IspAudit.Utils
 
         public void Dispose()
         {
-            StopAsync().GetAwaiter().GetResult();
+            // Task.Run чтобы избежать deadlock при вызове из UI-потока
+            Task.Run(() => StopAsync()).Wait(TimeSpan.FromSeconds(5));
             _cts?.Dispose();
         }
     }

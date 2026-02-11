@@ -91,7 +91,7 @@ namespace IspAudit.ViewModels
             UserMessage = cleanMsg;
         }
 
-        private async void CheckAndRetestFailedTargets(string? propertyName)
+        private async Task CheckAndRetestFailedTargetsAsync(string? propertyName)
         {
             if (string.IsNullOrEmpty(propertyName)) return;
 
@@ -137,6 +137,22 @@ namespace IspAudit.ViewModels
             // Запускаем ретест
             var opId = Guid.NewGuid().ToString("N");
             await Orchestrator.RetestTargetsAsync(failedTargets, Bypass, opId);
+        }
+
+        /// <summary>
+        /// Безопасный fire-and-forget: логирует исключения вместо краша процесса.
+        /// </summary>
+        private async void SafeFireAndForget(Task task)
+        {
+            try
+            {
+                await task.ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Log($"[SafeFireAndForget] Необработанная ошибка: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[SafeFireAndForget] {ex}");
+            }
         }
 
         private async Task RunPendingRetestAfterRunAsync()

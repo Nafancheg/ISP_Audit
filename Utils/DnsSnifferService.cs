@@ -124,8 +124,9 @@ namespace IspAudit.Utils
                     return true;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[DnsParser] TLS ClientHello parse: {ex.Message}");
             }
 
             return false;
@@ -237,8 +238,9 @@ namespace IspAudit.Utils
                 return;
 
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[DnsParser] Packet TLS/SNI parse: {ex.Message}");
             }
         }
 
@@ -277,9 +279,10 @@ namespace IspAudit.Utils
                         }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
                     // Не даём стабилизации SNI ломать пайплайн
+                    System.Diagnostics.Debug.WriteLine($"[DnsParser] SNI stabilization: {ex.Message}");
                 }
 
                 return;
@@ -418,8 +421,9 @@ namespace IspAudit.Utils
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[DnsParser] TLS flow cleanup: {ex.Message}");
             }
         }
 
@@ -477,7 +481,7 @@ namespace IspAudit.Utils
                     }
                 }
             }
-            catch { }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[DnsParser] DNS request parse: {ex.Message}"); }
         }
 
         private bool TryParseDnsResponse(byte[] buffer, int length)
@@ -726,11 +730,13 @@ namespace IspAudit.Utils
             {
                 _cts.Cancel();
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[DnsParser] CTS.Cancel: {ex.Message}");
             }
 
-            StopAsync().GetAwaiter().GetResult();
+            // Task.Run чтобы избежать deadlock при вызове из UI-потока
+            Task.Run(() => StopAsync()).Wait(TimeSpan.FromSeconds(5));
             _cts.Dispose();
         }
 

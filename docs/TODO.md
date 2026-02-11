@@ -1,6 +1,6 @@
 ﻿# ISP_Audit — TODO
 
-Дата актуализации: 10.02.2026
+Дата актуализации: 11.02.2026
 Выполненное → [CHANGELOG.md](../CHANGELOG.md). Архитектура → [ARCHITECTURE_CURRENT.md](../ARCHITECTURE_CURRENT.md). Аудит → [docs/audit4.md](audit4.md).
 
 ---
@@ -15,27 +15,27 @@
 ## 🔴 P0 — Критические
 
 ### P0.1 `async void` не-event handler (CRASH RISK)
-- [ ] Изменить сигнатуру `CheckAndRetestFailedTargets` → `async Task CheckAndRetestFailedTargetsAsync` в `ViewModels/MainViewModel.Helpers.cs:94`
-- [ ] На вызывающей стороне: обернуть в `_ = SafeFireAndForget(CheckAndRetestFailedTargetsAsync(...))` с try/catch + логированием
-- [ ] Проверить отсутствие других `async void` не-event handler (grep `async void` по ViewModels/)
-- [ ] Smoke reg: убедиться что ретест по-прежнему работает (PASS)
+- [x] Изменить сигнатуру `CheckAndRetestFailedTargets` → `async Task CheckAndRetestFailedTargetsAsync` в `ViewModels/MainViewModel.Helpers.cs:94`
+- [x] На вызывающей стороне: обернуть в `_ = SafeFireAndForget(CheckAndRetestFailedTargetsAsync(...))` с try/catch + логированием
+- [x] Проверить отсутствие других `async void` не-event handler (grep `async void` по ViewModels/)
+- [x] Smoke reg: убедиться что ретест по-прежнему работает (PASS)
 - Источник: audit4 §2.1
 
 ### P0.2 Sync-over-async deadlock (App.OnExit)
-- [ ] `App.xaml.cs` ~L152: заменить `ShutdownAsync().GetAwaiter().GetResult()` → `Task.Run(() => ShutdownAsync()).Wait(TimeSpan.FromSeconds(10))`
-- [ ] `TrafficEngine.cs` Dispose(): аналогичная обёртка `Task.Run(() => StopAsync()).Wait(timeout)`
-- [ ] `ConnectionMonitorService.cs` Dispose(): аналогичная обёртка
-- [ ] `DnsSnifferService.cs` Dispose(): аналогичная обёртка
-- [ ] `PidTrackerService.cs` Dispose(): аналогичная обёртка
-- [ ] Smoke strict: убедиться что shutdown не зависает (PASS)
+- [x] `App.xaml.cs` ~L152: заменить `ShutdownAsync().GetAwaiter().GetResult()` → `Task.Run(() => ShutdownAsync()).Wait(TimeSpan.FromSeconds(10))`
+- [x] `TrafficEngine.cs` Dispose(): аналогичная обёртка `Task.Run(() => StopAsync()).Wait(timeout)`
+- [x] `ConnectionMonitorService.cs` Dispose(): аналогичная обёртка
+- [x] `DnsSnifferService.cs` Dispose(): аналогичная обёртка
+- [x] `PidTrackerService.cs` Dispose(): аналогичная обёртка
+- [x] Smoke strict: убедиться что shutdown не зависает (PASS)
 - Источник: audit4 §2.2
 
 ### P0.3 `MessageBox.Show` в ViewModel (MVVM нарушение)
-- [ ] В `DiagnosticOrchestrator` добавить свойство `Func<string, string, bool> ConfirmAction` (инъекция через конструктор или property)
-- [ ] Заменить `MessageBox.Show` ~L76-81 на вызов `ConfirmAction?.Invoke(title, message) ?? false`
-- [ ] Заменить `MessageBox.Show` ~L407 аналогично
-- [ ] В `MainViewModel` при создании Orchestrator: привязать `ConfirmAction` к `MessageBox.Show` (production) или no-op (тесты)
-- [ ] Grep `MessageBox` по проекту — убедиться что нет других вызовов из ViewModel/Service слоёв
+- [x] В `DiagnosticOrchestrator` добавить свойство `Func<string, string, bool> ConfirmAction` (инъекция через конструктор или property)
+- [x] Заменить `MessageBox.Show` ~L76-81 на вызов `ShowError?.Invoke(title, message)`
+- [x] Заменить `MessageBox.Show` ~L407 аналогично
+- [x] В `MainViewModel` при создании Orchestrator: привязать `ConfirmAction` и `ShowError` к `MessageBox.Show` (production) или no-op (тесты)
+- [x] Grep `MessageBox` по проекту — убедиться что нет других вызовов из Orchestrator
 - Источник: audit4 §1.4
 
 ### P0.4 TrafficEngine — воспроизведение и стресс-тесты
@@ -53,14 +53,14 @@
 - [ ] Проверить `TrafficEngine.StopAsync`: добавить CTS с таймаутом 5с
 
 ### P0.6 Аудит пустых `catch { }`
-- [ ] `FixService.cs`: 6 пустых catch → в каждый `Debug.WriteLine` с контекстом операции
-- [ ] `DiagnosticOrchestrator.Core.cs`: 3+ пустых catch → `_progress?.Report` с ex.Message
-- [ ] `DnsSnifferService.cs`: 2+ пустых catch → `Debug.WriteLine`
-- [ ] `TestResultsManager.DnsResolution.cs`: 1 пустой catch → `Debug.WriteLine`
-- [ ] `MainViewModel.Logging.cs`: 1 пустой catch → `Debug.WriteLine`
-- [ ] `App.xaml.cs`: 1 пустой catch EnsureInitializedAsync → `Debug.WriteLine`
-- [ ] `StandardHostTester.cs`: 2 catch в DNS reverse → `Debug.WriteLine`
-- [ ] Финальный grep `catch\s*\{?\s*\}` — убедиться что не осталось полностью пустых
+- [x] `FixService.cs`: 8 пустых catch → в каждый `Debug.WriteLine` с контекстом операции
+- [x] `DiagnosticOrchestrator.Core.cs`: 7 пустых catch → `Debug.WriteLine` с ex.Message
+- [x] `DnsSnifferService.cs`: 6 пустых catch → `Debug.WriteLine`
+- [x] `TestResultsManager.DnsResolution.cs`: 2 пустых catch → `Debug.WriteLine`
+- [x] `MainViewModel.Logging.cs`: 1 пустой catch → `Debug.WriteLine`
+- [x] `App.xaml.cs`: 1 пустой catch EnsureInitializedAsync → `Debug.WriteLine`
+- [x] `StandardHostTester.cs`: 1 catch в DNS reverse → `Debug.WriteLine`
+- [ ] Финальный grep `catch\s*\{?\s*\}` — в указанных файлах пустых не осталось; в остальных файлах остаются (не входят в P0.6)
 - Источник: audit4 §2.3
 
 ---

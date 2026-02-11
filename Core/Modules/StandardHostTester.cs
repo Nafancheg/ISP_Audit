@@ -96,6 +96,7 @@ namespace IspAudit.Core.Modules
                 }
                 catch
                 {
+                    System.Diagnostics.Debug.WriteLine($"[HostTester] Reverse DNS error for {ipString}");
                 }
 
                 // Если совсем нет hostname (SNI/DNS), можем использовать reverse DNS только как fallback для UI

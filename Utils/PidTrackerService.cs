@@ -18,7 +18,7 @@ namespace IspAudit.Utils
         private readonly IProgress<string>? _progress;
         private Task? _trackerTask;
         private CancellationTokenSource? _cts;
-        
+
         public IReadOnlyCollection<int> TrackedPids => _trackedPids;
         public int NewPidsDiscovered { get; private set; }
 
@@ -65,7 +65,7 @@ namespace IspAudit.Utils
                 return _trackedPids.Remove(pid);
             }
         }
-        
+
         /// <summary>
         /// Событие срабатывает при обнаружении новых PIDs (для немедленной реакции подписчиков)
         /// </summary>
@@ -75,19 +75,19 @@ namespace IspAudit.Utils
         {
             _trackedPids = new HashSet<int> { initialPid };
             _progress = progress;
-            
+
             try
             {
                 using var proc = Process.GetProcessById(initialPid);
                 _processName = proc.ProcessName;
-                
+
                 // Сразу собираем все PIDs с таким же именем
                 var allProcesses = Process.GetProcessesByName(_processName);
                 foreach (var p in allProcesses)
                 {
                     _trackedPids.Add(p.Id);
                 }
-                
+
                 // Ищем дочерние процессы
                 if (OperatingSystem.IsWindows())
                 {
@@ -96,13 +96,13 @@ namespace IspAudit.Utils
                     {
                         _trackedPids.Add(childPid);
                     }
-                    
+
                     if (childPids.Count > 0)
                     {
                         _progress?.Report($"[PidTracker] Найдено дочерних процессов: {childPids.Count}");
                     }
                 }
-                
+
                 _progress?.Report($"[PidTracker] Процесс: '{_processName}' (PID={initialPid}), всего отслеживается: {_trackedPids.Count}");
             }
             catch (Exception ex)
@@ -123,19 +123,19 @@ namespace IspAudit.Utils
             try
             {
                 int updateCount = 0;
-                
+
                 while (!token.IsCancellationRequested)
                 {
                     await Task.Delay(500, token).ConfigureAwait(false); // Проверка каждые 0.5 секунды (быстрая реакция на новые PIDs)
-                    
+
                     if (string.IsNullOrEmpty(_processName))
                         continue;
-                    
+
                     // Запускаем операции параллельно для скорости
                     var newPidsFound = await Task.Run(async () =>
                     {
                         var foundPids = new List<int>();
-                        
+
                         // 1. Проверяем новые процессы с тем же именем (быстрая операция)
                         var currentProcesses = Process.GetProcessesByName(_processName);
                         foreach (var proc in currentProcesses)
@@ -148,7 +148,7 @@ namespace IspAudit.Utils
                                 }
                             }
                         }
-                        
+
                         // 2. Проверяем дочерние процессы параллельно (медленные WMI запросы)
                         if (OperatingSystem.IsWindows())
                         {
@@ -157,13 +157,13 @@ namespace IspAudit.Utils
                             {
                                 knownPids = _trackedPids.ToList();
                             }
-                            
+
                             // Параллельный опрос WMI для каждого родительского PID
                             var childPidTasks = knownPids.Select(parentPid => Task.Run(() =>
                             {
                                 if (!OperatingSystem.IsWindows())
                                     return new List<int>();
-                                    
+
                                 try
                                 {
                                     return GetChildProcesses(parentPid);
@@ -173,11 +173,11 @@ namespace IspAudit.Utils
                                     return new List<int>(); // Процесс мог завершиться
                                 }
                             }));
-                            
+
                             var allChildPids = (await Task.WhenAll(childPidTasks).ConfigureAwait(false))
                                 .SelectMany(x => x)
                                 .ToList();
-                            
+
                             foreach (var childPid in allChildPids)
                             {
                                 lock (_trackedPids)
@@ -189,16 +189,16 @@ namespace IspAudit.Utils
                                 }
                             }
                         }
-                        
+
                         return foundPids;
                     }, token).ConfigureAwait(false);
-                    
+
                     if (newPidsFound.Any())
                     {
                         NewPidsDiscovered += newPidsFound.Count;
                         updateCount++;
                         _progress?.Report($"[PidTracker] Добавлено новых PIDs: {string.Join(", ", newPidsFound)} (всего: {_trackedPids.Count})");
-                        
+
                         // Уведомляем подписчиков немедленно
                         OnNewPidsDiscovered?.Invoke(newPidsFound);
                     }
@@ -218,12 +218,12 @@ namespace IspAudit.Utils
         private static List<int> GetChildProcesses(int parentPid)
         {
             var childPids = new List<int>();
-            
+
             try
             {
                 using var searcher = new System.Management.ManagementObjectSearcher(
                     $"SELECT ProcessId FROM Win32_Process WHERE ParentProcessId = {parentPid}");
-                
+
                 foreach (var obj in searcher.Get())
                 {
                     var pid = Convert.ToInt32(obj["ProcessId"]);
@@ -234,14 +234,14 @@ namespace IspAudit.Utils
             {
                 // WMI может быть недоступен
             }
-            
+
             return childPids;
         }
 
         public async Task StopAsync()
         {
             _cts?.Cancel();
-            
+
             if (_trackerTask != null)
             {
                 try
@@ -257,7 +257,8 @@ namespace IspAudit.Utils
 
         public void Dispose()
         {
-            StopAsync().GetAwaiter().GetResult();
+            // Task.Run чтобы избежать deadlock при вызове из UI-потока
+            Task.Run(() => StopAsync()).Wait(TimeSpan.FromSeconds(5));
             _cts?.Dispose();
         }
     }

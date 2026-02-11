@@ -63,7 +63,7 @@ namespace IspAudit.ViewModels
                         var entry = await System.Net.Dns.GetHostEntryAsync(ip);
                         if (!string.IsNullOrEmpty(entry.HostName)) hostName = entry.HostName;
                     }
-                    catch { }
+                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[TestResults] GetHostEntry({ip}): {ex.Message}"); }
 
                     var newTarget = new Target
                     {
@@ -90,7 +90,7 @@ namespace IspAudit.ViewModels
                     });
                 }
             }
-            catch { }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[TestResults] ResolveUnknownHost({ip}): {ex.Message}"); }
             finally
             {
                 _pendingResolutions.TryRemove(ip, out _);

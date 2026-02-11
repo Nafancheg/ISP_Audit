@@ -22,6 +22,10 @@ artifacts/
 # Logs
 *.log
 
+# Временные файлы агентов/сессий (не должны попадать в git)
+tmpclaude-*
+nul
+
 # OS cruft
 .DS_Store
 Thumbs.db

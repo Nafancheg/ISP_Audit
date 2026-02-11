@@ -468,7 +468,8 @@ namespace IspAudit.Core.Traffic
 
         public void Dispose()
         {
-            StopAsync().GetAwaiter().GetResult();
+            // Task.Run чтобы избежать deadlock при вызове из UI-потока
+            Task.Run(() => StopAsync()).Wait(TimeSpan.FromSeconds(5));
             _cts?.Dispose();
         }
     }

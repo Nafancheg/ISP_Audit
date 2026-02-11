@@ -25,7 +25,8 @@ namespace IspAudit.ViewModels
                 {
                     var toDelete = existingLogs[0];
                     existingLogs.RemoveAt(0);
-                    try { File.Delete(toDelete); } catch { }
+                    try { File.Delete(toDelete); }
+                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Log] Delete old log failed: {ex.Message}"); }
                 }
 
                 var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
@@ -44,7 +45,7 @@ namespace IspAudit.ViewModels
                 File.AppendAllText(LogFilePath, $"[{DateTime.Now:HH:mm:ss.fff}] {message}\n");
                 System.Diagnostics.Debug.WriteLine(message);
             }
-            catch { }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Log] Write failed: {ex.Message}"); }
         }
 
         #endregion

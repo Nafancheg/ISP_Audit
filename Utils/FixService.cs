@@ -109,7 +109,7 @@ namespace IspAudit.Utils
                     if (primaryMatch && secondaryMatch) return preset.Name;
                 }
             }
-            catch { }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[FixService] DetectActivePreset: {ex.Message}"); }
             return null;
         }
 
@@ -157,7 +157,7 @@ namespace IspAudit.Utils
                                 Log($"[FixService] Loaded backup from file: {_originalDnsConfig}");
                             }
                         }
-                        catch { /* ignore corrupt file */ }
+                        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[FixService] LoadBackup: {ex.Message}"); }
                     }
 
                     // Если все еще нет бэкапа, делаем новый
@@ -285,9 +285,9 @@ namespace IspAudit.Utils
                         }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // ignore
+                    System.Diagnostics.Debug.WriteLine($"[FixService] FallbackDnsRestore: {ex.Message}");
                 }
 
                 return (false, "Нет сохраненных настроек DNS");
@@ -339,7 +339,7 @@ namespace IspAudit.Utils
                 _originalAdapterName = null;
                 if (File.Exists(BackupFilePath))
                 {
-                    try { File.Delete(BackupFilePath); } catch { }
+                    try { File.Delete(BackupFilePath); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[FixService] DeleteBackup: {ex.Message}"); }
                 }
 
                 return (true, string.Empty);
@@ -541,7 +541,7 @@ namespace IspAudit.Utils
             {
                 await RunCommandAsync("reg", "add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\Dnscache\\Parameters\" /v EnableAutoDoh /t REG_DWORD /d 2 /f", cancellationToken).ConfigureAwait(false);
             }
-            catch { }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[FixService] EnableAutoDoH registry: {ex.Message}"); }
 
             // Попытка 1: PowerShell (предпочтительно для Win11)
             try
@@ -619,7 +619,7 @@ namespace IspAudit.Utils
                 if (!present)
                 {
                     // Значения не было до нас — удаляем, чтобы не оставлять глобальную настройку.
-                    try { key.DeleteValue("EnableAutoDoh", throwOnMissingValue: false); } catch { }
+                    try { key.DeleteValue("EnableAutoDoh", throwOnMissingValue: false); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[FixService] DeleteAutoDoH: {ex.Message}"); }
                     return;
                 }
 
@@ -654,14 +654,14 @@ namespace IspAudit.Utils
                     var psCommand = $"Remove-DnsClientDohServerAddress -ServerAddress '{ip}' -ErrorAction SilentlyContinue";
                     await RunCommandAsync("powershell", $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"", cancellationToken).ConfigureAwait(false);
                 }
-                catch { }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[FixService] CleanupDoH PS: {ex.Message}"); }
 
                 // 2) Удаляем правило netsh encryption (Win10/legacy)
                 try
                 {
                     await RunCommandAsync("netsh", $"dns delete encryption server={ip}", cancellationToken).ConfigureAwait(false);
                 }
-                catch { }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[FixService] CleanupDoH netsh: {ex.Message}"); }
             }
         }
 
@@ -749,17 +749,21 @@ namespace IspAudit.Utils
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
-                        try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                        try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+                        catch (Exception ex) { Debug.WriteLine($"[FixService] Kill (cancel): {ex.Message}"); }
                         throw;
                     }
 
                     // Timeout
-                    try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                    try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+                    catch (Exception ex) { Debug.WriteLine($"[FixService] Kill (timeout): {ex.Message}"); }
 
                     string output = string.Empty;
                     string error = string.Empty;
-                    try { output = await outputTask.ConfigureAwait(false); } catch { }
-                    try { error = await errorTask.ConfigureAwait(false); } catch { }
+                    try { output = await outputTask.ConfigureAwait(false); }
+                    catch (Exception ex) { Debug.WriteLine($"[FixService] Read stdout (timeout): {ex.Message}"); }
+                    try { error = await errorTask.ConfigureAwait(false); }
+                    catch (Exception ex) { Debug.WriteLine($"[FixService] Read stderr (timeout): {ex.Message}"); }
 
                     var extra = string.IsNullOrWhiteSpace(error) ? output : error;
                     var tail = string.IsNullOrWhiteSpace(extra) ? string.Empty : $"; output={extra.Trim()}";
@@ -768,8 +772,10 @@ namespace IspAudit.Utils
 
                 var outText = string.Empty;
                 var errText = string.Empty;
-                try { outText = await outputTask.ConfigureAwait(false); } catch { }
-                try { errText = await errorTask.ConfigureAwait(false); } catch { }
+                try { outText = await outputTask.ConfigureAwait(false); }
+                catch (Exception ex) { Debug.WriteLine($"[FixService] Read stdout: {ex.Message}"); }
+                try { errText = await errorTask.ConfigureAwait(false); }
+                catch (Exception ex) { Debug.WriteLine($"[FixService] Read stderr: {ex.Message}"); }
 
                 return (process.ExitCode == 0, string.IsNullOrEmpty(errText) ? outText : errText);
             }

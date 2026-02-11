@@ -75,6 +75,14 @@ namespace IspAudit.ViewModels
             // Создаём контроллеры
             Bypass = new BypassController(_bypassState);
             Orchestrator = new DiagnosticOrchestrator(_bypassState);
+            // MVVM: инъекция UI-делегатов для диалогов (вместо прямого MessageBox в ViewModel)
+            Orchestrator.ShowError = (title, msg) =>
+                System.Windows.MessageBox.Show(msg, title,
+                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            Orchestrator.ConfirmAction = (title, msg) =>
+                System.Windows.MessageBox.Show(msg, title,
+                    System.Windows.MessageBoxButton.OKCancel, System.Windows.MessageBoxImage.Question)
+                == System.Windows.MessageBoxResult.OK;
             Results = new TestResultsManager();
 
             // P1.9: агрегация строк результатов по pinned groupKey (state/group_participation.json)
@@ -85,7 +93,7 @@ namespace IspAudit.ViewModels
             Bypass.PropertyChanged += (s, e) =>
             {
                 OnPropertyChanged(e.PropertyName ?? "");
-                CheckAndRetestFailedTargets(e.PropertyName);
+                SafeFireAndForget(CheckAndRetestFailedTargetsAsync(e.PropertyName));
                 if (e.PropertyName == nameof(Bypass.IsBypassActive))
                 {
                     CheckTrafficEngineState();
