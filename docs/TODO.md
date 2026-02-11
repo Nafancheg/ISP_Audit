@@ -46,9 +46,12 @@
 - [ ] Unit-тест: concurrent RegisterFilter/RemoveFilter + ProcessPacket из разных потоков
 
 ### P0.5 Apply timeout — диагностика причин
-- [ ] При следующем реальном зависании: сохранить полный лог с фазовой диагностикой → issue/docs
-- [ ] По логу: классифицировать фазу зависания (WinDivert stop / DNS resolve / Dispatcher deadlock / connectivity check)
-- [ ] Для найденной фазы: добавить CancellationToken с таймаутом или Task.WhenAny + deadline
+- Инцидентный чеклист (делается только если/когда поймаем реальное зависание; не блокирует выпуск):
+	- [ ] При следующем реальном зависании: сохранить полный лог с фазовой диагностикой → issue/docs
+	- [ ] По логу: классифицировать фазу зависания (WinDivert stop / DNS resolve / Dispatcher deadlock / connectivity check)
+	- [ ] Для найденной фазы: добавить CancellationToken с таймаутом или Task.WhenAny + deadline
+
+- Реализовано (код/регрессии):
 - [x] KPI smoke: `PERF-005` — 10 последовательных Apply/Disable, p95 < 3с (ID `PERF-003` уже занят другим perf-тестом)
 - [x] Проверить `TrafficEngine.StopAsync`: добавить CTS/дедлайн с таймаутом 5с
 - [x] P0.5: ApplyIntelPlanAsync — убрать риск зависания на Dispatcher.Invoke (InvokeAsync + таймаут + fallback)
