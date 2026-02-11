@@ -64,7 +64,7 @@
 - [x] `MainViewModel.Logging.cs`: 1 пустой catch → `Debug.WriteLine`
 - [x] `App.xaml.cs`: 1 пустой catch EnsureInitializedAsync → `Debug.WriteLine`
 - [x] `StandardHostTester.cs`: 1 catch в DNS reverse → `Debug.WriteLine`
-- [ ] Финальный grep `catch\s*\{?\s*\}` — в указанных файлах пустых не осталось; в остальных файлах остаются (не входят в P0.6)
+- [x] Финальный grep `catch\s*\{?\s*\}` — в указанных файлах пустых не осталось; в остальных файлах остаются (не входят в P0.6)
 - Источник: audit4 §2.3
 
 ---
