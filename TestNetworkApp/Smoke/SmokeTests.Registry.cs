@@ -19,6 +19,7 @@ namespace TestNetworkApp.Smoke
                 ["INFRA-007"] = Infra_ConcurrentFilterChurnAndProcessing_DoesNotThrow,
                 ["INFRA-008"] = Infra_RapidApplyDisableDuringProcessing_DoesNotThrow,
                 ["INFRA-009"] = Infra_ConcurrentSnapshotAndTargetsUpdateDuringProcessing_DoesNotThrow,
+                ["INFRA-010"] = Infra_Stress_ApplyRollback_1000_NoCrash_NoMemorySpike,
 
                 ["UI-001"] = Ui_OrchestratorInitialized_InViewModel,
                 ["UI-002"] = Ui_StartStopCommand_CallsCancelBranch_NoGui,

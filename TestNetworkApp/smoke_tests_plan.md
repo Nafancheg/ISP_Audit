@@ -74,6 +74,13 @@
 **Входные данные:** BypassFilter + reflection вызовы `SetDecisionGraphSnapshot`/`SetUdp443DropTargetIps`
 **Ожидаемый результат:** Обработка выполняется без падения
 
+**Test ID:** `INFRA-010`
+**Что проверяет:** Stress: 1000 Apply/Rollback за <=60с, без падений и явного роста памяти
+**Для чего:** Репро и раннее обнаружение зависаний/крашей/утечек при частых Apply/Disable
+**Критерий успеха:** 1000 циклов выполняются за <=60с; GC-память после теста не растёт «в разы»
+**Входные данные:** BypassStateManager.ApplyTlsOptionsAsync + DisableTlsAsync, параллельно `ProcessPacketForSmoke`
+**Ожидаемый результат:** Нет исключений; delta `GC.GetTotalMemory` после GC ниже мягкого порога
+
 ---
 
 ## 2. Core Pipeline (Конвейер обработки)

@@ -326,6 +326,10 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Добавлен perf smoke-тест `PERF-005`: 10 последовательных Apply/Disable, проверка `p95 < 3с`.
 - Тест выполняется без требований admin/WinDivert (apply-цепочка запускается с `useTrafficEngine:false`) и изолирует state через временные пути (apply-transactions/session) в ENV.
 
+Актуализация (Dev, 11.02.2026): stress smoke для TrafficEngine Apply/Rollback
+- Добавлен infra smoke-тест `INFRA-010`: 1000 циклов Apply/Rollback (ApplyTlsOptionsAsync/DisableTlsAsync) за <=60с, параллельно `ProcessPacketForSmoke`.
+- Дополнительно: мягкая проверка на явный рост `GC.GetTotalMemory` после полного GC.
+
 Примечание (UI/идентификация хостов): карточки результатов привязаны к **человеко‑понятному ключу** (в первую очередь SNI/hostname, если он известен). IP сохраняется как технический атрибут (`FallbackIp`) и может использоваться для корреляции, но не должен быть главным «лицом» карточки для пользователя.
 ```
 

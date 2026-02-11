@@ -41,7 +41,7 @@
 ### P0.4 TrafficEngine — воспроизведение и стресс-тесты
 - [ ] Собрать контекст: при следующем краше сохранить ±100 строк лога → issue/docs
 - [ ] Написать сценарий воспроизведения: README шаги (профиль, браузер, частота кликов Apply)
-- [ ] Stress smoke: `INFRA-010` — 1000 rapid Apply/Rollback за 60с, проверка: нет утечек `GC.GetTotalMemory`, нет падений
+- [x] Stress smoke: `INFRA-010` — 1000 rapid Apply/Rollback за 60с, проверка: нет утечек `GC.GetTotalMemory`, нет падений
 - [ ] Perf smoke: `PERF-002` — замерить p50/p95/p99 latency ProcessPacket при 10K пакетов, baseline
 - [ ] Unit-тест: concurrent RegisterFilter/RemoveFilter + ProcessPacket из разных потоков
 

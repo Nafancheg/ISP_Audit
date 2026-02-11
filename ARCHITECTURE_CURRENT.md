@@ -407,6 +407,8 @@ CLI-раннер: `TestNetworkApp --smoke [all|infra|pipe|insp|ui|bypass|dpi2|or
 
 PERF: включает KPI `PERF-005` (10 последовательных Apply/Disable, p95 < 3с).
 
+INFRA: включает стресс `INFRA-010` (1000 Apply/Rollback за <=60с).
+
 ---
 
 ## 8. Известные ограничения

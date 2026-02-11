@@ -459,5 +459,128 @@ namespace TestNetworkApp.Smoke
                 return new SmokeTestResult("INFRA-009", "TrafficEngine: конкурентные обновления snapshot/targets во время обработки не падают", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: updates={updates}, processed={processed}");
             }, ct);
+
+        public static Task<SmokeTestResult> Infra_Stress_ApplyRollback_1000_NoCrash_NoMemorySpike(CancellationToken ct)
+            => RunAsyncAwait("INFRA-010", "TrafficEngine: 1000 Apply/Rollback за <=60с (без падений/утечек)", async innerCt =>
+            {
+                if (!TrafficEngine.HasAdministratorRights)
+                {
+                    return new SmokeTestResult("INFRA-010", "TrafficEngine: 1000 Apply/Rollback за <=60с (без падений/утечек)", SmokeOutcome.Skip, TimeSpan.Zero,
+                        "Пропуск: нет прав администратора (Stress INFRA-010 требует WinDivert/Elevated)");
+                }
+
+                var baseProfile = BypassProfile.CreateDefault();
+
+                using var engine = new TrafficEngine(progress: null);
+                using var tls = new TlsBypassService(
+                    engine,
+                    baseProfile,
+                    log: null,
+                    startMetricsTimer: false,
+                    useTrafficEngine: true,
+                    nowProvider: () => DateTime.UtcNow);
+
+                using var manager = BypassStateManager.GetOrCreateFromService(tls, baseProfile, log: null);
+
+                var packetBytes = BuildIpv4TcpPacket(
+                    srcIp: IPAddress.Parse("192.0.2.10"),
+                    dstIp: IPAddress.Parse("93.184.216.34"),
+                    srcPort: 12345,
+                    dstPort: 443,
+                    ttl: 64,
+                    ipId: 1,
+                    seq: 1,
+                    tcpFlags: 0x02);
+
+                var packet = new InterceptedPacket(packetBytes, packetBytes.Length);
+                var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+
+                // Важно: избегаем DNS/сетевых зависимостей.
+                var optionsOn = TlsBypassOptions.CreateDefault(baseProfile) with
+                {
+                    FragmentEnabled = true,
+                    DropUdp443 = true,
+                    DropUdp443Global = true,
+                    DropRstEnabled = true
+                };
+
+                // Safety: не даём тесту повиснуть бесконечно.
+                // Важное: если мы не укладываемся в 60 секунд, возвращаем FAIL, а не SKIP,
+                // чтобы strict/no-skip корректно отображал проблему.
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(innerCt);
+                cts.CancelAfter(TimeSpan.FromSeconds(75));
+                var token = cts.Token;
+
+                // Прогрев (JIT/аллоки в сервисах) — не меряем.
+                for (var warm = 0; warm < 5; warm++)
+                {
+                    await manager.ApplyTlsOptionsAsync(optionsOn, token).ConfigureAwait(false);
+                    await manager.DisableTlsAsync("smoke_disable", token).ConfigureAwait(false);
+                }
+
+                // Небольшой прогрев TrafficEngine (smoke path) — вне perf окна.
+                for (var i = 0; i < 2000; i++)
+                {
+                    _ = engine.ProcessPacketForSmoke(packet, ctx);
+                }
+
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                var baseline = GC.GetTotalMemory(forceFullCollection: true);
+
+                var applyCount = 0;
+                var rollbackCount = 0;
+
+                var perfSw = Stopwatch.StartNew();
+
+                try
+                {
+                    for (var i = 0; i < 1000; i++)
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        if (perfSw.Elapsed > TimeSpan.FromSeconds(60))
+                        {
+                            return new SmokeTestResult("INFRA-010", "TrafficEngine: 1000 Apply/Rollback за <=60с (без падений/утечек)", SmokeOutcome.Fail, TimeSpan.Zero,
+                                $"Не уложились в 60с: apply={applyCount}, rollback={rollbackCount}");
+                        }
+
+                        await manager.ApplyTlsOptionsAsync(optionsOn, token).ConfigureAwait(false);
+                        applyCount++;
+
+                        await manager.DisableTlsAsync("smoke_disable", token).ConfigureAwait(false);
+                        rollbackCount++;
+                    }
+                }
+                catch (OperationCanceledException) when (!innerCt.IsCancellationRequested)
+                {
+                    // Сработал safety-таймаут: это ошибка производительности/зависания.
+                    return new SmokeTestResult("INFRA-010", "TrafficEngine: 1000 Apply/Rollback за <=60с (без падений/утечек)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Safety timeout (75s): apply={applyCount}, rollback={rollbackCount}");
+                }
+
+                // Дополнительная нагрузка на smoke-path движка после Apply/Rollback.
+                for (var i = 0; i < 2000; i++)
+                {
+                    _ = engine.ProcessPacketForSmoke(packet, ctx);
+                }
+
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                var after = GC.GetTotalMemory(forceFullCollection: true);
+                var deltaMb = (after - baseline) / (1024.0 * 1024.0);
+
+                // Порог мягкий: важнее поймать явный рост/утечку.
+                if (deltaMb > 120)
+                {
+                    return new SmokeTestResult("INFRA-010", "TrafficEngine: 1000 Apply/Rollback за <=60с (без падений/утечек)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Подозрение на рост памяти: +{deltaMb:F1} MB (baseline={baseline}, after={after}); apply={applyCount}, rollback={rollbackCount}");
+                }
+
+                return new SmokeTestResult("INFRA-010", "TrafficEngine: 1000 Apply/Rollback за <=60с (без падений/утечек)", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: +{deltaMb:F1} MB; apply={applyCount}, rollback={rollbackCount}");
+            }, ct);
     }
 }
