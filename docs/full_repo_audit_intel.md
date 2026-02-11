@@ -336,6 +336,10 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Добавлен тестовый проект `ISP_Audit.Tests` (xUnit).
 - Добавлен unit-тест на конкурентные `RegisterFilter/RemoveFilter` параллельно `ProcessPacketForSmoke`, чтобы ловить регрессии вида `Collection was modified`.
 
+Актуализация (Dev, 11.02.2026): декомпозиция OperatorViewModel (P1.4)
+- `ViewModels/OperatorViewModel.cs` сокращён до компактного ядра (состояние/конструктор/маппинг).
+- Основная логика вынесена в partial-файлы: Wizard/History/Sessions/AutoPilot.
+
 Актуализация (Docs, 11.02.2026): сценарий воспроизведения Apply/Disable
 - Добавлен dev-док со сценарием воспроизведения для P0.4: цель-браузер и темп циклов Apply/Disable, а также список артефактов для сохранения при краше: [docs/repro_p0_4_trafficengine_apply_disable.md](repro_p0_4_trafficengine_apply_disable.md).
 

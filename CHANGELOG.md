@@ -16,6 +16,7 @@
 ### ✨ Operator UI (P1.11)
 - **Второй UI «Operator»**: антивирус-метафора (статус → CTA → итог), автопилот, понятный язык.
 - **OperatorViewModel**: 5 операторских состояний (Ожидание/Проверка/Норма/Ограничения/Блокировка), маппинг из существующей семантики.
+- **P1.4 refactor**: `OperatorViewModel` декомпозирован на partial-файлы (Wizard/History/Sessions/AutoPilot); основной файл сокращён и оставляет только состояние/конструктор/маппинг.
 - **Wizard flow**: выбор .exe → прогресс → итог → «Исправляем» → пост-проверка → результат.
 - **Автопилот**: safe-only allowlist стратегий, consent gate для DNS/DoH, эскалация ступенями, ownership `appliedBy=autopilot|user`.
 - **История сессий**: persist `state/operator_sessions.json`, карточки-сессии + Expander «Подробнее», фильтры по сервису/типу/времени.

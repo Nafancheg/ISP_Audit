@@ -324,6 +324,7 @@ ISP_Audit/
 ├── ViewModels/                 # MVVM
 │   ├── MainViewModel.*.cs
 │   ├── DiagnosticOrchestrator.*.cs
+│   ├── OperatorViewModel.*.cs   # Operator UI (partial: Wizard/History/Sessions/AutoPilot)
 │   ├── OrchestratorState/      # PostApplyRetestState и др.
 │   ├── BypassController.*.cs
 │   ├── TestResultsManager*.cs

@@ -51,12 +51,12 @@
 - Источник: audit4 §2.4
 
 ### P1.4 OperatorViewModel декомпозиция
-- [ ] Создать `ViewModels/OperatorViewModel.Wizard.cs` (partial) — wizard flow шаги 1-4 (~300 строк)
-- [ ] Создать `ViewModels/OperatorViewModel.History.cs` (partial) — история сессий + фильтры (~400 строк)
-- [ ] Создать `ViewModels/OperatorViewModel.Sessions.cs` (partial) — persist/load сессий (~200 строк)
-- [ ] Создать `ViewModels/OperatorViewModel.AutoPilot.cs` (partial) — execution policy + escalation (~300 строк)
-- [ ] В основном OperatorViewModel.cs оставить: свойства состояния, конструктор, маппинг (<400 строк)
-- [ ] Smoke ui + smoke strict: PASS
+- [x] Создать `ViewModels/OperatorViewModel.Wizard.cs` (partial) — wizard flow шаги 1-4 (~300 строк)
+- [x] Создать `ViewModels/OperatorViewModel.History.cs` (partial) — история сессий + фильтры (~400 строк)
+- [x] Создать `ViewModels/OperatorViewModel.Sessions.cs` (partial) — persist/load сессий (~200 строк)
+- [x] Создать `ViewModels/OperatorViewModel.AutoPilot.cs` (partial) — execution policy + escalation (~300 строк)
+- [x] В основном OperatorViewModel.cs оставить: свойства состояния, конструктор, маппинг (<400 строк)
+- [x] Smoke ui + smoke strict: PASS
 - Источник: audit4 §1.3
 
 ### P1.5 Приоритизация и деградация очередей Pipeline
