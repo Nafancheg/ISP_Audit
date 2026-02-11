@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Threading;
 using System.Threading.Channels;
@@ -29,7 +30,8 @@ namespace IspAudit.Utils
         private readonly TrafficEngine? _trafficEngine;
         private readonly DnsParserService? _dnsParser;
 
-        private readonly Channel<HostDiscovered> _snifferQueue;
+        private readonly Channel<QueuedHost> _snifferHighQueue;
+        private readonly Channel<QueuedHost> _snifferLowQueue;
         private readonly Channel<HostTested> _testerQueue;
         private readonly Channel<HostBlocked> _bypassQueue;
 
@@ -53,14 +55,82 @@ namespace IspAudit.Utils
         private readonly ITrafficFilter _filter;
 
         // Счётчики для отслеживания очереди
-        private int _pendingInSniffer;
+        private int _pendingInSnifferHigh;
+        private int _pendingInSnifferLow;
         private int _pendingInTester;
         private int _pendingInClassifier;
 
         /// <summary>
         /// Количество хостов, ожидающих обработки во всех очередях
         /// </summary>
-        public int PendingCount => _pendingInSniffer + _pendingInTester + _pendingInClassifier;
+        public int PendingCount => _pendingInSnifferHigh + _pendingInSnifferLow + _pendingInTester + _pendingInClassifier;
+
+        // P1.5: метрики и деградация очередей
+        private volatile bool _isDegradeMode;
+        private int _degradePendingTicks;
+        private long _statQueueAgeSamples;
+        private long _statQueueAgeP95ms;
+
+        private readonly QueueAgeWindow _queueAgeWindow = new(size: 256);
+
+        // P1.5: «повторные фейлы» — если по IP уже видели проблему, новые события поднимаем в high.
+        private readonly ConcurrentDictionary<string, byte> _recentProblemIps = new(StringComparer.Ordinal);
+
+        // P1.5: если тестер стандартный — можем создать «быструю» версию для деградации (timeout/2) для low.
+        private readonly StandardHostTester? _standardTester;
+        private readonly StandardHostTester? _standardTesterDegraded;
+
+        private readonly record struct QueuedHost(HostDiscovered Host, long EnqueuedTimestamp, bool IsHighPriority);
+
+        private sealed class QueueAgeWindow
+        {
+            private readonly int[] _buffer;
+            private int _idx;
+            private int _count;
+            private readonly object _lock = new();
+
+            public QueueAgeWindow(int size)
+            {
+                if (size < 16) size = 16;
+                _buffer = new int[size];
+            }
+
+            public void Add(int ageMs)
+            {
+                if (ageMs < 0) ageMs = 0;
+                lock (_lock)
+                {
+                    _buffer[_idx] = ageMs;
+                    _idx = (_idx + 1) % _buffer.Length;
+                    if (_count < _buffer.Length) _count++;
+                }
+            }
+
+            public bool TryGetP95(out int p95Ms)
+            {
+                lock (_lock)
+                {
+                    if (_count <= 0)
+                    {
+                        p95Ms = 0;
+                        return false;
+                    }
+
+                    var arr = new int[_count];
+                    for (int i = 0; i < _count; i++)
+                    {
+                        arr[i] = _buffer[i];
+                    }
+
+                    Array.Sort(arr);
+                    var idx = (int)Math.Ceiling(arr.Length * 0.95) - 1;
+                    if (idx < 0) idx = 0;
+                    if (idx >= arr.Length) idx = arr.Length - 1;
+                    p95Ms = arr[idx];
+                    return true;
+                }
+            }
+        }
 
         // Modules
         private readonly IHostTester _tester;
@@ -116,6 +186,12 @@ namespace IspAudit.Utils
             _autoHostlist = autoHostlist;
 
             _tester = tester ?? new StandardHostTester(progress, dnsParser?.DnsCache, config.TestTimeout);
+            _standardTester = _tester as StandardHostTester;
+            if (_standardTester != null)
+            {
+                var half = TimeSpan.FromMilliseconds(Math.Max(250, config.TestTimeout.TotalMilliseconds / 2.0));
+                _standardTesterDegraded = new StandardHostTester(progress, dnsParser?.DnsCache, half);
+            }
 
             // INTEL: store/adapter (без диагнозов/стратегий на этом шаге)
             _signalsAdapter = new SignalsAdapter(new InMemorySignalSequenceStore());
@@ -131,10 +207,15 @@ namespace IspAudit.Utils
             _executor = new BypassExecutorMvp();
 
             // Создаем bounded каналы для передачи данных между воркерами (защита от OOM)
-            var channelOptions = new BoundedChannelOptions(1000) { FullMode = BoundedChannelFullMode.DropOldest };
-            _snifferQueue = Channel.CreateBounded<HostDiscovered>(channelOptions);
-            _testerQueue = Channel.CreateBounded<HostTested>(channelOptions);
-            _bypassQueue = Channel.CreateBounded<HostBlocked>(channelOptions);
+            // P1.5: low-очередь компактная (50) с DropOldest; high — шире.
+            var highOptions = new BoundedChannelOptions(200) { FullMode = BoundedChannelFullMode.DropOldest };
+            var lowOptions = new BoundedChannelOptions(50) { FullMode = BoundedChannelFullMode.DropOldest };
+            var stageOptions = new BoundedChannelOptions(1000) { FullMode = BoundedChannelFullMode.DropOldest };
+
+            _snifferHighQueue = Channel.CreateBounded<QueuedHost>(highOptions);
+            _snifferLowQueue = Channel.CreateBounded<QueuedHost>(lowOptions);
+            _testerQueue = Channel.CreateBounded<HostTested>(stageOptions);
+            _bypassQueue = Channel.CreateBounded<HostBlocked>(stageOptions);
 
             // Запускаем воркеры
             _workers = new[]

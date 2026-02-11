@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Net;
 using System.Threading;
 using System.Threading.Channels;
@@ -10,21 +11,54 @@ namespace IspAudit.Utils
 {
     public partial class LiveTestingPipeline
     {
+        public enum HostPriority
+        {
+            Low = 0,
+            High = 1
+        }
+
         /// <summary>
         /// Добавляет обнаруженный хост в очередь на тестирование
         /// </summary>
-        public ValueTask EnqueueHostAsync(HostDiscovered host)
+        public ValueTask EnqueueHostAsync(HostDiscovered host, HostPriority priority = HostPriority.Low)
         {
             Interlocked.Increment(ref _statHostsEnqueued);
-            Interlocked.Increment(ref _pendingInSniffer);
+
+            // P1.5: повторные фейлы — если по этому IP уже видели проблему, поднимаем приоритет.
+            if (priority == HostPriority.Low)
+            {
+                try
+                {
+                    if (_recentProblemIps.ContainsKey(host.RemoteIp.ToString()))
+                    {
+                        priority = HostPriority.High;
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            if (priority == HostPriority.High)
+            {
+                Interlocked.Increment(ref _pendingInSnifferHigh);
+            }
+            else
+            {
+                Interlocked.Increment(ref _pendingInSnifferLow);
+            }
 
             // ВАЖНО: события могут прийти поздно (например, SNI после остановки пайплайна).
             // Для таких случаев enqueue должен быть безопасным и не создавать «ложные ошибки».
             var enqueued = false;
             try
             {
+                var q = new QueuedHost(host, Stopwatch.GetTimestamp(), priority == HostPriority.High);
+
                 // С DropOldest TryWrite обычно успешен даже при заполненной очереди; false чаще означает, что writer уже завершён.
-                if (_snifferQueue.Writer.TryWrite(host))
+                var writer = priority == HostPriority.High ? _snifferHighQueue.Writer : _snifferLowQueue.Writer;
+                if (writer.TryWrite(q))
                 {
                     enqueued = true;
                     return ValueTask.CompletedTask;
@@ -42,7 +76,14 @@ namespace IspAudit.Utils
                 // При успешном enqueue pending уменьшается в TesterWorker.
                 if (!enqueued)
                 {
-                    Interlocked.Decrement(ref _pendingInSniffer);
+                    if (priority == HostPriority.High)
+                    {
+                        Interlocked.Decrement(ref _pendingInSnifferHigh);
+                    }
+                    else
+                    {
+                        Interlocked.Decrement(ref _pendingInSnifferLow);
+                    }
                 }
             }
 
@@ -71,7 +112,7 @@ namespace IspAudit.Utils
                 DateTime.UtcNow);
 
             // 3. Отправляем в очередь на обработку
-            _snifferQueue.Writer.TryWrite(host);
+            _ = EnqueueHostAsync(host, HostPriority.High);
         }
     }
 }

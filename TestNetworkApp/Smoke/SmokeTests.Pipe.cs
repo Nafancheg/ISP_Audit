@@ -1082,5 +1082,123 @@ namespace TestNetworkApp.Smoke
             => RunAsync("PIPE-015", "Классификация DPI_FILTER (TLS-блокировка)", () =>
                 new SmokeTestResult("PIPE-015", "Классификация DPI_FILTER (TLS-блокировка)", SmokeOutcome.Skip, TimeSpan.Zero,
                     "Legacy StandardBlockageClassifier удалён; проверка перенесена в набор dpi2 (SignalsAdapter/DiagnosisEngine)."), ct);
+
+        public static Task<SmokeTestResult> Pipe_PriorityQueue_HighPreemptsLow(CancellationToken ct)
+            => RunAsyncAwait("PIPE-020", "Приоритизация очереди: high preempts low", async innerCt =>
+            {
+                var sw = Stopwatch.StartNew();
+
+                // maxConcurrency=1 — иначе приоритет может «размываться» параллелизмом.
+                var config = new PipelineConfig
+                {
+                    EnableLiveTesting = true,
+                    EnableAutoBypass = false,
+                    MaxConcurrentTests = 1,
+                    TestTimeout = TimeSpan.FromSeconds(3)
+                };
+
+                var highKey = "203.0.113.250:443:TCP:HIGH";
+                var highStarted = new TaskCompletionSource<DateTimeOffset>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var tester = new SlowSmokeTester(highKey, highStarted, perHostDelay: TimeSpan.FromMilliseconds(250));
+
+                using var pipeline = new LiveTestingPipeline(
+                    config,
+                    progress: null,
+                    trafficEngine: null,
+                    dnsParser: null,
+                    filter: new AllowAllTrafficFilter(),
+                    stateStore: new AllowAllStateStore(),
+                    autoHostlist: null,
+                    tester: tester);
+
+                // Заполняем low-backlog.
+                for (int i = 1; i <= 80; i++)
+                {
+                    var ip = IPAddress.Parse($"203.0.113.{i}");
+                    var host = new HostDiscovered($"{ip}:443:TCP:LOW:{i}", ip, 443, global::IspAudit.Bypass.TransportProtocol.Tcp, DateTime.UtcNow)
+                    {
+                        Hostname = $"low-{i}.example.com"
+                    };
+                    await pipeline.EnqueueHostAsync(host, LiveTestingPipeline.HostPriority.Low).ConfigureAwait(false);
+                }
+
+                // Теперь high.
+                var highIp = IPAddress.Parse("203.0.113.250");
+                var highHost = new HostDiscovered(highKey, highIp, 443, global::IspAudit.Bypass.TransportProtocol.Tcp, DateTime.UtcNow)
+                {
+                    Hostname = "high.example.com"
+                };
+
+                var enqAt = DateTimeOffset.Now;
+                await pipeline.EnqueueHostAsync(highHost, LiveTestingPipeline.HostPriority.High).ConfigureAwait(false);
+
+                var completed = await Task.WhenAny(highStarted.Task, Task.Delay(TimeSpan.FromSeconds(5), innerCt)).ConfigureAwait(false);
+                if (completed != highStarted.Task)
+                {
+                    return new SmokeTestResult("PIPE-020", "Приоритизация очереди: high preempts low", SmokeOutcome.Fail, sw.Elapsed,
+                        "High-priority цель не начала тестироваться за 5 секунд");
+                }
+
+                var startedAt = await highStarted.Task.ConfigureAwait(false);
+                var delta = startedAt - enqAt;
+                if (delta > TimeSpan.FromSeconds(5))
+                {
+                    return new SmokeTestResult("PIPE-020", "Приоритизация очереди: high preempts low", SmokeOutcome.Fail, sw.Elapsed,
+                        $"High-priority цель стартовала слишком поздно: {delta.TotalMilliseconds:0}ms");
+                }
+
+                // Best-effort drain
+                try { await pipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false); } catch { }
+
+                return new SmokeTestResult("PIPE-020", "Приоритизация очереди: high preempts low", SmokeOutcome.Pass, sw.Elapsed,
+                    $"OK: high started in {delta.TotalMilliseconds:0}ms");
+            }, ct);
+
+        private sealed class SlowSmokeTester(string highKey, TaskCompletionSource<DateTimeOffset> highStarted, TimeSpan perHostDelay) : IHostTester
+        {
+            public async Task<HostTested> TestHostAsync(HostDiscovered host, CancellationToken ct)
+            {
+                if (string.Equals(host.Key, highKey, StringComparison.Ordinal))
+                {
+                    highStarted.TrySetResult(DateTimeOffset.Now);
+                }
+
+                await Task.Delay(perHostDelay, ct).ConfigureAwait(false);
+
+                return new HostTested(
+                    Host: host,
+                    DnsOk: true,
+                    TcpOk: true,
+                    TlsOk: true,
+                    DnsStatus: "OK",
+                    Hostname: host.Hostname,
+                    SniHostname: host.SniHostname,
+                    ReverseDnsHostname: null,
+                    TcpLatencyMs: 1,
+                    BlockageType: null,
+                    TestedAt: DateTime.UtcNow,
+                    Http3Ok: null,
+                    Http3Status: null,
+                    Http3LatencyMs: null,
+                    Http3Error: null);
+            }
+        }
+
+        private sealed class AllowAllTrafficFilter : ITrafficFilter
+        {
+            public FilterDecision ShouldTest(HostDiscovered host, string? knownHostname = null) => new(FilterAction.Process, "allow");
+            public FilterDecision ShouldDisplay(HostBlocked result) => new(FilterAction.Process, "allow");
+            public bool IsNoise(string? hostname) => false;
+            public void Reset() { }
+            public void Invalidate(string ip) { }
+        }
+
+        private sealed class AllowAllStateStore : IBlockageStateStore
+        {
+            public bool TryBeginHostTest(HostDiscovered host, string? hostname = null) => true;
+            public void RegisterResult(HostTested tested) { }
+            public FailWindowStats GetFailStats(HostTested tested, TimeSpan window) => new(0, 0, null, window);
+            public BlockageSignals GetSignals(HostTested tested, TimeSpan window) => new();
+        }
     }
 }

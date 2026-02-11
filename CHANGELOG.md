@@ -56,12 +56,13 @@
 - **Learned groups**: co-occurrence, suggest-only, ignore/promote UX.
 
 ### 🛠 Инфраструктура / Тесты
-- **172 smoke теста** (strict PASS), 22 UI, 27 reg — все зелёные.
+- **175 smoke тестов** (strict PASS), 22 UI, 27 reg — все зелёные.
 - **Новые стресс/перф smoke**: `INFRA-010`, `PERF-005`, `PERF-006`.
 - **Новые unit-тесты**: добавлен проект тестов для конкурентных сценариев TrafficEngine.
 - **Hardening тестовых хуков**: `ISP_AUDIT_TEST_*` ограничены DEBUG-only, env registry `docs/ENV_VARS.md`.
 - **Централизация ENV**: `Utils/EnvVar.cs` + `Utils/EnvKeys.cs`.
 - **Параллельный тестер**: `MaxConcurrentTests` через SemaphoreSlim.
+- **P1.5 pipeline**: high/low очереди входа, low DropOldest=50, high-first dequeue, degrade mode (timeout/2 для low), health-лог с `qAgeP95` и `degrade=ON`, smoke `PIPE-020`.
 - **Consent gate**: строгое подтверждение DNS/DoH, persist `state/operator_consent.json`.
 - **Smoke tasks**: `--json artifacts/smoke_*_latest.json` для ui и reg.
 

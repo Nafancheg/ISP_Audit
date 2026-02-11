@@ -190,6 +190,14 @@ UX: режим `QUIC→TCP` выбирается через контекстно
     - Лимит задаётся через `PipelineConfig.MaxConcurrentTests`.
     - Реализация: `TesterWorker` использует `SemaphoreSlim` и in-flight задачи, чтобы ускорять обработку при высоком входном потоке (активный браузер), не ломая `DrainAndCompleteAsync` и bounded-очереди.
 
+Актуализация (Runtime, 11.02.2026): приоритизация и деградация очередей pipeline (P1.5)
+- Вход разделён на две bounded очереди: high/low.
+- High обслуживается первым; permit по `MaxConcurrentTests` берётся до dequeue, чтобы high не «тонул» при `maxConcurrency=1`.
+- Low ограничен (capacity=50, DropOldest) для защиты от раздувания при активном браузере.
+- Degrade mode: при устойчивом backlog (pending>20 несколько тиков) low обрабатывается в best-effort ускоренном режиме (timeout/2 для StandardHostTester).
+- Наблюдаемость: health-лог добавляет `qAgeP95` (p95 возраста элементов в очереди) и флаг `degrade=ON/OFF`.
+- Smoke gate: `PIPE-020` проверяет, что high-preempts-low при большом low-backlog.
+
 
 Актуализация (Runtime, 23.12.2025): контроль применения INTEL
 - `Cancel` отменяет не только диагностику, но и ручное применение рекомендаций (отдельный CTS для apply).

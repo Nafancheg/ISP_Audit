@@ -509,7 +509,7 @@ namespace IspAudit.ViewModels
                         {
                             Hostname = target.Name != target.Host ? target.Name : null // Если имя отличается от IP, передаем его
                         };
-                        await _testingPipeline.EnqueueHostAsync(host).ConfigureAwait(false);
+                        await _testingPipeline.EnqueueHostAsync(host, IspAudit.Utils.LiveTestingPipeline.HostPriority.High).ConfigureAwait(false);
                     }
                     else
                     {
@@ -525,7 +525,7 @@ namespace IspAudit.ViewModels
                                 {
                                     Hostname = target.Host // Передаем оригинальный hostname
                                 };
-                                await _testingPipeline.EnqueueHostAsync(host).ConfigureAwait(false);
+                                await _testingPipeline.EnqueueHostAsync(host, IspAudit.Utils.LiveTestingPipeline.HostPriority.High).ConfigureAwait(false);
                             }
                         }
                         catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Orchestrator] Retest DNS resolve: {ex.Message}"); }

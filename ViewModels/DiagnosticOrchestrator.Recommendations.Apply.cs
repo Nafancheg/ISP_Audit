@@ -763,7 +763,7 @@ namespace IspAudit.ViewModels
 
                         foreach (var h in hosts)
                         {
-                            await pipeline.EnqueueHostAsync(h).ConfigureAwait(false);
+                            await pipeline.EnqueueHostAsync(h, IspAudit.Utils.LiveTestingPipeline.HostPriority.High).ConfigureAwait(false);
                         }
 
                         // Делаем outcome-probe детерминированно и используем как семантический итог для UI.
@@ -991,7 +991,7 @@ namespace IspAudit.ViewModels
 
                     foreach (var h in hosts)
                     {
-                        await pipeline.EnqueueHostAsync(h).ConfigureAwait(false);
+                        await pipeline.EnqueueHostAsync(h, IspAudit.Utils.LiveTestingPipeline.HostPriority.High).ConfigureAwait(false);
                     }
 
                     await pipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(15)).ConfigureAwait(false);

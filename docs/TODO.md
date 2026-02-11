@@ -60,12 +60,13 @@
 - Источник: audit4 §1.3
 
 ### P1.5 Приоритизация и деградация очередей Pipeline
-- [ ] В `LiveTestingPipeline`: второй `Channel<HostDiscovered>` для high-priority (manual retest, профильные цели, повторные фейлы)
-- [ ] TesterWorker: читать high первым (TryRead high → затем low)
-- [ ] Политика дропа: при low.Count > 50 → discard oldest
-- [ ] Degrade mode: PendingCount > 20 три тика → timeout low = timeout/2
-- [ ] Метрика QueueAgeMs (Stopwatch на enqueue, diff на dequeue) → лог p95
-- [ ] Smoke: `PIPE-010` — высокий enq rate, high-priority проходят за <5с
+- [x] В `LiveTestingPipeline`: high/low очереди для хостов (manual retest, профильные цели, повторные фейлы)
+- [x] TesterWorker: выбирать high первым (high → low) и брать permit до dequeue
+- [x] Политика дропа: low bounded=50 + DropOldest
+- [x] Degrade mode: PendingCount > 20 три тика → для low использовать timeout/2 (best-effort)
+- [x] Метрика QueueAgeMs (Stopwatch на enqueue, diff на dequeue) → лог p95
+- [x] Smoke: `PIPE-020` — высокий enq rate, high-priority начинается <5с
+- [x] Smoke reg + smoke ui + smoke strict: PASS
 
 ### P1.6 CDN-подхосты — детали по раскрытию
 - [ ] В XAML Engineer таблицы: при клике на строку ×N → раскрыть ItemsControl с подхостами (host, IP, статус)

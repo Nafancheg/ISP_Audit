@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using IspAudit.Core.Models;
 
@@ -26,21 +28,67 @@ namespace IspAudit.Utils
             var inFlight = new HashSet<Task>();
             var maxTracked = Math.Max(64, maxConcurrency * 16);
 
+            var highReader = _snifferHighQueue.Reader;
+            var lowReader = _snifferLowQueue.Reader;
+            var highCompleted = false;
+            var lowCompleted = false;
+
             try
             {
-                await foreach (var host in _snifferQueue.Reader.ReadAllAsync(ct))
+                while (!ct.IsCancellationRequested)
                 {
-                    Interlocked.Decrement(ref _pendingInSniffer);
-                    Interlocked.Increment(ref _statTesterDequeued);
-
+                    // ВАЖНО (P1.5): берём permit до dequeue.
+                    // Иначе при maxConcurrency=1 можно «забрать» low из очереди и не дать high приоритет.
                     await gate.WaitAsync(ct).ConfigureAwait(false);
 
-                    // Запускаем тест асинхронно, сохраняя лимит по параллелизму.
+                    QueuedHost queued;
+                    try
+                    {
+                        var (hasItem, item, highDone, lowDone) = await TryDequeueNextAsync(highReader, lowReader, highCompleted, lowCompleted, ct)
+                            .ConfigureAwait(false);
+                        highCompleted = highDone;
+                        lowCompleted = lowDone;
+                        if (!hasItem)
+                        {
+                            gate.Release();
+                            break;
+                        }
+                        queued = item;
+                    }
+                    catch
+                    {
+                        gate.Release();
+                        throw;
+                    }
+
+                    if (queued.IsHighPriority)
+                    {
+                        Interlocked.Decrement(ref _pendingInSnifferHigh);
+                    }
+                    else
+                    {
+                        Interlocked.Decrement(ref _pendingInSnifferLow);
+                    }
+
+                    Interlocked.Increment(ref _statTesterDequeued);
+
+                    // P1.5: метрика QueueAgeMs
+                    try
+                    {
+                        var ageMs = (int)(((Stopwatch.GetTimestamp() - queued.EnqueuedTimestamp) * 1000L) / Stopwatch.Frequency);
+                        _queueAgeWindow.Add(ageMs);
+                        Interlocked.Increment(ref _statQueueAgeSamples);
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+
                     var task = Task.Run(async () =>
                     {
                         try
                         {
-                            await ProcessHostTestAsync(host, ct).ConfigureAwait(false);
+                            await ProcessHostTestAsync(queued.Host, queued.IsHighPriority, ct).ConfigureAwait(false);
                         }
                         finally
                         {
@@ -50,13 +98,10 @@ namespace IspAudit.Utils
 
                     inFlight.Add(task);
 
-                    // Не даём коллекции задач расти без ограничений.
                     if (inFlight.Count >= maxTracked)
                     {
                         var done = await Task.WhenAny(inFlight).ConfigureAwait(false);
                         inFlight.Remove(done);
-
-                        // Дочищаем всё, что уже завершилось.
                         inFlight.RemoveWhere(t => t.IsCompleted);
                     }
                 }
@@ -73,7 +118,52 @@ namespace IspAudit.Utils
             }
         }
 
-        private async Task ProcessHostTestAsync(HostDiscovered host, CancellationToken ct)
+        private static async Task<(bool HasItem, QueuedHost Item, bool HighCompleted, bool LowCompleted)> TryDequeueNextAsync(
+            ChannelReader<QueuedHost> high,
+            ChannelReader<QueuedHost> low,
+            bool highCompleted,
+            bool lowCompleted,
+            CancellationToken ct)
+        {
+            while (true)
+            {
+                if (high.TryRead(out var qh)) return (true, qh, highCompleted, lowCompleted);
+                if (low.TryRead(out qh)) return (true, qh, highCompleted, lowCompleted);
+
+                if (highCompleted && lowCompleted) return (false, default, true, true);
+
+                Task<bool>? highWait = null;
+                Task<bool>? lowWait = null;
+
+                if (!highCompleted)
+                {
+                    highWait = high.WaitToReadAsync(ct).AsTask();
+                }
+                if (!lowCompleted)
+                {
+                    lowWait = low.WaitToReadAsync(ct).AsTask();
+                }
+
+                if (highWait == null && lowWait == null) return (false, default, highCompleted, lowCompleted);
+
+                var completed = lowWait == null
+                    ? await Task.WhenAny(highWait!).ConfigureAwait(false)
+                    : highWait == null
+                        ? await Task.WhenAny(lowWait).ConfigureAwait(false)
+                        : await Task.WhenAny(highWait, lowWait).ConfigureAwait(false);
+
+                if (completed == highWait)
+                {
+                    if (!await highWait!.ConfigureAwait(false)) highCompleted = true;
+                }
+                else
+                {
+                    if (!await lowWait!.ConfigureAwait(false)) lowCompleted = true;
+                }
+            }
+        }
+
+        private async Task ProcessHostTestAsync(HostDiscovered host, bool isHighPriority, CancellationToken ct)
         {
             // Получаем hostname из объекта или кеша (если есть) для более умной дедупликации
             var hostname = host.SniHostname ?? host.Hostname;
@@ -108,7 +198,33 @@ namespace IspAudit.Utils
             try
             {
                 // Тестируем хост (DNS, TCP, TLS)
-                var result = await _tester.TestHostAsync(host, ct).ConfigureAwait(false);
+                var testerToUse = _tester;
+                if (!isHighPriority && _isDegradeMode && _standardTesterDegraded != null && ReferenceEquals(_tester, _standardTester))
+                {
+                    testerToUse = _standardTesterDegraded;
+                }
+
+                var result = await testerToUse.TestHostAsync(host, ct).ConfigureAwait(false);
+
+                // P1.5: помечаем проблемные IP, чтобы новые события поднимались в high.
+                try
+                {
+                    var ip = host.RemoteIp.ToString();
+                    var hasProblem = !result.DnsOk || !result.TcpOk || !result.TlsOk || (result.Http3Ok.HasValue && !result.Http3Ok.Value);
+                    if (hasProblem)
+                    {
+                        _recentProblemIps[ip] = 1;
+                    }
+                    else
+                    {
+                        _recentProblemIps.TryRemove(ip, out _);
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+
                 await _testerQueue.Writer.WriteAsync(result, ct).ConfigureAwait(false);
                 Interlocked.Increment(ref _statTesterCompleted);
             }

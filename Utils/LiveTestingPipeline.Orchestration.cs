@@ -41,6 +41,49 @@ namespace IspAudit.Utils
                     var delta = (enq - prevEnq) + (testerDeq - prevTesterDeq) + (classifierDeq - prevClassifierDeq) + (uiIssues - prevUiIssues);
                     var pending = PendingCount;
 
+                    // P1.5: degrade mode — если очередь стабильно растёт, ускоряем low (timeout/2).
+                    try
+                    {
+                        if (pending > 20)
+                        {
+                            _degradePendingTicks++;
+                        }
+                        else
+                        {
+                            _degradePendingTicks = 0;
+                            if (_isDegradeMode && pending < 10)
+                            {
+                                _isDegradeMode = false;
+                                _progress?.Report("[PipelineHealth] degrade=OFF (pending<10)");
+                            }
+                        }
+
+                        if (!_isDegradeMode && _degradePendingTicks >= 3)
+                        {
+                            _isDegradeMode = true;
+                            _progress?.Report("[PipelineHealth] degrade=ON (pending>20 for 3 ticks)");
+                        }
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+
+                    // P1.5: QueueAge p95
+                    int? queueAgeP95 = null;
+                    try
+                    {
+                        if (_queueAgeWindow.TryGetP95(out var p95))
+                        {
+                            queueAgeP95 = p95;
+                            Interlocked.Exchange(ref _statQueueAgeP95ms, p95);
+                        }
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+
                     // Не спамим: если конвейер стоит и очереди пусты — молчим.
                     if (delta == 0 && pending == 0)
                     {
@@ -50,12 +93,15 @@ namespace IspAudit.Utils
                     // Если очередь раздувается — это сигнал потерь/узких мест.
                     if (pending >= 200 || delta > 0)
                     {
+                        var qAgeText = queueAgeP95.HasValue ? $" qAgeP95={queueAgeP95.Value}ms" : string.Empty;
+                        var degradeText = _isDegradeMode ? " degrade=ON" : string.Empty;
                         _progress?.Report(
                             $"[PipelineHealth] pending={pending} | enq={enq}(+{enq - prevEnq}) " +
                             $"snifferDrop={snifferDrop}(+{snifferDrop - prevSnifferDrop}) " +
                             $"tester=deq:{testerDeq}(+{testerDeq - prevTesterDeq}) drop:{testerDrop}(+{testerDrop - prevTesterDrop}) ok:{testerOk}(+{testerOk - prevTesterOk}) err:{testerErr}(+{testerErr - prevTesterErr}) " +
                             $"classifier=deq:{classifierDeq}(+{classifierDeq - prevClassifierDeq}) " +
-                            $"ui=issues:{uiIssues}(+{uiIssues - prevUiIssues}) logOnly:{uiLogOnly}(+{uiLogOnly - prevUiLogOnly}) drop:{uiDropped}(+{uiDropped - prevUiDropped})");
+                            $"ui=issues:{uiIssues}(+{uiIssues - prevUiIssues}) logOnly:{uiLogOnly}(+{uiLogOnly - prevUiLogOnly}) drop:{uiDropped}(+{uiDropped - prevUiDropped})" +
+                            degradeText + qAgeText);
                     }
 
                     prevEnq = enq;
@@ -90,7 +136,8 @@ namespace IspAudit.Utils
             // ВАЖНО: завершение делаем по цепочке (tester→classifier→ui), иначе возможна гонка:
             // PendingCount не учитывает элементы, уже лежащие в Channel, и ранний TryComplete может
             // закрыть _bypassQueue до того, как ClassifierWorker успеет написать туда элемент.
-            _snifferQueue.Writer.TryComplete();
+            _snifferHighQueue.Writer.TryComplete();
+            _snifferLowQueue.Writer.TryComplete();
 
             _progress?.Report($"[Pipeline] Ожидание завершения тестов... (pending: {PendingCount})");
 
@@ -149,7 +196,8 @@ namespace IspAudit.Utils
 
             try { _cts.Cancel(); } catch { }
 
-            _snifferQueue.Writer.TryComplete();
+            _snifferHighQueue.Writer.TryComplete();
+            _snifferLowQueue.Writer.TryComplete();
             _testerQueue.Writer.TryComplete();
             _bypassQueue.Writer.TryComplete();
 
