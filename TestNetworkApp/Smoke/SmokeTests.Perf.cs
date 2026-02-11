@@ -7,6 +7,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.Core.Traffic;
 using IspAudit.ViewModels;
 using IspAudit.Core.Diagnostics;
 using IspAudit.Core.Interfaces;
@@ -272,6 +273,76 @@ namespace TestNetworkApp.Smoke
                 }
 
                 return new SmokeTestResult("PERF-003", "PERF: thread-safety InMemoryBlockageStateStore", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+            }, ct);
+
+        public static Task<SmokeTestResult> PERF_ProcessPacketForSmoke_10k_LatencyStats(CancellationToken ct)
+            => RunAsync("PERF-006", "PERF: ProcessPacketForSmoke 10K packets (p50/p95/p99)", () =>
+            {
+                // Важно: тест не зависит от WinDivert (не стартуем драйвер). Это чистый hot-path smoke.
+                using var engine = new TrafficEngine(progress: null);
+
+                var packetBytes = BuildIpv4TcpPacket(
+                    srcIp: IPAddress.Parse("192.0.2.10"),
+                    dstIp: IPAddress.Parse("93.184.216.34"),
+                    srcPort: 12345,
+                    dstPort: 443,
+                    ttl: 64,
+                    ipId: 1,
+                    seq: 1,
+                    tcpFlags: 0x02);
+
+                var packet = new InterceptedPacket(packetBytes, packetBytes.Length);
+                var ctx = CreatePacketContext(isOutbound: true, isLoopback: false);
+
+                // Прогрев JIT/кэшей.
+                for (var i = 0; i < 2000; i++)
+                {
+                    _ = engine.ProcessPacketForSmoke(packet, ctx);
+                }
+
+                const int n = 10_000;
+                var ticks = new long[n];
+                var freq = (double)Stopwatch.Frequency;
+
+                for (var i = 0; i < n; i++)
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    var start = Stopwatch.GetTimestamp();
+                    _ = engine.ProcessPacketForSmoke(packet, ctx);
+                    var end = Stopwatch.GetTimestamp();
+                    ticks[i] = end - start;
+                }
+
+                Array.Sort(ticks);
+
+                static long Percentile(long[] sorted, double p)
+                {
+                    if (sorted.Length == 0) return 0;
+                    var idx = (int)Math.Round((sorted.Length - 1) * p, MidpointRounding.AwayFromZero);
+                    idx = Math.Clamp(idx, 0, sorted.Length - 1);
+                    return sorted[idx];
+                }
+
+                var p50 = Percentile(ticks, 0.50);
+                var p95 = Percentile(ticks, 0.95);
+                var p99 = Percentile(ticks, 0.99);
+                var max = ticks[^1];
+
+                var p50Us = p50 * 1_000_000.0 / freq;
+                var p95Us = p95 * 1_000_000.0 / freq;
+                var p99Us = p99 * 1_000_000.0 / freq;
+                var maxUs = max * 1_000_000.0 / freq;
+
+                // Мягкий порог на явную деградацию (не должен флапать на разных машинах).
+                if (p99Us > 10_000)
+                {
+                    return new SmokeTestResult("PERF-006", "PERF: ProcessPacketForSmoke 10K packets (p50/p95/p99)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Слишком медленно: p99={p99Us:F1}us (ожидали <= 10000us). p50={p50Us:F1}us, p95={p95Us:F1}us, max={maxUs:F1}us");
+                }
+
+                return new SmokeTestResult("PERF-006", "PERF: ProcessPacketForSmoke 10K packets (p50/p95/p99)", SmokeOutcome.Pass, TimeSpan.Zero,
+                    $"OK: n={n}; p50={p50Us:F1}us; p95={p95Us:F1}us; p99={p99Us:F1}us; max={maxUs:F1}us");
             }, ct);
 
         public static Task<SmokeTestResult> PERF_ApplyDisable_10x_P95_Under3s(CancellationToken ct)

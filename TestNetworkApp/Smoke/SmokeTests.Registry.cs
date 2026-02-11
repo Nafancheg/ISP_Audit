@@ -73,6 +73,7 @@ namespace TestNetworkApp.Smoke
                 ["PERF-002"] = PERF_Memory_NoLinearGrowth_ShortRun,
                 ["PERF-003"] = PERF_Store_ThreadSafety_InMemoryBlockageStateStore,
                 ["PERF-005"] = PERF_ApplyDisable_10x_P95_Under3s,
+                ["PERF-006"] = PERF_ProcessPacketForSmoke_10k_LatencyStats,
 
                 ["REG-001"] = REG_Tracert_Cp866_NoMojibake,
                 ["REG-002"] = REG_VpnWarning_WhenVpnDetected,
