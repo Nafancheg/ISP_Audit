@@ -66,6 +66,7 @@
 - [x] Degrade mode: PendingCount > 20 три тика → для low использовать timeout/2 (best-effort)
 - [x] Метрика QueueAgeMs (Stopwatch на enqueue, diff на dequeue) → лог p95
 - [x] Smoke: `PIPE-020` — высокий enq rate, high-priority начинается <5с
+- [x] Auto-apply auto-retest: enqueue в high-priority (чтобы не «тонул» в low)
 - [x] Smoke reg + smoke ui + smoke strict: PASS
 
 ### P1.6 CDN-подхосты — детали по раскрытию

@@ -62,7 +62,7 @@
 - **Hardening тестовых хуков**: `ISP_AUDIT_TEST_*` ограничены DEBUG-only, env registry `docs/ENV_VARS.md`.
 - **Централизация ENV**: `Utils/EnvVar.cs` + `Utils/EnvKeys.cs`.
 - **Параллельный тестер**: `MaxConcurrentTests` через SemaphoreSlim.
-- **P1.5 pipeline**: high/low очереди входа, low DropOldest=50, high-first dequeue, degrade mode (timeout/2 для low), health-лог с `qAgeP95` и `degrade=ON`, smoke `PIPE-020`.
+- **P1.5 pipeline**: high/low очереди входа, low DropOldest=50, high-first dequeue, degrade mode (timeout/2 для low), health-лог с `qAgeP95` и `degrade=ON`, smoke `PIPE-020`, auto-retest после auto-apply → high.
 - **Consent gate**: строгое подтверждение DNS/DoH, persist `state/operator_consent.json`.
 - **Smoke tasks**: `--json artifacts/smoke_*_latest.json` для ui и reg.
 
