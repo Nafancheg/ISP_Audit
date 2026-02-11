@@ -51,6 +51,7 @@
 - [ ] Для найденной фазы: добавить CancellationToken с таймаутом или Task.WhenAny + deadline
 - [ ] KPI smoke: `PERF-003` — 10 последовательных Apply/Disable, каждый <3с (95-й перцентиль)
 - [x] Проверить `TrafficEngine.StopAsync`: добавить CTS/дедлайн с таймаутом 5с
+- [x] P0.5: ApplyIntelPlanAsync — убрать риск зависания на Dispatcher.Invoke (InvokeAsync + таймаут + fallback)
 
 ### P0.6 Аудит пустых `catch { }`
 - [x] `FixService.cs`: 8 пустых catch → в каждый `Debug.WriteLine` с контекстом операции

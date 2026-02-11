@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -65,7 +66,11 @@ namespace IspAudit.ViewModels
                 _isDoHEnabled = applied.PlannedDoHEnabled;
                 _selectedDnsPreset = applied.PlannedDnsPreset;
 
-                Application.Current?.Dispatcher.Invoke(() =>
+                // P0.5: если UI поток занят/завис — Dispatcher.Invoke может повиснуть.
+                // Делаем мягкую синхронизацию: InvokeAsync + таймаут; при таймауте — BeginInvoke.
+                var uiSw = Stopwatch.StartNew();
+                var dispatcher = Application.Current?.Dispatcher;
+                void SyncUiAction()
                 {
                     OnPropertyChanged(nameof(IsFragmentEnabled));
                     OnPropertyChanged(nameof(IsDisorderEnabled));
@@ -81,13 +86,62 @@ namespace IspAudit.ViewModels
                     OnPropertyChanged(nameof(SelectedDnsPreset));
                     NotifyActiveStatesChanged();
                     CheckCompatibility();
-                });
+                }
+
+                if (dispatcher != null && !dispatcher.CheckAccess())
+                {
+                    try
+                    {
+                        Log("[APPLY][PHASE] ui_sync: dispatching");
+                        var opUi = dispatcher.InvokeAsync(SyncUiAction);
+                        var uiTimeout = TimeSpan.FromSeconds(2);
+                        var completed = await Task.WhenAny(opUi.Task, Task.Delay(uiTimeout, cancellationToken)).ConfigureAwait(false);
+                        if (completed != opUi.Task)
+                        {
+                            Log($"[APPLY][WARN] ui_sync timeout after {uiTimeout.TotalSeconds:0.#}s; fallback to BeginInvoke");
+                            _ = dispatcher.BeginInvoke(SyncUiAction); // намеренно не ждём UI: это fallback при зависании
+                        }
+                        else
+                        {
+                            await opUi.Task.ConfigureAwait(false);
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"[APPLY][WARN] ui_sync failed: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    SyncUiAction();
+                }
+                uiSw.Stop();
+                if (uiSw.ElapsedMilliseconds >= 250)
+                {
+                    Log($"[APPLY][WARN] ui_sync slow: {uiSw.ElapsedMilliseconds}ms");
+                }
 
                 // Сохраняем параметры фрагментации/пресета и флаг авто-подстройки.
+                var persistSw = Stopwatch.StartNew();
                 PersistFragmentPreset();
+                persistSw.Stop();
+                if (persistSw.ElapsedMilliseconds >= 250)
+                {
+                    Log($"[APPLY][WARN] PersistFragmentPreset slow: {persistSw.ElapsedMilliseconds}ms");
+                }
 
                 // Сохраняем assist-флаги (QUIC→TCP / No SNI) в профиль.
+                persistSw.Restart();
                 PersistAssistSettings();
+                persistSw.Stop();
+                if (persistSw.ElapsedMilliseconds >= 250)
+                {
+                    Log($"[APPLY][WARN] PersistAssistSettings slow: {persistSw.ElapsedMilliseconds}ms");
+                }
             }
             finally
             {
