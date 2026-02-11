@@ -39,9 +39,9 @@ namespace IspAudit.Core.Traffic
 
         // Performance metrics
         public event Action<double>? OnPerformanceUpdate;
-        private long _totalProcessingTicks;
+        private long _totalProcessingMicros;
         private int _processedPacketsCount;
-        private DateTime _lastPerformanceReport = DateTime.MinValue;
+        private long _lastPerformanceReportTs;
 
         // Filter: Capture all IP packets (TCP/UDP/ICMP) to allow filters to decide
         // We exclude loopback to avoid noise if not needed, but for local testing we might need it.
@@ -409,7 +409,7 @@ namespace IspAudit.Core.Traffic
 
                     try
                     {
-                        var startTicks = DateTime.UtcNow.Ticks;
+                        var startTs = Stopwatch.GetTimestamp();
 
                         var packet = new InterceptedPacket(buffer, (int)readLen);
                         var ctx = new PacketContext(addr);
@@ -436,17 +436,19 @@ namespace IspAudit.Core.Traffic
                             }
                         }
 
-                        var endTicks = DateTime.UtcNow.Ticks;
-                        _totalProcessingTicks += (endTicks - startTicks);
+                        var endTs = Stopwatch.GetTimestamp();
+                        var elapsedTs = endTs - startTs;
+                        var elapsedUs = (elapsedTs * 1_000_000L) / Stopwatch.Frequency;
+                        _totalProcessingMicros += elapsedUs;
                         _processedPacketsCount++;
 
-                        if (DateTime.UtcNow - _lastPerformanceReport > TimeSpan.FromSeconds(1))
+                        if (_lastPerformanceReportTs == 0 || (endTs - _lastPerformanceReportTs) >= Stopwatch.Frequency)
                         {
                             double avgMs = 0;
                             if (_processedPacketsCount > 0)
                             {
-                                var avgTicks = (double)_totalProcessingTicks / _processedPacketsCount;
-                                avgMs = avgTicks / 10000.0; // 10000 ticks in 1 ms
+                                var avgUs = (double)_totalProcessingMicros / _processedPacketsCount;
+                                avgMs = avgUs / 1000.0;
                             }
 
                             // Report even if 0 packets (to show idle state)
@@ -465,9 +467,9 @@ namespace IspAudit.Core.Traffic
                                 }
                             }
 
-                            _totalProcessingTicks = 0;
+                            _totalProcessingMicros = 0;
                             _processedPacketsCount = 0;
-                            _lastPerformanceReport = DateTime.UtcNow;
+                            _lastPerformanceReportTs = endTs;
                         }
                     }
                     catch (OperationCanceledException)

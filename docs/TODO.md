@@ -14,36 +14,8 @@
 
 ## 🔴 P0 — Критические
 
-### P0.1 `async void` не-event handler (CRASH RISK)
-- [x] Изменить сигнатуру `CheckAndRetestFailedTargets` → `async Task CheckAndRetestFailedTargetsAsync` в `ViewModels/MainViewModel.Helpers.cs:94`
-- [x] На вызывающей стороне: обернуть в `_ = SafeFireAndForget(CheckAndRetestFailedTargetsAsync(...))` с try/catch + логированием
-- [x] Проверить отсутствие других `async void` не-event handler (grep `async void` по ViewModels/)
-- [x] Smoke reg: убедиться что ретест по-прежнему работает (PASS)
-- Источник: audit4 §2.1
-
-### P0.2 Sync-over-async deadlock (App.OnExit)
-- [x] `App.xaml.cs` ~L152: заменить `ShutdownAsync().GetAwaiter().GetResult()` → `Task.Run(() => ShutdownAsync()).Wait(TimeSpan.FromSeconds(10))`
-- [x] `TrafficEngine.cs` Dispose(): аналогичная обёртка `Task.Run(() => StopAsync()).Wait(timeout)`
-- [x] `ConnectionMonitorService.cs` Dispose(): аналогичная обёртка
-- [x] `DnsSnifferService.cs` Dispose(): аналогичная обёртка
-- [x] `PidTrackerService.cs` Dispose(): аналогичная обёртка
-- [x] Smoke strict: убедиться что shutdown не зависает (PASS)
-- Источник: audit4 §2.2
-
-### P0.3 `MessageBox.Show` в ViewModel (MVVM нарушение)
-- [x] В `DiagnosticOrchestrator` добавить свойство `Func<string, string, bool> ConfirmAction` (инъекция через конструктор или property)
-- [x] Заменить `MessageBox.Show` ~L76-81 на вызов `ShowError?.Invoke(title, message)`
-- [x] Заменить `MessageBox.Show` ~L407 аналогично
-- [x] В `MainViewModel` при создании Orchestrator: привязать `ConfirmAction` и `ShowError` к `MessageBox.Show` (production) или no-op (тесты)
-- [x] Grep `MessageBox` по проекту — убедиться что нет других вызовов из Orchestrator
-- Источник: audit4 §1.4
-
 ### P0.4 TrafficEngine — воспроизведение и стресс-тесты
 - [ ] Собрать контекст: при следующем краше сохранить ±100 строк лога → issue/docs
-- [x] Написать сценарий воспроизведения: docs шаги (цель-браузер, частота кликов Apply/Disable) — `docs/repro_p0_4_trafficengine_apply_disable.md`
-- [x] Stress smoke: `INFRA-010` — 1000 rapid Apply/Rollback за 60с, проверка: нет утечек `GC.GetTotalMemory`, нет падений
-- [x] Perf smoke: `PERF-006` — замерить p50/p95/p99 latency `ProcessPacketForSmoke` при 10K пакетов, baseline (PERF-002 уже про long-run memory)
-- [x] Unit-тест: concurrent RegisterFilter/RemoveFilter + ProcessPacket из разных потоков
 
 ### P0.5 Apply timeout — диагностика причин
 - Инцидентный чеклист (делается только если/когда поймаем реальное зависание; не блокирует выпуск):
@@ -51,32 +23,16 @@
 	- [ ] По логу: классифицировать фазу зависания (WinDivert stop / DNS resolve / Dispatcher deadlock / connectivity check)
 	- [ ] Для найденной фазы: добавить CancellationToken с таймаутом или Task.WhenAny + deadline
 
-- Реализовано (код/регрессии):
-- [x] KPI smoke: `PERF-005` — 10 последовательных Apply/Disable, p95 < 3с (ID `PERF-003` уже занят другим perf-тестом)
-- [x] Проверить `TrafficEngine.StopAsync`: добавить CTS/дедлайн с таймаутом 5с
-- [x] P0.5: ApplyIntelPlanAsync — убрать риск зависания на Dispatcher.Invoke (InvokeAsync + таймаут + fallback)
-
-### P0.6 Аудит пустых `catch { }`
-- [x] `FixService.cs`: 8 пустых catch → в каждый `Debug.WriteLine` с контекстом операции
-- [x] `DiagnosticOrchestrator.Core.cs`: 7 пустых catch → `Debug.WriteLine` с ex.Message
-- [x] `DnsSnifferService.cs`: 6 пустых catch → `Debug.WriteLine`
-- [x] `TestResultsManager.DnsResolution.cs`: 2 пустых catch → `Debug.WriteLine`
-- [x] `MainViewModel.Logging.cs`: 1 пустой catch → `Debug.WriteLine`
-- [x] `App.xaml.cs`: 1 пустой catch EnsureInitializedAsync → `Debug.WriteLine`
-- [x] `StandardHostTester.cs`: 1 catch в DNS reverse → `Debug.WriteLine`
-- [x] Финальный grep `catch\s*\{?\s*\}` — в указанных файлах пустых не осталось; в остальных файлах остаются (не входят в P0.6)
-- Источник: audit4 §2.3
-
 ---
 
 ## 🟡 P1 — Важные
 
 ### P1.1 `DateTime.UtcNow` на hot path TrafficEngine
-- [ ] В `Core/Traffic/TrafficEngine.cs` ~L395: заменить `DateTime.UtcNow.Ticks` → `Stopwatch.GetTimestamp()`
-- [ ] ~L396: аналогично для endTicks
-- [ ] Пересчёт elapsed: `(endTs - startTs) * 1_000_000 / Stopwatch.Frequency`
-- [ ] Добавить `using System.Diagnostics` если отсутствует
-- [ ] Smoke strict: PASS
+- [x] В `Core/Traffic/TrafficEngine.cs` ~L395: заменить `DateTime.UtcNow.Ticks` → `Stopwatch.GetTimestamp()`
+- [x] ~L396: аналогично для endTicks
+- [x] Пересчёт elapsed: `(endTs - startTs) * 1_000_000 / Stopwatch.Frequency`
+- [x] Добавить `using System.Diagnostics` если отсутствует
+- [x] Smoke strict: PASS
 - Источник: audit4 §3.1
 
 ### P1.2 Унификация маршалинга в UI-поток

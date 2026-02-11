@@ -24,7 +24,7 @@ namespace IspAudit
             // Запуск GUI приложения (OutputType=WinExe — консоль не появляется)
             var app = new App();
             app.Run();
-            
+
             return 0;
         }
     }
