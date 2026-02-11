@@ -57,7 +57,7 @@ namespace IspAudit.ViewModels
                 await File.WriteAllTextAsync(profilePath, json);
                 Log($"[Orchestrator] Профиль сохранен: {profilePath}");
 
-                Application.Current?.Dispatcher.Invoke(() =>
+                Application.Current?.Dispatcher.BeginInvoke(() =>
                 {
                     DiagnosticStatus = $"Профиль сохранен: {Path.GetFileName(profilePath)}";
                 });

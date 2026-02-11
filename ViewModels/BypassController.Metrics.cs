@@ -11,7 +11,7 @@ namespace IspAudit.ViewModels
     {
         private void OnMetricsUpdated(TlsBypassMetrics metrics)
         {
-            Application.Current?.Dispatcher.Invoke(() =>
+            SafeUiInvoke(() =>
             {
                 _currentOptions = _stateManager.GetOptionsSnapshot();
                 OnPropertyChanged(nameof(SelectedFragmentPresetLabel));
@@ -42,7 +42,7 @@ namespace IspAudit.ViewModels
 
         private void OnVerdictChanged(TlsBypassVerdict verdict)
         {
-            Application.Current?.Dispatcher.Invoke(() =>
+            SafeUiInvoke(() =>
             {
                 BypassVerdictText = verdict.Text;
                 BypassVerdictReason = verdict.Reason;
@@ -58,7 +58,7 @@ namespace IspAudit.ViewModels
 
         private void OnStateChanged(TlsBypassState state)
         {
-            Application.Current?.Dispatcher.Invoke(() =>
+            SafeUiInvoke(() =>
             {
                 var oldOptions = _currentOptions;
                 _currentOptions = _stateManager.GetOptionsSnapshot();

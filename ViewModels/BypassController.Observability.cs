@@ -128,7 +128,7 @@ namespace IspAudit.ViewModels
                 OutcomeProbeStatusText = $"OUT: проверяю {host}…";
 
                 var snapshot = await _stateManager.RunOutcomeProbeNowAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
-                Application.Current?.Dispatcher.Invoke(() =>
+                SafeUiInvoke(() =>
                 {
                     OutcomeProbeStatusText = $"OUT: {snapshot.Text} — {snapshot.Details}";
                 });

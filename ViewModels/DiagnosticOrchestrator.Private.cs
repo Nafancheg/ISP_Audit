@@ -58,7 +58,7 @@ namespace IspAudit.ViewModels
 
         private void ResetAutoBypassUi(bool autoBypassEnabled)
         {
-            Application.Current?.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher.BeginInvoke(() =>
             {
                 if (!autoBypassEnabled)
                 {
@@ -76,7 +76,7 @@ namespace IspAudit.ViewModels
 
         private void HandleAutoBypassMetrics(TlsBypassMetrics metrics)
         {
-            Application.Current?.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher.BeginInvoke(() =>
             {
                 AutoBypassMetrics =
                     $"Hello@443: {metrics.ClientHellosObserved}; <thr: {metrics.ClientHellosShort}; !=443: {metrics.ClientHellosNon443}; Frag: {metrics.ClientHellosFragmented}; RST: {metrics.RstDroppedRelevant}; План: {metrics.Plan}; Пресет: {metrics.PresetName}; с {metrics.Since}";
@@ -90,7 +90,7 @@ namespace IspAudit.ViewModels
 
         private void HandleAutoBypassVerdict(TlsBypassVerdict verdict)
         {
-            Application.Current?.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher.BeginInvoke(() =>
             {
                 AutoBypassVerdict = verdict.Text;
                 AutoBypassStatusBrush = verdict.Color switch
@@ -105,7 +105,7 @@ namespace IspAudit.ViewModels
 
         private void HandleAutoBypassState(TlsBypassState state)
         {
-            Application.Current?.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher.BeginInvoke(() =>
             {
                 var planText = string.IsNullOrWhiteSpace(state.Plan) ? "-" : state.Plan;
                 var statusText = state.IsActive

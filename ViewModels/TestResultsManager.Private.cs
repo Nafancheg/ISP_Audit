@@ -253,7 +253,7 @@ namespace IspAudit.ViewModels
                 if (string.IsNullOrWhiteSpace(domainSuffix)) return;
 
                 // ObservableCollection должен меняться в UI потоке.
-                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                UiPost(() =>
                 {
                     var domainKey = NormalizeHost(domainSuffix);
 

@@ -117,7 +117,7 @@ namespace IspAudit.ViewModels
 
                 var progress = new Progress<string>(msg =>
                 {
-                    Application.Current?.Dispatcher.Invoke(() =>
+                    Application.Current?.Dispatcher.BeginInvoke(() =>
                     {
                         DiagnosticStatus = msg;
                         TrackIntelDiagnosisSummary(msg);
@@ -241,7 +241,7 @@ namespace IspAudit.ViewModels
                 // Принимаем объектный план напрямую из pipeline.
                 _testingPipeline.OnPlanBuilt += (hostKey, plan) =>
                 {
-                    Application.Current?.Dispatcher.Invoke(() =>
+                    Application.Current?.Dispatcher.BeginInvoke(() =>
                     {
                         StorePlan(hostKey, plan, bypassController);
 
@@ -347,7 +347,7 @@ namespace IspAudit.ViewModels
                 }
 
                 // 9. Закрываем оверлей
-                Application.Current?.Dispatcher.Invoke(() => overlay?.Close());
+                Application.Current?.Dispatcher.BeginInvoke(() => overlay?.Close());
 
                 // 10. Обработка завершения
                 if (_stopReason == "UserCancel")
@@ -454,7 +454,7 @@ namespace IspAudit.ViewModels
 
                 var progress = new Progress<string>(msg =>
                 {
-                    Application.Current?.Dispatcher.Invoke(() =>
+                    Application.Current?.Dispatcher.BeginInvoke(() =>
                     {
                         DiagnosticStatus = msg;
                         TrackIntelDiagnosisSummary(msg);
@@ -489,7 +489,7 @@ namespace IspAudit.ViewModels
 
                 _testingPipeline.OnPlanBuilt += (hostKey, plan) =>
                 {
-                    Application.Current?.Dispatcher.Invoke(() =>
+                    Application.Current?.Dispatcher.BeginInvoke(() =>
                     {
                         StorePlan(hostKey, plan, bypassController);
                     });
@@ -599,7 +599,7 @@ namespace IspAudit.ViewModels
                     _cts.Token).ConfigureAwait(false))
                 {
                     // Обновляем UI счётчик
-                    Application.Current?.Dispatcher.Invoke(() =>
+                    Application.Current?.Dispatcher.BeginInvoke(() =>
                     {
                         ConnectionsDiscovered = _trafficCollector.ConnectionsCount;
                         overlay?.UpdateStats(ConnectionsDiscovered, FlowEventsCount);
@@ -657,6 +657,7 @@ namespace IspAudit.ViewModels
                                 break;
                             }
 
+                            // Invoke: нужен результат (bool), поэтому оставляем синхронное выполнение на UI.
                             extend = await app.Dispatcher.Invoke(async () =>
                                 await overlay.ShowSilencePromptAsync(SilenceTimeoutSeconds)).ConfigureAwait(false);
                         }

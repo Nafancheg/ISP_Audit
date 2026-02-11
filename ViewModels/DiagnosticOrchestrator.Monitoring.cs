@@ -59,7 +59,7 @@ namespace IspAudit.ViewModels
 
                 if (count % 10 == 0)
                 {
-                    Application.Current?.Dispatcher.Invoke(() =>
+                    Application.Current?.Dispatcher.BeginInvoke(() =>
                     {
                         FlowEventsCount = count;
                         overlay?.UpdateStats(ConnectionsDiscovered, FlowEventsCount);
@@ -97,7 +97,7 @@ namespace IspAudit.ViewModels
             _dnsParser = new DnsParserService(_trafficMonitorFilter, progress);
             _dnsParser.OnDnsLookupFailed += (hostname, error) =>
             {
-                Application.Current?.Dispatcher.Invoke(() =>
+                Application.Current?.Dispatcher.BeginInvoke(() =>
                 {
                     OnPipelineMessage?.Invoke($"DNS сбой: {hostname} - {error}");
                 });

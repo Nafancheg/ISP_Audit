@@ -632,7 +632,7 @@ namespace IspAudit.ViewModels
                 }
                 else
                 {
-                    dispatcher.Invoke(action);
+                    dispatcher.BeginInvoke(action);
                 }
             }
             catch
@@ -674,7 +674,7 @@ namespace IspAudit.ViewModels
 
                 File.WriteAllText(path, json, System.Text.Encoding.UTF8);
 
-                Application.Current?.Dispatcher.Invoke(() =>
+                Application.Current?.Dispatcher.BeginInvoke(() =>
                 {
                     try
                     {

@@ -216,7 +216,7 @@ namespace IspAudit.ViewModels
 
             _currentOptions = updated;
 
-            Application.Current?.Dispatcher.Invoke(() =>
+            SafeUiInvoke(() =>
             {
                 OnPropertyChanged(nameof(IsFragmentEnabled));
                 OnPropertyChanged(nameof(IsDisorderEnabled));
@@ -231,7 +231,7 @@ namespace IspAudit.ViewModels
             if (enableDoH && !IsDoHEnabled)
             {
                 _isDoHEnabled = true;
-                Application.Current?.Dispatcher.Invoke(() =>
+                SafeUiInvoke(() =>
                 {
                     OnPropertyChanged(nameof(IsDoHEnabled));
                     OnPropertyChanged(nameof(IsDoHActive));
@@ -264,7 +264,7 @@ namespace IspAudit.ViewModels
                 await _stateManager.ApplyPreemptiveAsync().ConfigureAwait(false);
                 _currentOptions = _stateManager.GetOptionsSnapshot();
 
-                Application.Current?.Dispatcher.Invoke(() =>
+                SafeUiInvoke(() =>
                 {
                     OnPropertyChanged(nameof(IsDisorderEnabled));
                     OnPropertyChanged(nameof(IsFragmentEnabled));

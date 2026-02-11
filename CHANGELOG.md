@@ -44,6 +44,7 @@
 - **Apply dedup**: не выполнять повторное применение при идентичном effective config.
 - **FixService**: отмена/timeout для DNS/DoH, возврат DoH-профилей/`EnableAutoDoh`.
 - **P1.1 perf**: убран `DateTime.UtcNow` с hot path TrafficEngine; метрики времени обработки рассчитываются через `Stopwatch.GetTimestamp()`.
+- **P1.2 UI marshaling**: `Dispatcher.Invoke` заменён на `BeginInvoke` в ViewModels; `TestResultsManager` больше не зависит от `Application.Current.Dispatcher` (использует `SynchronizationContext`).
 
 ### 🧹 Конфигурация / Профили целей
 - **Удалены legacy diagnostic profiles**: убран загрузчик `Profiles/*.json` (включая `Profiles/Default.json`), оставлены только «снятые снимки» (captured snapshots) после диагностики.

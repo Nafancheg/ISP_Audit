@@ -83,7 +83,7 @@ namespace IspAudit.ViewModels
 
             _isDoHEnabled = false;
 
-            Application.Current?.Dispatcher.Invoke(() =>
+            SafeUiInvoke(() =>
             {
                 OnPropertyChanged(nameof(IsDoHEnabled));
                 OnPropertyChanged(nameof(IsDoHActive));

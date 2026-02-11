@@ -460,7 +460,7 @@ namespace IspAudit.ViewModels
                     var dispatcher = Application.Current?.Dispatcher;
                     if (dispatcher != null && !dispatcher.CheckAccess())
                     {
-                        dispatcher.Invoke(action);
+                        dispatcher.BeginInvoke(action);
                     }
                     else
                     {
@@ -637,7 +637,7 @@ namespace IspAudit.ViewModels
                     var dispatcher = Application.Current?.Dispatcher;
                     if (dispatcher != null && !dispatcher.CheckAccess())
                     {
-                        dispatcher.Invoke(action);
+                        dispatcher.BeginInvoke(action);
                     }
                     else
                     {
@@ -914,7 +914,7 @@ namespace IspAudit.ViewModels
                     {
                         try
                         {
-                            Application.Current?.Dispatcher.Invoke(() =>
+                            Application.Current?.Dispatcher.BeginInvoke(() =>
                             {
                                 // Парсим ✓/❌ строки и отмечаем статус по target IP.
                                 try
@@ -982,7 +982,7 @@ namespace IspAudit.ViewModels
                     {
                         try
                         {
-                            Application.Current?.Dispatcher.Invoke(() => StorePlan(k, p, bypassController));
+                            Application.Current?.Dispatcher.BeginInvoke(() => StorePlan(k, p, bypassController));
                         }
                         catch
                         {
@@ -1163,7 +1163,7 @@ namespace IspAudit.ViewModels
                     // Сбрасываем индикатор TTL-блока (best-effort).
                     try
                     {
-                        Application.Current?.Dispatcher.Invoke(() =>
+                        Application.Current?.Dispatcher.BeginInvoke(() =>
                         {
                             if (!string.IsNullOrWhiteSpace(EndpointBlockStatus))
                             {

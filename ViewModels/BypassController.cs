@@ -223,10 +223,7 @@ namespace IspAudit.ViewModels
             _autoHostlist = new AutoHostlistService();
             _autoHostlist.Changed += () =>
             {
-                Application.Current?.Dispatcher.Invoke(() =>
-                {
-                    RefreshAutoHostlistText();
-                });
+                SafeUiInvoke(RefreshAutoHostlistText);
             };
 
             // По умолчанию при старте всё выключено (в т.ч. assist-флаги QUIC→TCP / No SNI)
@@ -312,10 +309,7 @@ namespace IspAudit.ViewModels
             _autoHostlist = new AutoHostlistService();
             _autoHostlist.Changed += () =>
             {
-                Application.Current?.Dispatcher.Invoke(() =>
-                {
-                    RefreshAutoHostlistText();
-                });
+                SafeUiInvoke(RefreshAutoHostlistText);
             };
 
             // По умолчанию при старте всё выключено (в т.ч. assist-флаги QUIC→TCP / No SNI)
@@ -404,7 +398,7 @@ namespace IspAudit.ViewModels
 
                 File.WriteAllText(path, json, System.Text.Encoding.UTF8);
 
-                Application.Current?.Dispatcher.Invoke(() =>
+                SafeUiInvoke(() =>
                 {
                     try
                     {

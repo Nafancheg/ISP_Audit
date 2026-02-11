@@ -63,7 +63,7 @@ namespace IspAudit.ViewModels
 
             _trafficEngine.OnPerformanceUpdate += ms =>
             {
-                Application.Current?.Dispatcher.Invoke(() => TrafficEngineLatency = ms);
+                Application.Current?.Dispatcher.BeginInvoke(() => TrafficEngineLatency = ms);
             };
 
             // Единый владелец bypass/TrafficEngine
@@ -392,7 +392,7 @@ namespace IspAudit.ViewModels
                 {
                     try
                     {
-                        Application.Current?.Dispatcher.Invoke(() => OnNetworkChanged());
+                        Application.Current?.Dispatcher.BeginInvoke(() => OnNetworkChanged());
                     }
                     catch
                     {

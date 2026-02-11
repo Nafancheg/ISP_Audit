@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using System.Threading;
 using IspAudit.Core.Bypass;
 using IspAudit.Core.Diagnostics;
 using IspAudit.Models;
@@ -20,6 +21,8 @@ namespace IspAudit.ViewModels
     /// </summary>
     public partial class TestResultsManager : INotifyPropertyChanged
     {
+        private readonly SynchronizationContext? _uiContext;
+
         private readonly ConcurrentDictionary<string, TestResult> _testResultMap = new();
         private readonly ConcurrentDictionary<string, Target> _resolvedIpMap = new();
         private readonly ConcurrentDictionary<string, bool> _pendingResolutions = new();
@@ -106,6 +109,43 @@ namespace IspAudit.ViewModels
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action<string>? OnLog;
+
+        public TestResultsManager()
+        {
+            // В идеале этот объект создаётся в UI потоке (MainViewModel), тогда здесь будет WPF SynchronizationContext.
+            // В smoke/тестах UI может отсутствовать — тогда _uiContext будет null и мы выполняем действия напрямую.
+            _uiContext = SynchronizationContext.Current;
+        }
+
+        private void UiPost(Action action)
+        {
+            try
+            {
+                if (action == null) return;
+
+                if (_uiContext == null || ReferenceEquals(SynchronizationContext.Current, _uiContext))
+                {
+                    action();
+                    return;
+                }
+
+                _uiContext.Post(_ =>
+                {
+                    try
+                    {
+                        action();
+                    }
+                    catch
+                    {
+                        // Best-effort: UI обновления не должны валить рантайм.
+                    }
+                }, null);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
 
         /// <summary>
         /// Коллекция результатов тестирования (для UI binding)

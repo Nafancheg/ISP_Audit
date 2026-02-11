@@ -36,11 +36,11 @@
 - Источник: audit4 §3.1
 
 ### P1.2 Унификация маршалинга в UI-поток
-- [ ] Grep `Dispatcher\.Invoke\b` по ViewModels/ — составить список всех 20+ мест
-- [ ] Каждый без возвращаемого результата → заменить на `Dispatcher.BeginInvoke`
-- [ ] Где нужен результат → оставить Invoke с комментарием `// Invoke: нужен результат`
-- [ ] `TestResultsManager.cs`: заменить `Application.Current.Dispatcher` на IProgress или SynchronizationContext
-- [ ] Smoke ui + smoke reg: PASS
+- [x] Grep `Dispatcher\.Invoke\b` по ViewModels/ — составить список всех 20+ мест
+- [x] Каждый без возвращаемого результата → заменить на `Dispatcher.BeginInvoke`
+- [x] Где нужен результат → оставить Invoke с комментарием `// Invoke: нужен результат`
+- [x] `TestResultsManager.cs`: заменить `Application.Current.Dispatcher` на IProgress или SynchronizationContext
+- [x] Smoke ui + smoke reg: PASS
 - Источник: audit4 §7.1
 
 ### P1.3 `IDisposable` для MainViewModel

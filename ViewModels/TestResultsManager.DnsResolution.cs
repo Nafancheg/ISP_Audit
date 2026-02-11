@@ -25,7 +25,7 @@ namespace IspAudit.ViewModels
                 Log($"[PreResolve] Skipped: dynamic targets mode");
 
                 // Обновляем существующие результаты
-                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                UiPost(() =>
                 {
                     foreach (var result in TestResults)
                     {
@@ -74,7 +74,7 @@ namespace IspAudit.ViewModels
 
                     _resolvedIpMap[ip] = newTarget;
 
-                    System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                    UiPost(() =>
                     {
                         var result = TestResults.FirstOrDefault(t => t.Target.Host == ip);
                         if (result != null)

@@ -33,7 +33,7 @@ namespace IspAudit.ViewModels
             _isDoHEnabled = snapshot.DoHEnabled;
             _selectedDnsPreset = snapshot.SelectedDnsPreset;
 
-            Application.Current?.Dispatcher.Invoke(() =>
+            SafeUiInvoke(() =>
             {
                 OnPropertyChanged(nameof(IsFragmentEnabled));
                 OnPropertyChanged(nameof(IsDisorderEnabled));

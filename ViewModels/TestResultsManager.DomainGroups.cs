@@ -220,7 +220,7 @@ namespace IspAudit.ViewModels
 
                 var anchor = string.IsNullOrWhiteSpace(sug.AnchorDomain) ? domains[0] : NormalizeHost(sug.AnchorDomain);
 
-                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                UiPost(() =>
                 {
                     // Находим/создаём групповую карточку.
                     var groupCard = TestResults.FirstOrDefault(t =>
