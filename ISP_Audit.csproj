@@ -14,7 +14,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <!-- Exclude UI test project from compilation -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);ISP_Audit.UITests/**;TestNetworkApp/**;SmokeLauncher/**;**/obj/**;**/bin/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);ISP_Audit.UITests/**;ISP_Audit.Tests/**;TestNetworkApp/**;SmokeLauncher/**;**/obj/**;**/bin/**</DefaultItemExcludes>
     <!-- Disable WPF design-time build and Hot Reload -->
     <ProvideCommandLineArgs>false</ProvideCommandLineArgs>
     <EnableDefaultItems>true</EnableDefaultItems>

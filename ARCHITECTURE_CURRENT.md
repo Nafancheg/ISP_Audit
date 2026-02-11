@@ -373,6 +373,7 @@ ISP_Audit/
 ├── TestNetworkApp/             # CLI smoke-раннер
 │   └── Smoke/                  # SmokeTests.*.cs, SmokeRunner.cs
 ├── SmokeLauncher/              # UAC-запускатор smoke
+├── ISP_Audit.Tests/            # xUnit unit-тесты
 │
 └── docs/                       # Документация
     ├── TODO.md
