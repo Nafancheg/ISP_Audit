@@ -49,7 +49,7 @@
 - [ ] При следующем реальном зависании: сохранить полный лог с фазовой диагностикой → issue/docs
 - [ ] По логу: классифицировать фазу зависания (WinDivert stop / DNS resolve / Dispatcher deadlock / connectivity check)
 - [ ] Для найденной фазы: добавить CancellationToken с таймаутом или Task.WhenAny + deadline
-- [ ] KPI smoke: `PERF-003` — 10 последовательных Apply/Disable, каждый <3с (95-й перцентиль)
+- [x] KPI smoke: `PERF-005` — 10 последовательных Apply/Disable, p95 < 3с (ID `PERF-003` уже занят другим perf-тестом)
 - [x] Проверить `TrafficEngine.StopAsync`: добавить CTS/дедлайн с таймаутом 5с
 - [x] P0.5: ApplyIntelPlanAsync — убрать риск зависания на Dispatcher.Invoke (InvokeAsync + таймаут + fallback)
 

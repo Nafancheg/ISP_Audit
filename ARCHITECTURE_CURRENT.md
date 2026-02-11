@@ -405,6 +405,8 @@ CLI-раннер: `TestNetworkApp --smoke [all|infra|pipe|insp|ui|bypass|dpi2|or
 
 Категории: INFRA, PIPE, INSP, UI, BYPASS, DPI2, ORCH, CFG, ERR, E2E, PERF, REG.
 
+PERF: включает KPI `PERF-005` (10 последовательных Apply/Disable, p95 < 3с).
+
 ---
 
 ## 8. Известные ограничения

@@ -7,6 +7,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.ViewModels;
 using IspAudit.Core.Diagnostics;
 using IspAudit.Core.Interfaces;
 using IspAudit.Core.Models;
@@ -267,10 +268,117 @@ namespace TestNetworkApp.Smoke
                 {
                     var first = errors.TryDequeue(out var ex) ? ex : null;
                     return new SmokeTestResult("PERF-003", "PERF: thread-safety InMemoryBlockageStateStore", SmokeOutcome.Fail, TimeSpan.Zero,
-                        first?.Message ?? "Исключение в параллельном доступе" );
+                        first?.Message ?? "Исключение в параллельном доступе");
                 }
 
                 return new SmokeTestResult("PERF-003", "PERF: thread-safety InMemoryBlockageStateStore", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+            }, ct);
+
+        public static Task<SmokeTestResult> PERF_ApplyDisable_10x_P95_Under3s(CancellationToken ct)
+            => RunAsyncAwait("PERF-005", "PERF: 10 Apply/Disable, p95 < 3s", async innerCt =>
+            {
+                var sw = Stopwatch.StartNew();
+
+                // Снимаем/восстанавливаем env, чтобы тест был изолированным и детерминированным.
+                var prevDelay = Environment.GetEnvironmentVariable(EnvKeys.TestApplyDelayMs);
+                var prevSkipTls = Environment.GetEnvironmentVariable(EnvKeys.TestSkipTlsApply);
+                var prevApplyTxPath = Environment.GetEnvironmentVariable(EnvKeys.ApplyTransactionsPath);
+                var prevSessionPath = Environment.GetEnvironmentVariable(EnvKeys.BypassSessionPath);
+
+                var tempApplyTxPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"isp_audit_perf_applytx_{Guid.NewGuid():N}.json");
+                var tempSessionPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"isp_audit_perf_session_{Guid.NewGuid():N}.json");
+
+                try
+                {
+                    // В PERF не должно быть искусственных задержек/скипов.
+                    Environment.SetEnvironmentVariable(EnvKeys.TestApplyDelayMs, null);
+                    Environment.SetEnvironmentVariable(EnvKeys.TestSkipTlsApply, null);
+
+                    // Не трогаем реальный state пользователя.
+                    Environment.SetEnvironmentVariable(EnvKeys.ApplyTransactionsPath, tempApplyTxPath);
+                    Environment.SetEnvironmentVariable(EnvKeys.BypassSessionPath, tempSessionPath);
+
+                    var baseProfile = BypassProfile.CreateDefault();
+
+                    using var engine = new IspAudit.Core.Traffic.TrafficEngine();
+                    using var tls = new TlsBypassService(
+                        engine,
+                        baseProfile,
+                        log: null,
+                        startMetricsTimer: false,
+                        useTrafficEngine: false,
+                        nowProvider: () => DateTime.UtcNow);
+
+                    var bypass = new BypassController(tls, baseProfile);
+
+                    var plan = new IspAudit.Core.Intelligence.Contracts.BypassPlan
+                    {
+                        ForDiagnosis = IspAudit.Core.Intelligence.Contracts.DiagnosisId.SilentDrop,
+                        PlanConfidence = 100,
+                        Strategies =
+                        {
+                            new IspAudit.Core.Intelligence.Contracts.BypassStrategy
+                            {
+                                Id = IspAudit.Core.Intelligence.Contracts.StrategyId.TlsFragment
+                            }
+                        }
+                    };
+
+                    // Прогрев (JIT + файловые пути). В замеры не включаем.
+                    await bypass.ApplyIntelPlanAsync(plan, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(3), cancellationToken: innerCt)
+                        .ConfigureAwait(false);
+                    await bypass.DisableAllAsync(innerCt).ConfigureAwait(false);
+
+                    var samplesMs = new List<long>(capacity: 10);
+
+                    for (var i = 0; i < 10; i++)
+                    {
+                        innerCt.ThrowIfCancellationRequested();
+
+                        var iterSw = Stopwatch.StartNew();
+                        await bypass.ApplyIntelPlanAsync(plan, outcomeTargetHost: "1.1.1.1", timeout: TimeSpan.FromSeconds(3), cancellationToken: innerCt)
+                            .ConfigureAwait(false);
+                        await bypass.DisableAllAsync(innerCt).ConfigureAwait(false);
+                        iterSw.Stop();
+
+                        samplesMs.Add(iterSw.ElapsedMilliseconds);
+                    }
+
+                    // Постусловие: всё выключено.
+                    var after = tls.GetOptionsSnapshot();
+                    if (after.IsAnyEnabled())
+                    {
+                        return new SmokeTestResult("PERF-005", "PERF: 10 Apply/Disable, p95 < 3s", SmokeOutcome.Fail, sw.Elapsed,
+                            $"После DisableAllAsync bypass всё ещё включён: {after.ToReadableStrategy()}");
+                    }
+
+                    samplesMs.Sort();
+                    var p95Index = (int)Math.Ceiling(samplesMs.Count * 0.95) - 1;
+                    if (p95Index < 0) p95Index = 0;
+                    if (p95Index >= samplesMs.Count) p95Index = samplesMs.Count - 1;
+                    var p95 = samplesMs[p95Index];
+                    var p50 = samplesMs[samplesMs.Count / 2];
+                    var max = samplesMs[^1];
+
+                    if (p95 >= 3000)
+                    {
+                        return new SmokeTestResult("PERF-005", "PERF: 10 Apply/Disable, p95 < 3s", SmokeOutcome.Fail, sw.Elapsed,
+                            $"Порог нарушен: p50={p50}ms, p95={p95}ms, max={max}ms; samples=[{string.Join(",", samplesMs)}]");
+                    }
+
+                    return new SmokeTestResult("PERF-005", "PERF: 10 Apply/Disable, p95 < 3s", SmokeOutcome.Pass, sw.Elapsed,
+                        $"OK: p50={p50}ms, p95={p95}ms, max={max}ms; samples=[{string.Join(",", samplesMs)}]");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable(EnvKeys.TestApplyDelayMs, prevDelay);
+                    Environment.SetEnvironmentVariable(EnvKeys.TestSkipTlsApply, prevSkipTls);
+                    Environment.SetEnvironmentVariable(EnvKeys.ApplyTransactionsPath, prevApplyTxPath);
+                    Environment.SetEnvironmentVariable(EnvKeys.BypassSessionPath, prevSessionPath);
+
+                    try { if (System.IO.File.Exists(tempApplyTxPath)) System.IO.File.Delete(tempApplyTxPath); } catch { /* best-effort */ }
+                    try { if (System.IO.File.Exists(tempSessionPath)) System.IO.File.Delete(tempSessionPath); } catch { /* best-effort */ }
+                }
             }, ct);
     }
 }
