@@ -76,11 +76,11 @@
 - [x] Smoke ui: `UI-024` (Engineer ×N) + `UI-026` (Operator «Подробнее»: подхосты)
 
 ### P1.8 Operator UI — локализация/тексты
-- [ ] Создать `Utils/OperatorTextMapper.cs` — static Dictionary код→текст (DNS_ERROR, TCP_RESET, TLS_HANDSHAKE_TIMEOUT, QUIC_INTERFERENCE, HTTP_REDIRECT_DPI, UDP_BLOCKAGE)
-- [ ] Каждому коду: человеческая формулировка + краткая рекомендация (1 строка)
-- [ ] OperatorViewModel: использовать OperatorTextMapper для сводки вместо raw кодов
-- [ ] CTA тексты: единые формулировки (Проверить / Исправить / Усилить / Откатить / Проверить снова)
-- [ ] Smoke ui: Operator UI не показывает raw-коды типа TLS_AUTH_FAILURE
+- [x] Создать `Utils/OperatorTextMapper.cs` — static Dictionary код→текст (DNS_ERROR, TCP_RESET, TLS_HANDSHAKE_TIMEOUT, QUIC_INTERFERENCE, HTTP_REDIRECT_DPI, UDP_BLOCKAGE)
+- [x] Каждому коду: человеческая формулировка + краткая рекомендация (1 строка)
+- [x] OperatorViewModel: использовать OperatorTextMapper для сводки вместо raw кодов
+- [x] CTA тексты: единые формулировки (Проверить / Исправить / Усилить / Откатить / Проверить снова)
+- [x] Smoke ui: Operator UI не показывает raw-коды типа TLS_AUTH_FAILURE
 
 ### P1.9 Operator UI — wins-библиотека
 - [ ] Создать `Models/WinsEntry.cs`: record WinsEntry(Host, Sni, StrategyId, PlanText, WonAt)

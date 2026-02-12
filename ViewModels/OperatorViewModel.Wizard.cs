@@ -8,6 +8,7 @@ using System.Net;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using IspAudit.Models;
+using IspAudit.Utils;
 using IspAudit.Wpf;
 using MaterialDesignThemes.Wpf;
 
@@ -344,6 +345,10 @@ namespace IspAudit.ViewModels
 
                 var tagText = tags.Count > 0 ? $" ({string.Join(", ", tags)})" : string.Empty;
                 var err = (r.Error ?? string.Empty).Trim();
+                if (!string.IsNullOrWhiteSpace(err))
+                {
+                    err = OperatorTextMapper.LocalizeCodesInText(err);
+                }
 
                 if (!string.IsNullOrWhiteSpace(err))
                 {
@@ -523,6 +528,10 @@ namespace IspAudit.ViewModels
                 };
 
                 var d = (_lastPostApplyDetails ?? string.Empty).Trim();
+                if (!string.IsNullOrWhiteSpace(d))
+                {
+                    d = OperatorTextMapper.LocalizeCodesInText(d);
+                }
                 if (string.IsNullOrWhiteSpace(d)) return headline;
                 return $"{headline} ({d})";
             }

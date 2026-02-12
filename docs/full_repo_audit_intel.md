@@ -354,6 +354,11 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - `ViewModels/OperatorViewModel.cs` сокращён до компактного ядра (состояние/конструктор/маппинг).
 - Основная логика вынесена в partial-файлы: Wizard/History/Sessions/AutoPilot.
 
+Актуализация (Dev, 12.02.2026): Operator UI — локализация raw-кодов проблем (P1.8)
+- Добавлен `Utils/OperatorTextMapper.cs`: маппинг кодов блокировок/ошибок (например `TLS_AUTH_FAILURE`, `DNS_ERROR`, `UDP_BLOCKAGE`) в человекочитаемые формулировки и короткие рекомендации.
+- `OperatorViewModel` локализует коды в строках проблем/итогах и в `PostApplyStatusText`, чтобы в Operator UI не отображались raw-токены.
+- Добавлен smoke-тест `UI-027` на отсутствие raw-кодов в `SummaryProblemCards`.
+
 Актуализация (Docs, 11.02.2026): сценарий воспроизведения Apply/Disable
 - Добавлен dev-док со сценарием воспроизведения для P0.4: цель-браузер и темп циклов Apply/Disable, а также список артефактов для сохранения при краше: [docs/repro_p0_4_trafficengine_apply_disable.md](repro_p0_4_trafficengine_apply_disable.md).
 

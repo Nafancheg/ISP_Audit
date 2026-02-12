@@ -341,6 +341,7 @@ ISP_Audit/
 │   ├── DnsSnifferService.cs    # DnsParserService (DNS + SNI)
 │   ├── PidTrackerService.cs
 │   ├── FixService.cs           # DNS fix (netsh)
+│   ├── OperatorTextMapper.cs    # Operator UI: маппинг raw-кодов проблем → тексты
 │   ├── EnvVar.cs               # Централизованное чтение ENV
 │   ├── AppCrashReporter.cs
 │   └── ReactiveTargetSyncService.cs

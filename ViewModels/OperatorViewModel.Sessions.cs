@@ -252,7 +252,7 @@ namespace IspAudit.ViewModels
                     // Fallback: если ретест уже не бежит и статус заполнен — тоже закрываем.
                     if (!Main.IsPostApplyRetestRunning && !string.IsNullOrWhiteSpace(Main.PostApplyRetestStatus))
                     {
-                        _activeSession.PostApplyStatusText = (Main.PostApplyRetestStatus ?? string.Empty).Trim();
+                        _activeSession.PostApplyStatusText = OperatorTextMapper.LocalizeCodesInText((Main.PostApplyRetestStatus ?? string.Empty).Trim());
                         FinalizeDraftBestEffort(_activeSession, outcomeOverride: string.Empty);
                         _activeSession = null;
                         return;
@@ -336,7 +336,9 @@ namespace IspAudit.ViewModels
                     ProblemsText = problemsText,
                     ActionsText = actionsText,
                     PostApplyVerdict = draft.PostApplyVerdict,
-                    PostApplyStatusText = string.IsNullOrWhiteSpace(draft.PostApplyStatusText) ? (Main.PostApplyRetestStatus ?? string.Empty).Trim() : draft.PostApplyStatusText
+                    PostApplyStatusText = string.IsNullOrWhiteSpace(draft.PostApplyStatusText)
+                        ? OperatorTextMapper.LocalizeCodesInText((Main.PostApplyRetestStatus ?? string.Empty).Trim())
+                        : OperatorTextMapper.LocalizeCodesInText(draft.PostApplyStatusText)
                 };
 
                 // Новые сверху.

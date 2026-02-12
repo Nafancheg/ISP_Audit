@@ -220,6 +220,58 @@ namespace TestNetworkApp.Smoke
                     "OK: пресет сохраняется, профиль не повреждается");
             }, ct);
 
+        public static Task<SmokeTestResult> Ui_Operator_RawBlockageCodes_AreLocalized(CancellationToken ct)
+            => RunAsync("UI-027", "P1.8: Operator UI — raw-коды (TLS_AUTH_FAILURE и т.п.) не отображаются", () =>
+            {
+                var main = new MainViewModel();
+                var op = new OperatorViewModel(main);
+
+                // Важно: триггерим формирование SummaryProblemCards через добавление результата.
+                main.TestResults.Add(new TestResult
+                {
+                    Target = new Target { Name = "Example", Host = "example.com", SniHost = "example.com" },
+                    Status = TestStatus.Fail,
+                    Error = "TLS_AUTH_FAILURE"
+                });
+
+                // Проверяем, что ни одна строка не содержит raw-код.
+                foreach (var line in op.SummaryProblemCards)
+                {
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+
+                    if (line.Contains("TLS_AUTH_FAILURE", StringComparison.OrdinalIgnoreCase)
+                        || line.Contains("TLS_DPI", StringComparison.OrdinalIgnoreCase)
+                        || line.Contains("TLS_TIMEOUT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult(
+                            "UI-027",
+                            "P1.8: Operator UI — raw-коды (TLS_AUTH_FAILURE и т.п.) не отображаются",
+                            SmokeOutcome.Fail,
+                            TimeSpan.Zero,
+                            $"В Operator UI остался raw-код в строке: '{line}'");
+                    }
+                }
+
+                // Доп. sanity: проверим напрямую маппер.
+                var localized = OperatorTextMapper.LocalizeCodesInText("TLS_AUTH_FAILURE");
+                if (localized.Contains("TLS_AUTH_FAILURE", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SmokeTestResult(
+                        "UI-027",
+                        "P1.8: Operator UI — raw-коды (TLS_AUTH_FAILURE и т.п.) не отображаются",
+                        SmokeOutcome.Fail,
+                        TimeSpan.Zero,
+                        "OperatorTextMapper не локализовал TLS_AUTH_FAILURE");
+                }
+
+                return new SmokeTestResult(
+                    "UI-027",
+                    "P1.8: Operator UI — raw-коды (TLS_AUTH_FAILURE и т.п.) не отображаются",
+                    SmokeOutcome.Pass,
+                    TimeSpan.Zero,
+                    "OK: строки локализованы");
+            }, ct);
+
         public static Task<SmokeTestResult> Ui_NetworkChangePrompt_ShowsAndHides_NoGui(CancellationToken ct)
             => RunAsync("UI-013", "P0.6: Network change prompt показывается/скрывается без GUI", () =>
             {
