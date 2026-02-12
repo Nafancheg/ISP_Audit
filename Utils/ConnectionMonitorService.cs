@@ -110,6 +110,11 @@ namespace IspAudit.Utils
                     await Task.Delay(1000, token).ConfigureAwait(false);
                 }
             }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                // Нормальный сценарий остановки сервиса при завершении диагностики.
+                // Не логируем как ошибку, чтобы не засорять вывод.
+            }
             catch (Exception ex)
             {
                 _progress?.Report($"[ConnectionMonitor] Polling Error: {ex.Message}");

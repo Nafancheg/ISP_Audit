@@ -24,6 +24,9 @@ namespace IspAudit.ViewModels
 
         private readonly IspAudit.Core.Traffic.TrafficEngine _trafficEngine;
         private readonly BypassStateManager _bypassState;
+    private readonly object _initializeGate = new();
+    private Task? _initializeTask;
+
 
         private readonly NetworkChangeMonitor? _networkChangeMonitor;
         private volatile bool _pendingNetworkChangePrompt;
@@ -732,10 +735,21 @@ namespace IspAudit.ViewModels
             return DateTimeOffset.TryParse(value, out var dto) ? dto : null;
         }
 
-        public async Task InitializeAsync()
+        public Task InitializeAsync()
+        {
+            // Инициализация может вызываться из нескольких мест (App.EnsureInitializedAsync + Loaded окна).
+            // Делаем её идемпотентной, чтобы не запускать bypass дважды.
+            lock (_initializeGate)
+            {
+                _initializeTask ??= InitializeInternalAsync();
+                return _initializeTask;
+            }
+        }
+
+        private async Task InitializeInternalAsync()
         {
             // Инициализация bypass при старте
-            await Bypass.InitializeOnStartupAsync();
+            await Bypass.InitializeOnStartupAsync().ConfigureAwait(false);
         }
 
         public async Task ShutdownAsync()
