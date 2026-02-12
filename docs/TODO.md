@@ -110,7 +110,7 @@
 
 ### P1.13 Стратегии обхода — долги
 - [x] BadChecksum: tooltip в Engineer UI «Только для фейковых пакетов (TTL=1)» + раздел README
-- [x] QuicObfuscation: stub `Bypass/Strategies/QuicObfuscationStrategy.cs` с TODO
+- [x] QuicObfuscation: финализировать реализацию через `DropUdp443` + вынести apply в `Bypass/Strategies/QuicObfuscationStrategy.cs`
 - [x] HttpHostTricks: метрики applied/matched в наблюдаемость
 - [x] Auto-hostlist: в StandardBlockageClassifier учитывать принадлежность к hostlist при рекомендации
 
@@ -119,6 +119,7 @@
 - [ ] PlanWeight = strength × confidence / cost → сортировка при выборе
 - [ ] Feedback boost: WinRate > 70% → weight ×1.5; WinRate < 30% → ×0.5
 - [ ] Smoke: `REG-029` — dominated plan не применяется повторно
+- [ ] QUIC fallback SSoT: убрать дублирование `StrategyId.QuicObfuscation` vs `plan.DropUdp443` (оставить один канонический путь)
 
 ---
 

@@ -276,7 +276,7 @@ Wizard из 5 шагов: выбор приложения → источник �
 
 Примечания:
 - Auto-hostlist: если хост стал кандидатом, рядом с INTEL-рекомендацией добавляется контекст `hostlist=auto`.
-- QuicObfuscation: добавлен документирующий stub-класс `IspAudit.Bypass.Strategies.QuicObfuscationStrategy` (MVP-техника остаётся через `DropUdp443`).
+- QuicObfuscation: реализована как техника QUIC→TCP через `DropUdp443`; применение вынесено в `IspAudit.Bypass.Strategies.QuicObfuscationStrategy` и вызывается из `BypassApplyService`.
 
 #### QUIC→TCP (`DropUdp443`)
 

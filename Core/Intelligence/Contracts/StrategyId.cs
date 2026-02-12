@@ -13,7 +13,7 @@ public enum StrategyId
 
     DropRst,
 
-    // Отложенные техники (не реализованы в MVP-исполнителе; должны отображаться как deferred).
+    // Phase 3 техники: реализованы в рантайме и применяются через BypassApplyService/BypassFilter.
     HttpHostTricks,
     QuicObfuscation,
     BadChecksum,

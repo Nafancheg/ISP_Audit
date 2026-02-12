@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.Bypass.Strategies;
 using IspAudit.Core.Intelligence.Contracts;
 using IspAudit.Core.Intelligence.Execution;
 using IspAudit.Utils;
@@ -528,9 +529,9 @@ namespace IspAudit.Core.Bypass
                         _log?.Invoke("[APPLY][Executor] UseDoh: план запрашивает включение DoH (применение требует явного согласия)");
                         break;
                     case StrategyId.QuicObfuscation:
-                        updated = updated with { DropUdp443 = true };
+                        updated = QuicObfuscationStrategy.EnableSelective(updated);
                         wantQuicFallback = true;
-                        _log?.Invoke("[APPLY][Executor] QuicObfuscation: включаем QUIC→TCP (DROP UDP/443)");
+                        _log?.Invoke(QuicObfuscationStrategy.GetApplyLogLine());
                         break;
                     case StrategyId.HttpHostTricks:
                         updated = updated with { HttpHostTricksEnabled = true };
@@ -549,7 +550,7 @@ namespace IspAudit.Core.Bypass
 
             if (plan.DropUdp443)
             {
-                updated = updated with { DropUdp443 = true };
+                updated = QuicObfuscationStrategy.EnableSelective(updated);
                 wantQuicFallback = true;
                 _log?.Invoke("[APPLY][Executor] Assist: включаем QUIC→TCP (DROP UDP/443)");
             }
