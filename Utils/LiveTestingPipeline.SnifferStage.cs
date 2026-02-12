@@ -112,7 +112,7 @@ namespace IspAudit.Utils
                 DateTime.UtcNow);
 
             // 3. Отправляем в очередь на обработку
-            _ = EnqueueHostAsync(host, HostPriority.High);
+            _ = EnqueueHostAsync(host, HostPriority.High).AsTask();
         }
     }
 }
