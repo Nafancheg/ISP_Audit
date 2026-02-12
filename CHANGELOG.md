@@ -22,7 +22,7 @@
 - **История сессий**: persist `state/operator_sessions.json`, карточки-сессии + Expander «Подробнее», фильтры по сервису/типу/времени.
 - **Навигация**: Operator как отдельное окно, shared `MainViewModel`, переключение Operator↔Engineer с подтверждением, persist режима в `state/ui_mode.json`.
 - **Настройки**: модальное окно «Настройки» (Operator-safe), краткая справка «?».
-- **Smokes**: UI-018 (Operator launch), UI-015 (история persist), UI-019 (crash banner), UI-020 (QUIC targets), UI-023 (escalation).
+- **Smokes**: UI-018 (Operator launch), UI-015 (история persist), UI-019 (crash banner), UI-020 (QUIC targets), UI-023 (escalation), UI-024 (раскрытие ×N).
 
 ### ✨ INTEL / Диагностика
 - **INTEL feedback store**: persist `state/feedback_store.json`, запись после Post-Apply Retest.
@@ -54,6 +54,9 @@
 ### ✨ Группировка доменов
 - **Pinned groups**: `state/domain_groups.json`, агрегация карточек, Apply к anchor-домену.
 - **Learned groups**: co-occurrence, suggest-only, ignore/promote UX.
+
+### ✨ Engineer UI
+- **CDN-подхосты**: клик по бейджу `×N` раскрывает список членов группы (RowDetails).
 
 ### 🛠 Инфраструктура / Тесты
 - **175 smoke тестов** (strict PASS), 22 UI, 27 reg — все зелёные.

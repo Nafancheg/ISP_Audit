@@ -1,4 +1,5 @@
 using System;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using IspAudit.Core.Diagnostics;
@@ -34,6 +35,14 @@ namespace IspAudit.Models
 
         private string _uiKey = string.Empty;
         private int _aggregatedMemberCount;
+
+        private bool _isAggregatedMembersExpanded;
+
+        /// <summary>
+        /// Список «подхостов» (members), схлопнутых в агрегированную строку (×N).
+        /// Заполняется по требованию (по клику в UI).
+        /// </summary>
+        public ObservableCollection<TestResult> AggregatedMembers { get; } = new();
 
         private Target _target = null!;
 
@@ -83,6 +92,20 @@ namespace IspAudit.Models
         public bool ShowAggregatedMemberBadge => AggregatedMemberCount > 1;
 
         public string AggregatedMemberBadgeText => AggregatedMemberCount > 1 ? $"×{AggregatedMemberCount}" : string.Empty;
+
+        /// <summary>
+        /// Флаг раскрытия списка подхостов (RowDetails в Engineer UI).
+        /// </summary>
+        public bool IsAggregatedMembersExpanded
+        {
+            get => _isAggregatedMembersExpanded;
+            set
+            {
+                if (_isAggregatedMembersExpanded == value) return;
+                _isAggregatedMembersExpanded = value;
+                OnPropertyChanged(nameof(IsAggregatedMembersExpanded));
+            }
+        }
 
         public string DisplayIp
         {

@@ -118,6 +118,51 @@ namespace IspAudit
             }
         }
 
+        private void AggregatedMemberBadge_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            try
+            {
+                if (sender is not FrameworkElement fe) return;
+                if (fe.DataContext is not TestResult result) return;
+                if (!result.ShowAggregatedMemberBadge) return;
+
+                // Toggle раскрытия.
+                var expand = !result.IsAggregatedMembersExpanded;
+                result.IsAggregatedMembersExpanded = expand;
+
+                // Best-effort: список подхостов заполняем только при раскрытии.
+                result.AggregatedMembers.Clear();
+
+                if (!expand)
+                {
+                    e.Handled = true;
+                    return;
+                }
+
+                if (DataContext is not MainViewModel vm) return;
+
+                var groupKey = (result.UiKey ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(groupKey))
+                {
+                    groupKey = (result.DisplayHost ?? string.Empty).Trim();
+                }
+
+                var members = vm.Results.GetGroupMembers(groupKey);
+                foreach (var m in members)
+                {
+                    if (m == null) continue;
+                    if (ReferenceEquals(m, result)) continue;
+                    result.AggregatedMembers.Add(m);
+                }
+
+                e.Handled = true;
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
         private void CopyHost_Click(object sender, RoutedEventArgs e)
         {
             if (ResultsGrid.SelectedItems.Count > 0)

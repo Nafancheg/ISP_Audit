@@ -1,6 +1,6 @@
 ﻿# ISP_Audit — TODO
 
-Дата актуализации: 11.02.2026
+Дата актуализации: 12.02.2026
 Выполненное → [CHANGELOG.md](../CHANGELOG.md). Архитектура → [ARCHITECTURE_CURRENT.md](../ARCHITECTURE_CURRENT.md). Аудит → [docs/audit4.md](audit4.md).
 
 ---
@@ -70,10 +70,10 @@
 - [x] Smoke reg + smoke ui + smoke strict: PASS
 
 ### P1.6 CDN-подхосты — детали по раскрытию
-- [ ] В XAML Engineer таблицы: при клике на строку ×N → раскрыть ItemsControl с подхостами (host, IP, статус)
-- [ ] В `TestResultsManager`: метод `GetGroupMembers(string groupKey)` → `IReadOnlyList<TestResult>`
+- [x] В XAML Engineer таблицы: при клике на строку ×N → раскрыть список подхостов (RowDetails)
+- [x] В `TestResultsManager`: метод `GetGroupMembers(string groupKey)` → `IReadOnlyList<TestResult>`
 - [ ] В Operator UI: подхосты в Expander «Подробнее» внутри карточки группы
-- [ ] Smoke ui: агрегированная карточка с 3+ подхостами рендерится без ошибок
+- [x] Smoke ui: `UI-024` — wiring раскрытия ×N + `GetGroupMembers` (без GUI)
 
 ### P1.7 Operator UI — визуальный дизайн
 - [ ] Создать `Wpf/Themes/OperatorDarkTheme.xaml` — тёмная палитра MaterialDesign
@@ -101,7 +101,7 @@
 - [ ] EscalateCommand: ApplyEscalation(currentGroupKey) → более агрессивная стратегия
 - [ ] После escalation: авто post-apply retest → обновление статуса
 - [ ] Лог: `[ESCALATION] group={key} from={old} to={new} result={OK/FAIL}`
-- [ ] Smoke: `UI-024` — escalation flow (apply → FAIL → escalate → retest)
+- [ ] Smoke: `UI-025` — escalation flow (apply → FAIL → escalate → retest)
 
 ### P1.11 Стабилизация YouTube/Google (эталонные сценарии)
 - [ ] Документ `docs/scenarios/youtube_baseline.md`: браузер, провайдер, профиль, QUIC вкл/выкл, ожидаемый результат

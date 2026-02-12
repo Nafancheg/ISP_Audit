@@ -726,6 +726,12 @@
                             <Setter Property="MinHeight" Value="36"/>
                             <EventSetter Event="MouseDoubleClick" Handler="DataGridRow_MouseDoubleClick"/>
                             <Setter Property="ContextMenu" Value="{StaticResource RowContextMenu}"/>
+                            <Setter Property="DetailsVisibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsAggregatedMembersExpanded}" Value="True">
+                                    <Setter Property="DetailsVisibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
                         </Style>
 
                         <Style TargetType="DataGridCell" BasedOn="{StaticResource MaterialDesignDataGridCell}">
@@ -733,6 +739,23 @@
                             <Setter Property="BorderThickness" Value="0"/>
                         </Style>
                     </DataGrid.Resources>
+
+                    <DataGrid.RowDetailsTemplate>
+                        <DataTemplate>
+                            <Border Padding="8,6" Margin="56,0,8,6" Background="{DynamicResource MaterialDesignPaper}">
+                                <ItemsControl ItemsSource="{Binding AggregatedMembers}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Foreground="{DynamicResource MaterialDesignBody}" FontSize="12" TextWrapping="Wrap">
+                                                <Run Text="• "/>
+                                                <Run Text="{Binding DisplayHost}"/>
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Border>
+                        </DataTemplate>
+                    </DataGrid.RowDetailsTemplate>
 
                     <DataGrid.Columns>
                         <DataGridTemplateColumn Header="" Width="56" CanUserResize="False">
@@ -751,6 +774,7 @@
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding DisplayHost}" FontWeight="SemiBold"/>
                                         <Border Background="#DBEAFE" CornerRadius="4" Padding="6,2" Margin="8,0,0,0"
+                                                Cursor="Hand" MouseLeftButtonUp="AggregatedMemberBadge_MouseLeftButtonUp"
                                                 VerticalAlignment="Center"
                                                 Visibility="{Binding ShowAggregatedMemberBadge, Converter={StaticResource BoolToVisibilityConverter}}">
                                             <TextBlock Text="{Binding AggregatedMemberBadgeText}" Foreground="#1D4ED8" FontWeight="SemiBold" FontSize="10"/>

@@ -877,6 +877,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** Инъекция lastIntelPlan/hostKey через reflection + принудительный `post‑apply verdict=FAIL` в `OperatorViewModel`
 **Ожидаемый результат:** `FixButtonText == "Усилить"`, `ApplyEscalationAsync` завершился, `IsApplyingRecommendations == false`
 
+**Test ID:** `UI-024`
+**Что проверяет:** P1.6 — раскрытие CDN‑подхостов (бейдж `×N`): wiring `RowDetailsTemplate` и обработчик клика
+**Для чего:** Чтобы в Engineer UI можно было раскрыть агрегированную строку и увидеть участники группы (members)
+**Критерий успеха:** В `MainWindow.xaml` есть `DataGrid.RowDetailsTemplate`, а бейдж `×N` вызывает `AggregatedMemberBadge_MouseLeftButtonUp`
+**Входные данные:** Проверка XAML/code-behind как текста + вызов `TestResultsManager.GetGroupMembers` на синтетических данных
+**Ожидаемый результат:** 1) wiring найден; 2) `GetGroupMembers` возвращает список, содержащий pinned домены
+
 ---
 
 ## 7. Orchestration & Process Tracking

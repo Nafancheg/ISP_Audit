@@ -8,6 +8,99 @@ namespace IspAudit.ViewModels
 {
     public partial class TestResultsManager
     {
+        /// <summary>
+        /// Возвращает список членов (подхостов), которые были схлопнуты в агрегированную строку по groupKey.
+        /// groupKey здесь соответствует UiKey агрегированной строки (например group-youtube).
+        /// </summary>
+        public IReadOnlyList<TestResult> GetGroupMembers(string groupKey)
+        {
+            try
+            {
+                var gk = NormalizeHost(groupKey ?? string.Empty);
+                if (string.IsNullOrWhiteSpace(gk)) return Array.Empty<TestResult>();
+
+                if (!_aggregatedMembersByUiKey.TryGetValue(gk, out var members) || members == null || members.Count == 0)
+                {
+                    return Array.Empty<TestResult>();
+                }
+
+                var keys = members.Keys
+                    .Select(k => NormalizeHost(k))
+                    .Where(k => !string.IsNullOrWhiteSpace(k))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                // UX: если знаем якорный домен — показываем его первым.
+                if (_groupKeyToAnchorDomain.TryGetValue(gk, out var anchor) && !string.IsNullOrWhiteSpace(anchor))
+                {
+                    anchor = NormalizeHost(anchor);
+                    if (!string.IsNullOrWhiteSpace(anchor))
+                    {
+                        keys.Sort(StringComparer.OrdinalIgnoreCase);
+                        var idx = keys.FindIndex(k => string.Equals(k, anchor, StringComparison.OrdinalIgnoreCase));
+                        if (idx > 0)
+                        {
+                            keys.RemoveAt(idx);
+                            keys.Insert(0, anchor);
+                        }
+                    }
+                }
+                else
+                {
+                    keys.Sort(StringComparer.OrdinalIgnoreCase);
+                }
+
+                var results = new List<TestResult>(keys.Count);
+
+                foreach (var key in keys)
+                {
+                    if (string.Equals(key, gk, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    // Если по memberKey уже есть карточка — возвращаем её.
+                    var existing = TestResults.FirstOrDefault(t =>
+                        t != null &&
+                        (string.Equals(NormalizeHost(t.UiKey), key, StringComparison.OrdinalIgnoreCase)
+                         || string.Equals(NormalizeHost(t.Target?.SniHost ?? string.Empty), key, StringComparison.OrdinalIgnoreCase)
+                         || string.Equals(NormalizeHost(t.Target?.Host ?? string.Empty), key, StringComparison.OrdinalIgnoreCase)
+                         || string.Equals(NormalizeHost(t.Target?.Name ?? string.Empty), key, StringComparison.OrdinalIgnoreCase)));
+
+                    if (existing != null)
+                    {
+                        results.Add(existing);
+                        continue;
+                    }
+
+                    // Иначе создаём плейсхолдер (только для RowDetails).
+                    results.Add(new TestResult
+                    {
+                        UiKey = key,
+                        Status = TestStatus.Idle,
+                        Details = string.Empty,
+                        Target = new Target
+                        {
+                            Name = key,
+                            Host = key,
+                            Service = "Member",
+                            Critical = false,
+                            FallbackIp = string.Empty,
+                            SniHost = key,
+                            ReverseDnsHost = string.Empty
+                        },
+                        AggregatedMemberCount = 0
+                    });
+                }
+
+                return results;
+            }
+            catch
+            {
+                return Array.Empty<TestResult>();
+            }
+        }
+
         public bool TryIgnoreSuggestedDomainGroupBestEffort(string? hostKeyForRecompute)
         {
             try

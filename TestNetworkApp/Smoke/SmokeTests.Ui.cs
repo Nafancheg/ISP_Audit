@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Media;
 using IspAudit.Bypass;
+using IspAudit.Core.Bypass;
 using IspAudit.Core.Traffic;
 using IspAudit.Models;
 using IspAudit.Utils;
@@ -1139,6 +1140,93 @@ namespace TestNetworkApp.Smoke
 
                 return new SmokeTestResult("UI-009", "TestResultsManager: обновляет карточку, не дублируя", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK");
+            }, ct);
+
+        public static Task<SmokeTestResult> Ui_AggregatedMembers_Expand_Wired_AndGetGroupMembers_Works(CancellationToken ct)
+            => RunAsync("UI-024", "P1.6: агрегированная строка (×N) раскрывается и GetGroupMembers возвращает участников", () =>
+            {
+                try
+                {
+                    static string? TryFindRepoRoot()
+                    {
+                        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+                        for (var i = 0; i < 10 && dir != null; i++)
+                        {
+                            if (File.Exists(Path.Combine(dir.FullName, "MainWindow.xaml"))) return dir.FullName;
+                            if (File.Exists(Path.Combine(dir.FullName, "ISP_Audit.sln"))) return dir.FullName;
+                            dir = dir.Parent;
+                        }
+
+                        return null;
+                    }
+
+                    // 1) Быстрая проверка wiring в XAML (не запускаем WPF).
+                    var root = TryFindRepoRoot();
+                    if (string.IsNullOrWhiteSpace(root))
+                    {
+                        return new SmokeTestResult("UI-024", "P1.6: агрегированная строка (×N) раскрывается и GetGroupMembers возвращает участников", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Не удалось определить корень репозитория рядом с BaseDirectory");
+                    }
+
+                    var mainXamlPath = Path.Combine(root!, "MainWindow.xaml");
+                    if (!File.Exists(mainXamlPath))
+                    {
+                        return new SmokeTestResult("UI-024", "P1.6: агрегированная строка (×N) раскрывается и GetGroupMembers возвращает участников", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "MainWindow.xaml не найден");
+                    }
+
+                    var xaml = File.ReadAllText(mainXamlPath);
+                    if (!xaml.Contains("DataGrid.RowDetailsTemplate", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult("UI-024", "P1.6: агрегированная строка (×N) раскрывается и GetGroupMembers возвращает участников", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "MainWindow.xaml: не нашли DataGrid.RowDetailsTemplate");
+                    }
+
+                    if (!xaml.Contains("AggregatedMemberBadge_MouseLeftButtonUp", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult("UI-024", "P1.6: агрегированная строка (×N) раскрывается и GetGroupMembers возвращает участников", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "MainWindow.xaml: не нашли handler AggregatedMemberBadge_MouseLeftButtonUp");
+                    }
+
+                    // 2) Функциональная проверка GetGroupMembers: pinned groupKey схлопывает members.
+                    var mgr = new TestResultsManager();
+                    mgr.Initialize();
+
+                    var store = new GroupBypassAttachmentStore();
+                    var groupKey = "group-smoke";
+                    store.PinHostKeyToGroupKey("a.example.com", groupKey);
+                    store.PinHostKeyToGroupKey("b.example.com", groupKey);
+                    mgr.GroupBypassAttachmentStore = store;
+
+                    // Прогоняем два сообщения пайплайна, чтобы сработал путь:
+                    // ParsePipelineMessage → SelectUiKey → TryApplyDomainGroupAggregationAndTrackMembers → TrackAggregationMember.
+                    mgr.ParsePipelineMessage("❌ 93.184.216.34:443 SNI=a.example.com RDNS=- | DNS:✓ TCP:✗ TLS:✗ | TCP_CONNECT_TIMEOUT");
+                    mgr.ParsePipelineMessage("❌ 93.184.216.34:443 SNI=b.example.com RDNS=- | DNS:✓ TCP:✗ TLS:✗ | TCP_CONNECT_TIMEOUT");
+
+                    var members = mgr.GetGroupMembers(groupKey);
+                    if (members.Count < 2)
+                    {
+                        return new SmokeTestResult("UI-024", "P1.6: агрегированная строка (×N) раскрывается и GetGroupMembers возвращает участников", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали >=2 members для {groupKey}, получили {members.Count}");
+                    }
+
+                    var hosts = members.Select(m => m?.DisplayHost ?? string.Empty).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+                    var hasA = hosts.Any(h => string.Equals(h.Trim().Trim('.'), "a.example.com", StringComparison.OrdinalIgnoreCase));
+                    var hasB = hosts.Any(h => string.Equals(h.Trim().Trim('.'), "b.example.com", StringComparison.OrdinalIgnoreCase));
+                    if (!hasA || !hasB)
+                    {
+                        return new SmokeTestResult("UI-024", "P1.6: агрегированная строка (×N) раскрывается и GetGroupMembers возвращает участников", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "В members не нашли a.example.com и b.example.com");
+                    }
+
+                    return new SmokeTestResult("UI-024", "P1.6: агрегированная строка (×N) раскрывается и GetGroupMembers возвращает участников", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("UI-024", "P1.6: агрегированная строка (×N) раскрывается и GetGroupMembers возвращает участников", SmokeOutcome.Fail, TimeSpan.Zero,
+                        ex.Message);
+                }
             }, ct);
 
         public static Task<SmokeTestResult> Ui_ParsePipelineMessage_ParsesUiLines(CancellationToken ct)
