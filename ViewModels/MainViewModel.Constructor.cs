@@ -53,6 +53,11 @@ namespace IspAudit.ViewModels
         private readonly System.Collections.Generic.Dictionary<string, IspAudit.Utils.PostApplyCheckStore.PostApplyCheckEntry> _postApplyChecksByGroupKey =
             new(StringComparer.OrdinalIgnoreCase);
 
+        // P1.9: wins-библиотека (только подтверждённые post-apply OK после конкретного Apply(txId)).
+        private readonly object _winsSync = new();
+        private readonly System.Collections.Generic.Dictionary<string, WinsEntry> _winsByHostKey =
+            new(StringComparer.OrdinalIgnoreCase);
+
         public MainViewModel()
         {
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -230,14 +235,14 @@ namespace IspAudit.ViewModels
                 }
             };
 
-            Orchestrator.OnPostApplyCheckVerdict += (hostKey, verdict, mode, details) =>
+            Orchestrator.OnPostApplyCheckVerdictV2 += (hostKey, verdict, mode, details, correlationId) =>
             {
                 try
                 {
                     UiBeginInvoke(() =>
                     {
                         // mode пока используется только для логов/диагностики, в UI не выводим.
-                        ApplyPostApplyVerdictToHostKey(hostKey, verdict, mode, details);
+                        ApplyPostApplyVerdictToHostKey(hostKey, verdict, mode, details, correlationId);
                     });
                 }
                 catch
@@ -490,6 +495,9 @@ namespace IspAudit.ViewModels
             // Автозагрузка результатов пост‑проверки (best-effort).
             LoadPostApplyChecksFromDiskBestEffort();
 
+            // Автозагрузка wins-библиотеки (best-effort).
+            LoadWinsFromDiskBestEffort();
+
             Log("✓ MainViewModel инициализирован");
         }
 
@@ -712,6 +720,51 @@ namespace IspAudit.ViewModels
                             SetPostApplyCheckResultForGroupKey(groupKey, mapped, atUtc, details);
                         }
                     });
+                }
+                catch
+                {
+                    // ignore
+                }
+            });
+        }
+
+        private void PersistWinsBestEffort()
+        {
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    System.Collections.Generic.Dictionary<string, WinsEntry> snapshot;
+                    lock (_winsSync)
+                    {
+                        snapshot = new System.Collections.Generic.Dictionary<string, WinsEntry>(_winsByHostKey, StringComparer.OrdinalIgnoreCase);
+                    }
+
+                    WinsStore.PersistByHostKeyBestEffort(snapshot, Log);
+                }
+                catch
+                {
+                    // ignore
+                }
+            });
+        }
+
+        private void LoadWinsFromDiskBestEffort()
+        {
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    var loaded = WinsStore.LoadByHostKeyBestEffort(Log);
+                    lock (_winsSync)
+                    {
+                        _winsByHostKey.Clear();
+                        foreach (var kvp in loaded)
+                        {
+                            if (string.IsNullOrWhiteSpace(kvp.Key) || kvp.Value == null) continue;
+                            _winsByHostKey[kvp.Key] = kvp.Value;
+                        }
+                    }
                 }
                 catch
                 {

@@ -193,6 +193,10 @@ namespace IspAudit.ViewModels
         // P1.8: семантика Post-Apply проверки (OK/FAIL/PARTIAL/UNKNOWN) для UI.
         public event Action<string, string, string, string?>? OnPostApplyCheckVerdict;
 
+        // P1.9: расширенный сигнал post-apply вердикта с correlationId/txId.
+        // Нужен для строгой связки: Apply(txId) → PostApplyRetest(txId) → wins.
+        public event Action<string, string, string, string?, string?>? OnPostApplyCheckVerdictV2;
+
         /// <summary>
         /// Делегат для подтверждения действия (заголовок, текст) → true/false.
         /// Инъектируется из View-слоя для соблюдения MVVM.

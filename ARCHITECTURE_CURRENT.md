@@ -305,6 +305,7 @@ IPv6: селективность недоступна, сохраняется dr
 10. **Классификация**: `StandardBlockageClassifier` → вердикт.
 11. **Отчёт**: `TestResultsManager` → UI. `NoiseHostFilter` — только при отображении OK.
 12. **Реакция**: manual apply → `BypassController.ApplyIntelPlanAsync(...)`, auto-apply (опционально) → пост-Apply ретест.
+    - P1.9: при `post-apply verdict=OK` и наличии `txId` в UI записывается «win» (подтверждённый успешный обход) в `state\wins_store.json`.
 
 ---
 
@@ -339,6 +340,9 @@ ISP_Audit/
 │   ├── BypassController.*.cs
 │   ├── TestResultsManager*.cs
 │   └── PipelineMessageParser.cs
+
+├── Models/                     # Модели UI-уровня
+│   └── WinsEntry.cs            # P1.9: подтверждённый «win» (apply + post-apply OK)
 │
 ├── Utils/                      # Вспомогательные
 │   ├── LiveTestingPipeline.*.cs
@@ -348,6 +352,7 @@ ISP_Audit/
 │   ├── PidTrackerService.cs
 │   ├── FixService.cs           # DNS fix (netsh)
 │   ├── OperatorTextMapper.cs    # Operator UI: маппинг raw-кодов проблем → тексты
+│   ├── WinsStore.cs            # P1.9: wins store (persist в state/wins_store.json)
 │   ├── EnvVar.cs               # Централизованное чтение ENV
 │   ├── AppCrashReporter.cs
 │   └── ReactiveTargetSyncService.cs

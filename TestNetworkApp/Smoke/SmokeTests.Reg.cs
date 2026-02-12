@@ -405,6 +405,78 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> REG_WinsStore_Persisted_RoundTrip(CancellationToken ct)
+            => RunAsync("REG-028", "REG: wins store persist+reload + best-match", () =>
+            {
+                const string envVar = "ISP_AUDIT_WINS_STORE_PATH";
+
+                var prev = Environment.GetEnvironmentVariable(envVar);
+                var tmpDir = Path.Combine(Path.GetTempPath(), "ISP_Audit_smoke");
+                Directory.CreateDirectory(tmpDir);
+                var tmpPath = Path.Combine(tmpDir, $"wins_store_{Guid.NewGuid():N}.json");
+
+                try
+                {
+                    Environment.SetEnvironmentVariable(envVar, tmpPath);
+
+                    var now = DateTimeOffset.UtcNow;
+                    var baseKey = "example.com";
+                    var entry = new IspAudit.Models.WinsEntry
+                    {
+                        HostKey = baseKey,
+                        SniHostname = baseKey,
+                        CorrelationId = "tx_smoke_028",
+                        AppliedAtUtc = now.AddSeconds(-5).ToString("u").TrimEnd(),
+                        VerifiedAtUtc = now.ToString("u").TrimEnd(),
+                        VerifiedVerdict = "OK",
+                        VerifiedMode = "local",
+                        VerifiedDetails = "smoke",
+                        AppliedStrategyText = "TLS Fragment",
+                        PlanText = "TLS_FRAGMENT",
+                        CandidateIpEndpoints = new[] { "1.1.1.1:443" }
+                    };
+
+                    var dict = new System.Collections.Generic.Dictionary<string, IspAudit.Models.WinsEntry>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        [baseKey] = entry
+                    };
+
+                    IspAudit.Utils.WinsStore.PersistByHostKeyBestEffort(dict, log: null);
+
+                    var loaded = IspAudit.Utils.WinsStore.LoadByHostKeyBestEffort(log: null);
+                    if (!loaded.TryGetValue(baseKey, out var loadedEntry) || loadedEntry == null)
+                    {
+                        return new SmokeTestResult("REG-028", "REG: wins store persist+reload + best-match", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Не нашли сохранённую запись по hostKey");
+                    }
+
+                    if (!string.Equals(loadedEntry.VerifiedVerdict, "OK", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-028", "REG: wins store persist+reload + best-match", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали VerifiedVerdict=OK, получили '{loadedEntry.VerifiedVerdict}'");
+                    }
+
+                    if (!IspAudit.Utils.WinsStore.TryGetBestMatch(loaded, "a.b.example.com", out var best) || best == null)
+                    {
+                        return new SmokeTestResult("REG-028", "REG: wins store persist+reload + best-match", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали suffix-match a.b.example.com → example.com, но match не найден");
+                    }
+
+                    if (!string.Equals(best.HostKey, baseKey, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-028", "REG: wins store persist+reload + best-match", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали best.HostKey='{baseKey}', получили '{best.HostKey}'");
+                    }
+
+                    return new SmokeTestResult("REG-028", "REG: wins store persist+reload + best-match", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+                }
+                finally
+                {
+                    try { Environment.SetEnvironmentVariable(envVar, prev); } catch { }
+                    try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { }
+                }
+            }, ct);
+
         public static async Task<SmokeTestResult> REG_Tracert_Cp866_NoMojibake(CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();

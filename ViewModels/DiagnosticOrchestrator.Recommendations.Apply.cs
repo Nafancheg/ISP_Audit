@@ -42,6 +42,31 @@ namespace IspAudit.ViewModels
         private sealed record PendingFeedbackContext(BypassPlan Plan, DateTimeOffset AppliedAtUtc);
         private readonly ConcurrentDictionary<string, PendingFeedbackContext> _pendingFeedbackByHostKey = new(StringComparer.OrdinalIgnoreCase);
 
+        public bool TryGetPendingAppliedPlanForHostKey(string? hostKey, out BypassPlan? plan, out DateTimeOffset appliedAtUtc)
+        {
+            plan = null;
+            appliedAtUtc = DateTimeOffset.MinValue;
+
+            try
+            {
+                var hk = (hostKey ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(hk)) return false;
+
+                if (_pendingFeedbackByHostKey.TryGetValue(hk, out var pending) && pending != null)
+                {
+                    plan = pending.Plan;
+                    appliedAtUtc = pending.AppliedAtUtc;
+                    return plan != null;
+                }
+
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public sealed record ApplyOutcome(string HostKey, string AppliedStrategyText, string PlanText, string? Reasoning)
         {
             public string Status { get; init; } = "APPLIED";
@@ -729,6 +754,7 @@ namespace IspAudit.ViewModels
                             try
                             {
                                 OnPostApplyCheckVerdict?.Invoke(hostKey, verdict, "enqueue", $"pipeline_not_ready; out={verdict}");
+                                OnPostApplyCheckVerdictV2?.Invoke(hostKey, verdict, "enqueue", $"pipeline_not_ready; out={verdict}", opId);
                             }
                             catch
                             {
@@ -791,6 +817,7 @@ namespace IspAudit.ViewModels
                         try
                         {
                             OnPostApplyCheckVerdict?.Invoke(hostKey, verdictAfterEnqueue, "enqueue", $"enqueued; ips={hosts.Count}; out={verdictAfterEnqueue}");
+                            OnPostApplyCheckVerdictV2?.Invoke(hostKey, verdictAfterEnqueue, "enqueue", $"enqueued; ips={hosts.Count}; out={verdictAfterEnqueue}", opId);
                         }
                         catch
                         {
@@ -810,6 +837,7 @@ namespace IspAudit.ViewModels
                         try
                         {
                             OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "enqueue", "cancelled");
+                            OnPostApplyCheckVerdictV2?.Invoke(hostKey, "UNKNOWN", "enqueue", "cancelled", opId);
                         }
                         catch
                         {
@@ -828,6 +856,7 @@ namespace IspAudit.ViewModels
                         try
                         {
                             OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "enqueue", $"error: {ex.Message}");
+                            OnPostApplyCheckVerdictV2?.Invoke(hostKey, "UNKNOWN", "enqueue", $"error: {ex.Message}", opId);
                         }
                         catch
                         {
@@ -1011,6 +1040,7 @@ namespace IspAudit.ViewModels
                     try
                     {
                         OnPostApplyCheckVerdict?.Invoke(hostKey, verdict, "local", $"summaryOk={summaryOk}; summaryFail={summaryFail}");
+                        OnPostApplyCheckVerdictV2?.Invoke(hostKey, verdict, "local", $"summaryOk={summaryOk}; summaryFail={summaryFail}", opId);
                     }
                     catch
                     {
@@ -1065,6 +1095,7 @@ namespace IspAudit.ViewModels
                     try
                     {
                         OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "local", "cancelled");
+                        OnPostApplyCheckVerdictV2?.Invoke(hostKey, "UNKNOWN", "local", "cancelled", opId);
                     }
                     catch
                     {
@@ -1082,6 +1113,7 @@ namespace IspAudit.ViewModels
                     try
                     {
                         OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "local", $"error: {ex.Message}");
+                        OnPostApplyCheckVerdictV2?.Invoke(hostKey, "UNKNOWN", "local", $"error: {ex.Message}", opId);
                     }
                     catch
                     {

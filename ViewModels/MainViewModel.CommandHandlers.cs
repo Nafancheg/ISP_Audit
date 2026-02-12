@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using IspAudit.Bypass;
+using IspAudit.Core.Intelligence.Contracts;
 using IspAudit.Models;
 using IspAudit.Utils;
 
@@ -1032,7 +1033,7 @@ namespace IspAudit.ViewModels
             });
         }
 
-        private void ApplyPostApplyVerdictToHostKey(string hostKey, string verdict, string mode, string? details)
+        private void ApplyPostApplyVerdictToHostKey(string hostKey, string verdict, string mode, string? details, string? correlationId)
         {
             try
             {
@@ -1070,6 +1071,93 @@ namespace IspAudit.ViewModels
                 }
 
                 PersistPostApplyChecksBestEffort();
+
+                // P1.9: записываем win только при строгом сигнале успеха post-apply (OK) и наличии txId.
+                // Это защищает от «мусора» фоновых соединений.
+                TryRecordWinFromPostApplyOkBestEffort(hk, groupKey, verdict, mode, details, correlationId, nowUtc);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void TryRecordWinFromPostApplyOkBestEffort(
+            string hostKey,
+            string groupKey,
+            string verdict,
+            string mode,
+            string? details,
+            string? correlationId,
+            DateTimeOffset verifiedAtUtc)
+        {
+            try
+            {
+                var v = (verdict ?? string.Empty).Trim();
+                if (!string.Equals(v, "OK", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                var txId = (correlationId ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(txId))
+                {
+                    return;
+                }
+
+                var tx = Bypass.TryGetApplyTransactionById(txId);
+                if (tx == null)
+                {
+                    return;
+                }
+
+                // Дополнительная защита: убеждаемся, что транзакция относится к той же группе.
+                var txGroupKey = (tx.GroupKey ?? string.Empty).Trim().Trim('.');
+                var gk = (groupKey ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(txGroupKey) || string.IsNullOrWhiteSpace(gk)
+                    || !string.Equals(txGroupKey, gk, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                // По возможности берём appliedAtUtc из оркестратора (pending feedback), иначе — из транзакции.
+                var appliedAtUtc = tx.CreatedAtUtc;
+                BypassPlan? appliedPlan = null;
+                try
+                {
+                    if (Orchestrator.TryGetPendingAppliedPlanForHostKey(hostKey, out var plan, out var appliedAt))
+                    {
+                        appliedPlan = plan;
+                        appliedAtUtc = appliedAt.ToString("u").TrimEnd();
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                var win = new WinsEntry
+                {
+                    HostKey = hostKey,
+                    SniHostname = hostKey,
+                    CorrelationId = txId,
+                    AppliedAtUtc = string.IsNullOrWhiteSpace(appliedAtUtc) ? verifiedAtUtc.ToString("u").TrimEnd() : appliedAtUtc,
+                    VerifiedAtUtc = verifiedAtUtc.ToString("u").TrimEnd(),
+                    VerifiedVerdict = v,
+                    VerifiedMode = (mode ?? string.Empty).Trim(),
+                    VerifiedDetails = (details ?? string.Empty).Trim(),
+                    AppliedStrategyText = (tx.AppliedStrategyText ?? string.Empty).Trim(),
+                    PlanText = (tx.PlanText ?? string.Empty).Trim(),
+                    Plan = appliedPlan ?? new BypassPlan(),
+                    CandidateIpEndpoints = tx.CandidateIpEndpoints ?? Array.Empty<string>()
+                };
+
+                lock (_winsSync)
+                {
+                    _winsByHostKey[(hostKey ?? string.Empty).Trim().Trim('.')] = win;
+                }
+
+                PersistWinsBestEffort();
             }
             catch
             {

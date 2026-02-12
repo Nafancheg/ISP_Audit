@@ -41,6 +41,9 @@
 - `ISP_AUDIT_POST_APPLY_CHECKS_PATH`
   - Перенаправляет файл результатов пост‑проверки (по умолчанию `state\\post_apply_checks.json`).
 
+- `ISP_AUDIT_WINS_STORE_PATH`
+  - Перенаправляет файл wins-библиотеки (по умолчанию `state\\wins_store.json`).
+
 - `ISP_AUDIT_BLOCKPAGE_HOSTS_PATH`
   - Перенаправляет каталог хостов blockpage (по умолчанию `state\\blockpage_hosts.json`).
 

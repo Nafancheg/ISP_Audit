@@ -16,6 +16,7 @@ namespace IspAudit.Utils
         public const string OperatorEventsPath = "ISP_AUDIT_OPERATOR_EVENTS_PATH";
         public const string OperatorSessionsPath = "ISP_AUDIT_OPERATOR_SESSIONS_PATH";
         public const string PostApplyChecksPath = "ISP_AUDIT_POST_APPLY_CHECKS_PATH";
+        public const string WinsStorePath = "ISP_AUDIT_WINS_STORE_PATH";
         public const string BlockpageHostsPath = "ISP_AUDIT_BLOCKPAGE_HOSTS_PATH";
         public const string BypassSessionPath = "ISP_AUDIT_BYPASS_SESSION_PATH";
         public const string TrafficEngineCrashDir = "ISP_AUDIT_TRAFFICENGINE_CRASH_DIR";

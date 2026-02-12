@@ -111,6 +111,46 @@ namespace IspAudit.ViewModels
             }
         }
 
+        public BypassApplyTransaction? TryGetApplyTransactionById(string? transactionId)
+        {
+            try
+            {
+                var id = (transactionId ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(id)) return null;
+
+                var candidates = new List<BypassApplyTransaction>();
+
+                try
+                {
+                    candidates.AddRange(ApplyTransactions
+                        .Select(r => r.Latest)
+                        .Where(t => string.Equals((t.TransactionId ?? string.Empty).Trim(), id, StringComparison.OrdinalIgnoreCase)));
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                try
+                {
+                    candidates.AddRange(_applyTransactionsJournal.Snapshot().Where(t =>
+                        string.Equals((t.TransactionId ?? string.Empty).Trim(), id, StringComparison.OrdinalIgnoreCase)));
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                return candidates
+                    .OrderByDescending(t => ParseCreatedAtUtcOrMin(t.CreatedAtUtc))
+                    .FirstOrDefault();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public string GetApplyTransactionJson(BypassApplyTransaction? tx)
         {
             if (tx == null) return string.Empty;

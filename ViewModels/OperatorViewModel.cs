@@ -133,7 +133,7 @@ namespace IspAudit.ViewModels
             // Семантика итогов post-apply ретеста (OK/FAIL/PARTIAL/UNKNOWN).
             try
             {
-                Main.Orchestrator.OnPostApplyCheckVerdict += OrchestratorOnPostApplyCheckVerdict;
+                Main.Orchestrator.OnPostApplyCheckVerdictV2 += OrchestratorOnPostApplyCheckVerdict;
             }
             catch
             {

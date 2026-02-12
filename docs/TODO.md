@@ -83,11 +83,11 @@
 - [x] Smoke ui: Operator UI не показывает raw-коды типа TLS_AUTH_FAILURE
 
 ### P1.9 Operator UI — wins-библиотека
-- [ ] Создать `Models/WinsEntry.cs`: record WinsEntry(Host, Sni, StrategyId, PlanText, WonAt)
-- [ ] Создать `Utils/WinsStore.cs`: persist в `state/wins_store.json`, RecordWin, GetWin(host, sni)
-- [ ] После post-apply retest OK → WinsStore.RecordWin(...)
+- [x] Создать `Models/WinsEntry.cs`: запись подтверждённого успеха (apply + post-apply OK)
+- [x] Создать `Utils/WinsStore.cs`: persist в `state/wins_store.json` + ENV override `ISP_AUDIT_WINS_STORE_PATH`
+- [x] После post-apply retest OK (и только при наличии txId) → WinsStore.Persist(...)
 - [ ] При повторной встрече хоста: если есть Win → предложить «Применить проверенный обход?»
-- [ ] Smoke: `REG-028` — wins round-trip (record + retrieve + apply)
+- [x] Smoke: `REG-028` — wins round-trip (persist + load + best-match)
 
 ### P1.10 Operator UI — escalation GUI
 - [ ] При PostApplyStatus == FAIL/PARTIAL → IsEscalationAvailable = true, CTA = «Усилить»

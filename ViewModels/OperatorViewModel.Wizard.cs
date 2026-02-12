@@ -687,7 +687,7 @@ namespace IspAudit.ViewModels
             TryFinalizeActiveSessionBestEffort(preferPostApply: true);
         }
 
-        private void OrchestratorOnPostApplyCheckVerdict(string hostKey, string verdict, string mode, string? details)
+        private void OrchestratorOnPostApplyCheckVerdict(string hostKey, string verdict, string mode, string? details, string? correlationId)
         {
             try
             {
@@ -705,10 +705,16 @@ namespace IspAudit.ViewModels
                 var d = (details ?? string.Empty).Trim();
                 var hk = (hostKey ?? string.Empty).Trim();
                 var m = (mode ?? string.Empty).Trim();
+                var tx = (correlationId ?? string.Empty).Trim();
 
                 var line = string.IsNullOrWhiteSpace(d)
                     ? $"Ретест после исправления: {verdict} ({m})"
                     : $"Ретест после исправления: {verdict} ({m}) — {hk}; {d}";
+
+                if (!string.IsNullOrWhiteSpace(tx))
+                {
+                    line += $"; tx={tx}";
+                }
 
                 _activeSession.Actions.Add(line);
 
