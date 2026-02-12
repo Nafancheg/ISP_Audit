@@ -932,6 +932,95 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> REG_IntelPlan_DominatedPlan_SkipsSecondApply(CancellationToken ct)
+            => RunAsyncAwait("REG-029", "REG: Dominated plan (подмножество) не применяется повторно", async innerCt =>
+            {
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    using var engine = new TrafficEngine();
+                    var bypass = new BypassController(engine);
+                    var orch = new DiagnosticOrchestrator(engine);
+
+                    var storePlan = typeof(DiagnosticOrchestrator)
+                        .GetMethod("StorePlan", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    if (storePlan == null)
+                    {
+                        return new SmokeTestResult("REG-029", "REG: Dominated plan (подмножество) не применяется повторно",
+                            SmokeOutcome.Fail, sw.Elapsed, "Не нашли StorePlan через reflection");
+                    }
+
+                    // Сначала сохраняем и применяем «сильный» план.
+                    var strong = new BypassPlan
+                    {
+                        ForDiagnosis = DiagnosisId.ActiveDpiEdge,
+                        PlanConfidence = 100,
+                        Strategies =
+                        {
+                            new BypassStrategy { Id = StrategyId.TlsFragment },
+                            new BypassStrategy { Id = StrategyId.DropRst },
+                        },
+                        DropUdp443 = true,
+                        AllowNoSni = false,
+                        Reasoning = "smoke"
+                    };
+
+                    storePlan.Invoke(orch, new object?[] { "sub.example.com", strong, bypass });
+
+                    var first = await orch.ApplyRecommendationsForDomainAsync(bypass, "example.com").ConfigureAwait(false);
+                    if (first == null)
+                    {
+                        return new SmokeTestResult("REG-029", "REG: Dominated plan (подмножество) не применяется повторно",
+                            SmokeOutcome.Fail, sw.Elapsed, "Первый Apply вернул null (ожидали outcome)");
+                    }
+
+                    if (!string.Equals(first.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-029", "REG: Dominated plan (подмножество) не применяется повторно",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Первый Apply: ожидали Status=APPLIED, получили '{first.Status}'");
+                    }
+
+                    // Затем сохраняем «слабый» план (подмножество strong) и пробуем применить снова.
+                    // Ожидаем, что orchestrator распознает доминирование и вернёт ALREADY_APPLIED.
+                    var weak = new BypassPlan
+                    {
+                        ForDiagnosis = DiagnosisId.ActiveDpiEdge,
+                        PlanConfidence = 100,
+                        Strategies =
+                        {
+                            new BypassStrategy { Id = StrategyId.TlsFragment },
+                        },
+                        DropUdp443 = false,
+                        AllowNoSni = false,
+                        Reasoning = "smoke"
+                    };
+
+                    storePlan.Invoke(orch, new object?[] { "sub.example.com", weak, bypass });
+
+                    var second = await orch.ApplyRecommendationsForDomainAsync(bypass, "example.com").ConfigureAwait(false);
+                    if (second == null)
+                    {
+                        return new SmokeTestResult("REG-029", "REG: Dominated plan (подмножество) не применяется повторно",
+                            SmokeOutcome.Fail, sw.Elapsed, "Второй Apply вернул null (ожидали ALREADY_APPLIED)"
+                        );
+                    }
+
+                    if (!string.Equals(second.Status, "ALREADY_APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-029", "REG: Dominated plan (подмножество) не применяется повторно",
+                            SmokeOutcome.Fail, sw.Elapsed, $"Второй Apply: ожидали Status=ALREADY_APPLIED, получили '{second.Status}'");
+                    }
+
+                    return new SmokeTestResult("REG-029", "REG: Dominated plan (подмножество) не применяется повторно",
+                        SmokeOutcome.Pass, sw.Elapsed, "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("REG-029", "REG: Dominated plan (подмножество) не применяется повторно",
+                        SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> REG_ApplyIntelPlan_Timeout_HasPhaseDiagnostics(CancellationToken ct)
             => RunAsyncAwait("REG-016", "REG: ApplyIntelPlanAsync timeout содержит фазовую диагностику (cancelReason/currentPhase/phases)", async _ =>
             {

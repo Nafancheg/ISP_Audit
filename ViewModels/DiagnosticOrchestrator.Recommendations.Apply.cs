@@ -429,9 +429,10 @@ namespace IspAudit.ViewModels
                 && !string.IsNullOrWhiteSpace(targetKey)
                 && !string.IsNullOrWhiteSpace(planSig)
                 && _lastAppliedPlanSignatureByTarget.TryGetValue(targetKey, out var lastSig)
-                && string.Equals(lastSig, planSig, StringComparison.OrdinalIgnoreCase))
+                && (string.Equals(lastSig, planSig, StringComparison.OrdinalIgnoreCase)
+                    || IspAudit.Core.Intelligence.Execution.IntelPlanSelector.IsDominated(planSig, lastSig)))
             {
-                Log($"[APPLY] Skip: уже применено (target='{targetKey}'; sig='{planSig}')");
+                Log($"[APPLY] Skip: уже применено (dominated by '{lastSig}') (target='{targetKey}'; sig='{planSig}')");
                 return new ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
                 {
                     Status = "ALREADY_APPLIED",

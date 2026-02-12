@@ -36,9 +36,6 @@ namespace IspAudit.ViewModels
             // HTTP host tricks — селективная техника на TCP/80.
             StrategyId.HttpHostTricks,
 
-            // QUIC fallback — селективная техника (target IP list) через DROP UDP/443.
-            StrategyId.QuicObfuscation,
-
             // DropRst — обратимая техника (фильтр), но не системное изменение.
             StrategyId.DropRst,
         };

@@ -2463,7 +2463,7 @@ namespace TestNetworkApp.Smoke
             }, ct);
 
         public static Task<SmokeTestResult> Dpi2_StrategySelector_Phase3Strategies_AreImplemented(CancellationToken ct)
-            => RunAsync("DPI2-033", "Phase 3: HttpHostTricks/QuicObfuscation/BadChecksum реализованы (не deferred)", () =>
+            => RunAsync("DPI2-033", "Phase 3: HttpHostTricks/BadChecksum + QUIC→TCP (DropUdp443) реализованы (SSoT, без дублирования)", () =>
             {
                 var selector = new StandardStrategySelector();
 
@@ -2490,32 +2490,31 @@ namespace TestNetworkApp.Smoke
                 var strategyIds = plan.Strategies.Select(s => s.Id).ToHashSet();
 
                 if (!strategyIds.Contains(StrategyId.HttpHostTricks)
-                    || !strategyIds.Contains(StrategyId.QuicObfuscation)
                     || !strategyIds.Contains(StrategyId.BadChecksum))
                 {
-                    return new SmokeTestResult("DPI2-033", "Phase 3: HttpHostTricks/QuicObfuscation/BadChecksum реализованы (не deferred)", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"Ожидали HttpHostTricks/QuicObfuscation/BadChecksum в Strategies, получили: {string.Join(", ", strategyIds)}");
+                    return new SmokeTestResult("DPI2-033", "Phase 3: HttpHostTricks/BadChecksum + QUIC→TCP (DropUdp443) реализованы (SSoT, без дублирования)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали HttpHostTricks/BadChecksum в Strategies, получили: {string.Join(", ", strategyIds)}");
                 }
 
                 if (plan.DeferredStrategies.Count != 0)
                 {
-                    return new SmokeTestResult("DPI2-033", "Phase 3: HttpHostTricks/QuicObfuscation/BadChecksum реализованы (не deferred)", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-033", "Phase 3: HttpHostTricks/BadChecksum + QUIC→TCP (DropUdp443) реализованы (SSoT, без дублирования)", SmokeOutcome.Fail, TimeSpan.Zero,
                         $"Ожидали DeferredStrategies=0, получили: {plan.DeferredStrategies.Count}");
                 }
 
                 if (!plan.DropUdp443)
                 {
-                    return new SmokeTestResult("DPI2-033", "Phase 3: HttpHostTricks/QuicObfuscation/BadChecksum реализованы (не deferred)", SmokeOutcome.Fail, TimeSpan.Zero,
-                        "Ожидали DropUdp443=true (QuicObfuscation должен включать QUIC→TCP)");
+                    return new SmokeTestResult("DPI2-033", "Phase 3: HttpHostTricks/BadChecksum + QUIC→TCP (DropUdp443) реализованы (SSoT, без дублирования)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "Ожидали DropUdp443=true (QUIC→TCP должен быть доступен без дублирования StrategyId.QuicObfuscation)");
                 }
 
                 if (string.IsNullOrWhiteSpace(plan.Reasoning))
                 {
-                    return new SmokeTestResult("DPI2-033", "Phase 3: HttpHostTricks/QuicObfuscation/BadChecksum реализованы (не deferred)", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("DPI2-033", "Phase 3: HttpHostTricks/BadChecksum + QUIC→TCP (DropUdp443) реализованы (SSoT, без дублирования)", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Reasoning пустой");
                 }
 
-                return new SmokeTestResult("DPI2-033", "Phase 3: HttpHostTricks/QuicObfuscation/BadChecksum реализованы (не deferred)", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("DPI2-033", "Phase 3: HttpHostTricks/BadChecksum + QUIC→TCP (DropUdp443) реализованы (SSoT, без дублирования)", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: strategies={plan.Strategies.Count}, dropUdp443={plan.DropUdp443}");
             }, ct);
 

@@ -35,7 +35,6 @@ public sealed class StandardStrategySelector
         StrategyId.DropRst,
         StrategyId.UseDoh,
         StrategyId.HttpHostTricks,
-        StrategyId.QuicObfuscation,
         StrategyId.BadChecksum,
     ];
 
@@ -105,21 +104,31 @@ public sealed class StandardStrategySelector
 
         var forDiagnosisId = diagnosis.DiagnosisId;
 
-        // Стабильная сортировка:
-        // 1) effective priority (base + feedback) ↓
-        // 2) base priority ↓
-        // 3) risk ↑
-        // 4) id ↑
+        // P1.14: сортировка по PlanWeight:
+        // weight = strength × confidence / cost
+        // где:
+        // - strength: BasePriority (таблица маппинга)
+        // - confidence: уверенность диагноза
+        // - cost: оценка цены/риска (Low=1, Medium=2, High=3)
+        // Дополнительно: feedback boost по win-rate:
+        // - WinRate > 70% → ×1.5
+        // - WinRate < 30% → ×0.5
         var ranked = filtered
             .Select(s =>
             {
-                var boost = TryGetFeedbackBoost(forDiagnosisId, s.Id);
-                return new RankedStrategy(s, boost);
+                var cost = GetStrategyCost(s.Risk);
+                var strength = s.BasePriority;
+                var weight = (strength * confidence) / (double)cost;
+
+                var feedbackMultiplier = TryGetFeedbackMultiplier(forDiagnosisId, s.Id);
+                weight *= feedbackMultiplier;
+
+                return new RankedStrategy(s, weight, feedbackMultiplier);
             })
             .ToList();
 
         var ordered = ranked
-            .OrderByDescending(s => s.EffectivePriority)
+            .OrderByDescending(s => s.PlanWeight)
             .ThenByDescending(s => s.BasePriority)
             .ThenBy(s => s.Risk)
             .ThenBy(s => s.Id)
@@ -140,7 +149,6 @@ public sealed class StandardStrategySelector
         var hasTlsBypassStrategy = ordered.Any(s => s.Id is StrategyId.TlsFragment or StrategyId.TlsDisorder or StrategyId.AggressiveFragment or StrategyId.TlsFakeTtl);
 
         var signals = diagnosis.InputSignals;
-        var hasQuicObfuscation = ordered.Any(s => s.Id == StrategyId.QuicObfuscation);
 
         var hasHttp3Evidence = signals.Http3AttemptCount > 0;
         var hasHttp3FailureOnly = hasHttp3Evidence
@@ -151,11 +159,34 @@ public sealed class StandardStrategySelector
         var hasUdpHeuristic = signals.UdpUnansweredHandshakes >= 2;
         var hasQuicEvidence = hasHttp3Evidence ? hasHttp3FailureOnly : hasUdpHeuristic;
 
-        // Assist DropUdp443 имеет смысл только когда диагноз указывает на QUIC/HTTP3 проблему
-        // (или когда мы явно рекомендуем QUIC-стратегию). Иначе это путает пользователя
-        // и ломает кейсы вроде DnsHijack → UseDoh.
-        var recommendDropUdp443 = hasQuicObfuscation
-            || (forDiagnosisId == DiagnosisId.QuicInterference && !signals.HasTlsTimeout && hasQuicEvidence);
+        // QUIC fallback SSoT: DropUdp443 — единственный канонический action в плане.
+        // Не дублируем StrategyId.QuicObfuscation в plan.Strategies.
+        // Правило: не навязываем QUIC→TCP, если уже есть TLS timeout на TCP/443.
+        var recommendDropUdp443 = false;
+        if (!signals.HasTlsTimeout)
+        {
+            // Для диагнозов DPI (ActiveDpiEdge/StatefulDpi) допускаем assist без доп. evidence:
+            // QUIC часто мешает увидеть эффект TLS-обхода.
+            if (forDiagnosisId is DiagnosisId.ActiveDpiEdge or DiagnosisId.StatefulDpi)
+            {
+                recommendDropUdp443 = true;
+            }
+            else if (forDiagnosisId == DiagnosisId.QuicInterference)
+            {
+                recommendDropUdp443 = hasQuicEvidence;
+            }
+            else if (hasHttp3Evidence && hasHttp3FailureOnly)
+            {
+                // Реальные H3 пробы: если H3 только падает, QUIC→TCP часто помогает.
+                recommendDropUdp443 = true;
+            }
+        }
+
+        // DNS-only кейс: QUIC fallback не является приоритетным лечением.
+        if (forDiagnosisId == DiagnosisId.DnsHijack)
+        {
+            recommendDropUdp443 = false;
+        }
 
         var recommendAllowNoSni = false;
         if (hasTlsBypassStrategy && signals.HostTestedCount >= 2)
@@ -164,7 +195,7 @@ public sealed class StandardStrategySelector
             recommendAllowNoSni = signals.HostTestedNoSniCount >= 2 && ratio >= 0.70;
         }
 
-        var anyFeedbackApplied = ranked.Any(r => r.FeedbackBoost != 0);
+        var anyFeedbackApplied = ranked.Any(r => Math.Abs(r.FeedbackMultiplier - 1.0) > 0.0001);
 
         var reasoning = anyFeedbackApplied
             ? "план сформирован по диагнозу INTEL (feedback)"
@@ -252,29 +283,45 @@ public sealed class StandardStrategySelector
         return result;
     }
 
-    private int TryGetFeedbackBoost(DiagnosisId diagnosisId, StrategyId strategyId)
+    private double TryGetFeedbackMultiplier(DiagnosisId diagnosisId, StrategyId strategyId)
     {
         if (_feedbackStore == null)
         {
-            return 0;
+            return 1.0;
         }
 
         if (!_feedbackStore.TryGetStats(new FeedbackKey(diagnosisId, strategyId), out var stats))
         {
-            return 0;
+            return 1.0;
         }
 
         if (stats.TotalCount < _feedbackOptions.MinSamplesToAffectRanking)
         {
-            return 0;
+            return 1.0;
         }
 
-        // Нормируем success-rate в диапазон [-0.5; +0.5] относительно 50%.
-        // Затем переводим в бонус к basePriority.
-        // Важно: формула должна быть детерминированной.
-        var centered = stats.SuccessRate - 0.5;
-        var raw = (int)Math.Round(centered * (_feedbackOptions.MaxPriorityBoostAbs * 2.0), MidpointRounding.AwayFromZero);
-        return Math.Clamp(raw, -_feedbackOptions.MaxPriorityBoostAbs, _feedbackOptions.MaxPriorityBoostAbs);
+        // P1.14: пороговая схема.
+        if (stats.SuccessRate > 0.70)
+        {
+            return 1.5;
+        }
+        if (stats.SuccessRate < 0.30)
+        {
+            return 0.5;
+        }
+
+        return 1.0;
+    }
+
+    private static int GetStrategyCost(RiskLevel risk)
+    {
+        return risk switch
+        {
+            RiskLevel.Low => 1,
+            RiskLevel.Medium => 2,
+            RiskLevel.High => 3,
+            _ => 2,
+        };
     }
 
     private static BypassPlan CreateEmptyPlan(DiagnosisId diagnosisId, int confidence, string reason)
@@ -395,10 +442,9 @@ public sealed class StandardStrategySelector
 
                 // Phase 3 техники (implemented): попадают в plan.Strategies и применяются при ручном ApplyIntelPlanAsync.
                 // Примечания:
-                // - QuicObfuscation в рантайме маппится на QUIC→TCP fallback (DROP UDP/443).
+                // - QUIC→TCP fallback реализован через assist-флаг DropUdp443 (SSoT, без StrategyId.QuicObfuscation в списке).
                 // - BadChecksum влияет только на фейковые пакеты.
                 new StrategyTemplate(StrategyId.HttpHostTricks, BasePriority: 10, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
-                new StrategyTemplate(StrategyId.QuicObfuscation, BasePriority: 5, Risk: RiskLevel.Medium, Parameters: new Dictionary<string, object?>()),
                 new StrategyTemplate(StrategyId.BadChecksum, BasePriority: 1, Risk: RiskLevel.High, Parameters: new Dictionary<string, object?>()),
 
                 // High-risk стратегия: разрешена только при confidence >= 70.
@@ -417,11 +463,10 @@ public sealed class StandardStrategySelector
     {
     }
 
-    private readonly record struct RankedStrategy(BypassStrategy Strategy, int FeedbackBoost)
+    private readonly record struct RankedStrategy(BypassStrategy Strategy, double PlanWeight, double FeedbackMultiplier)
     {
         public StrategyId Id => Strategy.Id;
         public int BasePriority => Strategy.BasePriority;
         public RiskLevel Risk => Strategy.Risk;
-        public int EffectivePriority => BasePriority + FeedbackBoost;
     }
 }

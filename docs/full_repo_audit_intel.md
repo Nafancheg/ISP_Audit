@@ -153,18 +153,18 @@ UX: режим `QUIC→TCP` выбирается через контекстно
     - Политика DoH в INTEL рекомендациях: DoH рекомендуется как low-risk при `DnsHijack` (чисто DNS) и также используется в multi-layer сценариях.
 - Step 2 INTEL Diagnosis подключён: `StandardDiagnosisEngine` ставит диагноз по `BlockageSignals` и возвращает пояснения, основанные на фактах (DNS fail, TCP/TLS timeout, TLS auth failure, retx-rate, HTTP redirect, RST TTL/IPID delta + latency) без привязки к стратегиям/обходу. Для RST-кейсов DPI-id (`ActiveDpiEdge/StatefulDpi`) выдаётся только при устойчивости улик (`SuspiciousRstCount >= 2`), чтобы не создавать ложную уверенность по единичному событию. Для TLS-only кейсов добавлен консервативный диагноз `TlsInterference`, чтобы селектор мог сформировать план TLS-стратегий.
 - Step 3 INTEL Selector подключён: `StandardStrategySelector` строит `BypassPlan` строго по `DiagnosisResult` (id + confidence) и отдаёт краткую рекомендацию для UI-лога.
-    - План может включать `DeferredStrategies` — отложенные техники (если появляются новые/экспериментальные стратегии). Сейчас deferred-техник нет (список пуст; механизм заготовлен на будущее). Phase 3 стратегии `HttpHostTricks`, `QuicObfuscation` и `BadChecksum` считаются implemented: попадают в `plan.Strategies` и реально применяются при ручном `ApplyIntelPlanAsync`.
-    - QuicObfuscation реализуется как QUIC→TCP через `DropUdp443`; применение инкапсулировано в `IspAudit.Bypass.Strategies.QuicObfuscationStrategy` и вызывается из `BypassApplyService`.
+    - План может включать `DeferredStrategies` — отложенные техники (если появляются новые/экспериментальные стратегии). Сейчас deferred-техник нет (список пуст; механизм заготовлен на будущее). Phase 3 техники `HttpHostTricks` и `BadChecksum` считаются implemented: попадают в `plan.Strategies` и реально применяются при ручном `ApplyIntelPlanAsync`.
+    - QUIC→TCP fallback реализуется как assist-флаг `DropUdp443` (SSoT), без дублирования `StrategyId.QuicObfuscation` в `plan.Strategies`. Применение инкапсулировано в `IspAudit.Bypass.Strategies.QuicObfuscationStrategy` и вызывается из `BypassApplyService`.
     - Для диагноза `HttpRedirect` учитывается `RedirectToHost` (если извлечён из `Location:`); уверенность выше для вероятной заглушки провайдера. Селектор выдаёт минимальную реакцию MVP: стратегию `HttpHostTricks` (TCP/80).
     - Реализация Phase 3 в рантайме:
-        - `QuicObfuscation` → включает assist-флаг `DropUdp443` (QUIC→TCP fallback).
+        - QUIC→TCP (`DropUdp443`) → подавление UDP/443 (селективно по цели/union). В feedback store исход записывается под ключом `StrategyId.QuicObfuscation`, но в `plan.Strategies` этот StrategyId не дублируется.
         - `HttpHostTricks` → `BypassFilter` режет HTTP `Host:` по границе TCP сегментов (исходящий TCP/80) и дропает оригинал.
         - Наблюдаемость: `BypassFilter` считает `HttpHostTricksMatched/Applied` и пробрасывает их в `TlsBypassMetrics` для UI.
         - `BadChecksum` → для фейковых TCP пакетов используется расширенный send без пересчёта checksum и со сбросом checksum-флагов адреса.
 - Step 4 INTEL Executor (MVP) подключён: `BypassExecutorMvp` формирует компактный, читаемый пользователем вывод (диагноз + уверенность + 1 короткое объяснение + список стратегий) и **не** применяет обход.
 - Реальный executor INTEL: `LiveTestingPipeline` публикует объектный `BypassPlan` через `OnPlanBuilt`, `DiagnosticOrchestrator` хранит план и может применить его либо по клику пользователя, либо автоматически при включённом `EnableAutoBypass`. Применение выполняется через `BypassController.ApplyIntelPlanAsync(...)`, который делегирует apply/timeout/rollback в `Core/Bypass/BypassApplyService`.
 - P1.5: критические секции операций `DiagnosticOrchestrator` сериализуются (cts/pipeline/collector lifecycle + обвязка apply), чтобы быстрые клики Start/Cancel/Retest/Apply не создавали две активные операции и не приводили к гонкам.
-- P1.1: повторный apply по той же цели/домену дедуплицируется по сигнатуре плана (стратегии + assist-флаги). Если bypass уже активен и сигнатура не изменилась — apply пропускается и возвращается `Status=ALREADY_APPLIED`.
+- P1.1/P1.14: повторный apply по той же цели/домену дедуплицируется по сигнатуре плана (стратегии + assist-флаги). Если bypass уже активен и новый план является подмножеством (dominated) последнего применённого — apply пропускается и возвращается `Status=ALREADY_APPLIED`.
 - UX-гейт для корректности: `OnPlanBuilt` публикуется только для хостов, которые реально прошли фильтр отображения как проблема (попали в UI как issue), чтобы кнопка apply не применяла план, построенный по шумовому/успешному хосту.
 
 Актуализация (Runtime, 29.12.2025): Bypass State Manager (2.INTEL.12)
@@ -328,7 +328,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
         - если виден `SNI=...`, совпадающий с `hostKey`, outcome считается по SNI-matched строкам; иначе по target IP;
         - если одновременно есть `✓` и `❌` по цели → outcome неоднозначный (`Unknown`) и не пишется;
         - при `DropUdp443` outcome также пишется для `StrategyId.QuicObfuscation`.
-- `StandardStrategySelector` умеет (опционально) добавлять вес по успешности **поверх** hardcoded `BasePriority`.
+- `StandardStrategySelector` ранжирует стратегии по весу `PlanWeight = strength × confidence / cost`, где `cost` отражает цену/риск (Low/Medium/High). Feedback влияет множителем: WinRate > 70% → ×1.5, WinRate < 30% → ×0.5 (при достаточном числе выборок).
 - Gate: при отсутствии данных поведение полностью как раньше; одинаковый вход + одинаковый feedback → одинаковый план.
 
 Актуализация (Dev, 02.02.2026): UX семантика Post-Apply проверки

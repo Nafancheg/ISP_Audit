@@ -115,11 +115,11 @@
 - [x] Auto-hostlist: в StandardBlockageClassifier учитывать принадлежность к hostlist при рекомендации
 
 ### P1.14 INTEL — доминирование/веса планов
-- [ ] В IntelPlanSelector: если новый план ⊂ активного → skip с логом «dominated by {activeId}»
-- [ ] PlanWeight = strength × confidence / cost → сортировка при выборе
-- [ ] Feedback boost: WinRate > 70% → weight ×1.5; WinRate < 30% → ×0.5
-- [ ] Smoke: `REG-029` — dominated plan не применяется повторно
-- [ ] QUIC fallback SSoT: убрать дублирование `StrategyId.QuicObfuscation` vs `plan.DropUdp443` (оставить один канонический путь)
+- [x] В IntelPlanSelector: если новый план ⊂ активного → skip с логом «dominated by {activeId}»
+- [x] PlanWeight = strength × confidence / cost → сортировка при выборе
+- [x] Feedback boost: WinRate > 70% → weight ×1.5; WinRate < 30% → ×0.5
+- [x] Smoke: `REG-029` — dominated plan не применяется повторно
+- [x] QUIC fallback SSoT: убрать дублирование `StrategyId.QuicObfuscation` vs `plan.DropUdp443` (оставить один канонический путь)
 
 ---
 

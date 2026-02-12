@@ -170,10 +170,11 @@ Wizard из 5 шагов: выбор приложения → источник �
 - `RiskLevel.High` запрещён при `confidence < 70`.
 - Нереализованные стратегии → warning + skip.
 - `TlsFragmentSizes` заполняются в плане детерминированно.
+- Ранжирование: `PlanWeight = strength × confidence / cost`, feedback-множитель: WinRate > 70% → ×1.5; < 30% → ×0.5 (при достаточной выборке).
 - Assist-флаги: `DropUdp443`, `AllowNoSni`.
-- Phase 3 стратегии: `HttpHostTricks`, `QuicObfuscation`, `BadChecksum` — все implemented.
+- Phase 3 техники: `HttpHostTricks`, `BadChecksum` — implemented и попадают в `plan.Strategies`. QUIC→TCP реализован как assist-флаг `DropUdp443` (SSoT, без дублирования `StrategyId.QuicObfuscation` в списке стратегий).
 
-**Step 4 (Executor)**: `BypassExecutorMvp` — форматирование/логирование (без auto-apply). Реальный apply — через `BypassController.ApplyIntelPlanAsync(...)` → `Core/Bypass/BypassApplyService` (таймаут/отмена/rollback).
+**Step 4 (Executor)**: `BypassExecutorMvp` — форматирование/логирование (без auto-apply). Реальный apply — через `BypassController.ApplyIntelPlanAsync(...)` → `Core/Bypass/BypassApplyService` (таймаут/отмена/rollback). Дедуп apply: `IntelPlanSelector` пропускает повторное применение, если новый план доминируется (является подмножеством) последнего применённого плана для цели.
 
 **Step 5 (Feedback)**: `JsonFileFeedbackStore` (`state\feedback_store.json`), ранжирование в селекторе.
 
