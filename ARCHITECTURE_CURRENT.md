@@ -272,6 +272,11 @@ Wizard из 5 шагов: выбор приложения → источник �
 - **Bad Checksum**: инжект фейковых пакетов без пересчёта checksum.
 - Гейтирование: только 443 + SNI + длина ≥ threshold (при `AllowNoSni` — без SNI тоже).
 - Per-policy наблюдаемость: matched_count / applied_count.
+- Наблюдаемость Host tricks: `HttpHostTricksMatched/Applied` (видно в `TlsBypassMetrics` и `BypassMetricsText`).
+
+Примечания:
+- Auto-hostlist: если хост стал кандидатом, рядом с INTEL-рекомендацией добавляется контекст `hostlist=auto`.
+- QuicObfuscation: добавлен документирующий stub-класс `IspAudit.Bypass.Strategies.QuicObfuscationStrategy` (MVP-техника остаётся через `DropUdp443`).
 
 #### QUIC→TCP (`DropUdp443`)
 

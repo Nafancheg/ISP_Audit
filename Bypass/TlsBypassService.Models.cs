@@ -152,6 +152,8 @@ namespace IspAudit.Bypass
         public long RstDroppedRelevant { get; init; }
         public long RstDropped { get; init; }
         public long Udp443Dropped { get; init; }
+        public long HttpHostTricksMatched { get; init; }
+        public long HttpHostTricksApplied { get; init; }
         public string Plan { get; init; } = "-";
         public string Since { get; init; } = "-";
         public long ClientHellosObserved { get; init; }

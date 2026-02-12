@@ -493,18 +493,25 @@ namespace IspAudit.Models
                 var applied = AppliedBypassStrategy;
                 var recommended = ShowConnectButton ? (BypassStrategy ?? string.Empty) : string.Empty;
 
+                static bool ContainsBadChecksum(string s)
+                    => !string.IsNullOrWhiteSpace(s)
+                       && s.Contains("BadChecksum", StringComparison.OrdinalIgnoreCase);
+
+                var hasBadChecksum = ContainsBadChecksum(applied ?? string.Empty) || ContainsBadChecksum(recommended);
+                var badChecksumHint = hasBadChecksum ? "\nТолько для фейковых пакетов (TTL=1)" : string.Empty;
+
                 if (!string.IsNullOrWhiteSpace(applied) && !string.IsNullOrWhiteSpace(recommended)
                     && !string.Equals(applied, recommended, StringComparison.OrdinalIgnoreCase))
                 {
-                    return $"Применено: {applied}\nРекомендация: {recommended}";
+                    return $"Применено: {applied}\nРекомендация: {recommended}{badChecksumHint}";
                 }
 
                 if (!string.IsNullOrWhiteSpace(applied))
                 {
-                    return $"Применено: {applied}";
+                    return $"Применено: {applied}{badChecksumHint}";
                 }
 
-                return recommended;
+                return string.IsNullOrWhiteSpace(recommended) ? recommended : (recommended + badChecksumHint);
             }
         }
 

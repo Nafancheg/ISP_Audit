@@ -24,7 +24,7 @@ namespace IspAudit.ViewModels
                 var activation = _stateManager.GetActivationStatusSnapshot();
                 var outcome = _stateManager.GetOutcomeStatusSnapshot();
                 BypassMetricsText =
-                    $"ACT: {activation.Text}; OUT: {outcome.Text}; TLS: {metrics.TlsHandled}; thr: {metrics.FragmentThreshold}; min: {metrics.MinChunk}; Hello@443: {metrics.ClientHellosObserved}; <thr: {metrics.ClientHellosShort}; !=443: {metrics.ClientHellosNon443}; фрагм.: {metrics.ClientHellosFragmented}; UDP443 drop: {metrics.Udp443Dropped}; RST(443,bypass): {metrics.RstDroppedRelevant}; RST(всего): {metrics.RstDropped}";
+                    $"ACT: {activation.Text}; OUT: {outcome.Text}; TLS: {metrics.TlsHandled}; thr: {metrics.FragmentThreshold}; min: {metrics.MinChunk}; Hello@443: {metrics.ClientHellosObserved}; <thr: {metrics.ClientHellosShort}; !=443: {metrics.ClientHellosNon443}; фрагм.: {metrics.ClientHellosFragmented}; HTTP HostTricks: {metrics.HttpHostTricksApplied}/{metrics.HttpHostTricksMatched}; UDP443 drop: {metrics.Udp443Dropped}; RST(443,bypass): {metrics.RstDroppedRelevant}; RST(всего): {metrics.RstDropped}";
 
                 BypassSemanticGroupsText = metrics.SemanticGroupsStatusText ?? string.Empty;
                 BypassSemanticGroupsSummaryText = metrics.SemanticGroupsSummaryText ?? string.Empty;

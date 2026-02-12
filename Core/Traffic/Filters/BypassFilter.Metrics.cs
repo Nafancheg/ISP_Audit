@@ -15,6 +15,8 @@ namespace IspAudit.Core.Traffic.Filters
         private long _tlsClientHellosNon443;
         private long _tlsClientHellosNoSni;
         private long _udp443Dropped;
+        private long _httpHostTricksMatchedCount;
+        private long _httpHostTricksAppliedCount;
 
         public BypassMetricsSnapshot GetMetrics()
         {
@@ -30,7 +32,9 @@ namespace IspAudit.Core.Traffic.Filters
                 ClientHellosShort = Interlocked.Read(ref _tlsClientHellosShort),
                 ClientHellosNon443 = Interlocked.Read(ref _tlsClientHellosNon443),
                 ClientHellosNoSni = Interlocked.Read(ref _tlsClientHellosNoSni),
-                Udp443Dropped = Interlocked.Read(ref _udp443Dropped)
+                Udp443Dropped = Interlocked.Read(ref _udp443Dropped),
+                HttpHostTricksMatched = Interlocked.Read(ref _httpHostTricksMatchedCount),
+                HttpHostTricksApplied = Interlocked.Read(ref _httpHostTricksAppliedCount)
             };
         }
 
@@ -47,6 +51,8 @@ namespace IspAudit.Core.Traffic.Filters
             public long ClientHellosNon443 { get; init; }
             public long ClientHellosNoSni { get; init; }
             public long Udp443Dropped { get; init; }
+            public long HttpHostTricksMatched { get; init; }
+            public long HttpHostTricksApplied { get; init; }
         }
     }
 }

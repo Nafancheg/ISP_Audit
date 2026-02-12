@@ -205,6 +205,13 @@ namespace IspAudit.Utils
                                 var rdns2 = tested.ReverseDnsHostname;
                                 var context = $"host={displayHost}:{port} SNI={(string.IsNullOrWhiteSpace(sni) ? "-" : sni)} RDNS={(string.IsNullOrWhiteSpace(rdns2) ? "-" : rdns2)}";
 
+                                // Auto-hostlist: делаем принадлежность видимой рядом с рекомендацией.
+                                if (!string.IsNullOrWhiteSpace(blocked.RecommendedAction)
+                                    && blocked.RecommendedAction.Contains("autoHL hits=", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    context += " hostlist=auto";
+                                }
+
                                 // Ключ для дедуп: SNI предпочтительнее, иначе IP.
                                 var dedupKey = !string.IsNullOrWhiteSpace(sni) && sni != "-" ? sni : displayHost;
 

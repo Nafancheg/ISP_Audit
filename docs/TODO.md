@@ -109,10 +109,10 @@
 - [ ] Async recompile: DecisionGraph.RecompileAsync() на фоновом потоке
 
 ### P1.13 Стратегии обхода — долги
-- [ ] BadChecksum: tooltip в Engineer UI «Только для фейковых пакетов (TTL=1)» + раздел README
-- [ ] QuicObfuscation: stub `Bypass/Strategies/QuicObfuscationStrategy.cs` с TODO
-- [ ] HttpHostTricks: метрики applied/matched в наблюдаемость
-- [ ] Auto-hostlist: в StandardBlockageClassifier учитывать принадлежность к hostlist при рекомендации
+- [x] BadChecksum: tooltip в Engineer UI «Только для фейковых пакетов (TTL=1)» + раздел README
+- [x] QuicObfuscation: stub `Bypass/Strategies/QuicObfuscationStrategy.cs` с TODO
+- [x] HttpHostTricks: метрики applied/matched в наблюдаемость
+- [x] Auto-hostlist: в StandardBlockageClassifier учитывать принадлежность к hostlist при рекомендации
 
 ### P1.14 INTEL — доминирование/веса планов
 - [ ] В IntelPlanSelector: если новый план ⊂ активного → skip с логом «dominated by {activeId}»

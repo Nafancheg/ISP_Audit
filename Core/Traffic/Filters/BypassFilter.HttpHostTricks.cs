@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using IspAudit.Core.Bypass;
 using IspAudit.Core.Models;
 using IspAudit.Core.Traffic;
@@ -74,6 +75,9 @@ namespace IspAudit.Core.Traffic.Filters
                     return false;
                 }
 
+                // Matched: мы впервые для этого соединения увидели HTTP Host и готовы применить технику.
+                Interlocked.Increment(ref _httpHostTricksMatchedCount);
+
                 var fragments = new List<FragmentSlice>(capacity: 2)
                 {
                     new(packet.Info.PayloadOffset, split, 0),
@@ -82,6 +86,7 @@ namespace IspAudit.Core.Traffic.Filters
 
                 if (SendFragments(packet, context, sender, fragments, reverseOrder: false))
                 {
+                    Interlocked.Increment(ref _httpHostTricksAppliedCount);
                     if (_verbosePacketLog)
                     {
                         _log?.Invoke($"[Bypass][HTTP] preset={_presetName}, hostTricks split={split}, result=segmented");

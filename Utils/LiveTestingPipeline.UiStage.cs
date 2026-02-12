@@ -128,6 +128,14 @@ namespace IspAudit.Utils
                         // Контекст цели для детерминированной привязки рекомендации к карточке (UI не должен полагаться на LastUpdatedHost).
                         var context = $"host={host}:{port} SNI={(string.IsNullOrWhiteSpace(sni) ? "-" : sni)} RDNS={(string.IsNullOrWhiteSpace(rdns) ? "-" : rdns)}";
 
+                        // Auto-hostlist: если хост попал в кандидаты, помечаем это рядом с рекомендацией.
+                        // Ранее это было видно только в intel-хвосте диагноза.
+                        if (!string.IsNullOrWhiteSpace(blocked.RecommendedAction)
+                            && blocked.RecommendedAction.Contains("autoHL hits=", StringComparison.OrdinalIgnoreCase))
+                        {
+                            context += " hostlist=auto";
+                        }
+
                         if (_executor.TryBuildRecommendationLine(dedupKey, blocked.BypassStrategy, context, out var recommendationLine))
                         {
                             _progress?.Report(recommendationLine);

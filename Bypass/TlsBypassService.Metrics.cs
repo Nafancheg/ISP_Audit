@@ -63,6 +63,8 @@ namespace IspAudit.Bypass
                     RstDroppedRelevant = snapshot.RstDroppedRelevant,
                     RstDropped = snapshot.RstDropped,
                     Udp443Dropped = snapshot.Udp443Dropped,
+                    HttpHostTricksMatched = snapshot.HttpHostTricksMatched,
+                    HttpHostTricksApplied = snapshot.HttpHostTricksApplied,
                     Plan = string.IsNullOrWhiteSpace(snapshot.LastFragmentPlan) ? "-" : snapshot.LastFragmentPlan,
                     Since = since == DateTime.MinValue ? "-" : since.ToString("HH:mm:ss"),
                     ClientHellosObserved = snapshot.ClientHellosObserved,
