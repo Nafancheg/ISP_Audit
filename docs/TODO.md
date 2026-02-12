@@ -75,13 +75,6 @@
 - [x] В Operator UI: подхосты в Expander «Подробнее» внутри карточки группы
 - [x] Smoke ui: `UI-024` (Engineer ×N) + `UI-026` (Operator «Подробнее»: подхосты)
 
-### P1.7 Operator UI — визуальный дизайн
-- [ ] Создать `Wpf/Themes/OperatorDarkTheme.xaml` — тёмная палитра MaterialDesign
-- [ ] `OperatorWindow.xaml`: применять тёмную тему через MergedDictionaries
-- [ ] Hero-элемент: Viewbox + Path (щит SVG) + TextBlock крупный статус-текст, центрирование
-- [ ] Компоновка Grid: Header 48px / Hero+Status Star / CTA Auto / Expander / Footer toggle
-- [ ] Компактный индикатор: Ellipse 12px с цветом по OperatorStatus (серый/зелёный/жёлтый/красный)
-
 ### P1.8 Operator UI — локализация/тексты
 - [ ] Создать `Utils/OperatorTextMapper.cs` — static Dictionary код→текст (DNS_ERROR, TCP_RESET, TLS_HANDSHAKE_TIMEOUT, QUIC_INTERFERENCE, HTTP_REDIRECT_DPI, UDP_BLOCKAGE)
 - [ ] Каждому коду: человеческая формулировка + краткая рекомендация (1 строка)
@@ -231,3 +224,12 @@
 - [ ] Перенести Bypass/, Core/Traffic/ в новый проект
 - [ ] ISP_Audit.csproj → ProjectReference
 - [ ] Smoke strict: PASS
+
+---
+
+### P1.7 Operator UI — визуальный дизайн
+- [ ] Создать `Wpf/Themes/OperatorDarkTheme.xaml` — тёмная палитра MaterialDesign
+- [ ] `OperatorWindow.xaml`: применять тёмную тему через MergedDictionaries
+- [ ] Hero-элемент: Viewbox + Path (щит SVG) + TextBlock крупный статус-текст, центрирование
+- [ ] Компоновка Grid: Header 48px / Hero+Status Star / CTA Auto / Expander / Footer toggle
+- [ ] Компактный индикатор: Ellipse 12px с цветом по OperatorStatus (серый/зелёный/жёлтый/красный)
