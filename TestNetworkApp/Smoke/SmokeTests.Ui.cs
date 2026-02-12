@@ -1229,6 +1229,62 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> Ui_OperatorDetails_SubHosts_Wired(CancellationToken ct)
+            => RunAsync("UI-026", "P1.6: Operator — в «Подробнее» показываются подхосты агрегированной группы", () =>
+            {
+                try
+                {
+                    static string? TryFindRepoRoot()
+                    {
+                        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+                        for (var i = 0; i < 10 && dir != null; i++)
+                        {
+                            var candidate = Path.Combine(dir.FullName, "Windows", "OperatorWindow.xaml");
+                            if (File.Exists(candidate)) return dir.FullName;
+                            if (File.Exists(Path.Combine(dir.FullName, "ISP_Audit.sln"))) return dir.FullName;
+                            dir = dir.Parent;
+                        }
+
+                        return null;
+                    }
+
+                    var root = TryFindRepoRoot();
+                    if (string.IsNullOrWhiteSpace(root))
+                    {
+                        return new SmokeTestResult("UI-026", "P1.6: Operator — в «Подробнее» показываются подхосты агрегированной группы", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Не удалось определить корень репозитория рядом с BaseDirectory");
+                    }
+
+                    var operatorXamlPath = Path.Combine(root!, "Windows", "OperatorWindow.xaml");
+                    if (!File.Exists(operatorXamlPath))
+                    {
+                        return new SmokeTestResult("UI-026", "P1.6: Operator — в «Подробнее» показываются подхосты агрегированной группы", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "OperatorWindow.xaml не найден");
+                    }
+
+                    var xaml = File.ReadAllText(operatorXamlPath);
+                    if (!xaml.Contains("UserDetails_SubHosts", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult("UI-026", "P1.6: Operator — в «Подробнее» показываются подхосты агрегированной группы", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "OperatorWindow.xaml: не нашли binding на Vm.UserDetails_SubHosts");
+                    }
+
+                    if (!xaml.Contains("HasUserDetails_SubHosts", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult("UI-026", "P1.6: Operator — в «Подробнее» показываются подхосты агрегированной группы", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "OperatorWindow.xaml: не нашли visibility-гейт Vm.HasUserDetails_SubHosts");
+                    }
+
+                    return new SmokeTestResult("UI-026", "P1.6: Operator — в «Подробнее» показываются подхосты агрегированной группы", SmokeOutcome.Pass, TimeSpan.Zero,
+                        "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("UI-026", "P1.6: Operator — в «Подробнее» показываются подхосты агрегированной группы", SmokeOutcome.Fail, TimeSpan.Zero,
+                        ex.Message);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> Ui_ParsePipelineMessage_ParsesUiLines(CancellationToken ct)
             => RunAsync("UI-010", "ParsePipelineMessage: парсит строки pipeline", () =>
             {

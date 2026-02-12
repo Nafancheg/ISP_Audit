@@ -241,6 +241,8 @@ namespace IspAudit.ViewModels
             OnPropertyChanged(nameof(UserDetails_AutoFix));
             OnPropertyChanged(nameof(UserDetails_Bypass));
             OnPropertyChanged(nameof(UserDetails_LastAction));
+            OnPropertyChanged(nameof(HasUserDetails_SubHosts));
+            OnPropertyChanged(nameof(UserDetails_SubHosts));
             OnPropertyChanged(nameof(RawDetailsText));
             OnPropertyChanged(nameof(ShowFixButton));
             OnPropertyChanged(nameof(ShowPrimaryButton));

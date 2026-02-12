@@ -45,6 +45,7 @@ namespace TestNetworkApp.Smoke
                 ["UI-022"] = Ui_Operator_MinimalHeader_SettingsHelp_Wired,
                 ["UI-023"] = Ui_Operator_EscalationButton_AndApplyEscalation_Works_AdminOnly,
                 ["UI-024"] = Ui_AggregatedMembers_Expand_Wired_AndGetGroupMembers_Works,
+                ["UI-026"] = Ui_OperatorDetails_SubHosts_Wired,
 
                 ["ORCH-001"] = Orch_Pipeline_StartStop_ViaRetestTargets,
                 ["ORCH-002"] = Orch_MonitoringServices_StartStop_AdminGated,

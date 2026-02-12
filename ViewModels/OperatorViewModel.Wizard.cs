@@ -4,6 +4,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using IspAudit.Models;
@@ -140,6 +141,70 @@ namespace IspAudit.ViewModels
 
                 return Main.HasAnyRecommendations ? "Доступны рекомендации по исправлению" : "—";
             }
+        }
+
+        public bool HasUserDetails_SubHosts
+        {
+            get
+            {
+                try
+                {
+                    return BuildUserDetailsSubHostLines(maxItems: 12).Count > 0;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
+
+        public string UserDetails_SubHosts
+        {
+            get
+            {
+                try
+                {
+                    var lines = BuildUserDetailsSubHostLines(maxItems: 12);
+                    return lines.Count == 0 ? "—" : string.Join(Environment.NewLine, lines);
+                }
+                catch
+                {
+                    return "—";
+                }
+            }
+        }
+
+        private List<string> BuildUserDetailsSubHostLines(int maxItems)
+        {
+            maxItems = Math.Clamp(maxItems, 1, 50);
+
+            var groupKey = (Main.ActiveApplyGroupKey ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(groupKey)) return new List<string>();
+
+            var members = Main.Results.GetGroupMembers(groupKey);
+            if (members == null || members.Count == 0) return new List<string>();
+
+            var lines = new List<string>(capacity: Math.Min(maxItems, members.Count));
+
+            foreach (var m in members)
+            {
+                if (m == null) continue;
+
+                var host = (m.DisplayHost ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(host)) continue;
+
+                var status = (m.PrimaryStatusText ?? m.StatusText ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(status)) status = "—";
+
+                var ip = (m.DisplayIp ?? string.Empty).Trim();
+                var ipSuffix = IPAddress.TryParse(ip, out _) ? $" ({ip})" : string.Empty;
+
+                lines.Add($"• {host} — {status}{ipSuffix}");
+
+                if (lines.Count >= maxItems) break;
+            }
+
+            return lines;
         }
 
         public string RawDetailsText

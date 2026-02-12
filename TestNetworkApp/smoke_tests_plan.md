@@ -884,6 +884,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** Проверка XAML/code-behind как текста + вызов `TestResultsManager.GetGroupMembers` на синтетических данных
 **Ожидаемый результат:** 1) wiring найден; 2) `GetGroupMembers` возвращает список, содержащий pinned домены
 
+**Test ID:** `UI-026`
+**Что проверяет:** P1.6 — Operator UI: подхосты агрегированной группы показываются в Expander «Подробнее»
+**Для чего:** Чтобы оператор видел состав «сервиса» (members), а не только anchor-домен
+**Критерий успеха:** В `Windows/OperatorWindow.xaml` есть binding на `Vm.UserDetails_SubHosts` и visibility-гейт `Vm.HasUserDetails_SubHosts`
+**Входные данные:** Проверка XAML как текста
+**Ожидаемый результат:** Оба binding-фрагмента найдены
+
 ---
 
 ## 7. Orchestration & Process Tracking

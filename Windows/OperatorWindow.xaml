@@ -217,6 +217,7 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="180"/>
@@ -243,6 +244,11 @@
 
                                 <TextBlock Grid.Row="6" Grid.Column="0" Text="Последнее действие" Opacity="0.75" Margin="0,4,0,0"/>
                                 <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding Vm.UserDetails_LastAction}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+
+                                <TextBlock Grid.Row="7" Grid.Column="0" Text="Подхосты" Opacity="0.75" Margin="0,4,0,0"
+                                           Visibility="{Binding Vm.HasUserDetails_SubHosts, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding Vm.UserDetails_SubHosts}" Margin="0,4,0,0" TextWrapping="Wrap"
+                                           Visibility="{Binding Vm.HasUserDetails_SubHosts, Converter={StaticResource BoolToVisibilityConverter}}"/>
                             </Grid>
 
                             <Expander Header="Диагностика (сырое)" Margin="0,8,0,0" IsExpanded="False">

@@ -72,8 +72,8 @@
 ### P1.6 CDN-подхосты — детали по раскрытию
 - [x] В XAML Engineer таблицы: при клике на строку ×N → раскрыть список подхостов (RowDetails)
 - [x] В `TestResultsManager`: метод `GetGroupMembers(string groupKey)` → `IReadOnlyList<TestResult>`
-- [ ] В Operator UI: подхосты в Expander «Подробнее» внутри карточки группы
-- [x] Smoke ui: `UI-024` — wiring раскрытия ×N + `GetGroupMembers` (без GUI)
+- [x] В Operator UI: подхосты в Expander «Подробнее» внутри карточки группы
+- [x] Smoke ui: `UI-024` (Engineer ×N) + `UI-026` (Operator «Подробнее»: подхосты)
 
 ### P1.7 Operator UI — визуальный дизайн
 - [ ] Создать `Wpf/Themes/OperatorDarkTheme.xaml` — тёмная палитра MaterialDesign
