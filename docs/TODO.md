@@ -124,6 +124,7 @@
 ### P1.15 Шум в логах и повторный init
 - [x] ConnectionMonitor (polling): отмена при shutdown не логируется как Error (TaskCanceled)
 - [x] MainViewModel.InitializeAsync: идемпотентность (двойной вызов из App + Window_Loaded не перезапускает bypass)
+- [x] MainWindow.Loaded: убран дублирующий вызов InitializeAsync (SSoT: App.EnsureInitializedAsync)
 
 ---
 
