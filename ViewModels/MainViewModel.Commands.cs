@@ -24,6 +24,7 @@ namespace IspAudit.ViewModels
         public ICommand DisableAllBypassCommand { get; }
         public ICommand EngineerResetAllBypassCommand { get; }
         public ICommand ApplyRecommendationsCommand { get; }
+        public ICommand ApplyVerifiedWinCommand { get; }
         public ICommand ApplyEscalationCommand { get; }
         public ICommand ApplyDomainRecommendationsCommand { get; }
         public ICommand ApplyDomainGroupRecommendationsCommand { get; }

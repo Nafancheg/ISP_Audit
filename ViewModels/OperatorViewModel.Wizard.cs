@@ -408,7 +408,9 @@ namespace IspAudit.ViewModels
                 ? "Исправляю…"
                 : IsEscalationAvailableNow
                     ? "Усилить"
-                    : "Исправить";
+                    : Main.HasVerifiedWinForSelectedTarget
+                        ? "Применить проверенный обход"
+                        : "Исправить";
 
         public ICommand FixCommand => new RelayCommand(_ => ExecuteFix());
 
@@ -539,7 +541,7 @@ namespace IspAudit.ViewModels
 
         public bool ShowFixButton =>
             (Status == OperatorStatus.Warn || Status == OperatorStatus.Blocked)
-            && (Main.HasAnyRecommendations || IsEscalationAvailableNow)
+            && (Main.HasAnyRecommendations || Main.HasVerifiedWinForSelectedTarget || IsEscalationAvailableNow)
             && !Main.IsApplyRunning;
 
         public bool ShowPrimaryButton => !ShowFixButton;
@@ -596,6 +598,10 @@ namespace IspAudit.ViewModels
                 if (IsEscalationAvailableNow)
                 {
                     Main.ApplyEscalationCommand.Execute(null);
+                }
+                else if (Main.HasVerifiedWinForSelectedTarget)
+                {
+                    Main.ApplyVerifiedWinCommand.Execute(null);
                 }
                 else
                 {

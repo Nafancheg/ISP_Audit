@@ -1,6 +1,6 @@
 ﻿# ISP_Audit — TODO
 
-Дата актуализации: 12.02.2026
+Дата актуализации: 13.02.2026
 Выполненное → [CHANGELOG.md](../CHANGELOG.md). Архитектура → [ARCHITECTURE_CURRENT.md](../ARCHITECTURE_CURRENT.md). Аудит → [docs/audit4.md](audit4.md).
 
 ---
@@ -86,7 +86,7 @@
 - [x] Создать `Models/WinsEntry.cs`: запись подтверждённого успеха (apply + post-apply OK)
 - [x] Создать `Utils/WinsStore.cs`: persist в `state/wins_store.json` + ENV override `ISP_AUDIT_WINS_STORE_PATH`
 - [x] После post-apply retest OK (и только при наличии txId) → WinsStore.Persist(...)
-- [ ] При повторной встрече хоста: если есть Win → предложить «Применить проверенный обход?»
+- [x] При повторной встрече хоста: если есть Win → кнопка «Исправить» применяет проверенный обход (без подбора) и сразу запускает post-apply ретест
 - [x] Smoke: `REG-028` — wins round-trip (persist + load + best-match)
 
 ### P1.10 Operator UI — escalation GUI

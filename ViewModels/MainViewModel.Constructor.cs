@@ -351,6 +351,7 @@ namespace IspAudit.ViewModels
                 _ => ShowBypassPanel);
 
             ApplyRecommendationsCommand = new RelayCommand(async _ => await ApplyRecommendationsAsync(), _ => HasRecommendations && !IsApplyingRecommendations);
+            ApplyVerifiedWinCommand = new RelayCommand(async _ => await ApplyVerifiedWinAsync(), _ => ShowBypassPanel && HasVerifiedWinForSelectedTarget && !IsApplyingRecommendations);
             ApplyEscalationCommand = new RelayCommand(async _ => await ApplyEscalationAsync(), _ => ShowBypassPanel && !IsApplyingRecommendations);
             ApplyDomainRecommendationsCommand = new RelayCommand(async _ => await ApplyDomainRecommendationsAsync(), _ => HasDomainSuggestion && !IsApplyingRecommendations);
             ApplyDomainGroupRecommendationsCommand = new RelayCommand(async _ => await ApplyDomainGroupRecommendationsAsync(), _ => HasDomainGroupSuggestion && !IsApplyingRecommendations);
@@ -765,6 +766,18 @@ namespace IspAudit.ViewModels
                             _winsByHostKey[kvp.Key] = kvp.Value;
                         }
                     }
+
+                    UiBeginInvoke(() =>
+                    {
+                        try
+                        {
+                            OnPropertyChanged(nameof(HasVerifiedWinForSelectedTarget));
+                        }
+                        catch
+                        {
+                            // ignore
+                        }
+                    });
                 }
                 catch
                 {

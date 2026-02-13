@@ -306,6 +306,7 @@ IPv6: селективность недоступна, сохраняется dr
 11. **Отчёт**: `TestResultsManager` → UI. `NoiseHostFilter` — только при отображении OK.
 12. **Реакция**: manual apply → `BypassController.ApplyIntelPlanAsync(...)`, auto-apply (опционально) → пост-Apply ретест.
     - P1.9: при `post-apply verdict=OK` и наличии `txId` в UI записывается «win» (подтверждённый успешный обход) в `state\wins_store.json`.
+    - P1.9: если для цели найден «win», Operator UI применяет wins-план без подбора стратегий и сразу запускает пост-Apply ретест.
 
 ---
 

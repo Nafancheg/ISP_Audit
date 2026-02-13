@@ -25,6 +25,23 @@ namespace IspAudit.ViewModels
     {
         #region Command Handlers
 
+        public bool TryGetVerifiedWinForHostKey(string? hostKey, out WinsEntry? win)
+        {
+            win = null;
+            try
+            {
+                lock (_winsSync)
+                {
+                    return WinsStore.TryGetBestMatch(_winsByHostKey, hostKey, out win);
+                }
+            }
+            catch
+            {
+                win = null;
+                return false;
+            }
+        }
+
         private string GetStableApplyGroupKeyForHostKey(string? hostKey)
         {
             try
@@ -189,6 +206,164 @@ namespace IspAudit.ViewModels
             finally
             {
                 IsApplyingRecommendations = false;
+            }
+        }
+
+        private async Task ApplyVerifiedWinAsync()
+        {
+            if (IsApplyingRecommendations)
+            {
+                return;
+            }
+
+            if (!ShowBypassPanel)
+            {
+                Log("[APPLY][WIN] Bypass недоступен (нужны права администратора)");
+                return;
+            }
+
+            IsApplyingRecommendations = true;
+            try
+            {
+                var preferredHostKey = GetPreferredHostKey(SelectedTestResult);
+                if (!TryGetVerifiedWinForHostKey(preferredHostKey, out var win) || win == null)
+                {
+                    Log("[APPLY][WIN] Нет сохранённого wins-плана для цели");
+                    return;
+                }
+
+                var plan = TryBuildBypassPlanFromWin(win);
+                if (!PlanHasApplicableActions(plan))
+                {
+                    Log("[APPLY][WIN] Wins-план пустой (нет применимых действий)");
+                    return;
+                }
+
+                var txId = Guid.NewGuid().ToString("N");
+                using var op = BypassOperationContext.Enter(txId, "ui_apply_verified_win", preferredHostKey);
+
+                var outcome = await Orchestrator.ApplyProvidedPlanAsync(Bypass, plan, preferredHostKey).ConfigureAwait(false);
+
+                // Практический UX: сразу запускаем короткий пост-Apply ретест по цели.
+                if (outcome != null && string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                {
+                    var groupKeyForCheck = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
+                    SetPostApplyCheckStatusForGroupKey(groupKeyForCheck, IsRunning ? PostApplyCheckStatus.Queued : PostApplyCheckStatus.Running);
+                }
+                _ = Orchestrator.StartPostApplyRetestAsync(Bypass, preferredHostKey, txId);
+
+                if (Bypass.IsBypassActive && SelectedTestResult != null && outcome != null)
+                {
+                    var groupKey = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
+
+                    if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ApplyAppliedStrategyToGroupKey(groupKey, outcome.AppliedStrategyText);
+                        MarkAppliedBypassTargetsForGroupKey(groupKey);
+
+                        // user-initiated apply фиксирует groupKey для этой цели.
+                        PinHostKeyToGroupKeyBestEffort(outcome.HostKey, groupKey);
+                        PersistManualParticipationBestEffort();
+                    }
+
+                    var endpoints = Orchestrator.GetCachedCandidateIpEndpointsSnapshot(outcome.HostKey);
+                    if (endpoints.Count == 0)
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
+                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                    }
+
+                    if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _groupBypassAttachmentStore.UpdateAttachmentFromApply(groupKey, outcome.HostKey, endpoints, outcome.PlanText);
+                        PersistManualParticipationBestEffort();
+                    }
+
+                    var winRef = string.IsNullOrWhiteSpace(win.CorrelationId) ? string.Empty : $"win_tx={win.CorrelationId}";
+                    var reasoning = string.IsNullOrWhiteSpace(winRef)
+                        ? (plan.Reasoning ?? string.Empty)
+                        : $"{winRef}; {plan.Reasoning}";
+
+                    Bypass.RecordApplyTransaction(outcome.HostKey, groupKey, endpoints, outcome.AppliedStrategyText, outcome.PlanText, reasoning,
+                        transactionIdOverride: txId,
+                        resultStatus: outcome.Status,
+                        error: outcome.Error,
+                        rollbackStatus: outcome.RollbackStatus,
+                        cancelReason: outcome.CancelReason,
+                        applyCurrentPhase: outcome.ApplyCurrentPhase,
+                        applyTotalElapsedMs: outcome.ApplyTotalElapsedMs,
+                        applyPhases: outcome.ApplyPhases);
+                    UpdateLastApplyTransactionTextForGroupKey(groupKey);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Log("[APPLY][WIN] Отмена применения wins-плана");
+            }
+            catch (Exception ex)
+            {
+                Log($"[APPLY][WIN] Ошибка применения wins-плана: {ex.Message}");
+            }
+            finally
+            {
+                IsApplyingRecommendations = false;
+            }
+        }
+
+        private static bool PlanHasApplicableActions(BypassPlan plan)
+            => plan.Strategies.Count > 0 || plan.DropUdp443 || plan.AllowNoSni;
+
+        private static BypassPlan TryBuildBypassPlanFromWin(WinsEntry win)
+        {
+            try
+            {
+                if (win.Plan != null && PlanHasApplicableActions(win.Plan))
+                {
+                    return win.Plan;
+                }
+
+                var tokens = SplitPlanTokens(win.PlanText ?? string.Empty);
+
+                var dropUdp443 = tokens.Contains("DROP_UDP_443") || tokens.Contains("QUIC_TO_TCP");
+                var allowNoSni = tokens.Contains("ALLOW_NO_SNI") || tokens.Contains("NO_SNI");
+
+                var plan = new BypassPlan
+                {
+                    PlannedAtUtc = DateTimeOffset.UtcNow,
+                    PlanConfidence = 100,
+                    Reasoning = "wins_store",
+                    ForDiagnosis = default,
+                    DropUdp443 = dropUdp443,
+                    AllowNoSni = allowNoSni,
+                };
+
+                if (tokens.Contains("TLS_FRAGMENT"))
+                {
+                    plan.Strategies.Add(new BypassStrategy { Id = StrategyId.TlsFragment, BasePriority = 0, Risk = RiskLevel.Low });
+                }
+                if (tokens.Contains("TLS_DISORDER"))
+                {
+                    plan.Strategies.Add(new BypassStrategy { Id = StrategyId.TlsDisorder, BasePriority = 0, Risk = RiskLevel.Low });
+                }
+                if (tokens.Contains("TLS_FAKE") || tokens.Contains("TLS_FAKE_FRAGMENT"))
+                {
+                    plan.Strategies.Add(new BypassStrategy { Id = StrategyId.TlsFakeTtl, BasePriority = 0, Risk = RiskLevel.Medium });
+                }
+                if (tokens.Contains("DROP_RST"))
+                {
+                    plan.Strategies.Add(new BypassStrategy { Id = StrategyId.DropRst, BasePriority = 0, Risk = RiskLevel.Medium });
+                }
+
+                return plan;
+            }
+            catch
+            {
+                return new BypassPlan
+                {
+                    PlannedAtUtc = DateTimeOffset.UtcNow,
+                    PlanConfidence = 0,
+                    Reasoning = "wins_store_error"
+                };
             }
         }
 
@@ -1084,9 +1259,9 @@ namespace IspAudit.ViewModels
 
         private void TryRecordWinFromPostApplyOkBestEffort(
             string hostKey,
-            string groupKey,
-            string verdict,
-            string mode,
+            string? groupKey,
+            string? verdict,
+            string? mode,
             string? details,
             string? correlationId,
             DateTimeOffset verifiedAtUtc)

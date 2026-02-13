@@ -86,6 +86,25 @@ namespace IspAudit.ViewModels
         public Task<ApplyOutcome?> ApplyRecommendationsAsync(BypassController bypassController)
             => ApplyRecommendationsAsync(bypassController, preferredHostKey: null);
 
+        /// <summary>
+        /// P1.9: применить уже известный план (wins) без подбора стратегий.
+        /// Используется Operator UI для «Применить проверенный обход».
+        /// </summary>
+        public Task<ApplyOutcome?> ApplyProvidedPlanAsync(BypassController bypassController, BypassPlan plan, string? preferredHostKey)
+        {
+            if (bypassController == null) throw new ArgumentNullException(nameof(bypassController));
+            if (plan == null) throw new ArgumentNullException(nameof(plan));
+
+            var hostKey = ResolveBestHostKeyForApply(preferredHostKey);
+            if (string.IsNullOrWhiteSpace(hostKey))
+            {
+                Log("[APPLY][WIN] Нет цели для применения wins-плана");
+                return Task.FromResult<ApplyOutcome?>(null);
+            }
+
+            return ApplyPlanInternalAsync(bypassController, hostKey, plan);
+        }
+
         public async Task<ApplyOutcome?> ApplyRecommendationsForDomainAsync(BypassController bypassController, string domainSuffix)
         {
             if (bypassController == null) throw new ArgumentNullException(nameof(bypassController));
@@ -553,7 +572,7 @@ namespace IspAudit.ViewModels
 
                 // Feedback: фиксируем контекст успешного apply, чтобы post-apply ретест мог записать успех/неуспех.
                 // Важно: контекст ключуется по hostKey (домен/IP), так как correlationId доступен только на уровне UI.
-                if (plan.Strategies.Count > 0)
+                if (PlanHasApplicableActions(plan))
                 {
                     _pendingFeedbackByHostKey[hostKey] = new PendingFeedbackContext(plan, DateTimeOffset.UtcNow);
                 }

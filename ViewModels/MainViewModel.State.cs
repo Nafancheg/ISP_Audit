@@ -489,6 +489,7 @@ namespace IspAudit.ViewModels
                 _selectedTestResult = value;
                 OnPropertyChanged(nameof(SelectedTestResult));
                 OnPropertyChanged(nameof(HasDomainSuggestion));
+                OnPropertyChanged(nameof(HasVerifiedWinForSelectedTarget));
 
                 // Важно для QUIC→TCP (селективный режим): если цель не задана, UDP/443 по IPv4 не глушится.
                 // Самый понятный UX: цель берём из выбранной строки результатов (если это не шумовой хост).
@@ -500,6 +501,23 @@ namespace IspAudit.ViewModels
                 // UX: в режиме "Фокус" при смене выбора хотим быстро показать строки активной группы
                 // и актуальную сводку "что сейчас применено".
                 RefreshResultsViewNow();
+            }
+        }
+
+        public bool HasVerifiedWinForSelectedTarget
+        {
+            get
+            {
+                try
+                {
+                    if (!ShowBypassPanel) return false;
+                    var hk = GetPreferredHostKey(SelectedTestResult);
+                    return TryGetVerifiedWinForHostKey(hk, out _);
+                }
+                catch
+                {
+                    return false;
+                }
             }
         }
 
