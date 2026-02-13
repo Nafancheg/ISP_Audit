@@ -176,8 +176,16 @@
 - [x] NuGet: `Microsoft.Extensions.DependencyInjection`
 - [x] `Utils/ServiceCollectionExtensions.cs`: регистрация всех сервисов
 - [x] `App.xaml.cs`: ServiceCollection → ConfigureServices → BuildServiceProvider
-- [ ] Постепенно: `new Service()` → `GetRequiredService<T>()`
 - [x] Начать с NoiseHostFilter: AddSingleton → инъекция через конструктор
+- [x] Переключено (первые потребители NoiseHostFilter):
+	- `MainViewModel`: принимает `NoiseHostFilter` (fallback-конструктор оставлен для back-compat)
+	- `DiagnosticOrchestrator`: принимает `NoiseHostFilter`, загрузка правил через `LoadFromFile(...)` на том же экземпляре
+	- `TestResultsManager`: принимает `NoiseHostFilter`, больше не обращается к `NoiseHostFilter.Instance` в hot-path логике
+- [ ] Осталось переключить:
+	- Убрать обращения к `NoiseHostFilter.Instance` в остальных местах (Converters/, Utils/, Pipeline stage и т.п.)
+	- Убрать/задепрекейтить `NoiseHostFilter.Initialize(...)` (сейчас остаётся в smoke-тестах TestNetworkApp)
+	- Расширить регистрации в DI: постепенно заменить `new ...` в `MainViewModel` на `GetRequiredService<T>()`/инъекцию
+	- Дальше по зависимостям с ресурсами: `TrafficEngine`, `BypassStateManager` (factory), `LiveTestingPipeline`, `StandardHostTester`, etc.
 
 ### 4.2 Устранение глобального состояния
 - [x] Удалить legacy `Config.ActiveProfile` (Profiles/*.json loader для целей диагностики)
