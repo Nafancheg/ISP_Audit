@@ -111,11 +111,6 @@ namespace IspAudit.ViewModels
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action<string>? OnLog;
 
-        public TestResultsManager()
-            : this(new NoiseHostFilter())
-        {
-        }
-
         public TestResultsManager(NoiseHostFilter noiseHostFilter)
         {
             _noiseHostFilter = noiseHostFilter ?? throw new ArgumentNullException(nameof(noiseHostFilter));

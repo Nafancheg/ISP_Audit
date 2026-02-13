@@ -961,7 +961,7 @@ namespace TestNetworkApp.Smoke
                     using var provider = BuildIspAuditProvider();
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                     var bypass = new BypassController(engine, autoHostlist);
-                    var orch = new DiagnosticOrchestrator(engine);
+                    var orch = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
 
                     var storePlan = typeof(DiagnosticOrchestrator)
                         .GetMethod("StorePlan", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
@@ -1031,7 +1031,7 @@ namespace TestNetworkApp.Smoke
                     using var provider = BuildIspAuditProvider();
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                     var bypass = new BypassController(engine, autoHostlist);
-                    var orch = new DiagnosticOrchestrator(engine);
+                    var orch = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
 
                     var storePlan = typeof(DiagnosticOrchestrator)
                         .GetMethod("StorePlan", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
@@ -1334,7 +1334,7 @@ namespace TestNetworkApp.Smoke
 
                     var beforeTxCount = bypass.ApplyTransactions.Count;
 
-                    var orch = new DiagnosticOrchestrator(manager);
+                    var orch = new DiagnosticOrchestrator(manager, new NoiseHostFilter());
 
                     var plan = new BypassPlan
                     {
@@ -1430,7 +1430,7 @@ namespace TestNetworkApp.Smoke
                     using var provider = BuildIspAuditProvider();
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                     var bypass = new BypassController(manager, autoHostlist);
-                    var orch = new DiagnosticOrchestrator(manager);
+                    var orch = new DiagnosticOrchestrator(manager, new NoiseHostFilter());
 
                     var beforeTxCount = bypass.ApplyTransactions.Count;
 
@@ -1517,7 +1517,7 @@ namespace TestNetworkApp.Smoke
                     using var provider = BuildIspAuditProvider();
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                     var bypass = new BypassController(manager, autoHostlist);
-                    var orch = new DiagnosticOrchestrator(manager);
+                    var orch = new DiagnosticOrchestrator(manager, new NoiseHostFilter());
 
                     var beforeTxCount = bypass.ApplyTransactions.Count;
 

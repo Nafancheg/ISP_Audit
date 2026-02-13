@@ -20,7 +20,7 @@ namespace TestNetworkApp.Smoke
             var sw = Stopwatch.StartNew();
 
             using var engine = new TrafficEngine();
-            var orchestrator = new DiagnosticOrchestrator(engine);
+            var orchestrator = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
             using var provider = BuildIspAuditProvider();
             var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
             var bypass = new BypassController(engine, autoHostlist);
@@ -72,7 +72,7 @@ namespace TestNetworkApp.Smoke
             => RunAsync("ORCH-001", "DiagnosticOrchestrator: ретест создает/завершает pipeline", () =>
             {
                 using var engine = new TrafficEngine();
-                var orchestrator = new DiagnosticOrchestrator(engine);
+                var orchestrator = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
                 using var provider = BuildIspAuditProvider();
                 var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                 var bypass = new BypassController(engine, autoHostlist);
@@ -107,7 +107,7 @@ namespace TestNetworkApp.Smoke
             }
 
             using var engine = new TrafficEngine();
-            var orchestrator = new DiagnosticOrchestrator(engine);
+            var orchestrator = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
 
             // Готовим _cts, иначе StartMonitoringServicesAsync не запустится.
             var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -159,7 +159,7 @@ namespace TestNetworkApp.Smoke
             => RunAsync("ORCH-003", "SNI гейтируется по отслеживаемому PID", () =>
             {
                 using var engine = new TrafficEngine();
-                var orchestrator = new DiagnosticOrchestrator(engine);
+                var orchestrator = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
 
                 var trackedPid = 111;
                 var otherPid = 222;
@@ -205,7 +205,7 @@ namespace TestNetworkApp.Smoke
             => RunAsync("ORCH-004", "Ранний SNI буферится и флашится после появления PID", () =>
             {
                 using var engine = new TrafficEngine();
-                var orchestrator = new DiagnosticOrchestrator(engine);
+                var orchestrator = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
 
                 var trackedPid = 333;
                 var pidTracker = new PidTrackerService(trackedPid);
@@ -256,7 +256,7 @@ namespace TestNetworkApp.Smoke
             var sw = Stopwatch.StartNew();
 
             using var engine = new TrafficEngine();
-            var orchestrator = new DiagnosticOrchestrator(engine);
+            var orchestrator = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
 
             using var proc = Process.Start(new ProcessStartInfo
             {

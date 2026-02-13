@@ -88,7 +88,8 @@ namespace TestNetworkApp.Smoke
                     await Task.Delay(50, ct).ConfigureAwait(false);
                 }
 
-                var mgr = new TestResultsManager();
+                var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                var mgr = new TestResultsManager(noiseHostFilter);
                 mgr.Initialize();
 
                 foreach (var line in uiLines)
@@ -291,7 +292,7 @@ namespace TestNetworkApp.Smoke
             var sw = Stopwatch.StartNew();
 
             using var engine = new TrafficEngine();
-            var orchestrator = new DiagnosticOrchestrator(engine);
+            var orchestrator = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
 
             using var proc = Process.Start(new ProcessStartInfo
             {

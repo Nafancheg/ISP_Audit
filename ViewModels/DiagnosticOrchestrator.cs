@@ -210,15 +210,15 @@ namespace IspAudit.ViewModels
         /// </summary>
         public Action<string, string>? ShowError { get; set; }
 
-        public DiagnosticOrchestrator(BypassStateManager stateManager, NoiseHostFilter? noiseHostFilter = null)
+        public DiagnosticOrchestrator(BypassStateManager stateManager, NoiseHostFilter noiseHostFilter)
         {
             _stateManager = stateManager ?? throw new ArgumentNullException(nameof(stateManager));
             _trafficEngine = _stateManager.TrafficEngine;
-            _noiseHostFilter = noiseHostFilter ?? new NoiseHostFilter();
+            _noiseHostFilter = noiseHostFilter ?? throw new ArgumentNullException(nameof(noiseHostFilter));
         }
 
-        public DiagnosticOrchestrator(TrafficEngine trafficEngine)
-            : this(BypassStateManager.GetOrCreate(trafficEngine, baseProfile: null, log: null), noiseHostFilter: null)
+        public DiagnosticOrchestrator(TrafficEngine trafficEngine, NoiseHostFilter noiseHostFilter)
+            : this(BypassStateManager.GetOrCreate(trafficEngine, baseProfile: null, log: null), noiseHostFilter)
         {
         }
 

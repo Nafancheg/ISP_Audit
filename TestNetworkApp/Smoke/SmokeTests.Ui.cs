@@ -1168,7 +1168,7 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Ui_TestResultsManager_AddsCardToObservableCollection(CancellationToken ct)
             => RunAsync("UI-008", "TestResultsManager: добавляет карточку", () =>
             {
-                var mgr = new TestResultsManager();
+                var mgr = new TestResultsManager(new NoiseHostFilter());
                 mgr.Initialize();
                 mgr.UpdateTestResult("example.com", TestStatus.Fail, "TCP timeout");
 
@@ -1185,7 +1185,7 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Ui_TestResultsManager_UpdatesExistingCard_NoDuplicates(CancellationToken ct)
             => RunAsync("UI-009", "TestResultsManager: обновляет карточку, не дублируя", () =>
             {
-                var mgr = new TestResultsManager();
+                var mgr = new TestResultsManager(new NoiseHostFilter());
                 mgr.Initialize();
                 mgr.UpdateTestResult("example.com", TestStatus.Fail, "TCP timeout");
                 mgr.UpdateTestResult("example.com", TestStatus.Pass, "OK");
@@ -1254,7 +1254,7 @@ namespace TestNetworkApp.Smoke
                     }
 
                     // 2) Функциональная проверка GetGroupMembers: pinned groupKey схлопывает members.
-                    var mgr = new TestResultsManager();
+                    var mgr = new TestResultsManager(new NoiseHostFilter());
                     mgr.Initialize();
 
                     var store = new GroupBypassAttachmentStore();
@@ -1353,7 +1353,7 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Ui_ParsePipelineMessage_ParsesUiLines(CancellationToken ct)
             => RunAsync("UI-010", "ParsePipelineMessage: парсит строки pipeline", () =>
             {
-                var mgr = new TestResultsManager();
+                var mgr = new TestResultsManager(new NoiseHostFilter());
                 mgr.Initialize();
 
                 // Формат UiWorker: "❌ ip:port SNI=... RDNS=... | DNS:✓ TCP:✗ TLS:✗ | TCP_TIMEOUT"
@@ -1388,7 +1388,7 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Ui_SniHostname_HasPriorityOverIp_InCardKey(CancellationToken ct)
             => RunAsync("UI-012", "SNI/hostname имеет приоритет над IP в ключе карточки", () =>
             {
-                var mgr = new TestResultsManager();
+                var mgr = new TestResultsManager(new NoiseHostFilter());
                 mgr.Initialize();
 
                 // Сначала приходит событие по IP.

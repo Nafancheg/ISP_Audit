@@ -194,9 +194,10 @@
 	- [x] Убрано использование/наличие `NoiseHostFilter.Initialize(...)` (legacy static API удалён)
 	- [x] Убраны скрытые fallback-конструкторы/пути создания `NoiseHostFilter` (например, `UnifiedTrafficFilter()` / `AutoHostlistService()` / `DomainGroupLearner(...)` overload)
 	- [x] `TrafficCollector` и `LiveTestingPipeline` больше не создают фильтр сами (`?? new ...` удалён) — фильтр передаётся явно
-	- Убрать оставшиеся локальные fallback-конструкторы, которые создают зависимости через `new ...` без DI (по мере миграции графа)
-	- Расширить регистрации в DI: постепенно заменить `new ...` в `MainViewModel` на `GetRequiredService<T>()`/инъекцию
-	- Дальше по зависимостям с ресурсами: `TrafficEngine`, `BypassStateManager` (factory), `LiveTestingPipeline`, `StandardHostTester`, etc.
+	- [x] Убраны fallback-конструкторы/пути, которые создавали `NoiseHostFilter` внутри `DiagnosticOrchestrator` / `TestResultsManager`
+	- [x] `MainViewModel`: граф `TrafficEngine`/`BypassStateManager`/`BypassController`/`DiagnosticOrchestrator`/`TestResultsManager`/`GroupBypassAttachmentStore` переведён на DI (без ручных `new`)
+	- [x] `TrafficEngine` и `BypassStateManager` зарегистрированы в DI (SSoT сохраняется через `BypassStateManager.GetOrCreate`)
+	- [ ] Дальше по зависимостям с ресурсами: `LiveTestingPipeline`, `StandardHostTester`, etc.
 
 ### 4.2 Устранение глобального состояния
 - [x] Удалить legacy `Config.ActiveProfile` (Profiles/*.json loader для целей диагностики)

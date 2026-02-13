@@ -173,7 +173,7 @@ namespace TestNetworkApp
         {
             Console.WriteLine("=== ISP_Audit UI Reducer Smoke ===\n");
 
-            var mgr = new TestResultsManager();
+            var mgr = new TestResultsManager(new IspAudit.Utils.NoiseHostFilter());
             mgr.OnLog += s => Console.WriteLine(s);
             mgr.Initialize();
 

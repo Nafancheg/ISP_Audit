@@ -256,7 +256,7 @@ namespace TestNetworkApp.Smoke
                 // через reflection к приватным методам (в проде эти методы питаются событиями ConnectionMonitor + DnsParserService).
 
                 var engine = new IspAudit.Core.Traffic.TrafficEngine(progress: null);
-                var orch = new IspAudit.ViewModels.DiagnosticOrchestrator(engine);
+                var orch = new IspAudit.ViewModels.DiagnosticOrchestrator(engine, new IspAudit.Utils.NoiseHostFilter());
 
                 var ip = IPAddress.Parse("203.0.113.30");
                 var port = 443;

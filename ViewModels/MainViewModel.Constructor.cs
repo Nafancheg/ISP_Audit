@@ -48,7 +48,7 @@ namespace IspAudit.ViewModels
         private readonly System.Collections.Generic.HashSet<string> _pendingManualRetestHostKeys = new(StringComparer.OrdinalIgnoreCase);
 
         // P0.1 Step 14: единый источник истины для group participation / pinning / merge состояния группы.
-        private readonly GroupBypassAttachmentStore _groupBypassAttachmentStore = new();
+        private readonly GroupBypassAttachmentStore _groupBypassAttachmentStore;
 
         // P1.7/P1.8: персист результата пост‑проверки по groupKey.
         private readonly object _postApplyChecksSync = new();
@@ -60,7 +60,15 @@ namespace IspAudit.ViewModels
         private readonly System.Collections.Generic.Dictionary<string, WinsEntry> _winsByHostKey =
             new(StringComparer.OrdinalIgnoreCase);
 
-        public MainViewModel(NoiseHostFilter noiseHostFilter, AutoHostlistService autoHostlistService)
+        public MainViewModel(
+            NoiseHostFilter noiseHostFilter,
+            AutoHostlistService autoHostlistService,
+            IspAudit.Core.Traffic.TrafficEngine trafficEngine,
+            BypassStateManager bypassStateManager,
+            BypassController bypassController,
+            DiagnosticOrchestrator orchestrator,
+            TestResultsManager resultsManager,
+            GroupBypassAttachmentStore groupBypassAttachmentStore)
         {
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             Log("MainViewModel: Инициализация");
@@ -68,29 +76,25 @@ namespace IspAudit.ViewModels
 
             _noiseHostFilter = noiseHostFilter ?? throw new ArgumentNullException(nameof(noiseHostFilter));
             _autoHostlistService = autoHostlistService ?? throw new ArgumentNullException(nameof(autoHostlistService));
+            _trafficEngine = trafficEngine ?? throw new ArgumentNullException(nameof(trafficEngine));
+            _bypassState = bypassStateManager ?? throw new ArgumentNullException(nameof(bypassStateManager));
+            Bypass = bypassController ?? throw new ArgumentNullException(nameof(bypassController));
+            Orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
+            Results = resultsManager ?? throw new ArgumentNullException(nameof(resultsManager));
+            _groupBypassAttachmentStore = groupBypassAttachmentStore ?? throw new ArgumentNullException(nameof(groupBypassAttachmentStore));
 
             // Явное согласие на DNS/DoH системного уровня — по умолчанию запрещено.
             // Важно: на старте только читаем из store, без записи обратно.
             _allowDnsDohSystemChanges = OperatorConsentStore.LoadOrDefault(defaultValue: false);
-
-            // Create TrafficEngine
-            var progress = new Progress<string>(msg => Log(msg));
-            _trafficEngine = new IspAudit.Core.Traffic.TrafficEngine(progress);
 
             _trafficEngine.OnPerformanceUpdate += ms =>
             {
                 Application.Current?.Dispatcher.BeginInvoke(() => TrafficEngineLatency = ms);
             };
 
-            // Единый владелец bypass/TrafficEngine
-            _bypassState = BypassStateManager.GetOrCreate(_trafficEngine, baseProfile: null, log: Log);
-
             // Прокидываем согласие в core слой (executor apply использует этот gate).
             _bypassState.AllowDnsDohSystemChanges = _allowDnsDohSystemChanges;
 
-            // Создаём контроллеры
-            Bypass = new BypassController(_bypassState, _autoHostlistService);
-            Orchestrator = new DiagnosticOrchestrator(_bypassState, _noiseHostFilter);
             // MVVM: инъекция UI-делегатов для диалогов (вместо прямого MessageBox в ViewModel)
             Orchestrator.ShowError = (title, msg) =>
                 System.Windows.MessageBox.Show(msg, title,
@@ -99,7 +103,6 @@ namespace IspAudit.ViewModels
                 System.Windows.MessageBox.Show(msg, title,
                     System.Windows.MessageBoxButton.OKCancel, System.Windows.MessageBoxImage.Question)
                 == System.Windows.MessageBoxResult.OK;
-            Results = new TestResultsManager(_noiseHostFilter);
 
             // P1.9: агрегация строк результатов по pinned groupKey (state/group_participation.json)
             Results.GroupBypassAttachmentStore = _groupBypassAttachmentStore;
@@ -930,24 +933,6 @@ namespace IspAudit.ViewModels
             try
             {
                 _networkChangeMonitor?.Dispose();
-            }
-            catch
-            {
-                // ignore
-            }
-
-            try
-            {
-                _bypassState.Dispose();
-            }
-            catch
-            {
-                // ignore
-            }
-
-            try
-            {
-                _trafficEngine.Dispose();
             }
             catch
             {
