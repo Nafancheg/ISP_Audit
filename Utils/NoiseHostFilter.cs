@@ -13,23 +13,35 @@ namespace IspAudit.Utils
     /// </summary>
     public class NoiseHostFilter
     {
-        private readonly List<Regex> _patterns = new();
-        private readonly List<Regex> _excludePatterns = new();
+        private static readonly string[] FallbackWildcardPatterns =
+        {
+            "*.arpa",
+            "*.local",
+            "*.localdomain"
+        };
+
+        // Важно: используем copy-on-write массивы, чтобы чтение было lock-free.
+        // Загрузка/перезагрузка создаёт новые массивы и атомарно подменяет ссылки.
+        private Regex[] _patterns = Array.Empty<Regex>();
+        private Regex[] _excludePatterns = Array.Empty<Regex>();
         private readonly IProgress<string>? _progress;
         
         /// <summary>
         /// Количество загруженных паттернов
         /// </summary>
-        public int PatternCount => _patterns.Count;
+        public int PatternCount => _patterns.Length;
         
         /// <summary>
         /// Количество исключений (whitelist)
         /// </summary>
-        public int ExcludeCount => _excludePatterns.Count;
+        public int ExcludeCount => _excludePatterns.Length;
 
         public NoiseHostFilter(IProgress<string>? progress = null)
         {
             _progress = progress;
+
+            // Базовые паттерны должны быть всегда, даже без noise_hosts.json.
+            SetFallbackPatterns(progressOverride: null);
         }
 
         /// <summary>
@@ -44,12 +56,25 @@ namespace IspAudit.Utils
             if (!File.Exists(filePath))
             {
                 progress?.Report($"[NoiseFilter] ⚠ Файл {filePath} не найден! Используем только базовые фильтры (local/arpa).");
-                LoadFallbackPatterns();
+                SetFallbackPatterns(progressOverride: progress);
                 return false;
             }
 
             try
             {
+                var nextPatterns = new List<Regex>();
+                var nextExcludePatterns = new List<Regex>();
+
+                // Базовые паттерны всегда включены.
+                foreach (var pattern in FallbackWildcardPatterns)
+                {
+                    var regex = WildcardToRegex(pattern);
+                    if (regex != null)
+                    {
+                        nextPatterns.Add(regex);
+                    }
+                }
+
                 var json = File.ReadAllText(filePath);
                 var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
@@ -57,7 +82,7 @@ namespace IspAudit.Utils
                 if (!root.TryGetProperty("patterns", out var patternsElement))
                 {
                     progress?.Report("[NoiseFilter] JSON не содержит секции 'patterns'");
-                    LoadFallbackPatterns();
+                    SetFallbackPatterns(progressOverride: progress);
                     return false;
                 }
 
@@ -75,7 +100,7 @@ namespace IspAudit.Utils
                             {
                                 var regex = WildcardToRegex(pattern);
                                 if (regex != null)
-                                    _patterns.Add(regex);
+                                    nextPatterns.Add(regex);
                             }
                         }
                     }
@@ -90,16 +115,19 @@ namespace IspAudit.Utils
                             {
                                 var regex = WildcardToRegex(pattern);
                                 if (regex != null)
-                                    _excludePatterns.Add(regex);
+                                    nextExcludePatterns.Add(regex);
                             }
                         }
                     }
                 }
 
-                progress?.Report($"[NoiseFilter] Загружено {_patterns.Count} паттернов, {_excludePatterns.Count} исключений из файла");
+                _patterns = nextPatterns.ToArray();
+                _excludePatterns = nextExcludePatterns.ToArray();
+
+                progress?.Report($"[NoiseFilter] Загружено {_patterns.Length} паттернов, {_excludePatterns.Length} исключений из файла");
                 
                 // Логируем первые 5 паттернов для отладки
-                if (_patterns.Count > 0)
+                if (_patterns.Length > 0)
                 {
                     var sample = string.Join(", ", _patterns.Take(5).Select(p => p.ToString()));
                     progress?.Report($"[NoiseFilter] Примеры паттернов: {sample}");
@@ -110,7 +138,7 @@ namespace IspAudit.Utils
             catch (Exception ex)
             {
                 progress?.Report($"[NoiseFilter] Ошибка загрузки: {ex.Message}");
-                LoadFallbackPatterns();
+                SetFallbackPatterns(progressOverride: progress);
                 return false;
             }
         }
@@ -127,14 +155,16 @@ namespace IspAudit.Utils
             var lower = hostname.Trim().TrimEnd('.').ToLowerInvariant();
 
             // Сначала проверяем исключения (whitelist) — они имеют приоритет
-            foreach (var exclude in _excludePatterns)
+            var excludes = _excludePatterns;
+            foreach (var exclude in excludes)
             {
                 if (exclude.IsMatch(lower))
                     return false;
             }
 
             // Затем проверяем паттерны фильтрации
-            foreach (var pattern in _patterns)
+            var patterns = _patterns;
+            foreach (var pattern in patterns)
             {
                 if (pattern.IsMatch(lower))
                     return true;
@@ -153,13 +183,15 @@ namespace IspAudit.Utils
 
             var lower = hostname.Trim().TrimEnd('.').ToLowerInvariant();
 
-            foreach (var exclude in _excludePatterns)
+            var excludes = _excludePatterns;
+            foreach (var exclude in excludes)
             {
                 if (exclude.IsMatch(lower))
                     return $"Whitelisted by {exclude}";
             }
 
-            foreach (var pattern in _patterns)
+            var patterns = _patterns;
+            foreach (var pattern in patterns)
             {
                 if (pattern.IsMatch(lower))
                     return $"Matched noise pattern {pattern}";
@@ -169,25 +201,24 @@ namespace IspAudit.Utils
         }
 
         /// <summary>
-        /// Минимальные fallback-паттерны (только технические)
+        /// Минимальные fallback-паттерны (только технические).
+        /// Важно: этот набор должен быть всегда (даже при успешной загрузке файла).
         /// </summary>
-        private void LoadFallbackPatterns()
+        private void SetFallbackPatterns(IProgress<string>? progressOverride)
         {
-            var fallback = new[]
-            {
-                "*.arpa",
-                "*.local",
-                "*.localdomain"
-            };
-
-            foreach (var pattern in fallback)
+            var patterns = new List<Regex>();
+            foreach (var pattern in FallbackWildcardPatterns)
             {
                 var regex = WildcardToRegex(pattern);
                 if (regex != null)
-                    _patterns.Add(regex);
+                    patterns.Add(regex);
             }
-            
-            _progress?.Report($"[NoiseFilter] Загружено {fallback.Length} базовых паттернов (fallback)");
+
+            _patterns = patterns.ToArray();
+            _excludePatterns = Array.Empty<Regex>();
+
+            var progress = progressOverride ?? _progress;
+            progress?.Report($"[NoiseFilter] Загружено {FallbackWildcardPatterns.Length} базовых паттернов (fallback)");
         }
 
         /// <summary>
@@ -215,47 +246,6 @@ namespace IspAudit.Utils
             }
         }
 
-        #region Singleton для удобства (опционально)
-        
-        private static NoiseHostFilter? _instance;
-        private static readonly object _lock = new();
-        
-        /// <summary>
-        /// Глобальный экземпляр фильтра.
-        /// Используйте Initialize() для загрузки из файла.
-        /// </summary>
-        public static NoiseHostFilter Instance
-        {
-            get
-            {
-                if (_instance == null)
-                {
-                    lock (_lock)
-                    {
-                        if (_instance == null)
-                        {
-                            _instance = new NoiseHostFilter();
-                            // Если не инициализирован явно, используем fallback
-                            _instance.LoadFallbackPatterns();
-                        }
-                    }
-                }
-                return _instance;
-            }
-        }
-        
-        /// <summary>
-        /// Инициализирует глобальный фильтр из файла
-        /// </summary>
-        public static bool Initialize(string filePath, IProgress<string>? progress = null)
-        {
-            lock (_lock)
-            {
-                _instance = new NoiseHostFilter(progress);
-                return _instance.LoadFromFile(filePath);
-            }
-        }
-        
-        #endregion
+        // Singleton API удалён: фильтр должен приходить через DI/конструктор.
     }
 }

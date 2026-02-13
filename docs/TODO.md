@@ -180,24 +180,23 @@
 - [x] Переключено (первые потребители NoiseHostFilter):
 	- `MainViewModel`: принимает `NoiseHostFilter` (fallback-конструктор оставлен для back-compat)
 	- `DiagnosticOrchestrator`: принимает `NoiseHostFilter`, загрузка правил через `LoadFromFile(...)` на том же экземпляре
-	- `TestResultsManager`: принимает `NoiseHostFilter`, больше не обращается к `NoiseHostFilter.Instance` в hot-path логике
+	- `TestResultsManager`: принимает `NoiseHostFilter`, hot-path логика без глобального состояния
 	- `UnifiedTrafficFilter`: принимает `NoiseHostFilter` (в оркестраторе создаётся с инъекцией)
 	- `LiveTestingPipeline` (classifier stage): перепроверка шума через `ITrafficFilter.IsNoise(...)`
 	- `DomainGroupLearner`: принимает `NoiseHostFilter` (создаётся из `TestResultsManager` с инъекцией)
 	- `DnsParserService`: принимает `NoiseHostFilter` (создаётся из оркестратора с инъекцией)
 	- `AutoHostlistService`: принимает `NoiseHostFilter` (fallback-конструктор оставлен)
-	- `Converters/TestResultGroupConverters`: `NoiseHostFilter` резолвится из DI через `App` (с fallback на `NoiseHostFilter.Instance`)
-	- `TestNetworkApp smoke`: CFG-004/CFG-005/PIPE-006 переведены на DI (`ServiceCollection.AddIspAuditServices()`), `NoiseHostFilter.Initialize(...)` больше не используется
+	- `Converters/TestResultGroupConverters`: `NoiseHostFilter` резолвится из DI через `App` (fallback: локальный экземпляр без static)
+	- `TestNetworkApp smoke`: CFG-004/CFG-005/PIPE-006 переведены на DI (`ServiceCollection.AddIspAuditServices()`), legacy static API `NoiseHostFilter.Initialize/Instance` удалён
 - [ ] Осталось переключить:
-	- Убрать обращения к `NoiseHostFilter.Instance` в остальных местах (Utils/, TestNetworkApp smoke и т.п.)
-	- Убрать/задепрекейтить `NoiseHostFilter.Initialize(...)` (legacy API; больше не используется в smoke-тестах, но остаётся как back-compat)
+	- Убрать локальные fallback-конструкторы, которые создают `new NoiseHostFilter()` без DI (по мере миграции графа)
 	- Расширить регистрации в DI: постепенно заменить `new ...` в `MainViewModel` на `GetRequiredService<T>()`/инъекцию
 	- Дальше по зависимостям с ресурсами: `TrafficEngine`, `BypassStateManager` (factory), `LiveTestingPipeline`, `StandardHostTester`, etc.
 
 ### 4.2 Устранение глобального состояния
 - [x] Удалить legacy `Config.ActiveProfile` (Profiles/*.json loader для целей диагностики)
 - [x] Удалить legacy `Program.Targets`
-- [ ] NoiseHostFilter.Instance → убрать static, принимать через конструктор (DI)
+- [x] NoiseHostFilter → удалён static singleton API, сервис передаётся через конструктор/DI
 - [ ] BypassStateManager.GetOrCreate → registered factory в DI
 
 ### 4.3 Декомпозиция DiagnosticOrchestrator

@@ -42,7 +42,7 @@ namespace IspAudit.Utils
         public TimeSpan PublishThrottle { get; set; } = TimeSpan.FromSeconds(1);
 
         public AutoHostlistService()
-            : this(NoiseHostFilter.Instance)
+            : this(new NoiseHostFilter())
         {
         }
 

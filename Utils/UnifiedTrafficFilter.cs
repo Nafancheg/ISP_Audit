@@ -17,7 +17,7 @@ namespace IspAudit.Utils
         private readonly NoiseHostFilter _noiseHostFilter;
 
         public UnifiedTrafficFilter()
-            : this(NoiseHostFilter.Instance)
+            : this(new NoiseHostFilter())
         {
         }
 

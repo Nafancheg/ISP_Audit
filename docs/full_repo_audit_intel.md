@@ -467,13 +467,13 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 | `TrafficEngine` | 4 | 3 | **WinDivert менеджер** |
 | `LiveTestingPipeline` | 1 | 6 | **Pipeline обработки** |
 | `Config` | 10+ | 2 | **Глобальная конфигурация** |
-| `NoiseHostFilter` | 5 | 0 | **Singleton фильтр** |
+| `NoiseHostFilter` | 5 | 0 | **DI singleton фильтр** |
 
 ### 1.3 Скрытые/глобальные зависимости
 
 | Глобальный элемент | Используется в | Риск |
 |-------------------|----------------|------|
-| `NoiseHostFilter.Instance` | TrafficCollector, TestResultsManager, LiveTestingPipeline | Singleton, сложно тестировать |
+| `NoiseHostFilter` (static удалён) | TrafficCollector, TestResultsManager, LiveTestingPipeline | Раньше был singleton; теперь через DI/конструктор |
 | `FixService` (файлы бэкапа) | BypassController | Состояние на диске |
 | (legacy удалён) `Program.Targets` | - | Статический словарь целей (удалён) |
 | (legacy удалён) `Config.ActiveProfile` | - | Статическое свойство (удалено) |
@@ -567,7 +567,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 | Проблема | Детали |
 |----------|--------|
 | Namespace смешивание | `IspAudit`, `ISPAudit`, `ISPAudit.ViewModels`, `IspAudit.Utils` |
-| Глобальное состояние | `NoiseHostFilter.Instance` |
+| Глобальное состояние | (снижено) `NoiseHostFilter` больше не static singleton |
 | Дублирование моделей | `Target` (Models/), `TargetDefinition` (root), `Target` (ISPAudit.Models) |
 
 ### 3.4 Требуют рефакторинга
@@ -828,10 +828,10 @@ Program.cs
             │   │       └── NoiseHostFilter
             │   └── TrafficEngine (shared)
             └── TestResultsManager
-                └── NoiseHostFilter.Instance
+                └── NoiseHostFilter
 
 ГЛОБАЛЬНЫЕ:
-- NoiseHostFilter.Instance (singleton)
+- (снижено) `NoiseHostFilter` больше не static singleton (используется DI/конструктор)
 
 Примечание (16.12.2025):
 - Добавлен контрактный слой DPI Intelligence (INTEL): `Core/Intelligence/Contracts` (модели Signals/Diagnosis/Strategy).
@@ -889,7 +889,7 @@ Program.cs
 ---
 
 **Статус документа:** Актуален на 12.12.2025 (TLS bypass Phase2)
-Актуализация (Dev, 13.02.2026): добавлен минимальный DI контейнер (composition root в `App` через `Microsoft.Extensions.DependencyInjection`), регистрации вынесены в `Utils/ServiceCollectionExtensions.cs`; `NoiseHostFilter` частично переведён на инъекцию (включая ряд сервисов/пайплайна) и в WPF-конвертерах резолвится через `App` с fallback на `NoiseHostFilter.Instance`.
+Актуализация (Dev, 13.02.2026): добавлен минимальный DI контейнер (composition root в `App` через `Microsoft.Extensions.DependencyInjection`), регистрации вынесены в `Utils/ServiceCollectionExtensions.cs`; static singleton API `NoiseHostFilter.Initialize/Instance` удалён, `NoiseHostFilter` используется через DI/конструктор.
 **Очистка документации:** Выполнена (79 → 25 .md файлов)
 
 ---

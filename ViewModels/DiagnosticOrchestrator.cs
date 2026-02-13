@@ -214,7 +214,7 @@ namespace IspAudit.ViewModels
         {
             _stateManager = stateManager ?? throw new ArgumentNullException(nameof(stateManager));
             _trafficEngine = _stateManager.TrafficEngine;
-            _noiseHostFilter = noiseHostFilter ?? NoiseHostFilter.Instance;
+            _noiseHostFilter = noiseHostFilter ?? new NoiseHostFilter();
         }
 
         public DiagnosticOrchestrator(TrafficEngine trafficEngine)

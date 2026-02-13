@@ -60,7 +60,7 @@ namespace IspAudit.ViewModels
             new(StringComparer.OrdinalIgnoreCase);
 
         public MainViewModel()
-            : this(NoiseHostFilter.Instance)
+            : this(new NoiseHostFilter())
         {
         }
 

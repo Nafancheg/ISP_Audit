@@ -10,9 +10,7 @@ namespace IspAudit.Utils
         {
             if (services == null) throw new ArgumentNullException(nameof(services));
 
-            // ВАЖНО: NoiseHostFilter пока остаётся совместимым со старым singleton-путём.
-            // Регистрируем единый экземпляр, чтобы DI и legacy-код ссылались на один объект.
-            services.AddSingleton(_ => NoiseHostFilter.Instance);
+            services.AddSingleton<NoiseHostFilter>();
 
             services.AddSingleton<MainViewModel>();
 

@@ -112,7 +112,7 @@ namespace IspAudit.ViewModels
         public event Action<string>? OnLog;
 
         public TestResultsManager()
-            : this(NoiseHostFilter.Instance)
+            : this(new NoiseHostFilter())
         {
         }
 

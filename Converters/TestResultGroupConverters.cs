@@ -15,7 +15,7 @@ namespace IspAudit.Converters
             {
                 if (System.Windows.Application.Current is IspAudit.App app)
                 {
-                    return app.GetServiceOrNull<NoiseHostFilter>() ?? NoiseHostFilter.Instance;
+                    return app.GetServiceOrNull<NoiseHostFilter>() ?? new NoiseHostFilter();
                 }
             }
             catch
@@ -23,7 +23,7 @@ namespace IspAudit.Converters
                 // ignore
             }
 
-            return NoiseHostFilter.Instance;
+            return new NoiseHostFilter();
         }
 
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
@@ -129,7 +129,7 @@ namespace IspAudit.Converters
                 if (string.IsNullOrWhiteSpace(activeGroupKey)) return false;
 
                 var noiseHostFilter = (System.Windows.Application.Current as IspAudit.App)?.GetServiceOrNull<NoiseHostFilter>()
-                    ?? NoiseHostFilter.Instance;
+                    ?? new NoiseHostFilter();
 
                 var hostKey = TestResultToGroupKeyConverterHostKey(test, noiseHostFilter);
                 var rowGroupKey = TestResultToGroupKeyConverterGroupKey(hostKey, suffix);
@@ -224,7 +224,7 @@ namespace IspAudit.Converters
                 if (string.IsNullOrWhiteSpace(suffix)) return false;
 
                 var noiseHostFilter = (System.Windows.Application.Current as IspAudit.App)?.GetServiceOrNull<NoiseHostFilter>()
-                    ?? NoiseHostFilter.Instance;
+                    ?? new NoiseHostFilter();
 
                 var hostKey = GetPreferredHostKey(test, noiseHostFilter).Trim().Trim('.');
                 if (string.IsNullOrWhiteSpace(hostKey)) return false;
@@ -304,7 +304,7 @@ namespace IspAudit.Converters
                 if (test?.Target == null) return false;
 
                 var noiseHostFilter = (System.Windows.Application.Current as IspAudit.App)?.GetServiceOrNull<NoiseHostFilter>()
-                    ?? NoiseHostFilter.Instance;
+                    ?? new NoiseHostFilter();
 
                 var candidates = new[]
                 {

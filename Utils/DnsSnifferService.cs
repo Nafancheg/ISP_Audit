@@ -52,7 +52,7 @@ namespace IspAudit.Utils
         public IReadOnlyDictionary<string, DnsFailureInfo> FailedRequests => _failedRequests;
 
         public DnsParserService(TrafficMonitorFilter filter, IProgress<string>? progress = null)
-            : this(filter, NoiseHostFilter.Instance, progress)
+            : this(filter, new NoiseHostFilter(), progress)
         {
         }
 

@@ -42,7 +42,7 @@ namespace IspAudit.Utils
         private readonly Dictionary<string, int> _pairEvidence = new(StringComparer.OrdinalIgnoreCase);
 
         public DomainGroupLearner(DomainGroupCatalogState catalog, DomainGroupLearnerOptions? options = null, Action<string>? log = null)
-            : this(catalog, NoiseHostFilter.Instance, options, log)
+            : this(catalog, new NoiseHostFilter(), options, log)
         {
         }
 
