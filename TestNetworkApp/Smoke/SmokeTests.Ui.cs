@@ -651,15 +651,24 @@ namespace TestNetworkApp.Smoke
             }, ct);
 
         public static Task<SmokeTestResult> Ui_Operator_EscalationButton_AndApplyEscalation_Works_AdminOnly(CancellationToken ct)
-            => RunAsyncAwait("UI-023", "P1.11: Operator — «Усилить» после FAIL/PARTIAL запускает ApplyEscalation (admin-only, skip TLS apply)", async innerCt =>
+            => Ui_Operator_EscalationCommon_AdminOnly(
+                "UI-023",
+                "P1.10: Operator — «Усилить» после FAIL/PARTIAL запускает ApplyEscalation (admin-only, skip TLS apply)",
+                ct);
+
+        public static Task<SmokeTestResult> Ui_Operator_EscalationFlow_ApplyFail_Escalate_Retest_AdminOnly(CancellationToken ct)
+            => Ui_Operator_EscalationCommon_AdminOnly(
+                "UI-025",
+                "P1.10: Operator — escalation flow (FAIL/PARTIAL → «Усилить» → ApplyEscalation → post-apply ретест)",
+                ct);
+
+        private static Task<SmokeTestResult> Ui_Operator_EscalationCommon_AdminOnly(string testId, string title, CancellationToken ct)
+            => RunAsyncAwait(testId, title, async innerCt =>
             {
                 if (!TrafficEngine.HasAdministratorRights)
                 {
-                    return new SmokeTestResult("UI-023",
-                        "P1.11: Operator — «Усилить» после FAIL/PARTIAL запускает ApplyEscalation (admin-only, skip TLS apply)",
-                        SmokeOutcome.Skip,
-                        TimeSpan.Zero,
-                        "Требуются права администратора (в non-admin режиме «Усилить» недоступно)" );
+                    return new SmokeTestResult(testId, title, SmokeOutcome.Skip, TimeSpan.Zero,
+                        "Требуются права администратора (в non-admin режиме «Усилить» недоступно)");
                 }
 
                 string? prevSkipTls = null;
@@ -701,11 +710,8 @@ namespace TestNetworkApp.Smoke
 
                     if (!string.Equals(op.FixButtonText, "Усилить", StringComparison.Ordinal))
                     {
-                        return new SmokeTestResult("UI-023",
-                            "P1.11: Operator — «Усилить» после FAIL/PARTIAL запускает ApplyEscalation (admin-only, skip TLS apply)",
-                            SmokeOutcome.Fail,
-                            TimeSpan.Zero,
-                            $"Ожидали FixButtonText='Усилить', получили '{op.FixButtonText}'" );
+                        return new SmokeTestResult(testId, title, SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали FixButtonText='Усилить', получили '{op.FixButtonText}'");
                     }
 
                     // Выполняем ApplyEscalation по приватному async-методу (без RelayCommand async-void).
@@ -714,18 +720,11 @@ namespace TestNetworkApp.Smoke
 
                     if (vm.IsApplyingRecommendations)
                     {
-                        return new SmokeTestResult("UI-023",
-                            "P1.11: Operator — «Усилить» после FAIL/PARTIAL запускает ApplyEscalation (admin-only, skip TLS apply)",
-                            SmokeOutcome.Fail,
-                            TimeSpan.Zero,
-                            "IsApplyingRecommendations=true после завершения ApplyEscalationAsync (ожидали сброс в false)" );
+                        return new SmokeTestResult(testId, title, SmokeOutcome.Fail, TimeSpan.Zero,
+                            "IsApplyingRecommendations=true после завершения ApplyEscalationAsync (ожидали сброс в false)");
                     }
 
-                    return new SmokeTestResult("UI-023",
-                        "P1.11: Operator — «Усилить» после FAIL/PARTIAL запускает ApplyEscalation (admin-only, skip TLS apply)",
-                        SmokeOutcome.Pass,
-                        TimeSpan.Zero,
-                        "OK" );
+                    return new SmokeTestResult(testId, title, SmokeOutcome.Pass, TimeSpan.Zero, "OK");
                 }
                 finally
                 {

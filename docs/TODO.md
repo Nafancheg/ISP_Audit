@@ -90,11 +90,11 @@
 - [x] Smoke: `REG-028` — wins round-trip (persist + load + best-match)
 
 ### P1.10 Operator UI — escalation GUI
-- [ ] При PostApplyStatus == FAIL/PARTIAL → IsEscalationAvailable = true, CTA = «Усилить»
-- [ ] EscalateCommand: ApplyEscalation(currentGroupKey) → более агрессивная стратегия
-- [ ] После escalation: авто post-apply retest → обновление статуса
-- [ ] Лог: `[ESCALATION] group={key} from={old} to={new} result={OK/FAIL}`
-- [ ] Smoke: `UI-025` — escalation flow (apply → FAIL → escalate → retest)
+- [x] При PostApplyStatus == FAIL/PARTIAL → IsEscalationAvailable = true, CTA = «Усилить»
+- [x] EscalateCommand: ApplyEscalation(currentGroupKey) → более агрессивная стратегия
+- [x] После escalation: авто post-apply retest → обновление статуса
+- [x] Лог: `[ESCALATION] group={key} from={old} to={new} result={OK/FAIL}`
+- [x] Smoke: `UI-025` — escalation flow (apply → FAIL → escalate → retest)
 
 ### P1.11 Стабилизация YouTube/Google (эталонные сценарии)
 - [ ] Документ `docs/scenarios/youtube_baseline.md`: браузер, провайдер, профиль, QUIC вкл/выкл, ожидаемый результат

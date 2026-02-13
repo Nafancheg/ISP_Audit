@@ -394,6 +394,20 @@ namespace IspAudit.ViewModels
                     return;
                 }
 
+                try
+                {
+                    var groupKeyForLog = ComputeApplyGroupKey(outcome.HostKey, Results.SuggestedDomainSuffix);
+                    var prevTx = Bypass.TryGetLatestApplyTransactionForGroupKey(groupKeyForLog);
+                    var from = string.IsNullOrWhiteSpace(prevTx?.AppliedStrategyText) ? "none" : prevTx.AppliedStrategyText.Trim();
+                    var to = string.IsNullOrWhiteSpace(outcome.AppliedStrategyText) ? "unknown" : outcome.AppliedStrategyText.Trim();
+                    var result = string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase) ? "OK" : "FAIL";
+                    Log($"[ESCALATION] group={groupKeyForLog} from={from} to={to} result={result}");
+                }
+                catch
+                {
+                    // ignore
+                }
+
                 // Практический UX: сразу запускаем короткий пост-Apply ретест по цели.
                 if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
                 {

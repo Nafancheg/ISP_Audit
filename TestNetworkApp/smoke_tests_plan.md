@@ -877,6 +877,13 @@ Legacy-классификатор удалён. Классификацию и ф
 **Входные данные:** Инъекция lastIntelPlan/hostKey через reflection + принудительный `post‑apply verdict=FAIL` в `OperatorViewModel`
 **Ожидаемый результат:** `FixButtonText == "Усилить"`, `ApplyEscalationAsync` завершился, `IsApplyingRecommendations == false`
 
+**Test ID:** `UI-025`
+**Что проверяет:** P1.10 — escalation flow: FAIL/PARTIAL → «Усилить» → ApplyEscalation → post‑apply ретест
+**Для чего:** Чтобы P1.10 не деградировал при рефакторингах (кнопка/команда/ретест должны оставаться связаны)
+**Критерий успеха:** При admin правах и вердикте post‑apply `FAIL` кнопка `FixButtonText` становится `Усилить`, а `ApplyEscalationAsync` отрабатывает и не оставляет UI в состоянии “применение в процессе”
+**Входные данные:** Аналогично `UI-023` (синтетический basePlan + принудительный verdict)
+**Ожидаемый результат:** `FixButtonText == "Усилить"`, `ApplyEscalationAsync` завершился, `IsApplyingRecommendations == false`
+
 **Test ID:** `UI-024`
 **Что проверяет:** P1.6 — раскрытие CDN‑подхостов (бейдж `×N`): wiring `RowDetailsTemplate` и обработчик клика
 **Для чего:** Чтобы в Engineer UI можно было раскрыть агрегированную строку и увидеть участники группы (members)
