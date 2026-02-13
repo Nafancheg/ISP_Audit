@@ -19,6 +19,7 @@ using IspAudit.Core.Models;
 using IspAudit.Core.Modules;
 using IspAudit.Core.Traffic.Filters;
 using IspAudit.Utils;
+using Microsoft.Extensions.DependencyInjection;
 
 using BypassTransportProtocol = IspAudit.Bypass.TransportProtocol;
 
@@ -622,7 +623,8 @@ namespace TestNetworkApp.Smoke
             => RunAsync("PIPE-006", "NoiseHostFilter применяется только на этапе отображения", () =>
             {
                 // В GUI этот фильтр инициализируется в DiagnosticOrchestrator.
-                // Для smoke-теста делаем то же, иначе singleton NoiseHostFilter работает только на fallback-паттернах.
+                // Для smoke-теста имитируем DI-путь: резолвим NoiseHostFilter и загружаем правила из файла,
+                // иначе NoiseHostFilter будет работать только на fallback-паттернах.
                 var noisePath = TryFindNoiseHostsJsonPath();
                 if (string.IsNullOrWhiteSpace(noisePath))
                 {
@@ -630,9 +632,13 @@ namespace TestNetworkApp.Smoke
                         "Не удалось найти noise_hosts.json (нужен для корректного распознавания шумовых доменов)");
                 }
 
-                NoiseHostFilter.Initialize(noisePath);
+                var services = new ServiceCollection();
+                services.AddIspAuditServices();
+                using var provider = services.BuildServiceProvider();
+                var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                noiseHostFilter.LoadFromFile(noisePath);
 
-                var filter = new UnifiedTrafficFilter();
+                var filter = new UnifiedTrafficFilter(noiseHostFilter);
 
                 var host = new HostDiscovered(
                     Key: "203.0.113.10:443:TCP",

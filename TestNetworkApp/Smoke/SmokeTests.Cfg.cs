@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
 using IspAudit.Utils;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace TestNetworkApp.Smoke
 {
@@ -163,39 +164,48 @@ namespace TestNetworkApp.Smoke
             }, ct);
 
         public static Task<SmokeTestResult> Cfg_NoiseHostFilter_Singleton(CancellationToken ct)
-            => RunAsync("CFG-004", "NoiseHostFilter.Instance возвращает один экземпляр", () =>
+            => RunAsync("CFG-004", "DI: NoiseHostFilter резолвится как singleton", () =>
             {
-                var a = NoiseHostFilter.Instance;
-                var b = NoiseHostFilter.Instance;
+                var services = new ServiceCollection();
+                services.AddIspAuditServices();
+                using var provider = services.BuildServiceProvider();
+
+                var a = provider.GetRequiredService<NoiseHostFilter>();
+                var b = provider.GetRequiredService<NoiseHostFilter>();
                 if (!ReferenceEquals(a, b))
                 {
-                    return new SmokeTestResult("CFG-004", "NoiseHostFilter.Instance возвращает один экземпляр", SmokeOutcome.Fail, TimeSpan.Zero,
-                        "Instance вернул разные объекты");
+                    return new SmokeTestResult("CFG-004", "DI: NoiseHostFilter резолвится как singleton", SmokeOutcome.Fail, TimeSpan.Zero,
+                        "DI вернул разные объекты NoiseHostFilter");
                 }
 
-                return new SmokeTestResult("CFG-004", "NoiseHostFilter.Instance возвращает один экземпляр", SmokeOutcome.Pass, TimeSpan.Zero,
-                    "OK: singleton работает");
+                return new SmokeTestResult("CFG-004", "DI: NoiseHostFilter резолвится как singleton", SmokeOutcome.Pass, TimeSpan.Zero,
+                    "OK: singleton lifetime в DI работает");
             }, ct);
 
         public static Task<SmokeTestResult> Cfg_NoiseHostFilter_LoadAndMatch(CancellationToken ct)
-            => RunAsync("CFG-005", "Загрузка noise_hosts.json + IsNoise(fonts.googleapis.com)", () =>
+            => RunAsync("CFG-005", "DI: NoiseHostFilter.LoadFromFile(noise_hosts.json) + IsNoise(fonts.googleapis.com)", () =>
             {
                 var noisePath = TryFindNoiseHostsJsonPath();
                 if (string.IsNullOrWhiteSpace(noisePath))
                 {
-                    return new SmokeTestResult("CFG-005", "Загрузка noise_hosts.json + IsNoise(fonts.googleapis.com)", SmokeOutcome.Fail, TimeSpan.Zero,
+                    return new SmokeTestResult("CFG-005", "DI: NoiseHostFilter.LoadFromFile(noise_hosts.json) + IsNoise(fonts.googleapis.com)", SmokeOutcome.Fail, TimeSpan.Zero,
                         "Не удалось найти noise_hosts.json");
                 }
 
-                NoiseHostFilter.Initialize(noisePath);
+                var services = new ServiceCollection();
+                services.AddIspAuditServices();
+                using var provider = services.BuildServiceProvider();
+                var filter = provider.GetRequiredService<NoiseHostFilter>();
 
-                if (!NoiseHostFilter.Instance.IsNoiseHost("fonts.googleapis.com"))
+                filter.LoadFromFile(noisePath);
+
+                if (!filter.IsNoiseHost("fonts.googleapis.com"))
                 {
-                    return new SmokeTestResult("CFG-005", "Загрузка noise_hosts.json + IsNoise(fonts.googleapis.com)", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"Ожидали true для fonts.googleapis.com. Debug: {NoiseHostFilter.Instance.DebugMatch("fonts.googleapis.com")}");
+                    return new SmokeTestResult("CFG-005", "DI: NoiseHostFilter.LoadFromFile(noise_hosts.json) + IsNoise(fonts.googleapis.com)", SmokeOutcome.Fail, TimeSpan.Zero,
+                        $"Ожидали true для fonts.googleapis.com. Debug: {filter.DebugMatch("fonts.googleapis.com")}");
                 }
 
-                return new SmokeTestResult("CFG-005", "Загрузка noise_hosts.json + IsNoise(fonts.googleapis.com)", SmokeOutcome.Pass, TimeSpan.Zero,
+                return new SmokeTestResult("CFG-005", "DI: NoiseHostFilter.LoadFromFile(noise_hosts.json) + IsNoise(fonts.googleapis.com)", SmokeOutcome.Pass, TimeSpan.Zero,
                     "OK: домен распознан как шумовой");
 
                 static string? TryFindNoiseHostsJsonPath()

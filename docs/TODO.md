@@ -187,9 +187,10 @@
 	- `DnsParserService`: принимает `NoiseHostFilter` (создаётся из оркестратора с инъекцией)
 	- `AutoHostlistService`: принимает `NoiseHostFilter` (fallback-конструктор оставлен)
 	- `Converters/TestResultGroupConverters`: `NoiseHostFilter` резолвится из DI через `App` (с fallback на `NoiseHostFilter.Instance`)
+	- `TestNetworkApp smoke`: CFG-004/CFG-005/PIPE-006 переведены на DI (`ServiceCollection.AddIspAuditServices()`), `NoiseHostFilter.Initialize(...)` больше не используется
 - [ ] Осталось переключить:
 	- Убрать обращения к `NoiseHostFilter.Instance` в остальных местах (Utils/, TestNetworkApp smoke и т.п.)
-	- Убрать/задепрекейтить `NoiseHostFilter.Initialize(...)` (сейчас остаётся в smoke-тестах TestNetworkApp)
+	- Убрать/задепрекейтить `NoiseHostFilter.Initialize(...)` (legacy API; больше не используется в smoke-тестах, но остаётся как back-compat)
 	- Расширить регистрации в DI: постепенно заменить `new ...` в `MainViewModel` на `GetRequiredService<T>()`/инъекцию
 	- Дальше по зависимостям с ресурсами: `TrafficEngine`, `BypassStateManager` (factory), `LiveTestingPipeline`, `StandardHostTester`, etc.
 
