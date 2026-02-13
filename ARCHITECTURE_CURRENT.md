@@ -447,7 +447,7 @@ INFRA: включает стресс `INFRA-010` (1000 Apply/Rollback за <=60�
 ## 9. Технический долг
 
 1. **Глобальное состояние**: `NoiseHostFilter.Instance`.
-2. **Отсутствие DI**: граф объектов вручную в `MainViewModel`.
+2. **DI внедрён частично**: `App` использует `Microsoft.Extensions.DependencyInjection` (composition root), но граф объектов внутри `MainViewModel` пока создаётся вручную.
 3. **Жёсткие пути**: конкатенация строк для путей логов/профилей.
 4. **Обработка ошибок**: `async void` в legacy ViewModel.
 
@@ -456,7 +456,7 @@ INFRA: включает стресс `INFRA-010` (1000 Apply/Rollback за <=60�
 ## 10. Roadmap
 
 ### Phase 4: Refactoring
-- [ ] DI Container (`Microsoft.Extensions.DependencyInjection`)
+- [x] DI Container (`Microsoft.Extensions.DependencyInjection`) — composition root в `App`
 - [ ] Устранение глобального состояния → `IConfigurationService`
 - [ ] Unit Tests для `StandardBlockageClassifier`, `BypassFilter`
 

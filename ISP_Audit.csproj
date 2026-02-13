@@ -46,6 +46,7 @@
 
   <ItemGroup>
     <PackageReference Include="MaterialDesignThemes" Version="5.3.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="System.Drawing.Common" Version="9.0.10" />
     <PackageReference Include="System.Management" Version="9.0.0" />
   </ItemGroup>

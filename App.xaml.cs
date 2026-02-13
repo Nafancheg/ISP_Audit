@@ -1,8 +1,10 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace IspAudit;
 
 public partial class App : System.Windows.Application
 {
-    private IspAudit.ViewModels.MainViewModel? _sharedMainViewModel;
+    private ServiceProvider? _services;
 
     public App()
     {
@@ -87,6 +89,16 @@ public partial class App : System.Windows.Application
 
         try
         {
+            // Composition root: DI контейнер живёт весь срок приложения.
+            // Минимально регистрируем MainViewModel как singleton.
+            var services = new ServiceCollection();
+            ConfigureServices(services);
+            _services = services.BuildServiceProvider(new ServiceProviderOptions
+            {
+                ValidateOnBuild = false,
+                ValidateScopes = false,
+            });
+
             // По умолчанию запускаем «Операторский» UI.
             // Инженерный режим открывается по подтверждению и сохраняется в state/ui_mode.json.
             var mode = IspAudit.Utils.UiModeStore.LoadOrDefault(IspAudit.Utils.UiMode.Operator);
@@ -107,9 +119,25 @@ public partial class App : System.Windows.Application
         }
     }
 
+    private void ConfigureServices(IServiceCollection services)
+    {
+        services.AddSingleton<IspAudit.ViewModels.MainViewModel>();
+
+        // Для OperatorWindow оставляем старый контракт Func<MainViewModel>.
+        services.AddSingleton<Func<IspAudit.ViewModels.MainViewModel>>(sp =>
+        {
+            return () => sp.GetRequiredService<IspAudit.ViewModels.MainViewModel>();
+        });
+    }
+
     internal IspAudit.ViewModels.MainViewModel GetSharedMainViewModel()
     {
-        return _sharedMainViewModel ??= new IspAudit.ViewModels.MainViewModel();
+        if (_services == null)
+        {
+            throw new InvalidOperationException("DI контейнер не инициализирован. OnStartup должен быть вызван до запроса MainViewModel.");
+        }
+
+        return _services.GetRequiredService<IspAudit.ViewModels.MainViewModel>();
     }
 
     internal async System.Threading.Tasks.Task EnsureInitializedAsync()
@@ -126,7 +154,12 @@ public partial class App : System.Windows.Application
 
     internal void ShowOperatorWindow()
     {
-        var window = new IspAudit.Windows.OperatorWindow(GetSharedMainViewModel);
+        if (_services == null)
+        {
+            throw new InvalidOperationException("DI контейнер не инициализирован.");
+        }
+
+        var window = new IspAudit.Windows.OperatorWindow(_services.GetRequiredService<Func<IspAudit.ViewModels.MainViewModel>>());
         MainWindow = window;
         _ = EnsureInitializedAsync();
         window.Show();
@@ -145,15 +178,31 @@ public partial class App : System.Windows.Application
     {
         try
         {
-            if (_sharedMainViewModel != null)
+            if (_services != null)
             {
+                var vm = _services.GetService<IspAudit.ViewModels.MainViewModel>();
+                if (vm == null)
+                {
+                    base.OnExit(e);
+                    return;
+                }
+
                 // Критично: DNS/DoH должен откатываться при выходе из приложения.
                 // OnExit не async — используем Task.Run чтобы избежать deadlock SynchronizationContext.
-                Task.Run(() => _sharedMainViewModel.ShutdownAsync()).Wait(TimeSpan.FromSeconds(10));
+                Task.Run(() => vm.ShutdownAsync()).Wait(TimeSpan.FromSeconds(10));
 
                 try
                 {
-                    (_sharedMainViewModel as IDisposable)?.Dispose();
+                    (vm as IDisposable)?.Dispose();
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                try
+                {
+                    _services.Dispose();
                 }
                 catch
                 {

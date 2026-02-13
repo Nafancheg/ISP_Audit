@@ -173,9 +173,9 @@
 ## Phase 4 — Рефакторинг (архитектурный долг)
 
 ### 4.1 DI container
-- [ ] NuGet: `Microsoft.Extensions.DependencyInjection`
+- [x] NuGet: `Microsoft.Extensions.DependencyInjection`
 - [ ] `Utils/ServiceCollectionExtensions.cs`: регистрация всех сервисов
-- [ ] `App.xaml.cs`: ServiceCollection → ConfigureServices → BuildServiceProvider
+- [x] `App.xaml.cs`: ServiceCollection → ConfigureServices → BuildServiceProvider
 - [ ] Постепенно: `new Service()` → `GetRequiredService<T>()`
 - [ ] Начать с NoiseHostFilter: AddSingleton → инъекция через конструктор
 
