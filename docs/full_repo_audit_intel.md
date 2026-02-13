@@ -889,7 +889,7 @@ Program.cs
 ---
 
 **Статус документа:** Актуален на 12.12.2025 (TLS bypass Phase2)
-Актуализация (Dev, 13.02.2026): добавлен минимальный DI контейнер (composition root в `App` через `Microsoft.Extensions.DependencyInjection`), регистрации вынесены в `Utils/ServiceCollectionExtensions.cs`; static singleton API `NoiseHostFilter.Initialize/Instance` удалён, `NoiseHostFilter` используется через DI/конструктор.
+Актуализация (Dev, 13.02.2026): добавлен минимальный DI контейнер (composition root в `App` через `Microsoft.Extensions.DependencyInjection`), регистрации вынесены в `Utils/ServiceCollectionExtensions.cs`. Static singleton API `NoiseHostFilter.Initialize/Instance` удалён; `NoiseHostFilter`/`ITrafficFilter` (`UnifiedTrafficFilter`) и `AutoHostlistService` стали shared singleton-сервисами. Убраны скрытые fallback-конструкторы/`?? new ...` в runtime-пайплайне: `TrafficCollector` и `LiveTestingPipeline` требуют явный `ITrafficFilter`.
 **Очистка документации:** Выполнена (79 → 25 .md файлов)
 
 ---

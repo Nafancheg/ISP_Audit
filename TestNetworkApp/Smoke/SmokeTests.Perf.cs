@@ -16,6 +16,7 @@ using IspAudit.Core.Models;
 using IspAudit.Core.Modules;
 using IspAudit.Utils;
 using System.Collections.Immutable;
+using Microsoft.Extensions.DependencyInjection;
 
 using TransportProtocol = IspAudit.Bypass.TransportProtocol;
 
@@ -74,7 +75,9 @@ namespace TestNetworkApp.Smoke
                     TestTimeout = TimeSpan.FromSeconds(1)
                 };
 
-                using var pipeline = new LiveTestingPipeline(config, progress, trafficEngine: null, dnsParser: null, tester: tester);
+                using var provider = BuildIspAuditProvider();
+                var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+                using var pipeline = new LiveTestingPipeline(config, filter: trafficFilter, progress: progress, trafficEngine: null, dnsParser: null, tester: tester);
 
                 var enqueueSw = Stopwatch.StartNew();
                 var maxPending = 0;
@@ -158,8 +161,11 @@ namespace TestNetworkApp.Smoke
                     TestTimeout = TimeSpan.FromSeconds(1)
                 };
 
+                using var provider = BuildIspAuditProvider();
+                var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+
                 // Прогрев
-                using (var warm = new LiveTestingPipeline(config, progress, trafficEngine: null, dnsParser: null, tester: tester))
+                using (var warm = new LiveTestingPipeline(config, filter: trafficFilter, progress: progress, trafficEngine: null, dnsParser: null, tester: tester))
                 {
                     for (var i = 0; i < 50; i++)
                     {
@@ -176,7 +182,7 @@ namespace TestNetworkApp.Smoke
 
                 var baseline = GC.GetTotalMemory(forceFullCollection: true);
 
-                using (var pipeline = new LiveTestingPipeline(config, progress, trafficEngine: null, dnsParser: null, tester: tester))
+                using (var pipeline = new LiveTestingPipeline(config, filter: trafficFilter, progress: progress, trafficEngine: null, dnsParser: null, tester: tester))
                 {
                     var endAt = DateTime.UtcNow + TimeSpan.FromSeconds(20);
                     var i = 0;
@@ -459,7 +465,9 @@ namespace TestNetworkApp.Smoke
                         useTrafficEngine: false,
                         nowProvider: () => DateTime.UtcNow);
 
-                    var bypass = new BypassController(tls, baseProfile);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(tls, baseProfile, autoHostlist);
 
                     var plan = new IspAudit.Core.Intelligence.Contracts.BypassPlan
                     {

@@ -25,6 +25,7 @@ using IspAudit.Core.Models;
 using IspAudit.Core.Traffic;
 using IspAudit.Utils;
 using IspAudit.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
 
 using BypassTransportProtocol = IspAudit.Bypass.TransportProtocol;
 using IntelBlockageSignals = IspAudit.Core.Intelligence.Contracts.BlockageSignals;
@@ -2742,7 +2743,9 @@ namespace TestNetworkApp.Smoke
                 var engine = new TrafficEngine(progress: null);
                 var baseProfile = BypassProfile.CreateDefault();
                 var tlsService = new TlsBypassService(engine, baseProfile, log: null, startMetricsTimer: false, useTrafficEngine: false, nowProvider: () => DateTime.Now);
-                var controller = new BypassController(tlsService, baseProfile);
+                using var provider = BuildIspAuditProvider();
+                var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                var controller = new BypassController(tlsService, baseProfile, autoHostlist);
 
                 var plan = new BypassPlan
                 {
@@ -2803,7 +2806,9 @@ namespace TestNetworkApp.Smoke
                 var engine = new TrafficEngine(progress: null);
                 var baseProfile = BypassProfile.CreateDefault();
                 var tlsService = new TlsBypassService(engine, baseProfile, log: null, startMetricsTimer: false, useTrafficEngine: false, nowProvider: () => DateTime.Now);
-                var controller = new BypassController(tlsService, baseProfile);
+                using var provider = BuildIspAuditProvider();
+                var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                var controller = new BypassController(tlsService, baseProfile, autoHostlist);
 
                 var plan = new BypassPlan
                 {
@@ -2985,7 +2990,9 @@ namespace TestNetworkApp.Smoke
                 var engine = new TrafficEngine(progress: null);
                 var baseProfile = BypassProfile.CreateDefault();
                 var tlsService = new TlsBypassService(engine, baseProfile, log: null, startMetricsTimer: false, useTrafficEngine: false, nowProvider: () => DateTime.Now);
-                var controller = new BypassController(tlsService, baseProfile);
+                using var provider = BuildIspAuditProvider();
+                var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                var controller = new BypassController(tlsService, baseProfile, autoHostlist);
 
                 controller.ApplyIntelPlanAsync(plan, timeout: TimeSpan.FromSeconds(2), cancellationToken: CancellationToken.None)
                     .GetAwaiter().GetResult();
@@ -3045,7 +3052,9 @@ namespace TestNetworkApp.Smoke
                 var engine = new TrafficEngine(progress: null);
                 var baseProfile = BypassProfile.CreateDefault();
                 var tlsService = new TlsBypassService(engine, baseProfile, log: null, startMetricsTimer: false, useTrafficEngine: false, nowProvider: () => DateTime.Now);
-                var controller = new BypassController(tlsService, baseProfile);
+                using var provider = BuildIspAuditProvider();
+                var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                var controller = new BypassController(tlsService, baseProfile, autoHostlist);
 
                 // Исходное состояние: включаем Fake, чтобы проверить откат.
                 controller.IsFakeEnabled = true;

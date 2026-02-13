@@ -19,6 +19,7 @@ using IspAudit.Core.Intelligence.Strategies;
 using IspAudit.Core.Traffic;
 using IspAudit.Utils;
 using IspAudit.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace TestNetworkApp.Smoke
 {
@@ -52,7 +53,9 @@ namespace TestNetworkApp.Smoke
                     using var engine = new TrafficEngine(progress: null);
                     using var manager = BypassStateManager.GetOrCreate(engine, baseProfile, log: Log);
 
-                    var bypass = new BypassController(manager);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(manager, autoHostlist);
 
                     // Симулируем remembered per-target union (P0.1 Step 1): если DisableAll реализован через Apply,
                     // то даже при выключенных тумблерах effective может «воскреснуть».
@@ -539,7 +542,9 @@ namespace TestNetworkApp.Smoke
                 try
                 {
                     using var engine = new IspAudit.Core.Traffic.TrafficEngine();
-                    var bypass = new BypassController(engine);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(engine, autoHostlist);
 
                     await bypass.InitializeOnStartupAsync().ConfigureAwait(false);
 
@@ -583,7 +588,9 @@ namespace TestNetworkApp.Smoke
                     try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
 
                     using var engine = new IspAudit.Core.Traffic.TrafficEngine();
-                    var bypass1 = new BypassController(engine);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass1 = new BypassController(engine, autoHostlist);
 
                     bypass1.RecordApplyTransaction(
                         initiatorHostKey: "youtube.com",
@@ -607,7 +614,7 @@ namespace TestNetworkApp.Smoke
                     }
 
                     // Теперь создаём новый контроллер: он должен подхватить сохранённое.
-                    var bypass2 = new BypassController(engine);
+                    var bypass2 = new BypassController(engine, autoHostlist);
 
                     deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
                     while (DateTime.UtcNow < deadline && bypass2.ApplyTransactions.Count == 0)
@@ -656,7 +663,9 @@ namespace TestNetworkApp.Smoke
                 try
                 {
                     using var engine = new IspAudit.Core.Traffic.TrafficEngine();
-                    var bypass = new BypassController(engine);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(engine, autoHostlist);
 
                     bypass.RecordApplyTransaction(
                         initiatorHostKey: "youtube.com",
@@ -716,7 +725,9 @@ namespace TestNetworkApp.Smoke
                 try
                 {
                     using var engine = new IspAudit.Core.Traffic.TrafficEngine();
-                    var bypass = new BypassController(engine);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(engine, autoHostlist);
 
                     bypass.RecordApplyTransaction(
                         initiatorHostKey: "youtube.com",
@@ -768,7 +779,9 @@ namespace TestNetworkApp.Smoke
                 try
                 {
                     using var engine = new IspAudit.Core.Traffic.TrafficEngine();
-                    var bypass = new BypassController(engine);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(engine, autoHostlist);
 
                     bypass.RecordApplyTransaction(
                         initiatorHostKey: "failed.test",
@@ -896,7 +909,9 @@ namespace TestNetworkApp.Smoke
                         useTrafficEngine: false,
                         nowProvider: () => DateTime.UtcNow);
 
-                    var bypass = new BypassController(tls, baseProfile);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(tls, baseProfile, autoHostlist);
 
                     var plan = new IspAudit.Core.Intelligence.Contracts.BypassPlan
                     {
@@ -943,7 +958,9 @@ namespace TestNetworkApp.Smoke
                 try
                 {
                     using var engine = new TrafficEngine();
-                    var bypass = new BypassController(engine);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(engine, autoHostlist);
                     var orch = new DiagnosticOrchestrator(engine);
 
                     var storePlan = typeof(DiagnosticOrchestrator)
@@ -1011,7 +1028,9 @@ namespace TestNetworkApp.Smoke
                 try
                 {
                     using var engine = new TrafficEngine();
-                    var bypass = new BypassController(engine);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(engine, autoHostlist);
                     var orch = new DiagnosticOrchestrator(engine);
 
                     var storePlan = typeof(DiagnosticOrchestrator)
@@ -1117,7 +1136,9 @@ namespace TestNetworkApp.Smoke
                         useTrafficEngine: false,
                         nowProvider: () => DateTime.UtcNow);
 
-                    var bypass = new BypassController(tls, baseProfile);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(tls, baseProfile, autoHostlist);
 
                     var plan = new IspAudit.Core.Intelligence.Contracts.BypassPlan
                     {
@@ -1304,7 +1325,9 @@ namespace TestNetworkApp.Smoke
                     using var manager = BypassStateManager.GetOrCreate(engine, baseProfile: baseProfile, log: null);
                     manager.AllowDnsDohSystemChanges = false;
 
-                    var bypass = new BypassController(manager)
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(manager, autoHostlist)
                     {
                         SelectedDnsPreset = "Cloudflare"
                     };
@@ -1404,7 +1427,9 @@ namespace TestNetworkApp.Smoke
                     using var engine = new TrafficEngine(progress: null);
                     using var manager = BypassStateManager.GetOrCreate(engine, baseProfile: baseProfile, log: null);
 
-                    var bypass = new BypassController(manager);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(manager, autoHostlist);
                     var orch = new DiagnosticOrchestrator(manager);
 
                     var beforeTxCount = bypass.ApplyTransactions.Count;
@@ -1489,7 +1514,9 @@ namespace TestNetworkApp.Smoke
                     using var engine = new TrafficEngine(progress: null);
                     using var manager = BypassStateManager.GetOrCreate(engine, baseProfile: baseProfile, log: null);
 
-                    var bypass = new BypassController(manager);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(manager, autoHostlist);
                     var orch = new DiagnosticOrchestrator(manager);
 
                     var beforeTxCount = bypass.ApplyTransactions.Count;
@@ -1967,7 +1994,8 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> REG_PerCardRetest_Queued_DuringRun_ThenFlushed(CancellationToken ct)
             => RunAsync("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", () =>
             {
-                var vm = new MainViewModel();
+                using var provider = BuildIspAuditProvider();
+                var vm = provider.GetRequiredService<MainViewModel>();
 
                 var test = new IspAudit.Models.TestResult
                 {
@@ -2039,7 +2067,9 @@ namespace TestNetworkApp.Smoke
                         useTrafficEngine: false,
                         nowProvider: () => DateTime.UtcNow);
 
-                    var bypass = new BypassController(tls, baseProfile);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(tls, baseProfile, autoHostlist);
 
                     // Включаем QUIC→TCP (DROP UDP/443) в селективном режиме.
                     bypass.IsQuicFallbackEnabled = true;
@@ -2096,7 +2126,9 @@ namespace TestNetworkApp.Smoke
                         useTrafficEngine: false,
                         nowProvider: () => DateTime.UtcNow);
 
-                    var bypass = new BypassController(tls, baseProfile);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(tls, baseProfile, autoHostlist);
 
                     // 1) Цель A: Fragment
                     var planA = new IspAudit.Core.Intelligence.Contracts.BypassPlan
@@ -2208,7 +2240,9 @@ namespace TestNetworkApp.Smoke
                         useTrafficEngine: false,
                         nowProvider: () => DateTime.UtcNow);
 
-                    var bypass = new BypassController(tls, baseProfile);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(tls, baseProfile, autoHostlist);
 
                     static IspAudit.Core.Intelligence.Contracts.BypassPlan CreateHostTricksPlan()
                         => new()
@@ -2324,7 +2358,9 @@ namespace TestNetworkApp.Smoke
                         useTrafficEngine: false,
                         nowProvider: () => DateTime.UtcNow);
 
-                    var bypass = new BypassController(tls, baseProfile);
+                    using var provider = BuildIspAuditProvider();
+                    var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                    var bypass = new BypassController(tls, baseProfile, autoHostlist);
 
                     var planFragment = new IspAudit.Core.Intelligence.Contracts.BypassPlan
                     {

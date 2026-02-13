@@ -453,7 +453,9 @@ namespace TestNetworkApp.Smoke
                     var loaded = DomainGroupCatalog.LoadOrDefault();
 
                     // Порог по умолчанию 8: генерируем серию co-occurrence событий.
-                    var learner = new DomainGroupLearner(loaded);
+                    using var provider = BuildIspAuditProvider();
+                    var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                    var learner = new DomainGroupLearner(loaded, noiseHostFilter);
                     var now = DateTime.UtcNow;
 
                     for (int i = 0; i < 8; i++)
@@ -546,7 +548,9 @@ namespace TestNetworkApp.Smoke
                     var loaded = DomainGroupCatalog.LoadOrDefault();
 
                     // Выучиваем одну learned-группу.
-                    var learner = new DomainGroupLearner(loaded);
+                    using var provider = BuildIspAuditProvider();
+                    var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                    var learner = new DomainGroupLearner(loaded, noiseHostFilter);
                     var now = DateTime.UtcNow;
                     for (int i = 0; i < 8; i++)
                     {
@@ -626,7 +630,9 @@ namespace TestNetworkApp.Smoke
                     DomainGroupCatalog.TryPersist(state);
                     var loaded = DomainGroupCatalog.LoadOrDefault();
 
-                    var learner = new DomainGroupLearner(loaded);
+                    using var provider = BuildIspAuditProvider();
+                    var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                    var learner = new DomainGroupLearner(loaded, noiseHostFilter);
                     var now = DateTime.UtcNow;
                     for (int i = 0; i < 8; i++)
                     {

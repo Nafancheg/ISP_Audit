@@ -9,6 +9,7 @@ using IspAudit.Core.Modules;
 using IspAudit.Core.Traffic;
 using IspAudit.Core.Traffic.Filters;
 using IspAudit.Utils;
+using Microsoft.Extensions.DependencyInjection;
 
 using TransportProtocol = IspAudit.Bypass.TransportProtocol;
 using IspAudit.ViewModels;
@@ -59,7 +60,9 @@ namespace TestNetworkApp.Smoke
                 var expected = NetUtils.LikelyVpnActive();
 
                 using var engine = new TrafficEngine();
-                var bypass = new BypassController(engine);
+                using var provider = BuildIspAuditProvider();
+                var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                var bypass = new BypassController(engine, autoHostlist);
                 await bypass.InitializeOnStartupAsync().ConfigureAwait(false);
 
                 if (bypass.IsVpnDetected != expected)

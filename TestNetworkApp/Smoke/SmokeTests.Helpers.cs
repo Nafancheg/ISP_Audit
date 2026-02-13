@@ -7,12 +7,21 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using IspAudit.Core.Traffic;
+using IspAudit.Utils;
 
 namespace TestNetworkApp.Smoke
 {
     internal static partial class SmokeTests
     {
+        private static ServiceProvider BuildIspAuditProvider()
+        {
+            var services = new ServiceCollection();
+            services.AddIspAuditServices();
+            return services.BuildServiceProvider();
+        }
+
         private sealed class DummyPacketFilter : IPacketFilter
         {
             public string Name { get; }

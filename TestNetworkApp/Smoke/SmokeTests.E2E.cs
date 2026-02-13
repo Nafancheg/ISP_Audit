@@ -14,6 +14,7 @@ using IspAudit.Core.Traffic;
 using IspAudit.Core.Traffic.Filters;
 using IspAudit.Utils;
 using IspAudit.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
 
 using TransportProtocol = IspAudit.Bypass.TransportProtocol;
 
@@ -56,7 +57,9 @@ namespace TestNetworkApp.Smoke
                     BlockageType: BlockageCode.TlsHandshakeTimeout,
                     TestedAt: DateTime.UtcNow));
 
-                using var pipeline = new LiveTestingPipeline(config, progress, trafficEngine: null, dnsParser: null, tester: tester);
+                using var provider = BuildIspAuditProvider();
+                var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+                using var pipeline = new LiveTestingPipeline(config, filter: trafficFilter, progress: progress, trafficEngine: null, dnsParser: null, tester: tester);
 
                 var ip = IPAddress.Parse("203.0.113.1");
                 var host = new IspAudit.Core.Models.HostDiscovered(
@@ -218,7 +221,9 @@ namespace TestNetworkApp.Smoke
                 }
 
                 using var engine = new TrafficEngine();
-                var bypass = new BypassController(engine);
+                using var provider = BuildIspAuditProvider();
+                var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                var bypass = new BypassController(engine, autoHostlist);
 
                 await bypass.EnablePreemptiveBypassAsync().ConfigureAwait(false);
 
@@ -248,10 +253,14 @@ namespace TestNetworkApp.Smoke
                 tracker.TryAddPid(attachedPid);
 
                 var monitor = new ConnectionMonitorService();
-                var filter = new TrafficMonitorFilter();
-                var dns = new DnsParserService(filter, progress: null);
+                using var provider = BuildIspAuditProvider();
+                var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
 
-                var collector = new TrafficCollector(monitor, tracker, dns, progress: null);
+                var monitorFilter = new TrafficMonitorFilter();
+                var dns = new DnsParserService(monitorFilter, noiseHostFilter, progress: null);
+
+                var collector = new TrafficCollector(monitor, tracker, dns, trafficFilter, progress: null);
 
                 var ok = collector.TryBuildHostFromConnectionEventForSmoke(
                     pid: attachedPid,

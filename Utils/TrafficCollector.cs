@@ -88,14 +88,14 @@ namespace IspAudit.Utils
             ConnectionMonitorService connectionMonitor,
             PidTrackerService pidTracker,
             DnsParserService dnsParser,
-            IProgress<string>? progress = null,
-            ITrafficFilter? filter = null)
+            ITrafficFilter filter,
+            IProgress<string>? progress = null)
         {
             _connectionMonitor = connectionMonitor ?? throw new ArgumentNullException(nameof(connectionMonitor));
             _pidTracker = pidTracker ?? throw new ArgumentNullException(nameof(pidTracker));
             _dnsParser = dnsParser ?? throw new ArgumentNullException(nameof(dnsParser));
+            _filter = filter ?? throw new ArgumentNullException(nameof(filter));
             _progress = progress;
-            _filter = filter ?? new UnifiedTrafficFilter();
         }
 
         /// <summary>

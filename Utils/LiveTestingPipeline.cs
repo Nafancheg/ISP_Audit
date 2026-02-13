@@ -159,10 +159,10 @@ namespace IspAudit.Utils
 
         public LiveTestingPipeline(
             PipelineConfig config,
+            ITrafficFilter filter,
             IProgress<string>? progress = null,
             TrafficEngine? trafficEngine = null,
             DnsParserService? dnsParser = null,
-            ITrafficFilter? filter = null,
             IBlockageStateStore? stateStore = null,
             AutoHostlistService? autoHostlist = null,
             IHostTester? tester = null)
@@ -171,8 +171,7 @@ namespace IspAudit.Utils
             _progress = progress;
             _dnsParser = dnsParser;
 
-            // Используем переданный фильтр или создаем новый
-            _filter = filter ?? new UnifiedTrafficFilter();
+            _filter = filter ?? throw new ArgumentNullException(nameof(filter));
 
             // Используем переданный движок
             if (trafficEngine != null)

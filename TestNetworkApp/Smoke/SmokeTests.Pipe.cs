@@ -98,12 +98,16 @@ namespace TestNetworkApp.Smoke
                 using var dummyMonitor = new ConnectionMonitorService(progress);
                 var pidTracker = new PidTrackerService(initialPid: Environment.ProcessId, progress);
 
+                using var provider = BuildIspAuditProvider();
+                var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+
                 // Для детерминизма добавляем "чужой" PID и убеждаемся, что фильтр его отсекает.
                 var otherPid = Environment.ProcessId + 100000;
 
                 var trafficMonitor = new TrafficMonitorFilter();
-                using var dnsParser = new DnsParserService(trafficMonitor, progress);
-                using var collector = new TrafficCollector(dummyMonitor, pidTracker, dnsParser, progress, new UnifiedTrafficFilter());
+                using var dnsParser = new DnsParserService(trafficMonitor, noiseHostFilter, progress);
+                using var collector = new TrafficCollector(dummyMonitor, pidTracker, dnsParser, trafficFilter, progress);
 
                 // 1) Событие от другого PID не должно пройти
                 var okOther = collector.TryBuildHostFromConnectionEventForSmoke(
@@ -159,7 +163,10 @@ namespace TestNetworkApp.Smoke
 
                 var progress = new Progress<string>(_ => { /* без лишнего шума */ });
                 var trafficMonitor = new TrafficMonitorFilter();
-                using var dnsParser = new DnsParserService(trafficMonitor, progress);
+
+                using var provider = BuildIspAuditProvider();
+                var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                using var dnsParser = new DnsParserService(trafficMonitor, noiseHostFilter, progress);
 
                 // Фрагментируем на 2 части (как будто пришло двумя TCP сегментами)
                 var cut = Math.Max(1, clientHello.Length / 2);
@@ -359,8 +366,11 @@ namespace TestNetworkApp.Smoke
                     TestTimeout = TimeSpan.FromSeconds(1)
                 };
 
+                using var provider = BuildIspAuditProvider();
+                var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+
                 // Pipeline можно поднять без TrafficEngine/DnsParser: health-лог зависит только от активности очередей.
-                using var pipeline = new LiveTestingPipeline(config, progress, trafficEngine: null, dnsParser: null);
+                using var pipeline = new LiveTestingPipeline(config, filter: trafficFilter, progress: progress, trafficEngine: null, dnsParser: null);
 
                 // Делаем "активность": добавляем 1 хост в очередь.
                 var host = new HostDiscovered(
@@ -418,12 +428,14 @@ namespace TestNetworkApp.Smoke
                     TestTimeout = TimeSpan.FromSeconds(1)
                 };
 
-                var autoHostlist = new AutoHostlistService
-                {
-                    Enabled = true,
-                    MinHitsToShow = 1,
-                    PublishThrottle = TimeSpan.Zero
-                };
+                using var provider = BuildIspAuditProvider();
+                var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+                var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+
+                autoHostlist.Clear();
+                autoHostlist.Enabled = true;
+                autoHostlist.MinHitsToShow = 1;
+                autoHostlist.PublishThrottle = TimeSpan.Zero;
 
                 var inspection = new InspectionSignalsSnapshot
                 {
@@ -452,10 +464,10 @@ namespace TestNetworkApp.Smoke
 
                 using var pipeline = new LiveTestingPipeline(
                     config,
-                    progress,
+                    filter: trafficFilter,
+                    progress: progress,
                     trafficEngine: null,
                     dnsParser: null,
-                    filter: null,
                     stateStore: store,
                     autoHostlist: autoHostlist,
                     tester: tester);
@@ -504,7 +516,9 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Pipe_AutoHostlist_IntelOnly_NoLegacyTypes(CancellationToken ct)
             => RunAsync("PIPE-019", "Auto-hostlist intel-only: без BlockageSignals/GetSignals", () =>
             {
-                var autoHostlist = new AutoHostlistService
+                using var provider = BuildIspAuditProvider();
+                var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                var autoHostlist = new AutoHostlistService(noiseHostFilter)
                 {
                     Enabled = true,
                     MinHitsToShow = 1,
@@ -600,7 +614,8 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Pipe_UnifiedFilter_LoopbackDropped(CancellationToken ct)
             => RunAsync("PIPE-005", "UnifiedTrafficFilter отбрасывает loopback", () =>
             {
-                var filter = new UnifiedTrafficFilter();
+                using var provider = BuildIspAuditProvider();
+                var filter = provider.GetRequiredService<ITrafficFilter>();
                 var host = new HostDiscovered(
                     Key: "127.0.0.1:443:TCP",
                     RemoteIp: IPAddress.Loopback,
@@ -1003,9 +1018,13 @@ namespace TestNetworkApp.Smoke
                 await pidTracker.StartAsync(ct).ConfigureAwait(false);
 
                 var trafficMonitor = new TrafficMonitorFilter();
-                using var dnsParser = new DnsParserService(trafficMonitor, progress);
 
-                using var collector = new TrafficCollector(connectionMonitor, pidTracker, dnsParser, progress, new UnifiedTrafficFilter());
+                using var provider = BuildIspAuditProvider();
+                var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+
+                using var dnsParser = new DnsParserService(trafficMonitor, noiseHostFilter, progress);
+                using var collector = new TrafficCollector(connectionMonitor, pidTracker, dnsParser, trafficFilter, progress);
 
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 cts.CancelAfter(TimeSpan.FromSeconds(6));

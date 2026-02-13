@@ -1020,12 +1020,12 @@ namespace IspAudit.ViewModels
 
                     using var pipeline = new LiveTestingPipeline(
                         pipelineConfig,
-                        progress,
-                        _trafficEngine,
-                        _dnsParser,
-                        new UnifiedTrafficFilter(_noiseHostFilter),
-                        null,
-                        bypassController.AutoHostlist);
+                        filter: new UnifiedTrafficFilter(_noiseHostFilter),
+                        progress: progress,
+                        trafficEngine: _trafficEngine,
+                        dnsParser: _dnsParser,
+                        stateStore: null,
+                        autoHostlist: bypassController.AutoHostlist);
 
                     pipeline.OnPlanBuilt += (k, p) =>
                     {

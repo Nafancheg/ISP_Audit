@@ -209,8 +209,8 @@ namespace IspAudit.ViewModels
                     _connectionMonitor!,
                     _pidTracker!,
                     _dnsParser!,
-                    progress,
-                    trafficFilter);
+                    trafficFilter,
+                    progress);
 
                 // 7. Создание LiveTestingPipeline (тестирование + bypass)
                 var effectiveTestTimeout = bypassController.IsVpnDetected
@@ -227,14 +227,14 @@ namespace IspAudit.ViewModels
 
                 _testingPipeline = new LiveTestingPipeline(
                     pipelineConfig,
-                    progress,
-                    _trafficEngine,
-                    _dnsParser,
-                    trafficFilter,
-                    _tcpRetransmissionTracker != null
+                    filter: trafficFilter,
+                    progress: progress,
+                    trafficEngine: _trafficEngine,
+                    dnsParser: _dnsParser,
+                    stateStore: _tcpRetransmissionTracker != null
                         ? new InMemoryBlockageStateStore(_tcpRetransmissionTracker, _httpRedirectDetector, _rstInspectionService, _udpInspectionService)
                         : null,
-                    bypassController.AutoHostlist);
+                    autoHostlist: bypassController.AutoHostlist);
 
                 var autoApplyEnabled = enableAutoBypass;
 
@@ -480,12 +480,12 @@ namespace IspAudit.ViewModels
                 // Используем существующий bypass manager из контроллера
                 _testingPipeline = new LiveTestingPipeline(
                     pipelineConfig,
-                    progress,
-                    _trafficEngine,
-                    _dnsParser, // Нужен для кеша SNI/DNS имён (стабильнее подписи в UI и авто-hostlist)
-                    new UnifiedTrafficFilter(_noiseHostFilter),
-                    null, // State store новый
-                    bypassController.AutoHostlist);
+                    filter: new UnifiedTrafficFilter(_noiseHostFilter),
+                    progress: progress,
+                    trafficEngine: _trafficEngine,
+                    dnsParser: _dnsParser, // Нужен для кеша SNI/DNS имён (стабильнее подписи в UI и авто-hostlist)
+                    stateStore: null, // State store новый
+                    autoHostlist: bypassController.AutoHostlist);
 
                 _testingPipeline.OnPlanBuilt += (hostKey, plan) =>
                 {

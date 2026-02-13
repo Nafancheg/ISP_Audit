@@ -175,6 +175,7 @@
 ### 4.1 DI container
 - [x] NuGet: `Microsoft.Extensions.DependencyInjection`
 - [x] `Utils/ServiceCollectionExtensions.cs`: регистрация всех сервисов
+- [x] DI: `ITrafficFilter` (singleton) → `UnifiedTrafficFilter`; `AutoHostlistService` (singleton)
 - [x] `App.xaml.cs`: ServiceCollection → ConfigureServices → BuildServiceProvider
 - [x] Начать с NoiseHostFilter: AddSingleton → инъекция через конструктор
 - [x] Переключено (первые потребители NoiseHostFilter):
@@ -185,11 +186,15 @@
 	- `LiveTestingPipeline` (classifier stage): перепроверка шума через `ITrafficFilter.IsNoise(...)`
 	- `DomainGroupLearner`: принимает `NoiseHostFilter` (создаётся из `TestResultsManager` с инъекцией)
 	- `DnsParserService`: принимает `NoiseHostFilter` (создаётся из оркестратора с инъекцией)
-	- `AutoHostlistService`: принимает `NoiseHostFilter` (fallback-конструктор оставлен)
+	- `AutoHostlistService`: принимает `NoiseHostFilter` (singleton в DI)
 	- `Converters/TestResultGroupConverters`: `NoiseHostFilter` резолвится из DI через `App` (fallback: локальный экземпляр без static)
 	- `TestNetworkApp smoke`: CFG-004/CFG-005/PIPE-006 переведены на DI (`ServiceCollection.AddIspAuditServices()`), legacy static API `NoiseHostFilter.Initialize/Instance` удалён
 - [ ] Осталось переключить:
-	- Убрать локальные fallback-конструкторы, которые создают `new NoiseHostFilter()` без DI (по мере миграции графа)
+	- [x] Убраны обращения к `NoiseHostFilter.Instance` (static singleton API удалён, глобального состояния больше нет)
+	- [x] Убрано использование/наличие `NoiseHostFilter.Initialize(...)` (legacy static API удалён)
+	- [x] Убраны скрытые fallback-конструкторы/пути создания `NoiseHostFilter` (например, `UnifiedTrafficFilter()` / `AutoHostlistService()` / `DomainGroupLearner(...)` overload)
+	- [x] `TrafficCollector` и `LiveTestingPipeline` больше не создают фильтр сами (`?? new ...` удалён) — фильтр передаётся явно
+	- Убрать оставшиеся локальные fallback-конструкторы, которые создают зависимости через `new ...` без DI (по мере миграции графа)
 	- Расширить регистрации в DI: постепенно заменить `new ...` в `MainViewModel` на `GetRequiredService<T>()`/инъекцию
 	- Дальше по зависимостям с ресурсами: `TrafficEngine`, `BypassStateManager` (factory), `LiveTestingPipeline`, `StandardHostTester`, etc.
 

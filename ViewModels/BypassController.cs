@@ -215,12 +215,12 @@ namespace IspAudit.ViewModels
 
         public string SelectedFragmentPresetLabel => _selectedPreset != null ? $"{_selectedPreset.Name} ({string.Join('/', _currentOptions.FragmentSizes)})" : string.Empty;
 
-        public BypassController(BypassStateManager stateManager)
+        public BypassController(BypassStateManager stateManager, AutoHostlistService autoHostlist)
         {
             _stateManager = stateManager ?? throw new ArgumentNullException(nameof(stateManager));
             _currentOptions = _stateManager.GetOptionsSnapshot();
 
-            _autoHostlist = new AutoHostlistService();
+            _autoHostlist = autoHostlist ?? throw new ArgumentNullException(nameof(autoHostlist));
             _autoHostlist.Changed += () =>
             {
                 SafeUiInvoke(RefreshAutoHostlistText);
@@ -293,20 +293,21 @@ namespace IspAudit.ViewModels
             RefreshQuicObservability(null);
         }
 
-        public BypassController(TrafficEngine trafficEngine)
-            : this(BypassStateManager.GetOrCreate(trafficEngine, baseProfile: null, log: null))
+        public BypassController(TrafficEngine trafficEngine, AutoHostlistService autoHostlist)
+            : this(BypassStateManager.GetOrCreate(trafficEngine, baseProfile: null, log: null), autoHostlist)
         {
         }
 
-        internal BypassController(TlsBypassService tlsService, BypassProfile baseProfile)
+        internal BypassController(TlsBypassService tlsService, BypassProfile baseProfile, AutoHostlistService autoHostlist)
         {
             if (tlsService == null) throw new ArgumentNullException(nameof(tlsService));
             if (baseProfile == null) throw new ArgumentNullException(nameof(baseProfile));
+            if (autoHostlist == null) throw new ArgumentNullException(nameof(autoHostlist));
 
             _stateManager = BypassStateManager.GetOrCreateFromService(tlsService, baseProfile, Log);
             _currentOptions = _stateManager.GetOptionsSnapshot();
 
-            _autoHostlist = new AutoHostlistService();
+            _autoHostlist = autoHostlist;
             _autoHostlist.Changed += () =>
             {
                 SafeUiInvoke(RefreshAutoHostlistText);

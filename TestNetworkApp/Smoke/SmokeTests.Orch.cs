@@ -9,6 +9,7 @@ using IspAudit.Core.Traffic;
 using IspAudit.Models;
 using IspAudit.Utils;
 using IspAudit.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace TestNetworkApp.Smoke
 {
@@ -20,7 +21,9 @@ namespace TestNetworkApp.Smoke
 
             using var engine = new TrafficEngine();
             var orchestrator = new DiagnosticOrchestrator(engine);
-            var bypass = new BypassController(engine);
+            using var provider = BuildIspAuditProvider();
+            var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+            var bypass = new BypassController(engine, autoHostlist);
 
             var targets = new List<Target>
             {
@@ -70,7 +73,9 @@ namespace TestNetworkApp.Smoke
             {
                 using var engine = new TrafficEngine();
                 var orchestrator = new DiagnosticOrchestrator(engine);
-                var bypass = new BypassController(engine);
+                using var provider = BuildIspAuditProvider();
+                var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                var bypass = new BypassController(engine, autoHostlist);
 
                 // Делаем цель заведомо быструю: TCP 443 к TEST-NET (может таймаутить, но не должен падать).
                 var targets = new List<Target>

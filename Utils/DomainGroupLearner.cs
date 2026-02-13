@@ -41,11 +41,6 @@ namespace IspAudit.Utils
         // Счётчик доказательств для пары доменов (A|B).
         private readonly Dictionary<string, int> _pairEvidence = new(StringComparer.OrdinalIgnoreCase);
 
-        public DomainGroupLearner(DomainGroupCatalogState catalog, DomainGroupLearnerOptions? options = null, Action<string>? log = null)
-            : this(catalog, new NoiseHostFilter(), options, log)
-        {
-        }
-
         public DomainGroupLearner(DomainGroupCatalogState catalog, NoiseHostFilter noiseHostFilter, DomainGroupLearnerOptions? options = null, Action<string>? log = null)
         {
             _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));

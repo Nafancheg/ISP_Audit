@@ -11,6 +11,7 @@ using IspAudit.Core.Traffic;
 using IspAudit.Models;
 using IspAudit.Utils;
 using IspAudit.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace TestNetworkApp.Smoke
 {
@@ -19,7 +20,8 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Ui_OrchestratorInitialized_InViewModel(CancellationToken ct)
             => RunAsync("UI-001", "MainViewModel: Orchestrator создаётся без исключений", () =>
             {
-                var vm = new MainViewModel();
+                using var provider = BuildIspAuditProvider();
+                var vm = provider.GetRequiredService<MainViewModel>();
                 if (vm.Orchestrator == null)
                 {
                     return new SmokeTestResult("UI-001", "MainViewModel: Orchestrator создаётся без исключений", SmokeOutcome.Fail, TimeSpan.Zero,
@@ -45,7 +47,8 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Ui_StartStopCommand_CallsCancelBranch_NoGui(CancellationToken ct)
             => RunAsync("UI-002", "Start/Stop: Cancel-ветка отрабатывает без GUI", () =>
             {
-                var vm = new MainViewModel();
+                using var provider = BuildIspAuditProvider();
+                var vm = provider.GetRequiredService<MainViewModel>();
 
                 // Эмулируем режим "уже запущено": выставляем orchestrator как running + _cts,
                 // чтобы StartOrCancelAsync ушёл в Cancel-ветку и не показывал MessageBox.
@@ -90,7 +93,9 @@ namespace TestNetworkApp.Smoke
             try
             {
                 using var engine = new TrafficEngine();
-                var bypass = new BypassController(engine);
+                using var provider = BuildIspAuditProvider();
+                var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                var bypass = new BypassController(engine, autoHostlist);
 
                 bypass.IsFragmentEnabled = true;
 
@@ -117,7 +122,9 @@ namespace TestNetworkApp.Smoke
             => RunAsync("UI-005", "Preset: сохраняется без перезаписи TTL/redirect rules", () =>
             {
                 using var engine = new TrafficEngine();
-                var bypass = new BypassController(engine);
+                using var provider = BuildIspAuditProvider();
+                var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                var bypass = new BypassController(engine, autoHostlist);
 
                 // Используем GetProfilePath через reflection, чтобы получить правильный путь профиля
                 var getProfilePathMethod = typeof(BypassProfile).GetMethod("GetProfilePath", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
@@ -223,7 +230,8 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Ui_Operator_RawBlockageCodes_AreLocalized(CancellationToken ct)
             => RunAsync("UI-027", "P1.8: Operator UI — raw-коды (TLS_AUTH_FAILURE и т.п.) не отображаются", () =>
             {
-                var main = new MainViewModel();
+                using var provider = BuildIspAuditProvider();
+                var main = provider.GetRequiredService<MainViewModel>();
                 var op = new OperatorViewModel(main);
 
                 // Важно: триггерим формирование SummaryProblemCards через добавление результата.
@@ -275,7 +283,8 @@ namespace TestNetworkApp.Smoke
         public static Task<SmokeTestResult> Ui_NetworkChangePrompt_ShowsAndHides_NoGui(CancellationToken ct)
             => RunAsync("UI-013", "P0.6: Network change prompt показывается/скрывается без GUI", () =>
             {
-                var vm = new MainViewModel();
+                using var provider = BuildIspAuditProvider();
+                var vm = provider.GetRequiredService<MainViewModel>();
 
                 // Вызываем приватный ShowNetworkChangePrompt через reflection:
                 // в smoke-окружении мы не подписываемся на реальные NetworkChange события.
@@ -679,7 +688,8 @@ namespace TestNetworkApp.Smoke
                     prevSkipTls = Environment.GetEnvironmentVariable(IspAudit.Utils.EnvKeys.TestSkipTlsApply);
                     Environment.SetEnvironmentVariable(IspAudit.Utils.EnvKeys.TestSkipTlsApply, "1");
 
-                    var vm = new MainViewModel();
+                    using var provider = BuildIspAuditProvider();
+                    var vm = provider.GetRequiredService<MainViewModel>();
                     var op = new OperatorViewModel(vm);
 
                     var hostKey = "example.com";
@@ -1112,7 +1122,9 @@ namespace TestNetworkApp.Smoke
             try
             {
                 using var engine = new TrafficEngine();
-                var bypass = new BypassController(engine);
+                using var provider = BuildIspAuditProvider();
+                var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                var bypass = new BypassController(engine, autoHostlist);
 
                 // Дёрнем единоразовый сбор метрик (smoke seam). В console runner нет Dispatcher,
                 // поэтому UI property не обновится — проверяем только что вызов не крашит.
@@ -1131,7 +1143,9 @@ namespace TestNetworkApp.Smoke
             => RunAsync("UI-007", "Вердикт меняет Brush в зависимости от цвета", () =>
             {
                 using var engine = new TrafficEngine();
-                var bypass = new BypassController(engine);
+                using var provider = BuildIspAuditProvider();
+                var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                var bypass = new BypassController(engine, autoHostlist);
 
                 // Вызываем приватный обработчик напрямую. В console runner нет Dispatcher, поэтому
                 // UI property не обновится. Проверим только mapping константы (как в OnVerdictChanged коде).

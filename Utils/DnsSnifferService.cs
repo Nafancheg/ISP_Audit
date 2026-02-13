@@ -51,11 +51,6 @@ namespace IspAudit.Utils
         /// </summary>
         public IReadOnlyDictionary<string, DnsFailureInfo> FailedRequests => _failedRequests;
 
-        public DnsParserService(TrafficMonitorFilter filter, IProgress<string>? progress = null)
-            : this(filter, new NoiseHostFilter(), progress)
-        {
-        }
-
         public DnsParserService(TrafficMonitorFilter filter, NoiseHostFilter noiseHostFilter, IProgress<string>? progress = null)
         {
             _filter = filter ?? throw new ArgumentNullException(nameof(filter));

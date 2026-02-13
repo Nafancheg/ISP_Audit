@@ -41,11 +41,6 @@ namespace IspAudit.Utils
         /// </summary>
         public TimeSpan PublishThrottle { get; set; } = TimeSpan.FromSeconds(1);
 
-        public AutoHostlistService()
-            : this(new NoiseHostFilter())
-        {
-        }
-
         public AutoHostlistService(NoiseHostFilter noiseHostFilter)
         {
             _noiseHostFilter = noiseHostFilter ?? throw new ArgumentNullException(nameof(noiseHostFilter));

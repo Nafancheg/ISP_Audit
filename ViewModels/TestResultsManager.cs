@@ -57,7 +57,7 @@ namespace IspAudit.ViewModels
         // Каталог групп: state/domain_groups.json
         private DomainGroupCatalogState _domainGroupCatalog = new();
         private DomainGroupAnalyzer _domainGroups = new(new DomainGroupCatalogState());
-        private DomainGroupLearner _domainGroupLearner = new(new DomainGroupCatalogState());
+        private DomainGroupLearner _domainGroupLearner = null!;
 
         public string? SuggestedDomainSuffix => _domainFamilies.CurrentSuggestion?.DomainSuffix;
         public int SuggestedDomainSubhostCount => _domainFamilies.CurrentSuggestion?.UniqueSubhosts ?? 0;
@@ -119,6 +119,9 @@ namespace IspAudit.ViewModels
         public TestResultsManager(NoiseHostFilter noiseHostFilter)
         {
             _noiseHostFilter = noiseHostFilter ?? throw new ArgumentNullException(nameof(noiseHostFilter));
+
+            // P1.2: learner требует NoiseHostFilter для отсечения шумовых доменов.
+            _domainGroupLearner = new DomainGroupLearner(_domainGroupCatalog, _noiseHostFilter);
 
             // В идеале этот объект создаётся в UI потоке (MainViewModel), тогда здесь будет WPF SynchronizationContext.
             // В smoke/тестах UI может отсутствовать — тогда _uiContext будет null и мы выполняем действия напрямую.

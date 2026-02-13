@@ -25,6 +25,7 @@ namespace IspAudit.ViewModels
         private readonly IspAudit.Core.Traffic.TrafficEngine _trafficEngine;
         private readonly BypassStateManager _bypassState;
         private readonly NoiseHostFilter _noiseHostFilter;
+        private readonly AutoHostlistService _autoHostlistService;
     private readonly object _initializeGate = new();
     private Task? _initializeTask;
 
@@ -59,18 +60,14 @@ namespace IspAudit.ViewModels
         private readonly System.Collections.Generic.Dictionary<string, WinsEntry> _winsByHostKey =
             new(StringComparer.OrdinalIgnoreCase);
 
-        public MainViewModel()
-            : this(new NoiseHostFilter())
-        {
-        }
-
-        public MainViewModel(NoiseHostFilter noiseHostFilter)
+        public MainViewModel(NoiseHostFilter noiseHostFilter, AutoHostlistService autoHostlistService)
         {
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             Log("MainViewModel: Инициализация");
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
             _noiseHostFilter = noiseHostFilter ?? throw new ArgumentNullException(nameof(noiseHostFilter));
+            _autoHostlistService = autoHostlistService ?? throw new ArgumentNullException(nameof(autoHostlistService));
 
             // Явное согласие на DNS/DoH системного уровня — по умолчанию запрещено.
             // Важно: на старте только читаем из store, без записи обратно.
@@ -92,7 +89,7 @@ namespace IspAudit.ViewModels
             _bypassState.AllowDnsDohSystemChanges = _allowDnsDohSystemChanges;
 
             // Создаём контроллеры
-            Bypass = new BypassController(_bypassState);
+            Bypass = new BypassController(_bypassState, _autoHostlistService);
             Orchestrator = new DiagnosticOrchestrator(_bypassState, _noiseHostFilter);
             // MVVM: инъекция UI-делегатов для диалогов (вместо прямого MessageBox в ViewModel)
             Orchestrator.ShowError = (title, msg) =>

@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Extensions.DependencyInjection;
 using IspAudit.ViewModels;
+using IspAudit.Core.Interfaces;
 
 namespace IspAudit.Utils
 {
@@ -11,6 +12,12 @@ namespace IspAudit.Utils
             if (services == null) throw new ArgumentNullException(nameof(services));
 
             services.AddSingleton<NoiseHostFilter>();
+
+            // Единый фильтр трафика (дедуп/шум/правила UI). Важно: использует тот же NoiseHostFilter singleton.
+            services.AddSingleton<ITrafficFilter, UnifiedTrafficFilter>();
+
+            // Auto-hostlist (UI + pipeline) должен быть единым, иначе будут расхождения по кандидатам.
+            services.AddSingleton<AutoHostlistService>();
 
             services.AddSingleton<MainViewModel>();
 
