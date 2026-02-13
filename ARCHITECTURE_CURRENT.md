@@ -75,6 +75,7 @@ Wizard из 5 шагов: выбор приложения → источник �
 - UX-контракт: `docs/P1_11_operator_ui_contract.md`.
 - История — список сессий (проверка → проблемы → действия → post-apply ретест), персист: `state\operator_sessions.json`.
 - Header: ⚙️ `OperatorSettingsWindow` + ? `OperatorHelpWindow`.
+- `OperatorSettingsWindow`: вкладки **Общее** и **Политики** (CRUD user FlowPolicy), персист: `state\\user_flow_policies.json` (cap=200, компиляция/применение best-effort).
 - Эскалация ступенями: при `FAIL/PARTIAL` после ретеста — «Усилить» (safe-only: Disorder → DropRst → QUIC → AllowNoSNI).
 - Откат «Откатить» — только Autopilot-изменения (snapshot ручного apply).
 
@@ -115,6 +116,7 @@ Wizard из 5 шагов: выбор приложения → источник �
 - **Activation Detection**: `ENGINE_DEAD / NOT_ACTIVATED / ACTIVATED / NO_TRAFFIC / UNKNOWN`.
 - **Outcome Check (HTTPS)**: tagged probe (TCP+TLS+HTTP), probe исключается из пользовательских метрик.
 - Сериализует `Apply/Disable`, guard на прямые вызовы вне manager-scope.
+- P1.12: поддерживает snapshot пользовательских политик (подмешиваются в policy-driven compile при Apply).
 
 #### TestResultsManager
 

@@ -76,6 +76,7 @@ namespace TestNetworkApp.Smoke
                 ["PERF-001"] = PERF_Load_500Hosts_HealthLogAndNoBacklog,
                 ["PERF-002"] = PERF_Memory_NoLinearGrowth_ShortRun,
                 ["PERF-003"] = PERF_Store_ThreadSafety_InMemoryBlockageStateStore,
+                ["PERF-004"] = PERF_DecisionGraph_Evaluate_100_500_1000,
                 ["PERF-005"] = PERF_ApplyDisable_10x_P95_Under3s,
                 ["PERF-006"] = PERF_ProcessPacketForSmoke_10k_LatencyStats,
 

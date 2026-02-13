@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.Core.Models;
 using IspAudit.Core.Traffic;
 using IspAudit.Utils;
 
@@ -87,6 +88,30 @@ namespace IspAudit.ViewModels
             catch (Exception ex)
             {
                 Log($"[Bypass] Error applying options: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// P1.12: установить пользовательские политики для policy-driven snapshot.
+        /// После установки триггерим Apply текущих опций, чтобы decision snapshot пересобрался.
+        /// Best-effort: любые ошибки логируются, UI не падает.
+        /// </summary>
+        public async Task SetUserFlowPoliciesAndRecompileAsync(System.Collections.Generic.IReadOnlyList<FlowPolicy> policies, CancellationToken cancellationToken)
+        {
+            try
+            {
+                _stateManager.SetUserFlowPoliciesForManager(policies);
+
+                // Реапплай текущих опций — приводит к пересборке snapshot внутри ApplyTlsOptionsAsync.
+                await ApplyBypassOptionsAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Log($"[PolicyUI] Error applying user policies: {ex.Message}");
             }
         }
 

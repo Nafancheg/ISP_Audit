@@ -38,6 +38,10 @@
   - Перенаправляет историю Operator-сессий (по умолчанию `state\\operator_sessions.json`).
 
 
+- `ISP_AUDIT_USER_FLOW_POLICIES_PATH`
+  - Перенаправляет файл пользовательских policy-driven политик (по умолчанию `state\\user_flow_policies.json`).
+
+
 - `ISP_AUDIT_POST_APPLY_CHECKS_PATH`
   - Перенаправляет файл результатов пост‑проверки (по умолчанию `state\\post_apply_checks.json`).
 

@@ -306,6 +306,12 @@ namespace IspAudit.ViewModels
             BrowseExeCommand = new RelayCommand(_ => BrowseExe(), _ => !IsRunning);
             ToggleThemeCommand = new RelayCommand(_ => IsDarkTheme = !IsDarkTheme);
 
+            // P1.12: пользовательские политики (CRUD)
+            AddUserFlowPolicyCommand = new RelayCommand(_ => AddUserFlowPolicyRow(), _ => !IsUserFlowPoliciesBusy);
+            DeleteUserFlowPolicyCommand = new RelayCommand(_ => DeleteSelectedUserFlowPolicyRow(), _ => !IsUserFlowPoliciesBusy && SelectedUserFlowPolicy != null);
+            ReloadUserFlowPoliciesCommand = new RelayCommand(_ => ReloadUserFlowPoliciesBestEffort(), _ => !IsUserFlowPoliciesBusy);
+            SaveUserFlowPoliciesCommand = new RelayCommand(_ => _ = SaveUserFlowPoliciesAsync(), _ => !IsUserFlowPoliciesBusy);
+
             ToggleLeftPanelCommand = new RelayCommand(_ => IsLeftPanelOpen = !IsLeftPanelOpen, _ => true);
 
             // Bypass Commands
@@ -360,6 +366,9 @@ namespace IspAudit.ViewModels
             IgnoreDomainGroupSuggestionCommand = new RelayCommand(_ => IgnoreDomainGroupSuggestionBestEffort(), _ => HasLearnedDomainGroupSuggestion && !IsApplyingRecommendations);
 
             RestartConnectionCommand = new RelayCommand(async _ => await RestartConnectionAsync(), _ => ShowBypassPanel && !IsApplyingRecommendations);
+
+            // P1.12: загрузка пользовательских политик на старте (best-effort)
+            InitializeUserFlowPoliciesUi();
 
             // Применение стратегии/плана из конкретной строки результата ("карточки").
             // UX: пользователь видит стратегию рядом с целью и нажимает "Подключить" именно для неё.

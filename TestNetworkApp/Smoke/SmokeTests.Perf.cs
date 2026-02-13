@@ -7,6 +7,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.Core.Bypass;
 using IspAudit.Core.Traffic;
 using IspAudit.ViewModels;
 using IspAudit.Core.Diagnostics;
@@ -14,6 +15,7 @@ using IspAudit.Core.Interfaces;
 using IspAudit.Core.Models;
 using IspAudit.Core.Modules;
 using IspAudit.Utils;
+using System.Collections.Immutable;
 
 using TransportProtocol = IspAudit.Bypass.TransportProtocol;
 
@@ -273,6 +275,83 @@ namespace TestNetworkApp.Smoke
                 }
 
                 return new SmokeTestResult("PERF-003", "PERF: thread-safety InMemoryBlockageStateStore", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+            }, ct);
+
+        public static Task<SmokeTestResult> PERF_DecisionGraph_Evaluate_100_500_1000(CancellationToken ct)
+            => RunAsync("PERF-004", "PERF: DecisionGraphSnapshot.Evaluate() при 100/500/1000 политиках", () =>
+            {
+                try
+                {
+                    static long Measure(int policyCount, int iterations)
+                    {
+                        // Худший кейс: каждая Evaluate должна пройти почти весь список кандидатов.
+                        // Для этого создаём N-1 политик с DstIpv4Set=empty (никогда не мэтчатся)
+                        // и одну (последнюю) с DstIpv4Set=null (мэтчится всегда).
+                        var policies = new List<FlowPolicy>(policyCount);
+
+                        for (var i = 0; i < policyCount; i++)
+                        {
+                            var neverMatches = i < policyCount - 1;
+                            policies.Add(new FlowPolicy
+                            {
+                                Id = $"perf_tcp443_{policyCount}_{i}",
+                                Priority = policyCount - i,
+                                Scope = PolicyScope.Global,
+                                Match = new MatchCondition
+                                {
+                                    Proto = FlowTransportProtocol.Tcp,
+                                    Port = 443,
+                                    TlsStage = TlsStage.ClientHello,
+                                    DstIpv4Set = neverMatches ? ImmutableHashSet<uint>.Empty : null
+                                },
+                                Action = PolicyAction.Pass
+                            });
+                        }
+
+                        var snapshot = PolicySetCompiler.CompileOrThrow(policies);
+
+                        var sw = Stopwatch.StartNew();
+                        FlowPolicy? last = null;
+                        for (var i = 0; i < iterations; i++)
+                        {
+                            last = snapshot.EvaluateTcp443TlsClientHello(dstIpv4Int: 0x01020304, isIpv4: true, isIpv6: false, tlsStage: TlsStage.ClientHello);
+                        }
+
+                        sw.Stop();
+                        if (last == null)
+                        {
+                            throw new InvalidOperationException("Evaluate вернул null (ожидали хотя бы одну совпадающую политику)");
+                        }
+
+                        return sw.ElapsedMilliseconds;
+                    }
+
+                    ct.ThrowIfCancellationRequested();
+
+                    // Нормируем количество проверок: iterations * policyCount ~= 2_000_000.
+                    var ms100 = Measure(100, iterations: 20_000);
+                    ct.ThrowIfCancellationRequested();
+                    var ms500 = Measure(500, iterations: 4_000);
+                    ct.ThrowIfCancellationRequested();
+                    var ms1000 = Measure(1000, iterations: 2_000);
+
+                    // Мягкий порог: чтобы ловить регрессии, но не флапать на медленных машинах.
+                    // Ожидаемо это должно укладываться в < 4-5с суммарно на dev-ноутбуке.
+                    var total = ms100 + ms500 + ms1000;
+                    if (total > 5500)
+                    {
+                        return new SmokeTestResult("PERF-004", "PERF: DecisionGraphSnapshot.Evaluate() при 100/500/1000 политиках", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Слишком медленно: 100={ms100}ms; 500={ms500}ms; 1000={ms1000}ms; total={total}ms");
+                    }
+
+                    return new SmokeTestResult("PERF-004", "PERF: DecisionGraphSnapshot.Evaluate() при 100/500/1000 политиках", SmokeOutcome.Pass, TimeSpan.Zero,
+                        $"OK: 100={ms100}ms; 500={ms500}ms; 1000={ms1000}ms; total={total}ms");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult("PERF-004", "PERF: DecisionGraphSnapshot.Evaluate() при 100/500/1000 политиках", SmokeOutcome.Fail, TimeSpan.Zero,
+                        ex.Message);
+                }
             }, ct);
 
         public static Task<SmokeTestResult> PERF_ProcessPacketForSmoke_10k_LatencyStats(CancellationToken ct)

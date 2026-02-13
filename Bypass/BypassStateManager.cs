@@ -233,6 +233,39 @@ namespace IspAudit.Bypass
         private readonly Action<string>? _log;
         private readonly SemaphoreSlim _applyGate = new(1, 1);
 
+        // P1.12: пользовательские политики (CRUD в settings). Держим как массив-снимок,
+        // чтобы можно было безопасно читать/писать без аллокаций/локов в hot-path.
+        private FlowPolicy[] _userPolicies = Array.Empty<FlowPolicy>();
+
+        public void SetUserFlowPoliciesForManager(System.Collections.Generic.IEnumerable<FlowPolicy>? policies)
+        {
+            try
+            {
+                var arr = (policies ?? Enumerable.Empty<FlowPolicy>())
+                    .Where(p => p != null)
+                    .ToArray();
+
+                Volatile.Write(ref _userPolicies, arr);
+                _log?.Invoke($"[Bypass] UserFlowPolicies: set count={arr.Length}");
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"[Bypass] UserFlowPolicies: set failed. {ex.Message}");
+            }
+        }
+
+        private FlowPolicy[] GetUserFlowPoliciesSnapshot()
+        {
+            try
+            {
+                return Volatile.Read(ref _userPolicies) ?? Array.Empty<FlowPolicy>();
+            }
+            catch
+            {
+                return Array.Empty<FlowPolicy>();
+            }
+        }
+
         // Runtime Adaptation Layer: inbound очередь + retry-until-delivered для доставки runtime-сигналов.
         public ReactiveTargetSyncService ReactiveTargetSync { get; }
 
@@ -785,6 +818,15 @@ namespace IspAudit.Bypass
                                     Scope = PolicyScope.Global
                                 });
                             }
+                        }
+
+                        // P1.12: подмешиваем пользовательские политики в конец списка.
+                        // Порядок не влияет на выбор, так как DecisionGraph сортирует по Priority desc.
+                        // Важно: ошибки компиляции (hard-conflict) приведут к fallback на legacy.
+                        var userPolicies = GetUserFlowPoliciesSnapshot();
+                        if (userPolicies.Length > 0)
+                        {
+                            policies.AddRange(userPolicies);
                         }
 
                         decisionSnapshot = policies.Count == 0 ? null : PolicySetCompiler.CompileOrThrow(policies);

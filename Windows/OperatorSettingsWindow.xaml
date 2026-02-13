@@ -17,36 +17,103 @@
             <StackPanel>
                 <TextBlock Text="Настройки" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10"/>
 
-                <TextBlock Text="Операторский режим использует только безопасные параметры. Инженерные тумблеры доступны в расширенном режиме."
-                           Opacity="0.8" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                <TabControl>
+                    <TabItem Header="Общее">
+                        <StackPanel Margin="0,10,0,0">
+                            <TextBlock Text="Операторский режим использует только безопасные параметры. Инженерные тумблеры доступны в расширенном режиме."
+                                       Opacity="0.8" TextWrapping="Wrap" Margin="0,0,0,12"/>
 
-                <ToggleButton Content="Автоисправление"
-                              Style="{StaticResource BypassToggleButtonStyle}"
-                              Height="34" MinWidth="200" Padding="12,0" FontSize="12"
-                              IsChecked="{Binding EnableAutoBypass, Mode=TwoWay}"
-                              ToolTip="Автоматически применять безопасные исправления при проблемах (без ручного выбора стратегий)."
-                              Margin="0,0,0,10"/>
+                            <ToggleButton Content="Автоисправление"
+                                          Style="{StaticResource BypassToggleButtonStyle}"
+                                          Height="34" MinWidth="200" Padding="12,0" FontSize="12"
+                                          IsChecked="{Binding EnableAutoBypass, Mode=TwoWay}"
+                                          ToolTip="Автоматически применять безопасные исправления при проблемах (без ручного выбора стратегий)."
+                                          Margin="0,0,0,10"/>
 
-                <ToggleButton Content="Разрешить DNS/DoH"
-                              Style="{StaticResource BypassToggleButtonStyle}"
-                              Height="34" MinWidth="200" Padding="12,0" FontSize="12"
-                              IsChecked="{Binding AllowDnsDohSystemChanges, Mode=OneWay}"
-                              PreviewMouseLeftButtonDown="DnsDohConsentToggle_PreviewMouseLeftButtonDown"
-                              ToolTip="Явное разрешение на системные изменения DNS/DoH (может менять настройки сети Windows). Без этого DoH из рекомендаций будет пропускаться."
-                              Margin="0,0,0,10"/>
+                            <ToggleButton Content="Разрешить DNS/DoH"
+                                          Style="{StaticResource BypassToggleButtonStyle}"
+                                          Height="34" MinWidth="200" Padding="12,0" FontSize="12"
+                                          IsChecked="{Binding AllowDnsDohSystemChanges, Mode=OneWay}"
+                                          PreviewMouseLeftButtonDown="DnsDohConsentToggle_PreviewMouseLeftButtonDown"
+                                          ToolTip="Явное разрешение на системные изменения DNS/DoH (может менять настройки сети Windows). Без этого DoH из рекомендаций будет пропускаться."
+                                          Margin="0,0,0,10"/>
 
-                <ToggleButton Content="Тестовый режим: быстрая проверка"
-                              Style="{StaticResource BypassToggleButtonStyle}"
-                              Height="34" MinWidth="200" Padding="12,0" FontSize="12"
-                              IsChecked="{Binding IsBasicTestMode, Mode=TwoWay}"
-                              ToolTip="Не предназначено для диагностики конкретного сервиса. Режим нужен для самопроверки работы приложения (создание карточек/поток UI)."
-                              Margin="0,0,0,10"/>
+                            <ToggleButton Content="Тестовый режим: быстрая проверка"
+                                          Style="{StaticResource BypassToggleButtonStyle}"
+                                          Height="34" MinWidth="200" Padding="12,0" FontSize="12"
+                                          IsChecked="{Binding IsBasicTestMode, Mode=TwoWay}"
+                                          ToolTip="Не предназначено для диагностики конкретного сервиса. Режим нужен для самопроверки работы приложения (создание карточек/поток UI)."
+                                          Margin="0,0,0,10"/>
 
-                <Button Content="Переключить тему"
-                        Style="{StaticResource SecondaryButtonStyle}"
-                        Padding="12,6"
-                        HorizontalAlignment="Left"
-                        Command="{Binding ToggleThemeCommand}"/>
+                            <Button Content="Переключить тему"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Padding="12,6"
+                                    HorizontalAlignment="Left"
+                                    Command="{Binding ToggleThemeCommand}"/>
+                        </StackPanel>
+                    </TabItem>
+
+                    <TabItem Header="Политики">
+                        <StackPanel Margin="0,10,0,0">
+                            <TextBlock Text="Пользовательские политики применяются в policy-driven execution plane."
+                                       Opacity="0.8" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <Button Content="Добавить"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Padding="12,6"
+                                        Command="{Binding AddUserFlowPolicyCommand}"/>
+                                <Button Content="Удалить"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Padding="12,6"
+                                        Margin="8,0,0,0"
+                                        Command="{Binding DeleteUserFlowPolicyCommand}"/>
+                                <Button Content="Перезагрузить"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Padding="12,6"
+                                        Margin="8,0,0,0"
+                                        Command="{Binding ReloadUserFlowPoliciesCommand}"/>
+                                <Button Content="Сохранить"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Padding="12,6"
+                                        Margin="8,0,0,0"
+                                        Command="{Binding SaveUserFlowPoliciesCommand}"/>
+                            </StackPanel>
+
+                            <DataGrid ItemsSource="{Binding UserFlowPolicies}"
+                                      SelectedItem="{Binding SelectedUserFlowPolicy, Mode=TwoWay}"
+                                      AutoGenerateColumns="False"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      IsReadOnly="False"
+                                      HeadersVisibility="Column"
+                                      GridLinesVisibility="None"
+                                      FontSize="12"
+                                      Height="210"
+                                      RowBackground="{DynamicResource MaterialDesignPaper}"
+                                      AlternatingRowBackground="{DynamicResource MaterialDesignPaper}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Id" Binding="{Binding Id, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                                    <DataGridTextColumn Header="Scope" Binding="{Binding Scope, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="90"/>
+                                    <DataGridTextColumn Header="Prio" Binding="{Binding Priority, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="60"/>
+                                    <DataGridTextColumn Header="Proto" Binding="{Binding Proto, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="70"/>
+                                    <DataGridTextColumn Header="Port" Binding="{Binding Port, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="70"/>
+                                    <DataGridTextColumn Header="TlsStage" Binding="{Binding TlsStage, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="90"/>
+                                    <DataGridTextColumn Header="SNI" Binding="{Binding SniPattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                                    <DataGridTextColumn Header="Action" Binding="{Binding Action, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="140"/>
+                                    <DataGridTextColumn Header="TlsStrategy" Binding="{Binding TlsStrategy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="110"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <TextBlock Text="Подсказка: Action = PASS/BLOCK/DropUdp443/HttpHostTricks/TlsBypassStrategy."
+                                       Opacity="0.8" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                            <TextBlock Text="{Binding UserFlowPoliciesStatusText}"
+                                       Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                       FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Visibility="{Binding UserFlowPoliciesStatusText, Converter={StaticResource StringToVisibilityConverter}}"/>
+                        </StackPanel>
+                    </TabItem>
+                </TabControl>
 
                 <Border Height="1" Background="{DynamicResource MaterialDesignDivider}" Margin="0,14,0,12"/>
 

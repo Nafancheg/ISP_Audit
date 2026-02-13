@@ -298,6 +298,12 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Реализован P0.2 Этап 5.4 (интеграция с P0.1, MVP): при записи apply-транзакции observed IPv4 цели засеиваются из `candidateIpEndpoints`, чтобы per-target политики (DstIpv4Set) могли компилироваться сразу (без ожидания DNS resolve). Регресс-гейт: `REG-015`.
 - Практическое усиление (P0.0 hardening): `candidateIpEndpoints` сохраняются в `BypassStateManager.ActiveTargetPolicy` (best-effort) и используются как seed observed IPv4 перед компиляцией per-target политик (TCP/443, TCP/80), снижая зависимость от DNS resolve. Smoke-гейты: `DPI2-047`, `DPI2-048`.
 
+Актуализация (Dev, 13.02.2026): P1.12 User Policies (policy-driven)
+- Добавлен user store: `state\\user_flow_policies.json` (ENV override: `ISP_AUDIT_USER_FLOW_POLICIES_PATH`).
+- Operator UI: `OperatorSettingsWindow` получил вкладку «Политики» с DataGrid CRUD + валидацией и cap=200.
+- Async recompile: компиляция (hard-conflict detection) выполняется на фоне + затем триггерится re-apply текущих опций для обновления decision snapshot.
+- Perf smoke: `PERF-004` — замер `DecisionGraphSnapshot.Evaluate()` при 100/500/1000 политиках.
+
 Актуализация (Dev, 12.01.2026): базовые analyzers/линт для стабильности
 - Добавлены `Directory.Build.props` и `.editorconfig`.
 - Включены встроенные .NET analyzers (`EnableNETAnalyzers=true`) без форсирования `AnalysisMode/AnalysisLevel` (оставляем дефолты SDK, чтобы не раздувать шум предупреждений).

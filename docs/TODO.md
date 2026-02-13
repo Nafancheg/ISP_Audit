@@ -103,10 +103,10 @@
 - [ ] При необходимости: режим classic — фиксированный набор (TLS fragment + DNS), env `ISP_AUDIT_CLASSIC_MODE`
 
 ### P1.12 Policy-driven — незакрытое
-- [ ] Advanced UI: SettingsWindow → вкладка «Политики» — DataGrid для FlowPolicy (add/edit/delete + валидация)
-- [ ] Perf: замерить DecisionGraph.Evaluate() при 100/500/1000 политик → smoke `PERF-004`
-- [ ] Cap: max 200 политик, при превышении WARN + отказ
-- [ ] Async recompile: DecisionGraph.RecompileAsync() на фоновом потоке
+- [x] Advanced UI: OperatorSettingsWindow → вкладка «Политики» — DataGrid CRUD (add/edit/delete + валидация)
+- [x] Perf: замер `DecisionGraphSnapshot.Evaluate()` при 100/500/1000 политик → smoke `PERF-004`
+- [x] Cap: max 200 политик, при превышении WARN + отказ
+- [x] Async recompile: compile (hard-conflict detection) на фоне + re-apply текущих опций
 
 ### P1.13 Стратегии обхода — долги
 - [x] BadChecksum: tooltip в Engineer UI «Только для фейковых пакетов (TTL=1)» + раздел README

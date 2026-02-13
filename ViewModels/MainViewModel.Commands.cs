@@ -15,6 +15,12 @@ namespace IspAudit.ViewModels
         public ICommand BrowseExeCommand { get; }
         public ICommand ToggleThemeCommand { get; }
 
+        // P1.12: пользовательские политики (Operator Settings → вкладка "Политики")
+        public ICommand AddUserFlowPolicyCommand { get; } = null!;
+        public ICommand DeleteUserFlowPolicyCommand { get; } = null!;
+        public ICommand ReloadUserFlowPoliciesCommand { get; } = null!;
+        public ICommand SaveUserFlowPoliciesCommand { get; } = null!;
+
         // Bypass Toggle Commands
         public ICommand ToggleFragmentCommand { get; }
         public ICommand ToggleDisorderCommand { get; }
