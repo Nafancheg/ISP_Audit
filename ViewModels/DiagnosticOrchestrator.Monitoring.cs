@@ -94,7 +94,7 @@ namespace IspAudit.ViewModels
             _udpInspectionService.Attach(_trafficMonitorFilter);
 
             // DNS Parser (теперь умеет и SNI)
-            _dnsParser = new DnsParserService(_trafficMonitorFilter, progress);
+            _dnsParser = new DnsParserService(_trafficMonitorFilter, _noiseHostFilter, progress);
             _dnsParser.OnDnsLookupFailed += (hostname, error) =>
             {
                 Application.Current?.Dispatcher.BeginInvoke(() =>

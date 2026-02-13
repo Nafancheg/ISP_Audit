@@ -13,6 +13,8 @@ namespace IspAudit.Utils
     /// </summary>
     public sealed class AutoHostlistService
     {
+        private readonly NoiseHostFilter _noiseHostFilter;
+
         private readonly object _sync = new();
         private readonly ConcurrentDictionary<string, CandidateState> _candidates = new(StringComparer.OrdinalIgnoreCase);
         private DateTime _lastPublishUtc;
@@ -38,6 +40,16 @@ namespace IspAudit.Utils
         /// Минимальный интервал между публикациями изменений (защита от спама в UI).
         /// </summary>
         public TimeSpan PublishThrottle { get; set; } = TimeSpan.FromSeconds(1);
+
+        public AutoHostlistService()
+            : this(NoiseHostFilter.Instance)
+        {
+        }
+
+        public AutoHostlistService(NoiseHostFilter noiseHostFilter)
+        {
+            _noiseHostFilter = noiseHostFilter ?? throw new ArgumentNullException(nameof(noiseHostFilter));
+        }
 
         public void Clear()
         {
@@ -95,7 +107,7 @@ namespace IspAudit.Utils
             }
 
             // Шумовые/служебные домены не добавляем в hostlist.
-            if (LooksLikeHostname(key) && NoiseHostFilter.Instance.IsNoiseHost(key))
+            if (LooksLikeHostname(key) && _noiseHostFilter.IsNoiseHost(key))
             {
                 return;
             }

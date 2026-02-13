@@ -15,6 +15,7 @@ namespace IspAudit.Utils
     public class DnsParserService : IDisposable
     {
         private readonly TrafficMonitorFilter _filter;
+        private readonly NoiseHostFilter _noiseHostFilter;
         private readonly IProgress<string>? _progress;
         private readonly ConcurrentDictionary<string, string> _dnsCache;
         private readonly ConcurrentDictionary<string, string> _sniCache;
@@ -51,8 +52,14 @@ namespace IspAudit.Utils
         public IReadOnlyDictionary<string, DnsFailureInfo> FailedRequests => _failedRequests;
 
         public DnsParserService(TrafficMonitorFilter filter, IProgress<string>? progress = null)
+            : this(filter, NoiseHostFilter.Instance, progress)
+        {
+        }
+
+        public DnsParserService(TrafficMonitorFilter filter, NoiseHostFilter noiseHostFilter, IProgress<string>? progress = null)
         {
             _filter = filter ?? throw new ArgumentNullException(nameof(filter));
+            _noiseHostFilter = noiseHostFilter ?? throw new ArgumentNullException(nameof(noiseHostFilter));
             _progress = progress;
             _dnsCache = new ConcurrentDictionary<string, string>();
             _sniCache = new ConcurrentDictionary<string, string>();
@@ -266,8 +273,8 @@ namespace IspAudit.Utils
 
                 try
                 {
-                    var existingIsNoise = NoiseHostFilter.Instance.IsNoiseHost(existingName);
-                    var newIsNoise = NoiseHostFilter.Instance.IsNoiseHost(lowerName);
+                    var existingIsNoise = _noiseHostFilter.IsNoiseHost(existingName);
+                    var newIsNoise = _noiseHostFilter.IsNoiseHost(lowerName);
 
                     if (existingIsNoise && !newIsNoise)
                     {

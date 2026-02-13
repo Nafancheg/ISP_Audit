@@ -160,7 +160,7 @@ namespace IspAudit.Utils
 
                     // Перепроверяем шум с обновлённым hostname.
                     // Важно: НЕ отбрасываем реальные проблемы/блокировки только из-за шумового rDNS.
-                    if (decision.Action != FilterAction.Process && !string.IsNullOrEmpty(hostname) && NoiseHostFilter.Instance.IsNoiseHost(hostname))
+                    if (decision.Action != FilterAction.Process && !string.IsNullOrEmpty(hostname) && _filter.IsNoise(hostname))
                     {
                         _progress?.Report($"[NOISE] Отфильтрован (late): {displayHost}");
                         continue; // Пропускаем только «непроблемные» шумовые хосты

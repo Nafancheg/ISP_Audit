@@ -31,6 +31,7 @@ namespace IspAudit.Utils
         private readonly DomainGroupCatalogState _catalog;
         private readonly DomainGroupLearnerOptions _opt;
         private readonly Action<string>? _log;
+        private readonly NoiseHostFilter _noiseHostFilter;
 
         private DateTime _lastPersistUtc;
 
@@ -41,8 +42,14 @@ namespace IspAudit.Utils
         private readonly Dictionary<string, int> _pairEvidence = new(StringComparer.OrdinalIgnoreCase);
 
         public DomainGroupLearner(DomainGroupCatalogState catalog, DomainGroupLearnerOptions? options = null, Action<string>? log = null)
+            : this(catalog, NoiseHostFilter.Instance, options, log)
+        {
+        }
+
+        public DomainGroupLearner(DomainGroupCatalogState catalog, NoiseHostFilter noiseHostFilter, DomainGroupLearnerOptions? options = null, Action<string>? log = null)
         {
             _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+            _noiseHostFilter = noiseHostFilter ?? throw new ArgumentNullException(nameof(noiseHostFilter));
             _opt = options ?? new DomainGroupLearnerOptions();
             _log = log;
             _lastPersistUtc = DateTime.MinValue;
@@ -65,7 +72,7 @@ namespace IspAudit.Utils
                 }
 
                 // Шумовые домены не обучаем.
-                if (NoiseHostFilter.Instance.IsNoiseHost(hk))
+                if (_noiseHostFilter.IsNoiseHost(hk))
                 {
                     return false;
                 }

@@ -1023,7 +1023,7 @@ namespace IspAudit.ViewModels
                         progress,
                         _trafficEngine,
                         _dnsParser,
-                        new UnifiedTrafficFilter(),
+                        new UnifiedTrafficFilter(_noiseHostFilter),
                         null,
                         bypassController.AutoHostlist);
 

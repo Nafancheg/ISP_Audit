@@ -14,6 +14,18 @@ namespace IspAudit.Utils
         // Уровень-2 дедупликации отключён намеренно.
         // Дедупликация на уровне цели выполняется в TrafficCollector по ключу RemoteIp:RemotePort:Protocol.
 
+        private readonly NoiseHostFilter _noiseHostFilter;
+
+        public UnifiedTrafficFilter()
+            : this(NoiseHostFilter.Instance)
+        {
+        }
+
+        public UnifiedTrafficFilter(NoiseHostFilter noiseHostFilter)
+        {
+            _noiseHostFilter = noiseHostFilter ?? throw new ArgumentNullException(nameof(noiseHostFilter));
+        }
+
         public FilterDecision ShouldTest(HostDiscovered host, string? knownHostname = null)
         {
             // 0. Loopback — почти всегда шум для ISP-диагностики
@@ -40,7 +52,7 @@ namespace IspAudit.Utils
             // Если стратегии нет и статус OK - это успешный тест, не засоряем UI карточками
             if (result.BypassStrategy == PipelineContract.BypassNone && result.RecommendedAction == BlockageCode.StatusOk)
             {
-                if (!string.IsNullOrEmpty(bestName) && NoiseHostFilter.Instance.IsNoiseHost(bestName))
+                if (!string.IsNullOrEmpty(bestName) && _noiseHostFilter.IsNoiseHost(bestName))
                 {
                     return new FilterDecision(FilterAction.Drop, "Noise host (post-check, OK)");
                 }
@@ -62,7 +74,7 @@ namespace IspAudit.Utils
                         ))
                 {
                     // Для шумовых имён — дропаем, для остальных — логируем без карточки.
-                    if (!string.IsNullOrEmpty(bestName) && NoiseHostFilter.Instance.IsNoiseHost(bestName))
+                    if (!string.IsNullOrEmpty(bestName) && _noiseHostFilter.IsNoiseHost(bestName))
                     {
                         return new FilterDecision(FilterAction.Drop, "Noise host (post-check, intel tail, OK)");
                     }
@@ -76,7 +88,7 @@ namespace IspAudit.Utils
 
         public bool IsNoise(string? hostname)
         {
-            return NoiseHostFilter.Instance.IsNoiseHost(hostname);
+            return _noiseHostFilter.IsNoiseHost(hostname);
         }
 
         public void Invalidate(string ip)

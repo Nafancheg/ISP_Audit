@@ -106,7 +106,7 @@ namespace IspAudit.ViewModels
                 _noiseHostFilter.LoadFromFile(noiseFilterPath, new Progress<string>(Log));
 
                 // Создаем единый фильтр трафика (для дедупликации и фильтрации)
-                var trafficFilter = new UnifiedTrafficFilter();
+                var trafficFilter = new UnifiedTrafficFilter(_noiseHostFilter);
 
                 // Сброс DNS кеша
                 Log("[Orchestrator] Сброс DNS кеша...");
@@ -483,7 +483,7 @@ namespace IspAudit.ViewModels
                     progress,
                     _trafficEngine,
                     _dnsParser, // Нужен для кеша SNI/DNS имён (стабильнее подписи в UI и авто-hostlist)
-                    new UnifiedTrafficFilter(),
+                    new UnifiedTrafficFilter(_noiseHostFilter),
                     null, // State store новый
                     bypassController.AutoHostlist);
 

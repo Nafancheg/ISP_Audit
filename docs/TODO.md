@@ -181,6 +181,11 @@
 	- `MainViewModel`: принимает `NoiseHostFilter` (fallback-конструктор оставлен для back-compat)
 	- `DiagnosticOrchestrator`: принимает `NoiseHostFilter`, загрузка правил через `LoadFromFile(...)` на том же экземпляре
 	- `TestResultsManager`: принимает `NoiseHostFilter`, больше не обращается к `NoiseHostFilter.Instance` в hot-path логике
+	- `UnifiedTrafficFilter`: принимает `NoiseHostFilter` (в оркестраторе создаётся с инъекцией)
+	- `LiveTestingPipeline` (classifier stage): перепроверка шума через `ITrafficFilter.IsNoise(...)`
+	- `DomainGroupLearner`: принимает `NoiseHostFilter` (создаётся из `TestResultsManager` с инъекцией)
+	- `DnsParserService`: принимает `NoiseHostFilter` (создаётся из оркестратора с инъекцией)
+	- `AutoHostlistService`: принимает `NoiseHostFilter` (fallback-конструктор оставлен)
 - [ ] Осталось переключить:
 	- Убрать обращения к `NoiseHostFilter.Instance` в остальных местах (Converters/, Utils/, Pipeline stage и т.п.)
 	- Убрать/задепрекейтить `NoiseHostFilter.Initialize(...)` (сейчас остаётся в smoke-тестах TestNetworkApp)
