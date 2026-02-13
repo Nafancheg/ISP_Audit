@@ -19,7 +19,7 @@ namespace IspAudit.ViewModels
             // даже если тестер/классификатор ошибочно пометил их как проблемные.
             if (!string.IsNullOrWhiteSpace(host) &&
                 !IPAddress.TryParse(host, out _) &&
-                NoiseHostFilter.Instance.IsNoiseHost(host))
+                _noiseHostFilter.IsNoiseHost(host))
             {
                 // Важно: шум должен скрывать только «OK/успех».
                 // Если по шумовому ключу пришла проблема (Fail/Warn) — НЕ удаляем и НЕ скрываем,

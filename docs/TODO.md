@@ -174,10 +174,10 @@
 
 ### 4.1 DI container
 - [x] NuGet: `Microsoft.Extensions.DependencyInjection`
-- [ ] `Utils/ServiceCollectionExtensions.cs`: регистрация всех сервисов
+- [x] `Utils/ServiceCollectionExtensions.cs`: регистрация всех сервисов
 - [x] `App.xaml.cs`: ServiceCollection → ConfigureServices → BuildServiceProvider
 - [ ] Постепенно: `new Service()` → `GetRequiredService<T>()`
-- [ ] Начать с NoiseHostFilter: AddSingleton → инъекция через конструктор
+- [x] Начать с NoiseHostFilter: AddSingleton → инъекция через конструктор
 
 ### 4.2 Устранение глобального состояния
 - [x] Удалить legacy `Config.ActiveProfile` (Profiles/*.json loader для целей диагностики)

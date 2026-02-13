@@ -81,6 +81,7 @@ namespace IspAudit.ViewModels
         private ConnectionMonitorService? _connectionMonitor;
         private readonly TrafficEngine _trafficEngine;
         private readonly BypassStateManager _stateManager;
+        private readonly NoiseHostFilter _noiseHostFilter;
         private TrafficMonitorFilter? _trafficMonitorFilter;
         private TcpRetransmissionTracker? _tcpRetransmissionTracker;
         private HttpRedirectDetector? _httpRedirectDetector;
@@ -209,14 +210,15 @@ namespace IspAudit.ViewModels
         /// </summary>
         public Action<string, string>? ShowError { get; set; }
 
-        public DiagnosticOrchestrator(BypassStateManager stateManager)
+        public DiagnosticOrchestrator(BypassStateManager stateManager, NoiseHostFilter? noiseHostFilter = null)
         {
             _stateManager = stateManager ?? throw new ArgumentNullException(nameof(stateManager));
             _trafficEngine = _stateManager.TrafficEngine;
+            _noiseHostFilter = noiseHostFilter ?? NoiseHostFilter.Instance;
         }
 
         public DiagnosticOrchestrator(TrafficEngine trafficEngine)
-            : this(BypassStateManager.GetOrCreate(trafficEngine, baseProfile: null, log: null))
+            : this(BypassStateManager.GetOrCreate(trafficEngine, baseProfile: null, log: null), noiseHostFilter: null)
         {
         }
 

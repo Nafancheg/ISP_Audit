@@ -121,7 +121,7 @@ namespace IspAudit.ViewModels
 
         private void StorePlan(string hostKey, BypassPlan plan, BypassController bypassController)
         {
-            if (NoiseHostFilter.Instance.IsNoiseHost(hostKey))
+            if (_noiseHostFilter.IsNoiseHost(hostKey))
             {
                 // Шум не должен перетирать «активный» план рекомендаций и засорять Apply.
                 return;

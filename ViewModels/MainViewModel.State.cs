@@ -555,7 +555,7 @@ namespace IspAudit.ViewModels
                 var hostKey = GetPreferredHostKey(selected);
                 if (string.IsNullOrWhiteSpace(hostKey)) return;
 
-                if (NoiseHostFilter.Instance.IsNoiseHost(hostKey)) return;
+                if (_noiseHostFilter.IsNoiseHost(hostKey)) return;
 
                 Bypass.SetOutcomeTargetHost(hostKey);
             }

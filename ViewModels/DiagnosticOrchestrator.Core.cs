@@ -103,7 +103,7 @@ namespace IspAudit.ViewModels
 
                 // Инициализируем фильтр шумных хостов
                 var noiseFilterPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "noise_hosts.json");
-                NoiseHostFilter.Initialize(noiseFilterPath, new Progress<string>(Log));
+                _noiseHostFilter.LoadFromFile(noiseFilterPath, new Progress<string>(Log));
 
                 // Создаем единый фильтр трафика (для дедупликации и фильтрации)
                 var trafficFilter = new UnifiedTrafficFilter();

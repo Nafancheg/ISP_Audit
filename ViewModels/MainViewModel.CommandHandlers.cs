@@ -96,7 +96,7 @@ namespace IspAudit.ViewModels
                 }
 
                 // Не даём управлять участием для шумовых хостов.
-                if (!IPAddress.TryParse(hostKey, out _) && NoiseHostFilter.Instance.IsNoiseHost(hostKey))
+                if (!IPAddress.TryParse(hostKey, out _) && _noiseHostFilter.IsNoiseHost(hostKey))
                 {
                     test.ActionStatusText = "Участие: шумовой хост (EXCLUDED)";
                     return;
@@ -1644,14 +1644,14 @@ namespace IspAudit.ViewModels
             }
         }
 
-        private static bool IsNoiseHostKey(string hostKey)
+        private bool IsNoiseHostKey(string hostKey)
         {
             try
             {
                 var hk = (hostKey ?? string.Empty).Trim().Trim('.');
                 if (string.IsNullOrWhiteSpace(hk)) return false;
                 if (IPAddress.TryParse(hk, out _)) return false;
-                return NoiseHostFilter.Instance.IsNoiseHost(hk);
+                return _noiseHostFilter.IsNoiseHost(hk);
             }
             catch
             {
@@ -1722,7 +1722,7 @@ namespace IspAudit.ViewModels
             }
         }
 
-        private static string? GetPreferredHostKey(TestResult? test)
+        private string? GetPreferredHostKey(TestResult? test)
         {
             try
             {
@@ -1749,7 +1749,7 @@ namespace IspAudit.ViewModels
                         return trimmed;
                     }
 
-                    if (!NoiseHostFilter.Instance.IsNoiseHost(trimmed))
+                    if (!_noiseHostFilter.IsNoiseHost(trimmed))
                     {
                         return trimmed;
                     }

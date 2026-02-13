@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using IspAudit.Utils;
 
 namespace IspAudit;
 
@@ -121,13 +122,7 @@ public partial class App : System.Windows.Application
 
     private void ConfigureServices(IServiceCollection services)
     {
-        services.AddSingleton<IspAudit.ViewModels.MainViewModel>();
-
-        // Для OperatorWindow оставляем старый контракт Func<MainViewModel>.
-        services.AddSingleton<Func<IspAudit.ViewModels.MainViewModel>>(sp =>
-        {
-            return () => sp.GetRequiredService<IspAudit.ViewModels.MainViewModel>();
-        });
+        services.AddIspAuditServices();
     }
 
     internal IspAudit.ViewModels.MainViewModel GetSharedMainViewModel()

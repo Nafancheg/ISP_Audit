@@ -37,11 +37,13 @@ namespace IspAudit.Utils
         /// </summary>
         /// <param name="filePath">Путь к файлу noise_hosts.json</param>
         /// <returns>true если файл загружен, false если использованы минимальные паттерны</returns>
-        public bool LoadFromFile(string filePath)
+        public bool LoadFromFile(string filePath, IProgress<string>? progressOverride = null)
         {
+            var progress = progressOverride ?? _progress;
+
             if (!File.Exists(filePath))
             {
-                _progress?.Report($"[NoiseFilter] ⚠ Файл {filePath} не найден! Используем только базовые фильтры (local/arpa).");
+                progress?.Report($"[NoiseFilter] ⚠ Файл {filePath} не найден! Используем только базовые фильтры (local/arpa).");
                 LoadFallbackPatterns();
                 return false;
             }
@@ -54,7 +56,7 @@ namespace IspAudit.Utils
 
                 if (!root.TryGetProperty("patterns", out var patternsElement))
                 {
-                    _progress?.Report("[NoiseFilter] JSON не содержит секции 'patterns'");
+                    progress?.Report("[NoiseFilter] JSON не содержит секции 'patterns'");
                     LoadFallbackPatterns();
                     return false;
                 }
@@ -94,20 +96,20 @@ namespace IspAudit.Utils
                     }
                 }
 
-                _progress?.Report($"[NoiseFilter] Загружено {_patterns.Count} паттернов, {_excludePatterns.Count} исключений из файла");
+                progress?.Report($"[NoiseFilter] Загружено {_patterns.Count} паттернов, {_excludePatterns.Count} исключений из файла");
                 
                 // Логируем первые 5 паттернов для отладки
                 if (_patterns.Count > 0)
                 {
                     var sample = string.Join(", ", _patterns.Take(5).Select(p => p.ToString()));
-                    _progress?.Report($"[NoiseFilter] Примеры паттернов: {sample}");
+                    progress?.Report($"[NoiseFilter] Примеры паттернов: {sample}");
                 }
                 
                 return true;
             }
             catch (Exception ex)
             {
-                _progress?.Report($"[NoiseFilter] Ошибка загрузки: {ex.Message}");
+                progress?.Report($"[NoiseFilter] Ошибка загрузки: {ex.Message}");
                 LoadFallbackPatterns();
                 return false;
             }

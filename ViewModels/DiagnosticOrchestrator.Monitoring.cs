@@ -190,7 +190,7 @@ namespace IspAudit.ViewModels
                 // Важно: SNI — это исходные данные.
                 // Не фильтруем «шум» на входе, иначе можем потерять сигнал (в т.ч. для CDN/браузерных потоков и любых распределённых сервисов).
                 // Фильтрация по шуму применяется только на этапе отображения успешных результатов.
-                if (NoiseHostFilter.Instance.IsNoiseHost(hostname))
+                if (_noiseHostFilter.IsNoiseHost(hostname))
                 {
                     Log($"[SNI] Шумовой хост (не блокируем): {hostname}");
                 }

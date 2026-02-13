@@ -22,6 +22,7 @@ namespace IspAudit.ViewModels
     public partial class TestResultsManager : INotifyPropertyChanged
     {
         private readonly SynchronizationContext? _uiContext;
+        private readonly NoiseHostFilter _noiseHostFilter;
 
         private readonly ConcurrentDictionary<string, TestResult> _testResultMap = new();
         private readonly ConcurrentDictionary<string, Target> _resolvedIpMap = new();
@@ -111,7 +112,14 @@ namespace IspAudit.ViewModels
         public event Action<string>? OnLog;
 
         public TestResultsManager()
+            : this(NoiseHostFilter.Instance)
         {
+        }
+
+        public TestResultsManager(NoiseHostFilter noiseHostFilter)
+        {
+            _noiseHostFilter = noiseHostFilter ?? throw new ArgumentNullException(nameof(noiseHostFilter));
+
             // В идеале этот объект создаётся в UI потоке (MainViewModel), тогда здесь будет WPF SynchronizationContext.
             // В smoke/тестах UI может отсутствовать — тогда _uiContext будет null и мы выполняем действия напрямую.
             _uiContext = SynchronizationContext.Current;

@@ -446,7 +446,7 @@ namespace IspAudit.ViewModels
 
         private async Task<ApplyOutcome?> ApplyPlanInternalAsync(BypassController bypassController, string hostKey, BypassPlan plan)
         {
-            if (NoiseHostFilter.Instance.IsNoiseHost(hostKey))
+            if (_noiseHostFilter.IsNoiseHost(hostKey))
             {
                 Log($"[APPLY] Skip: шумовой хост '{hostKey}'");
                 return null;

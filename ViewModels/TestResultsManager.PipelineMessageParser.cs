@@ -39,7 +39,7 @@ namespace IspAudit.ViewModels
                     return;
                 }
 
-                if (!IspAudit.Utils.NoiseHostFilter.Instance.IsNoiseHost(hostKey))
+                if (!_m._noiseHostFilter.IsNoiseHost(hostKey))
                 {
                     _m._lastUserFacingHost = hostKey;
                 }
@@ -59,7 +59,7 @@ namespace IspAudit.ViewModels
             public void Log(string message) => _m.Log(message);
             public void NotifyCountersChanged() => _m.NotifyCountersChanged();
 
-            public bool IsNoiseHost(string host) => IspAudit.Utils.NoiseHostFilter.Instance.IsNoiseHost(host);
+            public bool IsNoiseHost(string host) => _m._noiseHostFilter.IsNoiseHost(host);
 
             public string StripNameTokens(string msg) => TestResultsManager.StripNameTokens(msg);
             public string? ExtractToken(string msg, string token) => TestResultsManager.ExtractToken(msg, token);

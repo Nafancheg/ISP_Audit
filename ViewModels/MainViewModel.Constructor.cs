@@ -24,6 +24,7 @@ namespace IspAudit.ViewModels
 
         private readonly IspAudit.Core.Traffic.TrafficEngine _trafficEngine;
         private readonly BypassStateManager _bypassState;
+        private readonly NoiseHostFilter _noiseHostFilter;
     private readonly object _initializeGate = new();
     private Task? _initializeTask;
 
@@ -59,10 +60,17 @@ namespace IspAudit.ViewModels
             new(StringComparer.OrdinalIgnoreCase);
 
         public MainViewModel()
+            : this(NoiseHostFilter.Instance)
+        {
+        }
+
+        public MainViewModel(NoiseHostFilter noiseHostFilter)
         {
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             Log("MainViewModel: Инициализация");
             Log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+            _noiseHostFilter = noiseHostFilter ?? throw new ArgumentNullException(nameof(noiseHostFilter));
 
             // Явное согласие на DNS/DoH системного уровня — по умолчанию запрещено.
             // Важно: на старте только читаем из store, без записи обратно.
@@ -85,7 +93,7 @@ namespace IspAudit.ViewModels
 
             // Создаём контроллеры
             Bypass = new BypassController(_bypassState);
-            Orchestrator = new DiagnosticOrchestrator(_bypassState);
+            Orchestrator = new DiagnosticOrchestrator(_bypassState, _noiseHostFilter);
             // MVVM: инъекция UI-делегатов для диалогов (вместо прямого MessageBox в ViewModel)
             Orchestrator.ShowError = (title, msg) =>
                 System.Windows.MessageBox.Show(msg, title,
@@ -94,7 +102,7 @@ namespace IspAudit.ViewModels
                 System.Windows.MessageBox.Show(msg, title,
                     System.Windows.MessageBoxButton.OKCancel, System.Windows.MessageBoxImage.Question)
                 == System.Windows.MessageBoxResult.OK;
-            Results = new TestResultsManager();
+            Results = new TestResultsManager(_noiseHostFilter);
 
             // P1.9: агрегация строк результатов по pinned groupKey (state/group_participation.json)
             Results.GroupBypassAttachmentStore = _groupBypassAttachmentStore;

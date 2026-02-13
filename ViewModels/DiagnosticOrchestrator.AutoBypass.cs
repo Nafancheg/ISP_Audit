@@ -234,7 +234,7 @@ namespace IspAudit.ViewModels
             if (!IsDiagnosticRunning) return;
 
             // Не делаем auto-apply по шумовым/техническим целям.
-            if (NoiseHostFilter.Instance.IsNoiseHost(hostKey)) return;
+            if (_noiseHostFilter.IsNoiseHost(hostKey)) return;
 
             var targetHost = ResolveAutoApplyTargetHost(hostKey);
             if (string.IsNullOrWhiteSpace(targetHost)) return;
