@@ -889,7 +889,7 @@ Program.cs
 ---
 
 **Статус документа:** Актуален на 12.12.2025 (TLS bypass Phase2)
-Актуализация (Dev, 13.02.2026): добавлен минимальный DI контейнер (composition root в `App` через `Microsoft.Extensions.DependencyInjection`, `MainViewModel` зарегистрирован как singleton).
+Актуализация (Dev, 13.02.2026): добавлен минимальный DI контейнер (composition root в `App` через `Microsoft.Extensions.DependencyInjection`), регистрации вынесены в `Utils/ServiceCollectionExtensions.cs`; `NoiseHostFilter` частично переведён на инъекцию (включая ряд сервисов/пайплайна) и в WPF-конвертерах резолвится через `App` с fallback на `NoiseHostFilter.Instance`.
 **Очистка документации:** Выполнена (79 → 25 .md файлов)
 
 ---

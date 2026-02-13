@@ -9,6 +9,23 @@ namespace IspAudit.Converters
 {
     public sealed class TestResultToGroupKeyConverter : IMultiValueConverter
     {
+        private static NoiseHostFilter GetNoiseHostFilter()
+        {
+            try
+            {
+                if (System.Windows.Application.Current is IspAudit.App app)
+                {
+                    return app.GetServiceOrNull<NoiseHostFilter>() ?? NoiseHostFilter.Instance;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return NoiseHostFilter.Instance;
+        }
+
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
         {
             try
@@ -18,7 +35,7 @@ namespace IspAudit.Converters
                 var test = values[0] as TestResult;
                 var suffix = values[1]?.ToString();
 
-                var hostKey = GetPreferredHostKey(test);
+                var hostKey = GetPreferredHostKey(test, GetNoiseHostFilter());
                 return ComputeApplyGroupKey(hostKey, suffix);
             }
             catch
@@ -32,7 +49,7 @@ namespace IspAudit.Converters
             throw new NotImplementedException();
         }
 
-        private static string GetPreferredHostKey(TestResult? test)
+        private static string GetPreferredHostKey(TestResult? test, NoiseHostFilter noiseHostFilter)
         {
             if (test?.Target == null) return string.Empty;
 
@@ -62,7 +79,7 @@ namespace IspAudit.Converters
                     return trimmed;
                 }
 
-                if (!NoiseHostFilter.Instance.IsNoiseHost(trimmed))
+                if (!noiseHostFilter.IsNoiseHost(trimmed))
                 {
                     return trimmed;
                 }
@@ -111,7 +128,10 @@ namespace IspAudit.Converters
                 if (!isBypassActive) return false;
                 if (string.IsNullOrWhiteSpace(activeGroupKey)) return false;
 
-                var hostKey = TestResultToGroupKeyConverterHostKey(test);
+                var noiseHostFilter = (System.Windows.Application.Current as IspAudit.App)?.GetServiceOrNull<NoiseHostFilter>()
+                    ?? NoiseHostFilter.Instance;
+
+                var hostKey = TestResultToGroupKeyConverterHostKey(test, noiseHostFilter);
                 var rowGroupKey = TestResultToGroupKeyConverterGroupKey(hostKey, suffix);
 
                 return string.Equals(rowGroupKey, activeGroupKey.Trim().Trim('.'), StringComparison.OrdinalIgnoreCase);
@@ -127,7 +147,7 @@ namespace IspAudit.Converters
             throw new NotImplementedException();
         }
 
-        private static string TestResultToGroupKeyConverterHostKey(TestResult? test)
+        private static string TestResultToGroupKeyConverterHostKey(TestResult? test, NoiseHostFilter noiseHostFilter)
         {
             if (test?.Target == null) return string.Empty;
 
@@ -156,7 +176,7 @@ namespace IspAudit.Converters
                     return trimmed;
                 }
 
-                if (!NoiseHostFilter.Instance.IsNoiseHost(trimmed))
+                if (!noiseHostFilter.IsNoiseHost(trimmed))
                 {
                     return trimmed;
                 }
@@ -203,7 +223,10 @@ namespace IspAudit.Converters
                 if (!canSuggest) return false;
                 if (string.IsNullOrWhiteSpace(suffix)) return false;
 
-                var hostKey = GetPreferredHostKey(test).Trim().Trim('.');
+                var noiseHostFilter = (System.Windows.Application.Current as IspAudit.App)?.GetServiceOrNull<NoiseHostFilter>()
+                    ?? NoiseHostFilter.Instance;
+
+                var hostKey = GetPreferredHostKey(test, noiseHostFilter).Trim().Trim('.');
                 if (string.IsNullOrWhiteSpace(hostKey)) return false;
 
                 if (IPAddress.TryParse(hostKey, out _)) return false;
@@ -238,7 +261,7 @@ namespace IspAudit.Converters
             throw new NotImplementedException();
         }
 
-        private static string GetPreferredHostKey(TestResult? test)
+        private static string GetPreferredHostKey(TestResult? test, NoiseHostFilter noiseHostFilter)
         {
             if (test?.Target == null) return string.Empty;
 
@@ -261,7 +284,7 @@ namespace IspAudit.Converters
                     return trimmed;
                 }
 
-                if (!NoiseHostFilter.Instance.IsNoiseHost(trimmed))
+                if (!noiseHostFilter.IsNoiseHost(trimmed))
                 {
                     return trimmed;
                 }
@@ -280,6 +303,9 @@ namespace IspAudit.Converters
                 var test = value as TestResult;
                 if (test?.Target == null) return false;
 
+                var noiseHostFilter = (System.Windows.Application.Current as IspAudit.App)?.GetServiceOrNull<NoiseHostFilter>()
+                    ?? NoiseHostFilter.Instance;
+
                 var candidates = new[]
                 {
                     test.Target.SniHost,
@@ -297,7 +323,7 @@ namespace IspAudit.Converters
                     // IP не считаем «исключением». Это может быть полезная цель.
                     if (IPAddress.TryParse(trimmed, out _)) return false;
 
-                    return NoiseHostFilter.Instance.IsNoiseHost(trimmed);
+                    return noiseHostFilter.IsNoiseHost(trimmed);
                 }
 
                 return false;

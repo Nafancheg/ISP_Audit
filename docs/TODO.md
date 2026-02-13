@@ -186,8 +186,9 @@
 	- `DomainGroupLearner`: принимает `NoiseHostFilter` (создаётся из `TestResultsManager` с инъекцией)
 	- `DnsParserService`: принимает `NoiseHostFilter` (создаётся из оркестратора с инъекцией)
 	- `AutoHostlistService`: принимает `NoiseHostFilter` (fallback-конструктор оставлен)
+	- `Converters/TestResultGroupConverters`: `NoiseHostFilter` резолвится из DI через `App` (с fallback на `NoiseHostFilter.Instance`)
 - [ ] Осталось переключить:
-	- Убрать обращения к `NoiseHostFilter.Instance` в остальных местах (Converters/, Utils/, Pipeline stage и т.п.)
+	- Убрать обращения к `NoiseHostFilter.Instance` в остальных местах (Utils/, TestNetworkApp smoke и т.п.)
 	- Убрать/задепрекейтить `NoiseHostFilter.Initialize(...)` (сейчас остаётся в smoke-тестах TestNetworkApp)
 	- Расширить регистрации в DI: постепенно заменить `new ...` в `MainViewModel` на `GetRequiredService<T>()`/инъекцию
 	- Дальше по зависимостям с ресурсами: `TrafficEngine`, `BypassStateManager` (factory), `LiveTestingPipeline`, `StandardHostTester`, etc.

@@ -7,6 +7,21 @@ public partial class App : System.Windows.Application
 {
     private ServiceProvider? _services;
 
+    internal T? GetServiceOrNull<T>() where T : class
+    {
+        return _services?.GetService<T>();
+    }
+
+    internal T GetRequiredService<T>() where T : notnull
+    {
+        if (_services == null)
+        {
+            throw new InvalidOperationException("DI контейнер не инициализирован.");
+        }
+
+        return _services.GetRequiredService<T>();
+    }
+
     public App()
     {
         // Загрузить ресурсы из XAML
