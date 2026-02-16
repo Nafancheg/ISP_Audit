@@ -227,6 +227,10 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 Актуализация (Runtime, 16.02.2026): Unknown-first guard в diagnosis
 - `SignalsAdapter` агрегирует из `HostTested` поля `HostVerdictUnknownCount/LastUnknownReason` в `BlockageSignals`.
 - `StandardDiagnosisEngine` добавляет guard `health-unknown`: если есть unknown health verdict и нет явных DNS/TCP/TLS/HTTP3 фактов блокировки, возвращается `DiagnosisId.Unknown` (без деградации в `NoBlockage`).
+
+Актуализация (UI, 16.02.2026): проекция `intel:Unknown`
+- `UnifiedTrafficFilter`: при `intel:Unknown` и формально успешных DNS/TCP/TLS не используется `LogOnly`.
+- `PipelineMessageParser`: `❌`-линии с `intel:Unknown`/`health-unknown` трактуются как `Warn` (недостаточно данных), а не как `Fail`.
 - Smoke-наборы `TestNetworkApp` обновлены: прямые `new LiveTestingPipeline(...)` заменены на DI-фабрику.
 
 

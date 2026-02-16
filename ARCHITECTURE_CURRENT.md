@@ -174,6 +174,7 @@ Wizard из 5 шагов: выбор приложения → источник �
 **Step 2 (Diagnosis)**: `StandardDiagnosisEngine` по `BlockageSignals`. Пояснения — только из наблюдаемых фактов (без стратегий). Диагнозы: `ActiveDpiEdge`, `StatefulDpi`, `TlsInterference`, `QuicInterference`, `HttpRedirect`, `DnsHijack` и др.
 
 - Unknown-first guard: при `HostVerdictUnknownCount > 0` и отсутствии конкретных блокировочных фактов diagnosis остаётся `Unknown` (rule `health-unknown`), чтобы не деградировать в `NoBlockage`.
+- UI-правило: случаи `intel:Unknown` при формально успешных DNS/TCP/TLS не отображаются как зелёный `LogOnly/OK`; они переходят в предупреждение (`Warn`) с явной пометкой «недостаточно данных».
 
 **Step 3 (Selector/Plan)**: `StandardStrategySelector` строит `BypassPlan` по `DiagnosisId + Confidence`. Жёсткие защиты:
 - `confidence < 50` → пустой план.

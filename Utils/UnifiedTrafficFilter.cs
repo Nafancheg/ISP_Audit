@@ -68,6 +68,15 @@ namespace IspAudit.Utils
                         || tail.Contains("[INTEL]", StringComparison.OrdinalIgnoreCase)
                         ))
                 {
+                    // P0.V23.1: Unknown не должен визуально деградировать в "OK".
+                    // Если диагноз явно Unknown, показываем карточку (Warn-path), а не зелёный log-only.
+                    if (tail.Contains("intel:Unknown", StringComparison.OrdinalIgnoreCase)
+                        || tail.Contains("diagnosis=Unknown", StringComparison.OrdinalIgnoreCase)
+                        || tail.Contains("health-unknown", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new FilterDecision(FilterAction.Process, "Intel unknown, checks OK");
+                    }
+
                     // Для шумовых имён — дропаем, для остальных — логируем без карточки.
                     if (!string.IsNullOrEmpty(bestName) && _noiseHostFilter.IsNoiseHost(bestName))
                     {

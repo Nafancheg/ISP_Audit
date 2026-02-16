@@ -365,6 +365,17 @@ namespace IspAudit.ViewModels
 
                             var status = TestStatus.Fail;
                             var hasTlsAuthFailure = BlockageCode.ContainsCode(msg, BlockageCode.TlsAuthFailure);
+                            var hasIntelUnknown =
+                                msg.Contains("intel:Unknown", StringComparison.OrdinalIgnoreCase)
+                                || msg.Contains("диагноз=Unknown", StringComparison.OrdinalIgnoreCase)
+                                || msg.Contains("health-unknown", StringComparison.OrdinalIgnoreCase);
+
+                            if (hasIntelUnknown)
+                            {
+                                status = TestStatus.Warn;
+                                msg += "\n⚠️ Диагноз: недостаточно данных (Unknown). Не считаем это подтверждённой блокировкой.";
+                            }
+
                             if (hasTlsAuthFailure)
                             {
                                 msg += "\nℹ️ TLS рукопожатие завершилось ошибкой аутентификации (auth failure). Это факт, но не доказательство DPI.";
