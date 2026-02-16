@@ -26,9 +26,11 @@ namespace TestNetworkApp.Smoke
             var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
             var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
             var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
-            var orchestrator = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
+            var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+            using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+            var orchestrator = new DiagnosticOrchestrator(manager, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
             var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-            var bypass = new BypassController(engine, autoHostlist);
+            var bypass = new BypassController(manager, autoHostlist);
 
             var targets = new List<Target>
             {
@@ -82,9 +84,11 @@ namespace TestNetworkApp.Smoke
                 var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
                 var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
                 var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
-                var orchestrator = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
+                var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+                var orchestrator = new DiagnosticOrchestrator(manager, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
                 var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-                var bypass = new BypassController(engine, autoHostlist);
+                var bypass = new BypassController(manager, autoHostlist);
 
                 // Делаем цель заведомо быструю: TCP 443 к TEST-NET (может таймаутить, но не должен падать).
                 var targets = new List<Target>
@@ -121,7 +125,9 @@ namespace TestNetworkApp.Smoke
             var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
             var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
             var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
-            var orchestrator = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
+            var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+            using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+            var orchestrator = new DiagnosticOrchestrator(manager, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
             // Готовим _cts, иначе StartMonitoringServicesAsync не запустится.
             var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -178,7 +184,9 @@ namespace TestNetworkApp.Smoke
                 var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
                 var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
                 var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
-                var orchestrator = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
+                var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+                var orchestrator = new DiagnosticOrchestrator(manager, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
                 var trackedPid = 111;
                 var otherPid = 222;
@@ -229,7 +237,9 @@ namespace TestNetworkApp.Smoke
                 var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
                 var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
                 var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
-                var orchestrator = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
+                var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+                var orchestrator = new DiagnosticOrchestrator(manager, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
                 var trackedPid = 333;
                 var pidTracker = new PidTrackerService(trackedPid);
@@ -285,7 +295,9 @@ namespace TestNetworkApp.Smoke
             var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
             var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
             var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
-            var orchestrator = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
+            var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+            using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+            var orchestrator = new DiagnosticOrchestrator(manager, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
             using var proc = Process.Start(new ProcessStartInfo
             {

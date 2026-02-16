@@ -21,6 +21,7 @@ using IspAudit.Core.Intelligence.Execution;
 using IspAudit.Core.Intelligence.Feedback;
 using IspAudit.Core.Intelligence.Signals;
 using IspAudit.Core.Intelligence.Strategies;
+using IspAudit.Core.Interfaces;
 using IspAudit.Core.Models;
 using IspAudit.Core.Traffic;
 using IspAudit.Utils;
@@ -130,7 +131,9 @@ namespace TestNetworkApp.Smoke
                     using (var engine = new TrafficEngine(progress: null))
                     {
                         var profile = BypassProfile.CreateDefault();
-                        var manager = BypassStateManager.GetOrCreate(engine, baseProfile: profile, log: null);
+                        using var provider = BuildIspAuditProvider();
+                        var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                        using var manager = managerFactory.GetOrCreate(engine, baseProfile: profile, log: null);
                         await manager.InitializeOnStartupAsync(innerCt).ConfigureAwait(false);
                     }
 
@@ -1516,7 +1519,9 @@ namespace TestNetworkApp.Smoke
                 using var engine = new TrafficEngine(progress: null);
                 var profile = BypassProfile.CreateDefault();
 
-                var manager = BypassStateManager.GetOrCreate(engine, baseProfile: profile, log: null);
+                using var provider = BuildIspAuditProvider();
+                var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                var manager = managerFactory.GetOrCreate(engine, baseProfile: profile, log: null);
 
                 // 1) В strict-режиме прямой вызов TrafficEngine вне manager-scope должен падать.
                 using (BypassStateManagerGuard.EnterStrictModeForSmoke())

@@ -52,9 +52,9 @@ namespace TestNetworkApp.Smoke
                 {
                     var baseProfile = BypassProfile.CreateDefault();
                     using var engine = new TrafficEngine(progress: null);
-                    using var manager = BypassStateManager.GetOrCreate(engine, baseProfile, log: Log);
-
                     using var provider = BuildIspAuditProvider();
+                    var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                    using var manager = managerFactory.GetOrCreate(engine, baseProfile, log: Log);
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                     var bypass = new BypassController(manager, autoHostlist);
 
@@ -545,7 +545,9 @@ namespace TestNetworkApp.Smoke
                     using var engine = new IspAudit.Core.Traffic.TrafficEngine();
                     using var provider = BuildIspAuditProvider();
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-                    var bypass = new BypassController(engine, autoHostlist);
+                    var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                    using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+                    var bypass = new BypassController(manager, autoHostlist);
 
                     await bypass.InitializeOnStartupAsync().ConfigureAwait(false);
 
@@ -591,7 +593,9 @@ namespace TestNetworkApp.Smoke
                     using var engine = new IspAudit.Core.Traffic.TrafficEngine();
                     using var provider = BuildIspAuditProvider();
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-                    var bypass1 = new BypassController(engine, autoHostlist);
+                    var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                    using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+                    var bypass1 = new BypassController(manager, autoHostlist);
 
                     bypass1.RecordApplyTransaction(
                         initiatorHostKey: "youtube.com",
@@ -615,7 +619,7 @@ namespace TestNetworkApp.Smoke
                     }
 
                     // Теперь создаём новый контроллер: он должен подхватить сохранённое.
-                    var bypass2 = new BypassController(engine, autoHostlist);
+                    var bypass2 = new BypassController(manager, autoHostlist);
 
                     deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
                     while (DateTime.UtcNow < deadline && bypass2.ApplyTransactions.Count == 0)
@@ -666,7 +670,9 @@ namespace TestNetworkApp.Smoke
                     using var engine = new IspAudit.Core.Traffic.TrafficEngine();
                     using var provider = BuildIspAuditProvider();
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-                    var bypass = new BypassController(engine, autoHostlist);
+                    var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                    using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+                    var bypass = new BypassController(manager, autoHostlist);
 
                     bypass.RecordApplyTransaction(
                         initiatorHostKey: "youtube.com",
@@ -728,7 +734,9 @@ namespace TestNetworkApp.Smoke
                     using var engine = new IspAudit.Core.Traffic.TrafficEngine();
                     using var provider = BuildIspAuditProvider();
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-                    var bypass = new BypassController(engine, autoHostlist);
+                    var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                    using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+                    var bypass = new BypassController(manager, autoHostlist);
 
                     bypass.RecordApplyTransaction(
                         initiatorHostKey: "youtube.com",
@@ -782,7 +790,9 @@ namespace TestNetworkApp.Smoke
                     using var engine = new IspAudit.Core.Traffic.TrafficEngine();
                     using var provider = BuildIspAuditProvider();
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-                    var bypass = new BypassController(engine, autoHostlist);
+                    var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                    using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+                    var bypass = new BypassController(manager, autoHostlist);
 
                     bypass.RecordApplyTransaction(
                         initiatorHostKey: "failed.test",
@@ -960,13 +970,15 @@ namespace TestNetworkApp.Smoke
                 {
                     using var engine = new TrafficEngine();
                     using var provider = BuildIspAuditProvider();
+                    var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                    using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-                    var bypass = new BypassController(engine, autoHostlist);
+                    var bypass = new BypassController(manager, autoHostlist);
                     var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
                     var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
                     var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
                     var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
-                    var orch = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
+                    var orch = new DiagnosticOrchestrator(manager, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
                     var storePlan = typeof(DiagnosticOrchestrator)
                         .GetMethod("StorePlan", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
@@ -1034,13 +1046,15 @@ namespace TestNetworkApp.Smoke
                 {
                     using var engine = new TrafficEngine();
                     using var provider = BuildIspAuditProvider();
+                    var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                    using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-                    var bypass = new BypassController(engine, autoHostlist);
+                    var bypass = new BypassController(manager, autoHostlist);
                     var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
                     var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
                     var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
                     var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
-                    var orch = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
+                    var orch = new DiagnosticOrchestrator(manager, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
                     var storePlan = typeof(DiagnosticOrchestrator)
                         .GetMethod("StorePlan", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
@@ -1241,7 +1255,9 @@ namespace TestNetworkApp.Smoke
 
                     var baseProfile = BypassProfile.CreateDefault();
                     using var engine = new TrafficEngine(progress: null);
-                    using var manager = BypassStateManager.GetOrCreate(engine, baseProfile: baseProfile, log: null);
+                    using var provider = BuildIspAuditProvider();
+                    var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                    using var manager = managerFactory.GetOrCreate(engine, baseProfile: baseProfile, log: null);
 
                     var service = new BypassApplyService(manager, log: null);
 
@@ -1331,10 +1347,11 @@ namespace TestNetworkApp.Smoke
 
                     var baseProfile = BypassProfile.CreateDefault();
                     using var engine = new TrafficEngine(progress: null);
-                    using var manager = BypassStateManager.GetOrCreate(engine, baseProfile: baseProfile, log: null);
+                    using var provider = BuildIspAuditProvider();
+                    var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                    using var manager = managerFactory.GetOrCreate(engine, baseProfile: baseProfile, log: null);
                     manager.AllowDnsDohSystemChanges = false;
 
-                    using var provider = BuildIspAuditProvider();
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                     var bypass = new BypassController(manager, autoHostlist)
                     {
@@ -1438,9 +1455,9 @@ namespace TestNetworkApp.Smoke
 
                     var baseProfile = BypassProfile.CreateDefault();
                     using var engine = new TrafficEngine(progress: null);
-                    using var manager = BypassStateManager.GetOrCreate(engine, baseProfile: baseProfile, log: null);
-
                     using var provider = BuildIspAuditProvider();
+                    var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                    using var manager = managerFactory.GetOrCreate(engine, baseProfile: baseProfile, log: null);
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                     var bypass = new BypassController(manager, autoHostlist);
                     var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
@@ -1529,9 +1546,9 @@ namespace TestNetworkApp.Smoke
 
                     var baseProfile = BypassProfile.CreateDefault();
                     using var engine = new TrafficEngine(progress: null);
-                    using var manager = BypassStateManager.GetOrCreate(engine, baseProfile: baseProfile, log: null);
-
                     using var provider = BuildIspAuditProvider();
+                    var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                    using var manager = managerFactory.GetOrCreate(engine, baseProfile: baseProfile, log: null);
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                     var bypass = new BypassController(manager, autoHostlist);
                     var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
@@ -1967,7 +1984,9 @@ namespace TestNetworkApp.Smoke
                     _ = ct;
 
                     using var engine = new TrafficEngine(progress: null);
-                    using var manager = BypassStateManager.GetOrCreate(engine, baseProfile: null, log: null);
+                    using var provider = BuildIspAuditProvider();
+                    var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                    using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
 
                     const string host = "example.com";
 

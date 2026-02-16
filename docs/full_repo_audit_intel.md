@@ -220,6 +220,13 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Smoke-наборы `TestNetworkApp` обновлены: прямые `new LiveTestingPipeline(...)` заменены на DI-фабрику.
 
 
+Актуализация (Dev, 16.02.2026): DI фабрика для BypassStateManager (Phase 4.2)
+- Добавлен DI-контракт `IBypassStateManagerFactory` (единый вход для получения/создания `BypassStateManager`).
+- `Utils/ServiceCollectionExtensions.cs`: `BypassStateManager` создаётся через фабрику, без прямого вызова `BypassStateManager.GetOrCreate` в composition root.
+- Удалены engine-overload конструкторы, которые выполняли скрытую глобальную композицию (`BypassController(TrafficEngine, ...)` и `DiagnosticOrchestrator(TrafficEngine, ...)`).
+- Smoke-наборы `TestNetworkApp` обновлены: `BypassStateManager.GetOrCreate` и engine-конструкторы заменены на фабрику + публичные конструкторы, принимающие `BypassStateManager`.
+
+
 Актуализация (Runtime, 23.12.2025): контроль применения INTEL
 - `Cancel` отменяет не только диагностику, но и ручное применение рекомендаций (отдельный CTS для apply).
 - Защита от устаревшего плана: apply пропускается, если `planHostKey` не совпадает с последней INTEL‑целью, извлечённой из текста INTEL‑диагноза в UI.

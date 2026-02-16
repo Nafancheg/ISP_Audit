@@ -233,7 +233,9 @@ namespace TestNetworkApp.Smoke
                 using var engine = new TrafficEngine();
                 using var provider = BuildIspAuditProvider();
                 var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-                var bypass = new BypassController(engine, autoHostlist);
+                var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+                var bypass = new BypassController(manager, autoHostlist);
 
                 await bypass.EnablePreemptiveBypassAsync().ConfigureAwait(false);
 
@@ -306,7 +308,9 @@ namespace TestNetworkApp.Smoke
             var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
             var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
             var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
-            var orchestrator = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
+            var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+            using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+            var orchestrator = new DiagnosticOrchestrator(manager, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
             using var proc = Process.Start(new ProcessStartInfo
             {

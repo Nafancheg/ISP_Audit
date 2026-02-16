@@ -229,16 +229,6 @@ namespace IspAudit.ViewModels
             _stateStoreFactory = stateStoreFactory ?? throw new ArgumentNullException(nameof(stateStoreFactory));
         }
 
-        public DiagnosticOrchestrator(
-            TrafficEngine trafficEngine,
-            NoiseHostFilter noiseHostFilter,
-            ITrafficFilter trafficFilter,
-            ILiveTestingPipelineFactory pipelineFactory,
-            IBlockageStateStoreFactory stateStoreFactory)
-            : this(BypassStateManager.GetOrCreate(trafficEngine, baseProfile: null, log: null), noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory)
-        {
-        }
-
         #region Properties
 
         public bool IsDiagnosticRunning

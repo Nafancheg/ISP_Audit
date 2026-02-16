@@ -35,12 +35,15 @@ namespace IspAudit.Utils
             // Pipeline: фабрика создания LiveTestingPipeline (lifetime: per-run).
             services.AddSingleton<ILiveTestingPipelineFactory, LiveTestingPipelineFactory>();
 
+            // Фабрика: единый вход для BypassStateManager (убираем прямой GetOrCreate из app-кода).
+            services.AddSingleton<IBypassStateManagerFactory, BypassStateManagerFactory>();
+
             // Core runtime: единый движок перехвата.
             services.AddSingleton<TrafficEngine>(sp => new TrafficEngine(progress: new Progress<string>(MainViewModel.Log)));
 
             // Единый владелец состояния bypass поверх TrafficEngine.
             services.AddSingleton<BypassStateManager>(sp =>
-                BypassStateManager.GetOrCreate(
+                sp.GetRequiredService<IBypassStateManagerFactory>().GetOrCreate(
                     sp.GetRequiredService<TrafficEngine>(),
                     baseProfile: null,
                     log: MainViewModel.Log));

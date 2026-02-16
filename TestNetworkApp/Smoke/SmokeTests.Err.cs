@@ -65,7 +65,9 @@ namespace TestNetworkApp.Smoke
                 using var engine = new TrafficEngine();
                 using var provider = BuildIspAuditProvider();
                 var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-                var bypass = new BypassController(engine, autoHostlist);
+                var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+                var bypass = new BypassController(manager, autoHostlist);
                 await bypass.InitializeOnStartupAsync().ConfigureAwait(false);
 
                 if (bypass.IsVpnDetected != expected)

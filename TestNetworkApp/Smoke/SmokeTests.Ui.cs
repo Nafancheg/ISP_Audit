@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows.Media;
 using IspAudit.Bypass;
 using IspAudit.Core.Bypass;
+using IspAudit.Core.Interfaces;
 using IspAudit.Core.Traffic;
 using IspAudit.Models;
 using IspAudit.Utils;
@@ -95,7 +96,9 @@ namespace TestNetworkApp.Smoke
                 using var engine = new TrafficEngine();
                 using var provider = BuildIspAuditProvider();
                 var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-                var bypass = new BypassController(engine, autoHostlist);
+                var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+                var bypass = new BypassController(manager, autoHostlist);
 
                 bypass.IsFragmentEnabled = true;
 
@@ -124,7 +127,9 @@ namespace TestNetworkApp.Smoke
                 using var engine = new TrafficEngine();
                 using var provider = BuildIspAuditProvider();
                 var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-                var bypass = new BypassController(engine, autoHostlist);
+                var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+                var bypass = new BypassController(manager, autoHostlist);
 
                 // Используем GetProfilePath через reflection, чтобы получить правильный путь профиля
                 var getProfilePathMethod = typeof(BypassProfile).GetMethod("GetProfilePath", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
@@ -1124,7 +1129,9 @@ namespace TestNetworkApp.Smoke
                 using var engine = new TrafficEngine();
                 using var provider = BuildIspAuditProvider();
                 var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-                var bypass = new BypassController(engine, autoHostlist);
+                var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+                var bypass = new BypassController(manager, autoHostlist);
 
                 // Дёрнем единоразовый сбор метрик (smoke seam). В console runner нет Dispatcher,
                 // поэтому UI property не обновится — проверяем только что вызов не крашит.
@@ -1145,7 +1152,9 @@ namespace TestNetworkApp.Smoke
                 using var engine = new TrafficEngine();
                 using var provider = BuildIspAuditProvider();
                 var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
-                var bypass = new BypassController(engine, autoHostlist);
+                var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
+                var bypass = new BypassController(manager, autoHostlist);
 
                 // Вызываем приватный обработчик напрямую. В console runner нет Dispatcher, поэтому
                 // UI property не обновится. Проверим только mapping константы (как в OnVerdictChanged коде).

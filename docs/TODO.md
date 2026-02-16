@@ -186,7 +186,7 @@
 - [x] Удалить legacy `Config.ActiveProfile` (Profiles/*.json loader для целей диагностики)
 - [x] Удалить legacy `Program.Targets`
 - [x] NoiseHostFilter → удалён static singleton API, сервис передаётся через конструктор/DI
-- [ ] BypassStateManager.GetOrCreate → registered factory в DI
+- [x] BypassStateManager.GetOrCreate → registered factory в DI
 
 ### 4.3 Декомпозиция DiagnosticOrchestrator
 - [ ] Выделить `Core/Pipeline/PipelineManager.cs` — lifecycle LiveTestingPipeline

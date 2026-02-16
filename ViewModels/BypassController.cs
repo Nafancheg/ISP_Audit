@@ -293,11 +293,6 @@ namespace IspAudit.ViewModels
             RefreshQuicObservability(null);
         }
 
-        public BypassController(TrafficEngine trafficEngine, AutoHostlistService autoHostlist)
-            : this(BypassStateManager.GetOrCreate(trafficEngine, baseProfile: null, log: null), autoHostlist)
-        {
-        }
-
         internal BypassController(TlsBypassService tlsService, BypassProfile baseProfile, AutoHostlistService autoHostlist)
         {
             if (tlsService == null) throw new ArgumentNullException(nameof(tlsService));

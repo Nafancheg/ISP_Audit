@@ -261,8 +261,10 @@ namespace TestNetworkApp.Smoke
                 var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
 
                 using var engine = new IspAudit.Core.Traffic.TrafficEngine(progress: null);
+                var managerFactory = provider.GetRequiredService<IBypassStateManagerFactory>();
+                using var manager = managerFactory.GetOrCreate(engine, baseProfile: null, log: null);
                 var orch = new IspAudit.ViewModels.DiagnosticOrchestrator(
-                    engine,
+                    manager,
                     noiseHostFilter,
                     trafficFilter: new AllowAllTrafficFilter(),
                     pipelineFactory,
