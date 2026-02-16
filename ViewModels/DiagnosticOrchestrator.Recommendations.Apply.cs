@@ -40,6 +40,8 @@ namespace IspAudit.ViewModels
     {
         #region Recommendations (Apply)
 
+        private const int PostApplyBaselineFreshnessTtlSecondsDefault = 60;
+
         private sealed record PendingFeedbackContext(BypassPlan Plan, DateTimeOffset AppliedAtUtc);
         private readonly ConcurrentDictionary<string, PendingFeedbackContext> _pendingFeedbackByHostKey = new(StringComparer.OrdinalIgnoreCase);
 
@@ -730,6 +732,38 @@ namespace IspAudit.ViewModels
                 return $"{prefix}; {d}";
             }
 
+            static (string Verdict, string Details) ApplyBaselineFreshnessPolicy(
+                string verdict,
+                string details,
+                bool hasBaseline,
+                bool baselineIsFresh,
+                TimeSpan baselineAge,
+                TimeSpan baselineTtl)
+            {
+                var v = (verdict ?? string.Empty).Trim();
+                var d = (details ?? string.Empty).Trim();
+
+                if (!hasBaseline || baselineIsFresh)
+                {
+                    return (v, d);
+                }
+
+                var existingReason = PostApplyVerdictContract.ResolveUnknownReason(v, d);
+                if (existingReason == UnknownReason.Cancelled
+                    || existingReason == UnknownReason.ConcurrentApply
+                    || existingReason == UnknownReason.InsufficientIps
+                    || existingReason == UnknownReason.ProbeTimeoutBudget)
+                {
+                    return (v, d);
+                }
+
+                var staleDetails = BuildUnknownDetails(
+                    UnknownReason.NoBaselineFresh,
+                    $"baseline stale; baselineAgeSec={(int)Math.Round(baselineAge.TotalSeconds)}; ttlSec={(int)Math.Round(baselineTtl.TotalSeconds)}; out={v}; source={d}");
+
+                return ("UNKNOWN", staleDetails);
+            }
+
             try
             {
                 _postApplyRetest.Cancellation?.Cancel();
@@ -753,6 +787,25 @@ namespace IspAudit.ViewModels
 
             return Task.Run(async () =>
             {
+                var baselineTtl = TimeSpan.FromSeconds(PostApplyBaselineFreshnessTtlSecondsDefault);
+                var hasPendingBaseline = _pendingFeedbackByHostKey.TryGetValue(hostKey, out var pendingBaseline) && pendingBaseline != null;
+                var baselineAge = TimeSpan.Zero;
+                if (hasPendingBaseline && pendingBaseline != null)
+                {
+                    baselineAge = DateTimeOffset.UtcNow - pendingBaseline.AppliedAtUtc;
+                }
+                if (baselineAge < TimeSpan.Zero) baselineAge = TimeSpan.Zero;
+                var isBaselineFresh = !hasPendingBaseline || baselineAge <= baselineTtl;
+
+                if (hasPendingBaseline)
+                {
+                    Log($"[PostApplyRetest][op={opId}] Baseline: ageSec={(int)Math.Round(baselineAge.TotalSeconds)}; ttlSec={(int)Math.Round(baselineTtl.TotalSeconds)}; fresh={(isBaselineFresh ? 1 : 0)}");
+                }
+                else
+                {
+                    Log($"[PostApplyRetest][op={opId}] Baseline: missing pending context");
+                }
+
                 static bool IsYouTubeAnchor(string hk)
                     => string.Equals(hk, "youtube.com", StringComparison.OrdinalIgnoreCase)
                         || string.Equals(hk, "www.youtube.com", StringComparison.OrdinalIgnoreCase);
@@ -845,14 +898,16 @@ namespace IspAudit.ViewModels
                             var details = string.Equals(verdict, "UNKNOWN", StringComparison.OrdinalIgnoreCase)
                                 ? BuildUnknownDetails(UnknownReason.ProbeTimeoutBudget, $"pipeline_not_ready; out={verdict}; probe={probeDetails}")
                                 : $"pipeline_not_ready; out={verdict}; probe={probeDetails}";
-                            EmitPostApplyVerdict(hostKey, verdict, "enqueue", details);
+
+                            var adjusted = ApplyBaselineFreshnessPolicy(verdict, details, hasPendingBaseline, isBaselineFresh, baselineAge, baselineTtl);
+                            EmitPostApplyVerdict(hostKey, adjusted.Verdict, "enqueue", adjusted.Details);
 
                             UpdatePostApplyRetestUi(() =>
                             {
-                                PostApplyRetestStatus = $"Ретест после Apply: диагностика активна, pipeline не готов (OUT={verdict})";
+                                PostApplyRetestStatus = $"Ретест после Apply: диагностика активна, pipeline не готов (OUT={adjusted.Verdict})";
                             });
 
-                            Log($"[PostApplyRetest][op={opId}] Skip: reason=pipeline_not_ready; action=outcome_probe; verdict={verdict}");
+                            Log($"[PostApplyRetest][op={opId}] Skip: reason=pipeline_not_ready; action=outcome_probe; verdict={adjusted.Verdict}");
                             return;
                         }
 
@@ -884,14 +939,23 @@ namespace IspAudit.ViewModels
                         // Делаем outcome-probe (усиленный для YouTube) и используем как семантический итог для UI.
                         var (verdictAfterEnqueue, probeDetailsAfterEnqueue) = await ComputePostApplyProbeVerdictAsync(hostKey, linkedCt).ConfigureAwait(false);
 
-                        EmitPostApplyVerdict(hostKey, verdictAfterEnqueue, "enqueue", $"enqueued; ips={hosts.Count}; out={verdictAfterEnqueue}; probe={probeDetailsAfterEnqueue}");
+                        var enqueueDetails = $"enqueued; ips={hosts.Count}; out={verdictAfterEnqueue}; probe={probeDetailsAfterEnqueue}";
+                        var adjustedAfterEnqueue = ApplyBaselineFreshnessPolicy(
+                            verdictAfterEnqueue,
+                            enqueueDetails,
+                            hasPendingBaseline,
+                            isBaselineFresh,
+                            baselineAge,
+                            baselineTtl);
+
+                        EmitPostApplyVerdict(hostKey, adjustedAfterEnqueue.Verdict, "enqueue", adjustedAfterEnqueue.Details);
 
                         UpdatePostApplyRetestUi(() =>
                         {
-                            PostApplyRetestStatus = $"Ретест после Apply: добавлено в очередь диагностики (IP={hosts.Count}, OUT={verdictAfterEnqueue})";
+                            PostApplyRetestStatus = $"Ретест после Apply: добавлено в очередь диагностики (IP={hosts.Count}, OUT={adjustedAfterEnqueue.Verdict})";
                         });
 
-                        Log($"[PostApplyRetest][op={opId}] Enqueued: host={hostKey}; ips={hosts.Count}; verdict={verdictAfterEnqueue}");
+                        Log($"[PostApplyRetest][op={opId}] Enqueued: host={hostKey}; ips={hosts.Count}; verdict={adjustedAfterEnqueue.Verdict}");
                         return;
                     }
                     catch (OperationCanceledException)
@@ -1092,7 +1156,15 @@ namespace IspAudit.ViewModels
                         ? $"summaryOk={summaryOk}; summaryFail={summaryFail}"
                         : BuildUnknownDetails(UnknownReason.NoBaseline, $"summaryOk={summaryOk}; summaryFail={summaryFail}; no_summary_signals");
 
-                    EmitPostApplyVerdict(hostKey, verdict, "local", localSummaryDetails);
+                    var adjustedLocalSummary = ApplyBaselineFreshnessPolicy(
+                        verdict,
+                        localSummaryDetails,
+                        hasPendingBaseline,
+                        isBaselineFresh,
+                        baselineAge,
+                        baselineTtl);
+
+                    EmitPostApplyVerdict(hostKey, adjustedLocalSummary.Verdict, "local", adjustedLocalSummary.Details);
 
                     UpdatePostApplyRetestUi(() =>
                     {
