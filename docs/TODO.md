@@ -173,32 +173,14 @@
 ## Phase 4 — Рефакторинг (архитектурный долг)
 
 ### 4.1 DI container
-- [x] NuGet: `Microsoft.Extensions.DependencyInjection`
-- [x] `Utils/ServiceCollectionExtensions.cs`: регистрация всех сервисов
-- [x] DI: `ITrafficFilter` (singleton) → `UnifiedTrafficFilter`; `AutoHostlistService` (singleton)
-- [x] `App.xaml.cs`: ServiceCollection → ConfigureServices → BuildServiceProvider
-- [x] Начать с NoiseHostFilter: AddSingleton → инъекция через конструктор
-- [x] Переключено (первые потребители NoiseHostFilter):
-	- `MainViewModel`: принимает `NoiseHostFilter` (fallback-конструктор оставлен для back-compat)
-	- `DiagnosticOrchestrator`: принимает `NoiseHostFilter`, загрузка правил через `LoadFromFile(...)` на том же экземпляре
-	- `TestResultsManager`: принимает `NoiseHostFilter`, hot-path логика без глобального состояния
-	- `UnifiedTrafficFilter`: принимает `NoiseHostFilter` (в оркестраторе создаётся с инъекцией)
-	- `LiveTestingPipeline` (classifier stage): перепроверка шума через `ITrafficFilter.IsNoise(...)`
-	- `DomainGroupLearner`: принимает `NoiseHostFilter` (создаётся из `TestResultsManager` с инъекцией)
-	- `DnsParserService`: принимает `NoiseHostFilter` (создаётся из оркестратора с инъекцией)
-	- `AutoHostlistService`: принимает `NoiseHostFilter` (singleton в DI)
-	- `Converters/TestResultGroupConverters`: `NoiseHostFilter` резолвится из DI через `App` (fallback: локальный экземпляр без static)
-	- `TestNetworkApp smoke`: CFG-004/CFG-005/PIPE-006 переведены на DI (`ServiceCollection.AddIspAuditServices()`), legacy static API `NoiseHostFilter.Initialize/Instance` удалён
-- [ ] Осталось переключить:
-	- [x] Убраны обращения к `NoiseHostFilter.Instance` (static singleton API удалён, глобального состояния больше нет)
-	- [x] Убрано использование/наличие `NoiseHostFilter.Initialize(...)` (legacy static API удалён)
-	- [x] Убраны скрытые fallback-конструкторы/пути создания `NoiseHostFilter` (например, `UnifiedTrafficFilter()` / `AutoHostlistService()` / `DomainGroupLearner(...)` overload)
-	- [x] `TrafficCollector` и `LiveTestingPipeline` больше не создают фильтр сами (`?? new ...` удалён) — фильтр передаётся явно
-	- [x] Убраны fallback-конструкторы/пути, которые создавали `NoiseHostFilter` внутри `DiagnosticOrchestrator` / `TestResultsManager`
-	- [x] `MainViewModel`: граф `TrafficEngine`/`BypassStateManager`/`BypassController`/`DiagnosticOrchestrator`/`TestResultsManager`/`GroupBypassAttachmentStore` переведён на DI (без ручных `new`)
-	- [x] `TrafficEngine` и `BypassStateManager` зарегистрированы в DI (SSoT сохраняется через `BypassStateManager.GetOrCreate`)
-	- [x] Убраны fallback `?? new NoiseHostFilter()` из XAML-конвертеров (`Converters/TestResultGroupConverters.cs`)
-	- [ ] Дальше по зависимостям с ресурсами: `LiveTestingPipeline`, `StandardHostTester`, etc.
+- [x] Добавлен DI контейнер: NuGet `Microsoft.Extensions.DependencyInjection`, composition root в `App`, регистрации в `Utils/ServiceCollectionExtensions.cs`
+- [x] Shared singleton-сервисы: `NoiseHostFilter`, `ITrafficFilter`→`UnifiedTrafficFilter`, `AutoHostlistService`
+- [x] Удалён legacy static singleton API `NoiseHostFilter.Initialize/Instance` и убраны fallback-пути `?? new NoiseHostFilter()` (включая VM/оркестратор и XAML-конвертеры)
+- [x] `MainViewModel`: основной runtime-граф переведён на DI (singleton): `TrafficEngine` → `BypassStateManager` → `BypassController` + `DiagnosticOrchestrator` + `TestResultsManager` + `GroupBypassAttachmentStore`
+- [ ] Осталось сделать (перенос в DI):
+	- [ ] `LiveTestingPipeline`: определить owner/lifetime и зарегистрировать фабрику (например `Func<PipelineConfig, LiveTestingPipeline>`), убрать создание через `new` из runtime пути
+	- [ ] `StandardHostTester`: зарегистрировать как сервис и инжектить (вместо `new`), прокинуть зависимости/таймауты/`CancellationToken`
+	- [ ] Подчинённые сервисы pipeline/tester (DNS/TCP/TLS/HTTP3), которые создаются вручную: вынести в регистрации DI и подать через конструкторы
 
 ### 4.2 Устранение глобального состояния
 - [x] Удалить legacy `Config.ActiveProfile` (Profiles/*.json loader для целей диагностики)
