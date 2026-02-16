@@ -870,6 +870,8 @@ namespace IspAudit.ViewModels
                                 PostApplyRetestStatus = $"Ретест после Apply: не удалось определить IP ({hostKey})";
                             });
 
+                            EmitPostApplyVerdict(hostKey, "UNKNOWN", "enqueue", BuildUnknownDetails(UnknownReason.InsufficientIps, "no_targets_resolved"));
+
                             Log($"[PostApplyRetest][op={opId}] Abort: reason=no_targets_resolved; mode=enqueue; host={hostKey}");
                             return;
                         }
@@ -967,6 +969,8 @@ namespace IspAudit.ViewModels
                         {
                             PostApplyRetestStatus = $"Ретест после Apply: не удалось определить IP ({hostKey})";
                         });
+
+                        EmitPostApplyVerdict(hostKey, "UNKNOWN", "local", BuildUnknownDetails(UnknownReason.InsufficientIps, "no_targets_resolved"));
 
                         Log($"[PostApplyRetest][op={opId}] Abort: reason=no_targets_resolved; mode=local; host={hostKey}");
                         return;
@@ -1084,7 +1088,11 @@ namespace IspAudit.ViewModels
                         ? "PARTIAL"
                         : (summaryFail ? "FAIL" : (summaryOk ? "OK" : "UNKNOWN"));
 
-                    EmitPostApplyVerdict(hostKey, verdict, "local", $"summaryOk={summaryOk}; summaryFail={summaryFail}");
+                    var localSummaryDetails = (summaryOk || summaryFail)
+                        ? $"summaryOk={summaryOk}; summaryFail={summaryFail}"
+                        : BuildUnknownDetails(UnknownReason.NoBaseline, $"summaryOk={summaryOk}; summaryFail={summaryFail}; no_summary_signals");
+
+                    EmitPostApplyVerdict(hostKey, verdict, "local", localSummaryDetails);
 
                     UpdatePostApplyRetestUi(() =>
                     {

@@ -38,6 +38,7 @@
 - Risk: low
 - Прогресс 16.02.2026: добавлен базовый V3-контракт post-apply verdict (`VerdictStatus/UnknownReason`) без слома V1/V2 событий.
 - Прогресс 16.02.2026 (итерация 2): добавлен детерминированный resolver `UnknownReason` (priority) и reason-теги в UNKNOWN post-apply события (`reason=...`).
+- Прогресс 16.02.2026 (итерация 3): добавлены реальные источники `UnknownReason` в ретесте (`InsufficientIps` при `no_targets_resolved`, `NoBaseline` при отсутствии summary signals).
 - [ ] Ввести `VerdictStatus` и `UnknownReason` в результатах healthcheck/post-apply
 - [ ] Запретить fallback в S0 при недостатке данных (`Unknown != S0`)
 - [ ] Зафиксировать детерминированный приоритет `UnknownReason`, если причин несколько
