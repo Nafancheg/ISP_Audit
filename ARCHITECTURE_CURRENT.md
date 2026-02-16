@@ -159,6 +159,7 @@ Wizard из 5 шагов: выбор приложения → источник �
 - P1.5: degrade mode при backlog — для low применяется best-effort ускорение (timeout/2 для стандартного тестера).
 - Создание зависимостей: `IHostTester` и `IBlockageStateStore` передаются извне (через DI-фабрику пайплайна), без скрытого создания через `new` в runtime-пути.
 - `StandardHostTester` использует `IStandardHostTesterProbeService` (DNS/TCP/TLS/HTTP3), зарегистрированный в DI.
+- `HostTested` (pipeline contract) расширен полями `VerdictStatus/UnknownReason` для symptom-policy v2.3: healthcheck возвращает структурированный итог `Ok/Fail/Unknown` и причину `Unknown` (например `Cancelled`, `ProbeTimeoutBudget`, `InsufficientDns`) без ломки legacy bool/строк полей.
 - `AutoHostlistService` — кандидаты из `InspectionSignalsSnapshot`.
 - UX-гейт: `OnPlanBuilt` публикуется для `FilterAction.Process` и `LogOnly`.
 

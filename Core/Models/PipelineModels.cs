@@ -44,7 +44,15 @@ namespace IspAudit.Core.Models
         bool? Http3Ok = null,
         string? Http3Status = null,     // H3_OK | H3_FAILED | H3_TIMEOUT | H3_NOT_SUPPORTED | H3_NOT_ATTEMPTED
         int? Http3LatencyMs = null,
-        string? Http3Error = null
+        string? Http3Error = null,
+
+        // P0.V23.1: структурированный health verdict для совместимости с symptom-policy.
+        // Значения: Ok | Fail | Unknown.
+        string? VerdictStatus = null,
+
+        // Заполняется только если VerdictStatus=Unknown.
+        // Базовые значения: InsufficientDns | ProbeTimeoutBudget | Cancelled.
+        string? UnknownReason = null
     );
 
     /// <summary>

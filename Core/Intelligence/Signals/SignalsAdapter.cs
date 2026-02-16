@@ -525,6 +525,8 @@ public sealed class SignalsAdapter
         if (!string.IsNullOrWhiteSpace(tested.Hostname)) dict["hostname"] = tested.Hostname!;
         if (!string.IsNullOrWhiteSpace(tested.SniHostname)) dict["sni"] = tested.SniHostname!;
         if (!string.IsNullOrWhiteSpace(tested.Http3Status)) dict["h3"] = tested.Http3Status!;
+        if (!string.IsNullOrWhiteSpace(tested.VerdictStatus)) dict["verdictStatus"] = tested.VerdictStatus!;
+        if (!string.IsNullOrWhiteSpace(tested.UnknownReason)) dict["unknownReason"] = tested.UnknownReason!;
 
         return dict;
     }

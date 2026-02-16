@@ -53,6 +53,8 @@ namespace IspAudit.Core.Modules
             string? http3Status = null;
             int? http3LatencyMs = null;
             string? http3Error = null;
+            var hasTesterException = false;
+            string? testerUnknownReason = null;
 
             try
             {
@@ -185,7 +187,35 @@ namespace IspAudit.Core.Modules
             }
             catch (Exception ex)
             {
+                hasTesterException = true;
+                testerUnknownReason = ct.IsCancellationRequested
+                    ? "Cancelled"
+                    : "ProbeTimeoutBudget";
                 _progress?.Report($"[TESTER] Ошибка {host.RemoteIp}:{host.RemotePort}: {ex.Message}");
+            }
+
+            var verdictStatus = "Fail";
+            string? unknownReason = null;
+
+            if (hasTesterException)
+            {
+                verdictStatus = "Unknown";
+                unknownReason = testerUnknownReason ?? "ProbeTimeoutBudget";
+            }
+            else if (dnsOk && tcpOk && tlsOk)
+            {
+                verdictStatus = "Ok";
+            }
+
+            // Узкий deterministic fallback: DNS timeout при отсутствии TCP/TLS успеха помечаем как недостаток DNS-сигнала.
+            if (string.Equals(verdictStatus, "Fail", StringComparison.Ordinal)
+                && !dnsOk
+                && string.Equals(dnsStatus, BlockageCode.DnsTimeout, StringComparison.Ordinal)
+                && !tcpOk
+                && !tlsOk)
+            {
+                verdictStatus = "Unknown";
+                unknownReason = "InsufficientDns";
             }
 
             return new HostTested(
@@ -203,7 +233,9 @@ namespace IspAudit.Core.Modules
                 http3Ok,
                 http3Status,
                 http3LatencyMs,
-                http3Error
+                http3Error,
+                verdictStatus,
+                unknownReason
             );
         }
     }
