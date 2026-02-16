@@ -12,6 +12,113 @@
 
 ---
 
+## Policy v2.2 — symptom-based execution (финальный план)
+
+### Согласованные операционные уточнения v2.2
+- [ ] `VerdictStatus = Ok|Fail|Unknown` + `UnknownReason` (минимум: `InsufficientDns`, `InsufficientIps`, `ProbeTimeoutBudget`, `NoBaseline`, `Cancelled`, `ConcurrentApply`)
+- [ ] S-проекция применяется только при `VerdictStatus != Unknown`; `Unknown` не маппится в S0–S4
+- [ ] Redirect burst defaults: `N=3` разных eTLD+1, `T=10 минут`, `WindowRetention=30 минут`
+- [ ] Guardrail stop-list: не делать rollback/blacklist при `NoBaseline`, `InsufficientIps`, `Cancelled`, `ConcurrentApply`, `ApplyError/partial apply`
+- [ ] Blacklist v1: `version=1`, key=`scopeKey+planSig+deltaStep+reason`, поля `createdAtUtc/expiresAtUtc/hitCount/lastSeenUtc`, дедуп по key
+- [ ] ClassicMode boundary: `run = baseline → apply/escalate/rollback → retest` на одном `scopeKey`; freeze только within-run
+- [ ] UI reason contract: `ReasonCode` (закрытый словарь) + `ReasonText` (стабильный локализованный текст)
+
+### 🔴 P0 (must-have)
+
+#### P0.V22.1 Unknown/InsufficientData как first-class статус
+- Depends: none
+- Risk: low
+- [ ] Ввести `VerdictStatus` и `UnknownReason` в результатах healthcheck/post-apply
+- [ ] Запретить fallback в S0 при недостатке данных
+- [ ] Зафиксировать детерминированный приоритет `UnknownReason`, если причин несколько
+
+#### P0.V22.2 SSoT healthcheck по профилям целей
+- Depends: P0.V22.1
+- Risk: medium
+- [ ] Канон `web-like`: `DNS → TCP → TLS → HTTP(HEAD->GET fallback)`
+- [ ] Канон `tcp-only`: `DNS(if hostname) → TCP`
+- [ ] Канон `udp-observe`: `DNS(if hostname) → observe-only` (без ложного FAIL по активному UDP, если probe нет)
+- [ ] Исключение `target=IP`: `DnsOk=N/A`, без `FAIL(DNS)`
+
+#### P0.V22.3 HttpRedirect: RedirectNormal vs RedirectSuspicious
+- Depends: P0.V22.2
+- Risk: medium
+- [ ] Оставить `DiagnosisId.HttpRedirect` как HC anomaly channel (не symptom-блокировка по умолчанию)
+- [ ] Жёсткие признаки suspicious: `https→http`, redirect на literal IP/RFC1918/.local, смена eTLD+1
+- [ ] Soft-score suspicious включать только при burst N/T
+- [ ] `RedirectNormal` не должен запускать DPI-эскалацию
+
+#### P0.V22.4 Guardrail TCP regression (анти-флап + stop-list)
+- Depends: P0.V22.2
+- Risk: high
+- [ ] Baseline до apply: `TcpOkBefore`, `successCountBefore`, `M`
+- [ ] After retest: `TcpOkAfter`, `successCountAfter`, `M`
+- [ ] Анти-флап: rollback/blacklist только по правилу `2/3` или `K-of-M` при `before>=1 && after==0`
+- [ ] Явно реализовать stop-list условий, когда rollback запрещён
+- [ ] Добавить freshness baseline (TTL сравнения), чтобы не сравнивать устаревшее состояние
+
+#### P0.V22.5 Blacklist v1 (dedup/version/TTL)
+- Depends: P0.V22.4
+- Risk: medium
+- [ ] Store schema v1 + дедуп/апдейт `hitCount/lastSeenUtc/expiresAtUtc`
+- [ ] Для multi-action apply банить `planSig`
+- [ ] Для escalation банить `deltaStep` (с сохранением `planSig` для трассировки)
+- [ ] Проверять blacklist перед auto-apply и escalation
+
+#### P0.V22.6 UI: reason codes + effective + слойный статус
+- Depends: P0.V22.1, P0.V22.2, P0.V22.4, P0.V22.5
+- Risk: low-medium
+- [ ] Показывать `TargetHost`
+- [ ] Показывать строку слоя `DNS/TCP/TLS/HTTP` (+ redirect class)
+- [ ] Показывать `EffectiveStrategy` + `LastAction/AppliedAt`
+- [ ] Показывать `ReasonCode` и стабильный `ReasonText` при skip/fail/rollback
+
+### 🟡 P1 (управляемость/воспроизводимость)
+
+#### P1.V22.1 ClassicMode v1: freeze mutation within-run
+- Depends: P0.V22.2, P0.V22.4
+- Risk: medium
+- [ ] Ввести `ISP_AUDIT_CLASSIC_MODE` и документировать семантику
+- [ ] Observe-only для реактивных мутаций within-run
+- [ ] Разрешить всегда: `apply/escalate/rollback` и guardrail rollback
+- [ ] Между runs разрешить latched update caches/adjust
+- [ ] Фиксировать параметры проверок на run (`timeouts/attempts/M-K/order`)
+
+#### P1.V22.2 Redirect burst cache (N/T + retention)
+- Depends: P0.V22.3
+- Risk: low
+- [ ] Сессионный/оконный кэш redirect-host статистики
+- [ ] Очистка/retention по `WindowRetention`
+- [ ] Детерминированная агрегация по eTLD+1
+
+#### P1.V22.3 Structured events/logging v2
+- Depends: P0.V22.1
+- Risk: low
+- [ ] Единые события: `apply/escalate/rollback/blacklist_hit/skip_reason`
+- [ ] Во все события добавить `RunId`, `scopeKey`, `planSig`, `ReasonCode`
+- [ ] Логи пригодны для smoke/assert без парсинга «свободного текста»
+
+### 🟢 P2 (улучшения)
+
+#### P2.V22.1 Тюнинг дефолтов N/T/TTL по телеметрии
+- [ ] Вынести параметры в runtime-конфиг/ENV
+- [ ] Подготовить методику пересмотра дефолтов
+
+#### P2.V22.2 Advanced diagnostics UI (optional)
+- [ ] Экран/панель для продвинутой диагностики policy/guardrail
+
+#### P2.V22.3 Тонкая UDP-политика (если появится активный UDP probe)
+- [ ] Определить критерии PASS/FAIL/UNKNOWN для UDP-active сценариев
+
+### Acceptance criteria v2.2
+- [ ] При одинаковых signals S-проекция (`S4→S3→S2→S1→S0`) детерминирована; при недостатке данных итог `Unknown`, не `S0`
+- [ ] `301/302` сам по себе не запускает DPI-эскалацию; `RedirectSuspicious` требует жёстких признаков и/или `N/T` soft-score
+- [ ] При TCP regression по анти-флап правилам выполняется rollback и появляется blacklist-запись (dedup) с TTL
+- [ ] В ClassicMode нет автоматических мутаций effective within-run; параметры проверок фиксируются на run
+- [ ] UI всегда показывает `ReasonCode` для apply/escalation/rollback/skip путей
+
+---
+
 ## 🔴 P0 — Критические
 
 ### P0.4 TrafficEngine — воспроизведение и стресс-тесты
