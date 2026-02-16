@@ -721,6 +721,15 @@ namespace IspAudit.ViewModels
                 }
             }
 
+            static string BuildUnknownDetails(UnknownReason reason, string details)
+            {
+                var d = (details ?? string.Empty).Trim();
+                var prefix = $"reason={reason}";
+                if (string.IsNullOrWhiteSpace(d)) return prefix;
+                if (d.Contains("reason=", StringComparison.OrdinalIgnoreCase)) return d;
+                return $"{prefix}; {d}";
+            }
+
             try
             {
                 _postApplyRetest.Cancellation?.Cancel();
@@ -833,7 +842,10 @@ namespace IspAudit.ViewModels
                         {
                             var (verdict, probeDetails) = await ComputePostApplyProbeVerdictAsync(hostKey, ct).ConfigureAwait(false);
 
-                            EmitPostApplyVerdict(hostKey, verdict, "enqueue", $"pipeline_not_ready; out={verdict}; probe={probeDetails}");
+                            var details = string.Equals(verdict, "UNKNOWN", StringComparison.OrdinalIgnoreCase)
+                                ? BuildUnknownDetails(UnknownReason.ProbeTimeoutBudget, $"pipeline_not_ready; out={verdict}; probe={probeDetails}")
+                                : $"pipeline_not_ready; out={verdict}; probe={probeDetails}";
+                            EmitPostApplyVerdict(hostKey, verdict, "enqueue", details);
 
                             UpdatePostApplyRetestUi(() =>
                             {
@@ -882,7 +894,7 @@ namespace IspAudit.ViewModels
                     }
                     catch (OperationCanceledException)
                     {
-                        EmitPostApplyVerdict(hostKey, "UNKNOWN", "enqueue", "cancelled");
+                        EmitPostApplyVerdict(hostKey, "UNKNOWN", "enqueue", BuildUnknownDetails(UnknownReason.Cancelled, "cancelled"));
                         UpdatePostApplyRetestUi(() =>
                         {
                             PostApplyRetestStatus = "Ретест после Apply: отменён";
@@ -893,7 +905,10 @@ namespace IspAudit.ViewModels
                     }
                     catch (Exception ex)
                     {
-                        EmitPostApplyVerdict(hostKey, "UNKNOWN", "enqueue", $"error: {ex.Message}");
+                        var reason = ex is TimeoutException
+                            ? UnknownReason.ProbeTimeoutBudget
+                            : UnknownReason.None;
+                        EmitPostApplyVerdict(hostKey, "UNKNOWN", "enqueue", BuildUnknownDetails(reason, $"error: {ex.Message}"));
                         UpdatePostApplyRetestUi(() =>
                         {
                             PostApplyRetestStatus = $"Ретест после Apply: ошибка ({ex.Message})";
@@ -1116,7 +1131,7 @@ namespace IspAudit.ViewModels
                 }
                 catch (OperationCanceledException)
                 {
-                    EmitPostApplyVerdict(hostKey, "UNKNOWN", "local", "cancelled");
+                    EmitPostApplyVerdict(hostKey, "UNKNOWN", "local", BuildUnknownDetails(UnknownReason.Cancelled, "cancelled"));
                     UpdatePostApplyRetestUi(() =>
                     {
                         PostApplyRetestStatus = "Ретест после Apply: отменён";
@@ -1126,7 +1141,10 @@ namespace IspAudit.ViewModels
                 }
                 catch (Exception ex)
                 {
-                    EmitPostApplyVerdict(hostKey, "UNKNOWN", "local", $"error: {ex.Message}");
+                    var reason = ex is TimeoutException
+                        ? UnknownReason.ProbeTimeoutBudget
+                        : UnknownReason.None;
+                    EmitPostApplyVerdict(hostKey, "UNKNOWN", "local", BuildUnknownDetails(reason, $"error: {ex.Message}"));
                     UpdatePostApplyRetestUi(() =>
                     {
                         PostApplyRetestStatus = $"Ретест после Apply: ошибка ({ex.Message})";

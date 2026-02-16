@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace IspAudit.Models
 {
@@ -54,7 +56,7 @@ namespace IspAudit.Models
                 };
             }
 
-            var reason = ParseUnknownReason(details);
+            var reason = ResolveUnknownReason(v, details);
             return new PostApplyVerdictContract
             {
                 Status = VerdictStatus.Unknown,
@@ -63,19 +65,97 @@ namespace IspAudit.Models
             };
         }
 
-        private static UnknownReason ParseUnknownReason(string? details)
+        public static UnknownReason ResolveUnknownReason(string? verdictCode, string? details)
         {
             var text = (details ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(text)) return UnknownReason.None;
+            var code = (verdictCode ?? string.Empty).Trim();
 
-            if (text.Contains("cancelled", StringComparison.OrdinalIgnoreCase)) return UnknownReason.Cancelled;
-            if (text.Contains("concurrent", StringComparison.OrdinalIgnoreCase)) return UnknownReason.ConcurrentApply;
-            if (text.Contains("no_targets_resolved", StringComparison.OrdinalIgnoreCase)) return UnknownReason.InsufficientIps;
-            if (text.Contains("no baseline", StringComparison.OrdinalIgnoreCase)) return UnknownReason.NoBaseline;
-            if (text.Contains("baseline stale", StringComparison.OrdinalIgnoreCase) || text.Contains("baseline fresh", StringComparison.OrdinalIgnoreCase)) return UnknownReason.NoBaselineFresh;
-            if (text.Contains("timeout", StringComparison.OrdinalIgnoreCase) || text.Contains("pipeline_not_ready", StringComparison.OrdinalIgnoreCase)) return UnknownReason.ProbeTimeoutBudget;
+            var candidates = new HashSet<UnknownReason>();
 
-            return UnknownReason.None;
+            if (!string.IsNullOrWhiteSpace(code)
+                && Enum.TryParse<UnknownReason>(code, ignoreCase: true, out var parsedCodeReason)
+                && parsedCodeReason != UnknownReason.None)
+            {
+                candidates.Add(parsedCodeReason);
+            }
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return PickByPriority(candidates);
+            }
+
+            if (text.Contains("reason=", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var token in ExtractReasonTokens(text))
+                {
+                    if (Enum.TryParse<UnknownReason>(token, ignoreCase: true, out var parsedTokenReason)
+                        && parsedTokenReason != UnknownReason.None)
+                    {
+                        candidates.Add(parsedTokenReason);
+                    }
+                }
+            }
+
+            if (text.Contains("cancelled", StringComparison.OrdinalIgnoreCase)) candidates.Add(UnknownReason.Cancelled);
+            if (text.Contains("concurrent", StringComparison.OrdinalIgnoreCase)) candidates.Add(UnknownReason.ConcurrentApply);
+            if (text.Contains("insufficientdns", StringComparison.OrdinalIgnoreCase) || text.Contains("dns", StringComparison.OrdinalIgnoreCase)) candidates.Add(UnknownReason.InsufficientDns);
+            if (text.Contains("insufficientips", StringComparison.OrdinalIgnoreCase) || text.Contains("no_targets_resolved", StringComparison.OrdinalIgnoreCase)) candidates.Add(UnknownReason.InsufficientIps);
+            if (text.Contains("nobaselinefresh", StringComparison.OrdinalIgnoreCase) || text.Contains("baseline stale", StringComparison.OrdinalIgnoreCase) || text.Contains("baseline fresh", StringComparison.OrdinalIgnoreCase)) candidates.Add(UnknownReason.NoBaselineFresh);
+            if (text.Contains("nobaseline", StringComparison.OrdinalIgnoreCase) || text.Contains("no baseline", StringComparison.OrdinalIgnoreCase)) candidates.Add(UnknownReason.NoBaseline);
+            if (text.Contains("probetimeoutbudget", StringComparison.OrdinalIgnoreCase) || text.Contains("timeout", StringComparison.OrdinalIgnoreCase) || text.Contains("pipeline_not_ready", StringComparison.OrdinalIgnoreCase)) candidates.Add(UnknownReason.ProbeTimeoutBudget);
+
+            return PickByPriority(candidates);
+        }
+
+        private static IEnumerable<string> ExtractReasonTokens(string details)
+        {
+            var text = details ?? string.Empty;
+            var parts = text.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var part in parts)
+            {
+                var p = part.Trim();
+                if (!p.StartsWith("reason=", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var value = p.Substring("reason=".Length).Trim();
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                var values = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                foreach (var item in values)
+                {
+                    if (!string.IsNullOrWhiteSpace(item))
+                    {
+                        yield return item;
+                    }
+                }
+            }
+        }
+
+        private static UnknownReason PickByPriority(HashSet<UnknownReason> candidates)
+        {
+            if (candidates == null || candidates.Count == 0)
+            {
+                return UnknownReason.None;
+            }
+
+            var priority = new[]
+            {
+                UnknownReason.ConcurrentApply,
+                UnknownReason.Cancelled,
+                UnknownReason.NoBaselineFresh,
+                UnknownReason.NoBaseline,
+                UnknownReason.InsufficientIps,
+                UnknownReason.InsufficientDns,
+                UnknownReason.ProbeTimeoutBudget,
+                UnknownReason.None,
+            };
+
+            return priority.FirstOrDefault(candidates.Contains);
         }
     }
 }
