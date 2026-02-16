@@ -159,7 +159,6 @@
 
 ### P1.18 Post-apply ретест: единая семантика "OK" и защита от ложноположительных
 	- [ ] Унифицировать критерий OK между режимами enqueue/local (одинаковая логика verdict)
-	- [ ] Для YouTube/Google: OK только по сильным endpoints (например `generate_204` с ожиданием 204), не по 301/любой строке HTTP
 	- [ ] Инвалидация/миграция WinsStore при изменении семантики outcome-probe (старые записи могут быть "фальш-OK")
 
 ---
@@ -246,9 +245,3 @@
 
 ---
 
-### P1.7 Operator UI — визуальный дизайн
-- [ ] Создать `Wpf/Themes/OperatorDarkTheme.xaml` — тёмная палитра MaterialDesign
-- [ ] `OperatorWindow.xaml`: применять тёмную тему через MergedDictionaries
-- [ ] Hero-элемент: Viewbox + Path (щит SVG) + TextBlock крупный статус-текст, центрирование
-- [ ] Компоновка Grid: Header 48px / Hero+Status Star / CTA Auto / Expander / Footer toggle
-- [ ] Компактный индикатор: Ellipse 12px с цветом по OperatorStatus (серый/зелёный/жёлтый/красный)
