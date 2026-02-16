@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics;
 using System.Net;
-using System.Net.Http;
 using System.Net.Security;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +12,7 @@ namespace IspAudit.Core.Modules
 {
     public class StandardHostTester : IHostTester
     {
+        private readonly IStandardHostTesterProbeService _probes;
         private readonly IProgress<string>? _progress;
         private readonly System.Collections.Generic.IReadOnlyDictionary<string, string>? _dnsCache;
         private readonly TimeSpan _testTimeout;
@@ -22,11 +22,13 @@ namespace IspAudit.Core.Modules
         private const int TlsMaxAttempts = 2;
 
         public StandardHostTester(
+            IStandardHostTesterProbeService probes,
             IProgress<string>? progress,
             System.Collections.Generic.IReadOnlyDictionary<string, string>? dnsCache = null,
             TimeSpan? testTimeout = null,
             RemoteCertificateValidationCallback? remoteCertificateValidationCallback = null)
         {
+            _probes = probes ?? throw new ArgumentNullException(nameof(probes));
             _progress = progress;
             _dnsCache = dnsCache;
             _testTimeout = testTimeout.HasValue && testTimeout.Value > TimeSpan.Zero
@@ -80,15 +82,8 @@ namespace IspAudit.Core.Modules
                 // ВАЖНО: reverse DNS не используем как "достоверное" имя для TLS/SNI.
                 try
                 {
-                    // Важно: Dns.GetHostEntryAsync иногда игнорирует CancellationToken (зависит от ОС/резолвера).
-                    // Поэтому делаем жёсткий таймаут через WhenAny и не блокируем тест.
                     var rdnsTimeout = TimeSpan.FromMilliseconds(1500);
-                    var rdnsTask = System.Net.Dns.GetHostEntryAsync(ipString, CancellationToken.None);
-                    var (rdnsCompleted, rdnsEntry) = await WithTimeoutAsync(rdnsTask, rdnsTimeout, ct).ConfigureAwait(false);
-                    if (rdnsCompleted && rdnsEntry != null && !string.IsNullOrWhiteSpace(rdnsEntry.HostName))
-                    {
-                        reverseDnsHostname = rdnsEntry.HostName;
-                    }
+                    reverseDnsHostname = await _probes.TryReverseDnsAsync(ipString, rdnsTimeout, ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                 {
@@ -113,8 +108,7 @@ namespace IspAudit.Core.Modules
                         var dnsTimeoutMs = (int)Math.Clamp(_testTimeout.TotalMilliseconds, 2000, 4000);
                         var dnsTimeout = TimeSpan.FromMilliseconds(dnsTimeoutMs);
 
-                        var dnsTask = System.Net.Dns.GetHostEntryAsync(hostname, CancellationToken.None);
-                        var (dnsCompleted, _) = await WithTimeoutAsync(dnsTask, dnsTimeout, ct).ConfigureAwait(false);
+                        var dnsCompleted = await _probes.CheckForwardDnsAsync(hostname, dnsTimeout, ct).ConfigureAwait(false);
                         if (!dnsCompleted)
                         {
                             dnsOk = false;
@@ -136,55 +130,13 @@ namespace IspAudit.Core.Modules
 
                 // 2. TCP connect (ретраи в рамках общего таймаута)
                 {
-                    var tcpDeadline = DateTime.UtcNow + _testTimeout;
-                    for (int attempt = 1; attempt <= TcpMaxAttempts; attempt++)
+                    var tcp = await _probes.ProbeTcpAsync(host.RemoteIp, host.RemotePort, _testTimeout, TcpMaxAttempts, ct).ConfigureAwait(false);
+                    tcpOk = tcp.Ok;
+                    if (tcpOk)
                     {
-                        var remaining = tcpDeadline - DateTime.UtcNow;
-                        if (remaining <= TimeSpan.FromMilliseconds(200))
-                        {
-                            break;
-                        }
-
-                        try
-                        {
-                            using var tcpClient = new System.Net.Sockets.TcpClient();
-                            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                            linkedCts.CancelAfter(remaining);
-
-                            await tcpClient.ConnectAsync(host.RemoteIp, host.RemotePort, linkedCts.Token).ConfigureAwait(false);
-                            tcpOk = true;
-                            tcpLatencyMs = (int)sw.ElapsedMilliseconds;
-                            break;
-                        }
-                        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-                        {
-                            // Таймаут попытки. Дадим ещё один шанс в рамках общего тайм-бюджета.
-                        }
-                        catch (System.Net.Sockets.SocketException ex)
-                        {
-                            tcpOk = false;
-                            if (ex.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionRefused)
-                            {
-                                // Порт закрыт, но хост доступен
-                                blockageType = BlockageCode.PortClosed;
-                            }
-                            else if (ex.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionReset)
-                            {
-                                // Нейтральная фактура: соединение сброшено (ConnectionReset).
-                                blockageType = BlockageCode.TcpConnectionReset;
-                            }
-                            else
-                            {
-                                blockageType = BlockageCode.TcpError;
-                            }
-                            break;
-                        }
+                        tcpLatencyMs = (int)sw.ElapsedMilliseconds;
                     }
-
-                    if (!tcpOk && blockageType == null)
-                    {
-                        blockageType = BlockageCode.TcpConnectTimeout;
-                    }
+                    blockageType = tcp.BlockageType;
                 }
 
                 // 3. TLS handshake (обычно только для 443). Для тестов/нестандартных портов допускаем TLS probe,
@@ -192,57 +144,17 @@ namespace IspAudit.Core.Modules
                 var shouldProbeTls = host.RemotePort == 443 || !string.IsNullOrEmpty(host.SniHostname);
                 if (tcpOk && shouldProbeTls && !string.IsNullOrEmpty(hostname) && hostnameFromCacheOrInput)
                 {
-                    var tlsDeadline = DateTime.UtcNow + _testTimeout;
-                    for (int attempt = 1; attempt <= TlsMaxAttempts; attempt++)
-                    {
-                        var remaining = tlsDeadline - DateTime.UtcNow;
-                        if (remaining <= TimeSpan.FromMilliseconds(300))
-                        {
-                            break;
-                        }
+                    var tls = await _probes.ProbeTlsAsync(
+                        host.RemoteIp,
+                        host.RemotePort,
+                        hostname,
+                        _testTimeout,
+                        TlsMaxAttempts,
+                        _remoteCertificateValidationCallback,
+                        ct).ConfigureAwait(false);
 
-                        try
-                        {
-                            using var tcpClient = new System.Net.Sockets.TcpClient();
-                            using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                            attemptCts.CancelAfter(remaining);
-
-                            await tcpClient.ConnectAsync(host.RemoteIp, host.RemotePort, attemptCts.Token).ConfigureAwait(false);
-                            using var sslStream = new System.Net.Security.SslStream(
-                                tcpClient.GetStream(),
-                                leaveInnerStreamOpen: false,
-                                userCertificateValidationCallback: _remoteCertificateValidationCallback);
-
-                            var sslOptions = new System.Net.Security.SslClientAuthenticationOptions
-                            {
-                                TargetHost = hostname,
-                                EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
-                                CertificateRevocationCheckMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck
-                            };
-
-                            await sslStream.AuthenticateAsClientAsync(sslOptions, attemptCts.Token).ConfigureAwait(false);
-                            tlsOk = true;
-                            break;
-                        }
-                        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-                        {
-                            // Таймаут попытки. Дадим ещё один шанс в рамках общего тайм-бюджета.
-                            blockageType = BlockageCode.TlsHandshakeTimeout;
-                        }
-                        catch (System.Security.Authentication.AuthenticationException)
-                        {
-                            tlsOk = false;
-                            // Нейтральная фактура: TLS рукопожатие завершилось AuthenticationException.
-                            // Это НЕ доказательство DPI; причины могут быть разными (MITM/прокси/фильтрация/несовпадение параметров).
-                            blockageType = BlockageCode.TlsAuthFailure;
-                            break;
-                        }
-                        catch
-                        {
-                            tlsOk = false;
-                            blockageType = blockageType ?? BlockageCode.TlsError;
-                        }
-                    }
+                    tlsOk = tls.Ok;
+                    blockageType ??= tls.BlockageType;
                 }
                 else if (host.RemotePort == 443)
                 {
@@ -263,7 +175,12 @@ namespace IspAudit.Core.Modules
                 {
                     var h3TimeoutMs = (int)Math.Clamp(_testTimeout.TotalMilliseconds, 700, 2000);
                     var h3Timeout = TimeSpan.FromMilliseconds(h3TimeoutMs);
-                    await ProbeHttp3Async(hostname, h3Timeout, ct).ConfigureAwait(false);
+
+                    var h3 = await _probes.ProbeHttp3Async(hostname, h3Timeout, ct).ConfigureAwait(false);
+                    http3Ok = h3.Ok;
+                    http3Status = h3.Status;
+                    http3LatencyMs = h3.LatencyMs;
+                    http3Error = h3.Error;
                 }
             }
             catch (Exception ex)
@@ -288,128 +205,6 @@ namespace IspAudit.Core.Modules
                 http3LatencyMs,
                 http3Error
             );
-
-            static async Task<(bool Completed, T? Result)> WithTimeoutAsync<T>(Task<T> task, TimeSpan timeout, CancellationToken ct)
-            {
-                // ct: уважать внешнюю отмену (например пользователь нажал Stop)
-                if (ct.IsCancellationRequested)
-                {
-                    throw new OperationCanceledException(ct);
-                }
-
-                var delayTask = Task.Delay(timeout, ct);
-                var completed = await Task.WhenAny(task, delayTask).ConfigureAwait(false);
-                if (completed == task)
-                {
-                    return (true, await task.ConfigureAwait(false));
-                }
-
-                // Таймаут: не ждём дальше, но обязательно «наблюдаем» возможные исключения,
-                // чтобы не получить UnobservedTaskException, когда DNS завершится позже.
-                _ = task.ContinueWith(
-                    t =>
-                    {
-                        _ = t.Exception;
-                    },
-                    CancellationToken.None,
-                    TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
-                    TaskScheduler.Default);
-
-                return (false, default);
-            }
-
-            async Task ProbeHttp3Async(string targetHost, TimeSpan timeout, CancellationToken outerCt)
-            {
-                // Фиксируем факт попытки даже если она упадёт.
-                http3Ok = null;
-                http3Status = "H3_NOT_ATTEMPTED";
-                http3LatencyMs = null;
-                http3Error = null;
-
-                try
-                {
-                    using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(outerCt);
-                    attemptCts.CancelAfter(timeout);
-
-                    var h3Sw = Stopwatch.StartNew();
-
-                    // SocketsHttpHandler использует MsQuic на Windows для HTTP/3.
-                    using var handler = new SocketsHttpHandler
-                    {
-                        AllowAutoRedirect = false,
-                        AutomaticDecompression = DecompressionMethods.None,
-                        UseCookies = false,
-                        ConnectTimeout = timeout
-                    };
-
-                    handler.SslOptions = new System.Net.Security.SslClientAuthenticationOptions
-                    {
-                        TargetHost = targetHost,
-                        EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
-                        CertificateRevocationCheckMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck
-                    };
-
-                    using var http = new HttpClient(handler, disposeHandler: false)
-                    {
-                        // Управляем таймаутом через CancellationToken, чтобы отличать отмену от общего ct.
-                        Timeout = Timeout.InfiniteTimeSpan
-                    };
-
-                    var uri = new Uri($"https://{targetHost}/");
-                    using var req = new HttpRequestMessage(HttpMethod.Head, uri)
-                    {
-                        Version = HttpVersion.Version30,
-                        VersionPolicy = HttpVersionPolicy.RequestVersionExact
-                    };
-
-                    using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, attemptCts.Token).ConfigureAwait(false);
-
-                    h3Sw.Stop();
-                    http3LatencyMs = (int)Math.Max(0, Math.Round(h3Sw.Elapsed.TotalMilliseconds, MidpointRounding.AwayFromZero));
-
-                    if (resp.Version.Major == 3)
-                    {
-                        http3Ok = true;
-                        http3Status = "H3_OK";
-                    }
-                    else
-                    {
-                        // При RequestVersionExact сюда почти не должны попадать, но оставляем как защиту.
-                        http3Ok = false;
-                        http3Status = $"H3_DOWNGRADED_{resp.Version}";
-                    }
-                }
-                catch (PlatformNotSupportedException ex)
-                {
-                    // MsQuic/HTTP3 недоступен на системе — это НЕ диагноз блокировки провайдера.
-                    http3Ok = null;
-                    http3Status = "H3_NOT_SUPPORTED";
-                    http3Error = ex.GetType().Name;
-                }
-                catch (NotSupportedException ex)
-                {
-                    http3Ok = null;
-                    http3Status = "H3_NOT_SUPPORTED";
-                    http3Error = ex.GetType().Name;
-                }
-                catch (OperationCanceledException) when (!outerCt.IsCancellationRequested)
-                {
-                    http3Ok = false;
-                    http3Status = "H3_TIMEOUT";
-                }
-                catch (HttpRequestException ex)
-                {
-                    http3Ok = false;
-                    http3Status = "H3_FAILED";
-                    http3Error = ex.GetType().Name;
-                }
-                catch (Exception ex)
-                {
-                    http3Ok = false;
-                    http3Status = "H3_FAILED";
-                    http3Error = ex.GetType().Name;
-                }
-            }
         }
     }
 }

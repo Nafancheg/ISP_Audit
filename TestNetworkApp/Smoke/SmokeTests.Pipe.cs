@@ -764,7 +764,9 @@ namespace TestNetworkApp.Smoke
                 var host = "localhost";
                 var ip = IPAddress.Loopback;
 
-                var tester = new StandardHostTester(progress: null);
+                using var provider = BuildIspAuditProvider();
+                var testerFactory = provider.GetRequiredService<IHostTesterFactory>();
+                var tester = testerFactory.CreateStandard(progress: null, dnsCache: null, testTimeout: TimeSpan.FromSeconds(3));
                 var discovered = new HostDiscovered(
                     Key: $"{ip}:80:TCP",
                     RemoteIp: ip,
@@ -813,7 +815,9 @@ namespace TestNetworkApp.Smoke
                 var port = ((IPEndPoint)listener.LocalEndpoint).Port;
                 var acceptTask = listener.AcceptTcpClientAsync(cts.Token);
 
-                var tester = new StandardHostTester(progress: null);
+                using var provider = BuildIspAuditProvider();
+                var testerFactory = provider.GetRequiredService<IHostTesterFactory>();
+                var tester = testerFactory.CreateStandard(progress: null, dnsCache: null, testTimeout: TimeSpan.FromSeconds(3));
                 var discovered = new HostDiscovered(
                     Key: $"{ip}:{port}:TCP",
                     RemoteIp: ip,
@@ -871,7 +875,10 @@ namespace TestNetworkApp.Smoke
 
                 var serverTask = RunSingleTlsServerAsync(listener, certificate, cts.Token);
 
+                using var provider = BuildIspAuditProvider();
+                var probes = provider.GetRequiredService<IStandardHostTesterProbeService>();
                 var tester = new StandardHostTester(
+                    probes,
                     progress: null,
                     remoteCertificateValidationCallback: static (_, _, _, _) => true);
                 var discovered = new HostDiscovered(
@@ -994,7 +1001,9 @@ namespace TestNetworkApp.Smoke
                 cts.CancelAfter(TimeSpan.FromSeconds(6));
 
                 var ip = IPAddress.Parse("8.8.8.8");
-                var tester = new StandardHostTester(progress: null);
+                using var provider = BuildIspAuditProvider();
+                var testerFactory = provider.GetRequiredService<IHostTesterFactory>();
+                var tester = testerFactory.CreateStandard(progress: null, dnsCache: null, testTimeout: TimeSpan.FromSeconds(3));
                 var discovered = new HostDiscovered(
                     Key: "8.8.8.8:53:TCP",
                     RemoteIp: ip,

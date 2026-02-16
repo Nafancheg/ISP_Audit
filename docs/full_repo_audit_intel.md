@@ -215,6 +215,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 Актуализация (Dev, 16.02.2026): DI фабрики для pipeline/tester/state store (Phase 4.1)
 - Убрано скрытое создание `StandardHostTester`/`InMemoryBlockageStateStore` внутри runtime-пути `LiveTestingPipeline`.
 - Введены фабрики `ILiveTestingPipelineFactory`, `IHostTesterFactory`, `IBlockageStateStoreFactory` (per-run lifetime для объектов пайплайна).
+- Вынесены подчинённые probe-операции `StandardHostTester` (DNS/TCP/TLS/HTTP3) в DI-сервис `IStandardHostTesterProbeService`.
 - `DiagnosticOrchestrator` создаёт `LiveTestingPipeline` через `ILiveTestingPipelineFactory` и использует `ITrafficFilter` как singleton из DI.
 - Smoke-наборы `TestNetworkApp` обновлены: прямые `new LiveTestingPipeline(...)` заменены на DI-фабрику.
 

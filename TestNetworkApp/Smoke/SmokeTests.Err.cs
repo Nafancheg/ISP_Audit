@@ -5,6 +5,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.Core.Interfaces;
 using IspAudit.Core.Modules;
 using IspAudit.Core.Traffic;
 using IspAudit.Core.Traffic.Filters;
@@ -23,7 +24,9 @@ namespace TestNetworkApp.Smoke
             var sw = Stopwatch.StartNew();
             try
             {
-                var tester = new StandardHostTester(progress: null);
+                using var provider = BuildIspAuditProvider();
+                var testerFactory = provider.GetRequiredService<IHostTesterFactory>();
+                var tester = testerFactory.CreateStandard(progress: null, dnsCache: null, testTimeout: TimeSpan.FromSeconds(3));
                 var host = new IspAudit.Core.Models.HostDiscovered(
                     Key: "1.2.3.4:443:TCP",
                     RemoteIp: IPAddress.Parse("1.2.3.4"),
@@ -209,7 +212,9 @@ namespace TestNetworkApp.Smoke
             var sw = Stopwatch.StartNew();
             try
             {
-                var tester = new StandardHostTester(progress: null);
+                using var provider = BuildIspAuditProvider();
+                var testerFactory = provider.GetRequiredService<IHostTesterFactory>();
+                var tester = testerFactory.CreateStandard(progress: null, dnsCache: null, testTimeout: TimeSpan.FromSeconds(3));
                 var host = new IspAudit.Core.Models.HostDiscovered(
                     Key: "8.8.8.8:443:TCP",
                     RemoteIp: IPAddress.Parse("8.8.8.8"),
@@ -240,7 +245,9 @@ namespace TestNetworkApp.Smoke
             var sw = Stopwatch.StartNew();
             try
             {
-                var tester = new StandardHostTester(progress: null);
+                using var provider = BuildIspAuditProvider();
+                var testerFactory = provider.GetRequiredService<IHostTesterFactory>();
+                var tester = testerFactory.CreateStandard(progress: null, dnsCache: null, testTimeout: TimeSpan.FromSeconds(3));
                 var ip6 = IPAddress.Parse("2606:4700:4700::1111"); // Cloudflare
                 var host = new IspAudit.Core.Models.HostDiscovered(
                     Key: $"{ip6}:443:TCP",

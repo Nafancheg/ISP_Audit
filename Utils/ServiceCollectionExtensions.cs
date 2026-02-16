@@ -23,6 +23,9 @@ namespace IspAudit.Utils
             // Auto-hostlist (UI + pipeline) должен быть единым, иначе будут расхождения по кандидатам.
             services.AddSingleton<AutoHostlistService>();
 
+            // Подчинённые пробники StandardHostTester (DNS/TCP/TLS/HTTP3): отдельный DI-сервис.
+            services.AddSingleton<IStandardHostTesterProbeService, StandardHostTesterProbeService>();
+
             // Tester: фабрика стандартного сетевого тестера (DNS/TCP/TLS/HTTP3).
             services.AddSingleton<IHostTesterFactory, StandardHostTesterFactory>();
 

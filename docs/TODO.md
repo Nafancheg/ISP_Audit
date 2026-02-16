@@ -1,6 +1,6 @@
 ﻿# ISP_Audit — TODO
 
-Дата актуализации: 13.02.2026
+Дата актуализации: 16.02.2026
 Выполненное → [CHANGELOG.md](../CHANGELOG.md). Архитектура → [ARCHITECTURE_CURRENT.md](../ARCHITECTURE_CURRENT.md). Аудит → [docs/audit4.md](audit4.md).
 
 ---
@@ -180,7 +180,7 @@
 - [ ] Осталось сделать (перенос в DI):
 	- [x] `LiveTestingPipeline`: определён owner/lifetime и зарегистрирована DI-фабрика `ILiveTestingPipelineFactory`, убрано создание через `new` из runtime пути
 	- [x] `StandardHostTester`: вынесено создание в DI-фабрику `IHostTesterFactory` (используется из `ILiveTestingPipelineFactory`), убраны скрытые `new` из runtime пути
-	- [ ] Подчинённые сервисы pipeline/tester (DNS/TCP/TLS/HTTP3), которые создаются вручную: вынести в регистрации DI и подать через конструкторы
+	- [x] Подчинённые сервисы pipeline/tester (DNS/TCP/TLS/HTTP3): вынесены в DI (`IStandardHostTesterProbeService`) и подаются через конструктор `StandardHostTester`
 
 ### 4.2 Устранение глобального состояния
 - [x] Удалить legacy `Config.ActiveProfile` (Profiles/*.json loader для целей диагностики)

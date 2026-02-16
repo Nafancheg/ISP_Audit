@@ -158,6 +158,7 @@ Wizard из 5 шагов: выбор приложения → источник �
 - Параллельный Testing: `SemaphoreSlim` через `PipelineConfig.MaxConcurrentTests`.
 - P1.5: degrade mode при backlog — для low применяется best-effort ускорение (timeout/2 для стандартного тестера).
 - Создание зависимостей: `IHostTester` и `IBlockageStateStore` передаются извне (через DI-фабрику пайплайна), без скрытого создания через `new` в runtime-пути.
+- `StandardHostTester` использует `IStandardHostTesterProbeService` (DNS/TCP/TLS/HTTP3), зарегистрированный в DI.
 - `AutoHostlistService` — кандидаты из `InspectionSignalsSnapshot`.
 - UX-гейт: `OnPlanBuilt` публикуется для `FilterAction.Process` и `LogOnly`.
 
