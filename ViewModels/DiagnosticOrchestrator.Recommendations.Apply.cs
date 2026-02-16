@@ -732,6 +732,25 @@ namespace IspAudit.ViewModels
                 return $"{prefix}; {d}";
             }
 
+            static (string Verdict, string Details) NormalizeUnknownProbeVerdict(string verdict, string details)
+            {
+                var v = (verdict ?? string.Empty).Trim();
+                var d = (details ?? string.Empty).Trim();
+
+                if (!string.Equals(v, "UNKNOWN", StringComparison.OrdinalIgnoreCase))
+                {
+                    return (v, d);
+                }
+
+                var resolved = PostApplyVerdictContract.ResolveUnknownReason(v, d);
+                if (resolved == UnknownReason.None)
+                {
+                    resolved = UnknownReason.ProbeTimeoutBudget;
+                }
+
+                return ("UNKNOWN", BuildUnknownDetails(resolved, d));
+            }
+
             static (string Verdict, string Details) ApplyBaselineFreshnessPolicy(
                 string verdict,
                 string details,
@@ -894,12 +913,13 @@ namespace IspAudit.ViewModels
                         if (pipeline == null || diagCts == null)
                         {
                             var (verdict, probeDetails) = await ComputePostApplyProbeVerdictAsync(hostKey, ct).ConfigureAwait(false);
+                            var normalizedProbe = NormalizeUnknownProbeVerdict(verdict, probeDetails);
 
-                            var details = string.Equals(verdict, "UNKNOWN", StringComparison.OrdinalIgnoreCase)
-                                ? BuildUnknownDetails(UnknownReason.ProbeTimeoutBudget, $"pipeline_not_ready; out={verdict}; probe={probeDetails}")
-                                : $"pipeline_not_ready; out={verdict}; probe={probeDetails}";
+                            var details = string.Equals(normalizedProbe.Verdict, "UNKNOWN", StringComparison.OrdinalIgnoreCase)
+                                ? BuildUnknownDetails(UnknownReason.ProbeTimeoutBudget, $"pipeline_not_ready; out={normalizedProbe.Verdict}; probe={normalizedProbe.Details}")
+                                : $"pipeline_not_ready; out={normalizedProbe.Verdict}; probe={normalizedProbe.Details}";
 
-                            var adjusted = ApplyBaselineFreshnessPolicy(verdict, details, hasPendingBaseline, isBaselineFresh, baselineAge, baselineTtl);
+                            var adjusted = ApplyBaselineFreshnessPolicy(normalizedProbe.Verdict, details, hasPendingBaseline, isBaselineFresh, baselineAge, baselineTtl);
                             EmitPostApplyVerdict(hostKey, adjusted.Verdict, "enqueue", adjusted.Details);
 
                             UpdatePostApplyRetestUi(() =>
@@ -938,10 +958,11 @@ namespace IspAudit.ViewModels
 
                         // Делаем outcome-probe (усиленный для YouTube) и используем как семантический итог для UI.
                         var (verdictAfterEnqueue, probeDetailsAfterEnqueue) = await ComputePostApplyProbeVerdictAsync(hostKey, linkedCt).ConfigureAwait(false);
+                        var normalizedAfterEnqueue = NormalizeUnknownProbeVerdict(verdictAfterEnqueue, probeDetailsAfterEnqueue);
 
-                        var enqueueDetails = $"enqueued; ips={hosts.Count}; out={verdictAfterEnqueue}; probe={probeDetailsAfterEnqueue}";
+                        var enqueueDetails = $"enqueued; ips={hosts.Count}; out={normalizedAfterEnqueue.Verdict}; probe={normalizedAfterEnqueue.Details}";
                         var adjustedAfterEnqueue = ApplyBaselineFreshnessPolicy(
-                            verdictAfterEnqueue,
+                            normalizedAfterEnqueue.Verdict,
                             enqueueDetails,
                             hasPendingBaseline,
                             isBaselineFresh,
@@ -971,9 +992,7 @@ namespace IspAudit.ViewModels
                     }
                     catch (Exception ex)
                     {
-                        var reason = ex is TimeoutException
-                            ? UnknownReason.ProbeTimeoutBudget
-                            : UnknownReason.None;
+                        var reason = UnknownReason.ProbeTimeoutBudget;
                         EmitPostApplyVerdict(hostKey, "UNKNOWN", "enqueue", BuildUnknownDetails(reason, $"error: {ex.Message}"));
                         UpdatePostApplyRetestUi(() =>
                         {
@@ -1221,9 +1240,7 @@ namespace IspAudit.ViewModels
                 }
                 catch (Exception ex)
                 {
-                    var reason = ex is TimeoutException
-                        ? UnknownReason.ProbeTimeoutBudget
-                        : UnknownReason.None;
+                    var reason = UnknownReason.ProbeTimeoutBudget;
                     EmitPostApplyVerdict(hostKey, "UNKNOWN", "local", BuildUnknownDetails(reason, $"error: {ex.Message}"));
                     UpdatePostApplyRetestUi(() =>
                     {

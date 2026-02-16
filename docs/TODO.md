@@ -40,6 +40,7 @@
 - Прогресс 16.02.2026 (итерация 2): добавлен детерминированный resolver `UnknownReason` (priority) и reason-теги в UNKNOWN post-apply события (`reason=...`).
 - Прогресс 16.02.2026 (итерация 3): добавлены реальные источники `UnknownReason` в ретесте (`InsufficientIps` при `no_targets_resolved`, `NoBaseline` при отсутствии summary signals).
 - Прогресс 16.02.2026 (итерация 4): добавлен runtime baseline freshness TTL (default 60s) и принудительный `Unknown(NoBaselineFresh)` при stale baseline в post-apply verdict (enqueue/local).
+- Прогресс 16.02.2026 (итерация 5): нормализован `UNKNOWN` из outcome-probe в enqueue-ветке (явный `reason=`), а error-ветки post-apply унифицированы на `ProbeTimeoutBudget` без `UnknownReason.None`.
 - [ ] Ввести `VerdictStatus` и `UnknownReason` в результатах healthcheck/post-apply
 - [ ] Запретить fallback в S0 при недостатке данных (`Unknown != S0`)
 - [ ] Зафиксировать детерминированный приоритет `UnknownReason`, если причин несколько
