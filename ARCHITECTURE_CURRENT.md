@@ -231,6 +231,8 @@ Wizard из 5 шагов: выбор приложения → источник �
 **Доменные семейства**: анализатор на лету, каталог `state\domain_families.json` (pinned + learned).
 **Кросс-доменные группы**: `state\domain_groups.json` (pinned: `group-youtube`, learned: co-occurrence).
 
+Эталонный ручной сценарий проверки YouTube/Google: `docs/scenarios/youtube_baseline.md`.
+
 ---
 
 ### 3.3 Core Modules

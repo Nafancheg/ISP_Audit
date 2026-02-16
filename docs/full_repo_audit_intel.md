@@ -227,6 +227,11 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Smoke-наборы `TestNetworkApp` обновлены: `BypassStateManager.GetOrCreate` и engine-конструкторы заменены на фабрику + публичные конструкторы, принимающие `BypassStateManager`.
 
 
+Актуализация (Docs, 16.02.2026): эталонный сценарий YouTube/Google (P1.11)
+- Добавлен ручной baseline-чеклист: `docs/scenarios/youtube_baseline.md`.
+- Сценарий фиксирует, как воспроизводимо проверить QUIC (UDP/443) vs TCP/TLS, группировку `group-youtube` и post-Apply ретест.
+
+
 Актуализация (Runtime, 23.12.2025): контроль применения INTEL
 - `Cancel` отменяет не только диагностику, но и ручное применение рекомендаций (отдельный CTS для apply).
 - Защита от устаревшего плана: apply пропускается, если `planHostKey` не совпадает с последней INTEL‑целью, извлечённой из текста INTEL‑диагноза в UI.
