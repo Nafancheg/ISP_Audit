@@ -1,8 +1,8 @@
 # ISP_Audit — TODO
 
-Дата актуализации: 16.02.2026  
-Выполненное → [CHANGELOG.md](../CHANGELOG.md).  
-Архитектура → [ARCHITECTURE_CURRENT.md](../ARCHITECTURE_CURRENT.md).  
+Дата актуализации: 16.02.2026
+Выполненное → [CHANGELOG.md](../CHANGELOG.md).
+Архитектура → [ARCHITECTURE_CURRENT.md](../ARCHITECTURE_CURRENT.md).
 Аудит → [docs/audit4.md](audit4.md).
 
 ---
@@ -36,6 +36,7 @@
 #### P0.V23.1 Unknown/InsufficientData как first-class статус
 - Depends: none
 - Risk: low
+- Прогресс 16.02.2026: добавлен базовый V3-контракт post-apply verdict (`VerdictStatus/UnknownReason`) без слома V1/V2 событий.
 - [ ] Ввести `VerdictStatus` и `UnknownReason` в результатах healthcheck/post-apply
 - [ ] Запретить fallback в S0 при недостатке данных (`Unknown != S0`)
 - [ ] Зафиксировать детерминированный приоритет `UnknownReason`, если причин несколько

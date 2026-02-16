@@ -22,6 +22,8 @@ namespace IspAudit.Utils
         {
             public string GroupKey { get; init; } = string.Empty;
             public string Verdict { get; init; } = string.Empty; // OK/FAIL/PARTIAL/UNKNOWN
+            public string VerdictStatus { get; init; } = string.Empty; // Ok/Fail/Unknown
+            public string UnknownReason { get; init; } = string.Empty; // NoBaseline/Cancelled/... (v2.3)
             public string CheckedAtUtc { get; init; } = DateTimeOffset.UtcNow.ToString("u").TrimEnd();
 
             public string HostKey { get; init; } = string.Empty;

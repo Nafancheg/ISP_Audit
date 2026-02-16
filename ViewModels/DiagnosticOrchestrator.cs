@@ -18,6 +18,7 @@ using IspAudit.Core.Traffic.Filters;
 using IspAudit.Windows;
 using IspAudit;
 using IspAudit.Core.Interfaces;
+using IspAudit.Models;
 using System.Windows.Media;
 using System.Net;
 using IspAudit.ViewModels.OrchestratorState;
@@ -201,6 +202,10 @@ namespace IspAudit.ViewModels
         // P1.9: расширенный сигнал post-apply вердикта с correlationId/txId.
         // Нужен для строгой связки: Apply(txId) → PostApplyRetest(txId) → wins.
         public event Action<string, string, string, string?, string?>? OnPostApplyCheckVerdictV2;
+
+        // P0.V23.1: структурированный post-apply verdict (Status/UnknownReason),
+        // сохраняем V1/V2 события для обратной совместимости UI/логики.
+        public event Action<string, PostApplyVerdictContract, string, string?, string?>? OnPostApplyCheckVerdictV3;
 
         /// <summary>
         /// Делегат для показа ошибки/предупреждения (заголовок, текст).

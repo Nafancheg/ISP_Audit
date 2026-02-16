@@ -247,14 +247,14 @@ namespace IspAudit.ViewModels
                 }
             };
 
-            Orchestrator.OnPostApplyCheckVerdictV2 += (hostKey, verdict, mode, details, correlationId) =>
+            Orchestrator.OnPostApplyCheckVerdictV3 += (hostKey, verdictContract, mode, details, correlationId) =>
             {
                 try
                 {
                     UiBeginInvoke(() =>
                     {
                         // mode пока используется только для логов/диагностики, в UI не выводим.
-                        ApplyPostApplyVerdictToHostKey(hostKey, verdict, mode, details, correlationId);
+                        ApplyPostApplyVerdictToHostKey(hostKey, verdictContract, mode, details, correlationId);
                     });
                 }
                 catch

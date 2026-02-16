@@ -1222,7 +1222,7 @@ namespace IspAudit.ViewModels
             });
         }
 
-        private void ApplyPostApplyVerdictToHostKey(string hostKey, string verdict, string mode, string? details, string? correlationId)
+        private void ApplyPostApplyVerdictToHostKey(string hostKey, PostApplyVerdictContract verdictContract, string mode, string? details, string? correlationId)
         {
             try
             {
@@ -1232,7 +1232,12 @@ namespace IspAudit.ViewModels
                 var groupKey = GetStableApplyGroupKeyForHostKey(hk);
                 if (string.IsNullOrWhiteSpace(groupKey)) return;
 
-                var mapped = MapPostApplyVerdictToStatus(verdict);
+                var mapped = verdictContract.Status switch
+                {
+                    VerdictStatus.Ok => PostApplyCheckStatus.Ok,
+                    VerdictStatus.Fail => PostApplyCheckStatus.Fail,
+                    _ => PostApplyCheckStatus.Unknown
+                };
                 var nowUtc = DateTimeOffset.UtcNow;
 
                 var d = (details ?? string.Empty).Trim();
@@ -1247,7 +1252,9 @@ namespace IspAudit.ViewModels
                 var entry = new IspAudit.Utils.PostApplyCheckStore.PostApplyCheckEntry
                 {
                     GroupKey = (groupKey ?? string.Empty).Trim().Trim('.'),
-                    Verdict = (verdict ?? string.Empty).Trim(),
+                    Verdict = verdictContract.VerdictCode,
+                    VerdictStatus = verdictContract.Status.ToString(),
+                    UnknownReason = verdictContract.UnknownReason.ToString(),
                     CheckedAtUtc = nowUtc.ToString("u").TrimEnd(),
                     HostKey = hk,
                     Mode = (mode ?? string.Empty).Trim(),
@@ -1263,12 +1270,17 @@ namespace IspAudit.ViewModels
 
                 // P1.9: записываем win только при строгом сигнале успеха post-apply (OK) и наличии txId.
                 // Это защищает от «мусора» фоновых соединений.
-                TryRecordWinFromPostApplyOkBestEffort(hk, groupKey, verdict, mode, details, correlationId, nowUtc);
+                TryRecordWinFromPostApplyOkBestEffort(hk, groupKey, verdictContract.VerdictCode, mode, details, correlationId, nowUtc);
             }
             catch
             {
                 // ignore
             }
+        }
+
+        private void ApplyPostApplyVerdictToHostKey(string hostKey, string verdict, string mode, string? details, string? correlationId)
+        {
+            ApplyPostApplyVerdictToHostKey(hostKey, PostApplyVerdictContract.FromLegacy(verdict, details), mode, details, correlationId);
         }
 
         private void TryRecordWinFromPostApplyOkBestEffort(

@@ -314,6 +314,7 @@ IPv6: селективность недоступна, сохраняется dr
 12. **Реакция**: manual apply → `BypassController.ApplyIntelPlanAsync(...)`, auto-apply (опционально) → пост-Apply ретест.
     - P1.9: при `post-apply verdict=OK` и наличии `txId` в UI записывается «win» (подтверждённый успешный обход) в `state\wins_store.json`.
     - P1.9: если для цели найден «win», Operator UI применяет wins-план без подбора стратегий и сразу запускает пост-Apply ретест.
+    - P0.V23.1 (этап 1): введён структурированный сигнал post-apply verdict `V3` (`VerdictStatus/UnknownReason`) при сохранении legacy-сигналов `V1/V2`.
 
 ---
 

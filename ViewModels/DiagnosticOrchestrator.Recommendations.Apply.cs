@@ -21,6 +21,7 @@ using IspAudit;
 using System.Windows.Media;
 using System.Net;
 using IspAudit.Core.Intelligence.Feedback;
+using IspAudit.Models;
 
 // Явно указываем WPF вместо WinForms
 using Application = System.Windows.Application;
@@ -706,6 +707,20 @@ namespace IspAudit.ViewModels
                 ? Guid.NewGuid().ToString("N")
                 : correlationId.Trim();
 
+            void EmitPostApplyVerdict(string hk, string verdict, string mode, string? details)
+            {
+                try
+                {
+                    OnPostApplyCheckVerdict?.Invoke(hk, verdict, mode, details);
+                    OnPostApplyCheckVerdictV2?.Invoke(hk, verdict, mode, details, opId);
+                    OnPostApplyCheckVerdictV3?.Invoke(hk, PostApplyVerdictContract.FromLegacy(verdict, details), mode, details, opId);
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
             try
             {
                 _postApplyRetest.Cancellation?.Cancel();
@@ -818,15 +833,7 @@ namespace IspAudit.ViewModels
                         {
                             var (verdict, probeDetails) = await ComputePostApplyProbeVerdictAsync(hostKey, ct).ConfigureAwait(false);
 
-                            try
-                            {
-                                OnPostApplyCheckVerdict?.Invoke(hostKey, verdict, "enqueue", $"pipeline_not_ready; out={verdict}; probe={probeDetails}");
-                                OnPostApplyCheckVerdictV2?.Invoke(hostKey, verdict, "enqueue", $"pipeline_not_ready; out={verdict}; probe={probeDetails}", opId);
-                            }
-                            catch
-                            {
-                                // ignore
-                            }
+                            EmitPostApplyVerdict(hostKey, verdict, "enqueue", $"pipeline_not_ready; out={verdict}; probe={probeDetails}");
 
                             UpdatePostApplyRetestUi(() =>
                             {
@@ -863,15 +870,7 @@ namespace IspAudit.ViewModels
                         // Делаем outcome-probe (усиленный для YouTube) и используем как семантический итог для UI.
                         var (verdictAfterEnqueue, probeDetailsAfterEnqueue) = await ComputePostApplyProbeVerdictAsync(hostKey, linkedCt).ConfigureAwait(false);
 
-                        try
-                        {
-                            OnPostApplyCheckVerdict?.Invoke(hostKey, verdictAfterEnqueue, "enqueue", $"enqueued; ips={hosts.Count}; out={verdictAfterEnqueue}; probe={probeDetailsAfterEnqueue}");
-                            OnPostApplyCheckVerdictV2?.Invoke(hostKey, verdictAfterEnqueue, "enqueue", $"enqueued; ips={hosts.Count}; out={verdictAfterEnqueue}; probe={probeDetailsAfterEnqueue}", opId);
-                        }
-                        catch
-                        {
-                            // ignore
-                        }
+                        EmitPostApplyVerdict(hostKey, verdictAfterEnqueue, "enqueue", $"enqueued; ips={hosts.Count}; out={verdictAfterEnqueue}; probe={probeDetailsAfterEnqueue}");
 
                         UpdatePostApplyRetestUi(() =>
                         {
@@ -883,15 +882,7 @@ namespace IspAudit.ViewModels
                     }
                     catch (OperationCanceledException)
                     {
-                        try
-                        {
-                            OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "enqueue", "cancelled");
-                            OnPostApplyCheckVerdictV2?.Invoke(hostKey, "UNKNOWN", "enqueue", "cancelled", opId);
-                        }
-                        catch
-                        {
-                            // ignore
-                        }
+                        EmitPostApplyVerdict(hostKey, "UNKNOWN", "enqueue", "cancelled");
                         UpdatePostApplyRetestUi(() =>
                         {
                             PostApplyRetestStatus = "Ретест после Apply: отменён";
@@ -902,15 +893,7 @@ namespace IspAudit.ViewModels
                     }
                     catch (Exception ex)
                     {
-                        try
-                        {
-                            OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "enqueue", $"error: {ex.Message}");
-                            OnPostApplyCheckVerdictV2?.Invoke(hostKey, "UNKNOWN", "enqueue", $"error: {ex.Message}", opId);
-                        }
-                        catch
-                        {
-                            // ignore
-                        }
+                        EmitPostApplyVerdict(hostKey, "UNKNOWN", "enqueue", $"error: {ex.Message}");
                         UpdatePostApplyRetestUi(() =>
                         {
                             PostApplyRetestStatus = $"Ретест после Apply: ошибка ({ex.Message})";
@@ -1086,15 +1069,7 @@ namespace IspAudit.ViewModels
                         ? "PARTIAL"
                         : (summaryFail ? "FAIL" : (summaryOk ? "OK" : "UNKNOWN"));
 
-                    try
-                    {
-                        OnPostApplyCheckVerdict?.Invoke(hostKey, verdict, "local", $"summaryOk={summaryOk}; summaryFail={summaryFail}");
-                        OnPostApplyCheckVerdictV2?.Invoke(hostKey, verdict, "local", $"summaryOk={summaryOk}; summaryFail={summaryFail}", opId);
-                    }
-                    catch
-                    {
-                        // ignore
-                    }
+                    EmitPostApplyVerdict(hostKey, verdict, "local", $"summaryOk={summaryOk}; summaryFail={summaryFail}");
 
                     UpdatePostApplyRetestUi(() =>
                     {
@@ -1141,15 +1116,7 @@ namespace IspAudit.ViewModels
                 }
                 catch (OperationCanceledException)
                 {
-                    try
-                    {
-                        OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "local", "cancelled");
-                        OnPostApplyCheckVerdictV2?.Invoke(hostKey, "UNKNOWN", "local", "cancelled", opId);
-                    }
-                    catch
-                    {
-                        // ignore
-                    }
+                    EmitPostApplyVerdict(hostKey, "UNKNOWN", "local", "cancelled");
                     UpdatePostApplyRetestUi(() =>
                     {
                         PostApplyRetestStatus = "Ретест после Apply: отменён";
@@ -1159,15 +1126,7 @@ namespace IspAudit.ViewModels
                 }
                 catch (Exception ex)
                 {
-                    try
-                    {
-                        OnPostApplyCheckVerdict?.Invoke(hostKey, "UNKNOWN", "local", $"error: {ex.Message}");
-                        OnPostApplyCheckVerdictV2?.Invoke(hostKey, "UNKNOWN", "local", $"error: {ex.Message}", opId);
-                    }
-                    catch
-                    {
-                        // ignore
-                    }
+                    EmitPostApplyVerdict(hostKey, "UNKNOWN", "local", $"error: {ex.Message}");
                     UpdatePostApplyRetestUi(() =>
                     {
                         PostApplyRetestStatus = $"Ретест после Apply: ошибка ({ex.Message})";
