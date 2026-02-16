@@ -57,11 +57,16 @@ namespace IspAudit.Models
             }
 
             var reason = ResolveUnknownReason(v, details);
+            if (reason == UnknownReason.None)
+            {
+                reason = UnknownReason.ProbeTimeoutBudget;
+            }
+
             return new PostApplyVerdictContract
             {
                 Status = VerdictStatus.Unknown,
                 UnknownReason = reason,
-                VerdictCode = reason == UnknownReason.None ? "UNKNOWN" : reason.ToString().ToUpperInvariant()
+                VerdictCode = reason.ToString().ToUpperInvariant()
             };
         }
 
