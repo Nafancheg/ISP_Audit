@@ -223,6 +223,10 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - `Core/Models/HostTested` расширен полями `VerdictStatus/UnknownReason` (формат `Ok/Fail/Unknown` + причина unknown).
 - `StandardHostTester` заполняет поля детерминированно; базовые причины unknown: `Cancelled`, `ProbeTimeoutBudget`, `InsufficientDns`.
 - `SignalsAdapter` прокидывает `verdictStatus/unknownReason` в host-meta для наблюдаемости INTEL (без изменения legacy логики классификации на bool/legacy-status).
+
+Актуализация (Runtime, 16.02.2026): Unknown-first guard в diagnosis
+- `SignalsAdapter` агрегирует из `HostTested` поля `HostVerdictUnknownCount/LastUnknownReason` в `BlockageSignals`.
+- `StandardDiagnosisEngine` добавляет guard `health-unknown`: если есть unknown health verdict и нет явных DNS/TCP/TLS/HTTP3 фактов блокировки, возвращается `DiagnosisId.Unknown` (без деградации в `NoBlockage`).
 - Smoke-наборы `TestNetworkApp` обновлены: прямые `new LiveTestingPipeline(...)` заменены на DI-фабрику.
 
 

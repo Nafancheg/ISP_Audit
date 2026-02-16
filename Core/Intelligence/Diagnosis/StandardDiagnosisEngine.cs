@@ -45,10 +45,21 @@ public sealed class StandardDiagnosisEngine
         {
             evidence["hostTestedCount"] = signals.HostTestedCount.ToString();
             evidence["hostTestedNoSni"] = signals.HostTestedNoSniCount.ToString();
+            evidence["hostVerdictUnknownCount"] = signals.HostVerdictUnknownCount.ToString();
+
+            if (!string.IsNullOrWhiteSpace(signals.LastUnknownReason))
+            {
+                evidence["lastUnknownReason"] = signals.LastUnknownReason;
+            }
 
             if (signals.HostTestedNoSniCount > 0)
             {
                 notes.Add($"SNI: отсутствует в {signals.HostTestedNoSniCount}/{signals.HostTestedCount} тестах");
+            }
+
+            if (signals.HostVerdictUnknownCount > 0)
+            {
+                notes.Add($"Health: unknown verdicts={signals.HostVerdictUnknownCount}");
             }
         }
 
@@ -151,6 +162,28 @@ public sealed class StandardDiagnosisEngine
                 DiagnosisId = DiagnosisId.Unknown,
                 Confidence = 50,
                 MatchedRuleName = "unreliable-sample",
+                ExplanationNotes = notes,
+                Evidence = evidence,
+                InputSignals = signals,
+                DiagnosedAtUtc = DateTimeOffset.UtcNow
+            };
+        }
+
+        // 1.1) Unknown-first guard: если healthcheck уже пометил часть проверок как Unknown,
+        // не деградируем в NoBlockage (S0) при отсутствии других флагов.
+        var hasConcreteBlockageFacts =
+            signals.HasDnsFailure || signals.HasFakeIp || signals.HasHttpRedirect ||
+            signals.HasTcpTimeout || signals.HasTcpReset ||
+            signals.HasTlsTimeout || signals.HasTlsAuthFailure || signals.HasTlsReset ||
+            signals.Http3FailureCount > 0;
+
+        if (signals.HostVerdictUnknownCount > 0 && !hasConcreteBlockageFacts)
+        {
+            return new DiagnosisResult
+            {
+                DiagnosisId = DiagnosisId.Unknown,
+                Confidence = 55,
+                MatchedRuleName = "health-unknown",
                 ExplanationNotes = notes,
                 Evidence = evidence,
                 InputSignals = signals,

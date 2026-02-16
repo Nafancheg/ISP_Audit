@@ -110,6 +110,8 @@ public sealed class SignalsAdapter
         // HostTested count + no-SNI ratio
         var hostTestedCount = 0;
         var hostTestedNoSniCount = 0;
+        var hostVerdictUnknownCount = 0;
+        string? lastUnknownReason = null;
         var http3AttemptCount = 0;
         var http3SuccessCount = 0;
         var http3FailureCount = 0;
@@ -151,6 +153,18 @@ public sealed class SignalsAdapter
                     {
                         // H3_FAILED / H3_DOWNGRADED_* и прочие статусы считаем как failure.
                         http3FailureCount++;
+                    }
+                }
+            }
+
+            if (e.Value is HostTested hv)
+            {
+                if (string.Equals(hv.VerdictStatus, "Unknown", StringComparison.OrdinalIgnoreCase))
+                {
+                    hostVerdictUnknownCount++;
+                    if (!string.IsNullOrWhiteSpace(hv.UnknownReason))
+                    {
+                        lastUnknownReason = hv.UnknownReason;
                     }
                 }
             }
@@ -248,6 +262,8 @@ public sealed class SignalsAdapter
             Http3NotSupportedCount = http3NotSupportedCount,
             HostTestedCount = hostTestedCount,
             HostTestedNoSniCount = hostTestedNoSniCount,
+            HostVerdictUnknownCount = hostVerdictUnknownCount,
+            LastUnknownReason = lastUnknownReason,
 
             HasTlsTimeout = hasTlsTimeout,
             HasTlsAuthFailure = hasTlsAuthFailure,

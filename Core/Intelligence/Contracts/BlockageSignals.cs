@@ -138,6 +138,16 @@ public sealed class BlockageSignals
     /// </summary>
     public int HostTestedNoSniCount { get; init; }
 
+    /// <summary>
+    /// Количество HostTested с структурированным VerdictStatus=Unknown в окне.
+    /// </summary>
+    public int HostVerdictUnknownCount { get; init; }
+
+    /// <summary>
+    /// Последний ненулевой UnknownReason из HostTested в окне (best-effort).
+    /// </summary>
+    public string? LastUnknownReason { get; init; }
+
     // TLS уровень
 
     /// <summary>

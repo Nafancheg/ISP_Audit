@@ -43,6 +43,7 @@
 - Прогресс 16.02.2026 (итерация 5): нормализован `UNKNOWN` из outcome-probe в enqueue-ветке (явный `reason=`), а error-ветки post-apply унифицированы на `ProbeTimeoutBudget` без `UnknownReason.None`.
 - Прогресс 16.02.2026 (итерация 6): в `PostApplyVerdictContract.FromLegacy` добавлен fallback `UnknownReason=ProbeTimeoutBudget` для всех `Unknown` без распознанной причины (исключён пустой reason в V3/UI/store).
 - Прогресс 16.02.2026 (итерация 7): расширен healthcheck-контракт `HostTested` полями `VerdictStatus/UnknownReason`; `StandardHostTester` заполняет их детерминированно (`Ok/Fail/Unknown`, причины `Cancelled/ProbeTimeoutBudget/InsufficientDns`), INTEL host-meta прокидывает эти поля в сигналы.
+- Прогресс 16.02.2026 (итерация 8): `SignalsAdapter` агрегирует `HostVerdictUnknownCount/LastUnknownReason` в `BlockageSignals`, а `StandardDiagnosisEngine` применяет `Unknown-first guard` (rule `health-unknown`) при отсутствии конкретных блокировочных фактов — `Unknown` больше не деградирует в `NoBlockage`.
 - [ ] Ввести `VerdictStatus` и `UnknownReason` в результатах healthcheck/post-apply
 - [ ] Запретить fallback в S0 при недостатке данных (`Unknown != S0`)
 - [ ] Зафиксировать детерминированный приоритет `UnknownReason`, если причин несколько

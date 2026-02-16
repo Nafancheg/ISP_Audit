@@ -169,7 +169,11 @@ Wizard из 5 шагов: выбор приложения → источник �
 
 **Step 1 (Signals)**: `SignalsAdapter` пишет события в TTL-store (`InMemorySignalSequenceStore`). Факты инспекции — через `IInspectionSignalsProvider` → `InspectionSignalsSnapshot`.
 
+- Для healthcheck v2.3 `SignalsAdapter` также агрегирует structured health verdict (`HostVerdictUnknownCount`, `LastUnknownReason`) из `HostTested`.
+
 **Step 2 (Diagnosis)**: `StandardDiagnosisEngine` по `BlockageSignals`. Пояснения — только из наблюдаемых фактов (без стратегий). Диагнозы: `ActiveDpiEdge`, `StatefulDpi`, `TlsInterference`, `QuicInterference`, `HttpRedirect`, `DnsHijack` и др.
+
+- Unknown-first guard: при `HostVerdictUnknownCount > 0` и отсутствии конкретных блокировочных фактов diagnosis остаётся `Unknown` (rule `health-unknown`), чтобы не деградировать в `NoBlockage`.
 
 **Step 3 (Selector/Plan)**: `StandardStrategySelector` строит `BypassPlan` по `DiagnosisId + Confidence`. Жёсткие защиты:
 - `confidence < 50` → пустой план.
