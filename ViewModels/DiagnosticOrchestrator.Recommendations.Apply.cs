@@ -729,6 +729,72 @@ namespace IspAudit.ViewModels
 
             return Task.Run(async () =>
             {
+                static bool IsYouTubeAnchor(string hk)
+                    => string.Equals(hk, "youtube.com", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(hk, "www.youtube.com", StringComparison.OrdinalIgnoreCase);
+
+                async Task<(string Verdict, string ProbeDetails)> ComputePostApplyProbeVerdictAsync(string hk, CancellationToken ctt)
+                {
+                    try
+                    {
+                        // YouTube: одного "GET /" по youtube.com недостаточно (редирект 301 даёт ложный OK).
+                        // Проверяем стабильные 204 эндпоинты: сам YouTube и GoogleVideo redirector.
+                        if (IsYouTubeAnchor(hk))
+                        {
+                            var probeA = await _stateManager.RunOutcomeProbeNowAsync(
+                                hostOverride: "www.youtube.com",
+                                pathOverride: "/generate_204",
+                                expectedHttpStatusCodeOverride: 204,
+                                timeoutOverride: TimeSpan.FromSeconds(6),
+                                cancellationToken: ctt).ConfigureAwait(false);
+
+                            var probeB = await _stateManager.RunOutcomeProbeNowAsync(
+                                hostOverride: "redirector.googlevideo.com",
+                                pathOverride: "/generate_204",
+                                expectedHttpStatusCodeOverride: 204,
+                                timeoutOverride: TimeSpan.FromSeconds(6),
+                                cancellationToken: ctt).ConfigureAwait(false);
+
+                            var aOk = probeA.Status == OutcomeStatus.Success;
+                            var bOk = probeB.Status == OutcomeStatus.Success;
+
+                            var verdict = (aOk, bOk) switch
+                            {
+                                (true, true) => "OK",
+                                (true, false) => "PARTIAL",
+                                (false, true) => "PARTIAL",
+                                (false, false) => (probeA.Status == OutcomeStatus.Unknown || probeB.Status == OutcomeStatus.Unknown) ? "UNKNOWN" : "FAIL"
+                            };
+
+                            var details = $"yt={probeA.Text}:{probeA.Details}; gv={probeB.Text}:{probeB.Details}";
+                            return (verdict, details);
+                        }
+
+                        // Default: прежний общий probe (TLS+любой HTTP ответ).
+                        var probe = await _stateManager.RunOutcomeProbeNowAsync(
+                            hostOverride: hk,
+                            timeoutOverride: TimeSpan.FromSeconds(6),
+                            cancellationToken: ctt).ConfigureAwait(false);
+
+                        var v = probe.Status switch
+                        {
+                            OutcomeStatus.Success => "OK",
+                            OutcomeStatus.Failed => "FAIL",
+                            _ => "UNKNOWN"
+                        };
+
+                        return (v, $"{probe.Text}:{probe.Details}");
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return ("UNKNOWN", "cancelled");
+                    }
+                    catch (Exception ex)
+                    {
+                        return ("UNKNOWN", $"error: {ex.Message}");
+                    }
+                }
+
                 // Если диагностика активна, НЕ создаём второй LiveTestingPipeline (делит TrafficEngine и может конфликтовать).
                 // Вместо этого добавляем цель в очередь существующего pipeline — так UI получит свежие результаты,
                 // даже если диагностика идёт долго или «залипла» на другой цели.
@@ -750,30 +816,12 @@ namespace IspAudit.ViewModels
                         // Делаем best-effort outcome-probe, чтобы хотя бы OUT статусы обновились.
                         if (pipeline == null || diagCts == null)
                         {
-                            var verdict = "UNKNOWN";
-                            try
-                            {
-                                var probe = await _stateManager.RunOutcomeProbeNowAsync(
-                                    hostOverride: hostKey,
-                                    timeoutOverride: TimeSpan.FromSeconds(6),
-                                    cancellationToken: ct).ConfigureAwait(false);
-
-                                verdict = probe.Status switch
-                                {
-                                    OutcomeStatus.Success => "OK",
-                                    OutcomeStatus.Failed => "FAIL",
-                                    _ => "UNKNOWN"
-                                };
-                            }
-                            catch
-                            {
-                                // ignore
-                            }
+                            var (verdict, probeDetails) = await ComputePostApplyProbeVerdictAsync(hostKey, ct).ConfigureAwait(false);
 
                             try
                             {
-                                OnPostApplyCheckVerdict?.Invoke(hostKey, verdict, "enqueue", $"pipeline_not_ready; out={verdict}");
-                                OnPostApplyCheckVerdictV2?.Invoke(hostKey, verdict, "enqueue", $"pipeline_not_ready; out={verdict}", opId);
+                                OnPostApplyCheckVerdict?.Invoke(hostKey, verdict, "enqueue", $"pipeline_not_ready; out={verdict}; probe={probeDetails}");
+                                OnPostApplyCheckVerdictV2?.Invoke(hostKey, verdict, "enqueue", $"pipeline_not_ready; out={verdict}; probe={probeDetails}", opId);
                             }
                             catch
                             {
@@ -812,31 +860,13 @@ namespace IspAudit.ViewModels
                             await pipeline.EnqueueHostAsync(h, IspAudit.Utils.LiveTestingPipeline.HostPriority.High).ConfigureAwait(false);
                         }
 
-                        // Делаем outcome-probe детерминированно и используем как семантический итог для UI.
-                        var verdictAfterEnqueue = "UNKNOWN";
-                        try
-                        {
-                            var probe = await _stateManager.RunOutcomeProbeNowAsync(
-                                hostOverride: hostKey,
-                                timeoutOverride: TimeSpan.FromSeconds(6),
-                                cancellationToken: linkedCt).ConfigureAwait(false);
-
-                            verdictAfterEnqueue = probe.Status switch
-                            {
-                                OutcomeStatus.Success => "OK",
-                                OutcomeStatus.Failed => "FAIL",
-                                _ => "UNKNOWN"
-                            };
-                        }
-                        catch
-                        {
-                            // ignore
-                        }
+                        // Делаем outcome-probe (усиленный для YouTube) и используем как семантический итог для UI.
+                        var (verdictAfterEnqueue, probeDetailsAfterEnqueue) = await ComputePostApplyProbeVerdictAsync(hostKey, linkedCt).ConfigureAwait(false);
 
                         try
                         {
-                            OnPostApplyCheckVerdict?.Invoke(hostKey, verdictAfterEnqueue, "enqueue", $"enqueued; ips={hosts.Count}; out={verdictAfterEnqueue}");
-                            OnPostApplyCheckVerdictV2?.Invoke(hostKey, verdictAfterEnqueue, "enqueue", $"enqueued; ips={hosts.Count}; out={verdictAfterEnqueue}", opId);
+                            OnPostApplyCheckVerdict?.Invoke(hostKey, verdictAfterEnqueue, "enqueue", $"enqueued; ips={hosts.Count}; out={verdictAfterEnqueue}; probe={probeDetailsAfterEnqueue}");
+                            OnPostApplyCheckVerdictV2?.Invoke(hostKey, verdictAfterEnqueue, "enqueue", $"enqueued; ips={hosts.Count}; out={verdictAfterEnqueue}; probe={probeDetailsAfterEnqueue}", opId);
                         }
                         catch
                         {

@@ -48,6 +48,8 @@ namespace IspAudit.Bypass
         /// </summary>
         public async Task<OutcomeStatusSnapshot> RunOutcomeProbeNowAsync(
             string? hostOverride = null,
+            string? pathOverride = null,
+            int? expectedHttpStatusCodeOverride = null,
             TimeSpan? timeoutOverride = null,
             CancellationToken cancellationToken = default)
         {
@@ -78,7 +80,7 @@ namespace IspAudit.Bypass
 
             try
             {
-                var snapshot = await RunOutcomeProbeAsync(host, timeout, cancellationToken).ConfigureAwait(false);
+                var snapshot = await RunOutcomeProbeAsync(host, pathOverride, expectedHttpStatusCodeOverride, timeout, cancellationToken).ConfigureAwait(false);
                 _lastOutcomeSnapshot = snapshot;
                 return snapshot;
             }
@@ -170,6 +172,34 @@ namespace IspAudit.Bypass
 
             return await HttpsOutcomeProbe.RunAsync(
                 host,
+                path: null,
+                expectedHttpStatusCode: null,
+                onConnected: (local, remote) =>
+                {
+                    // Регистрируем flow в фильтре, чтобы probe не попадал в пользовательские метрики.
+                    _tlsService.RegisterOutcomeProbeFlow(local, remote, OutcomeProbeFlowTtl);
+                },
+                timeout: timeout,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<OutcomeStatusSnapshot> RunOutcomeProbeAsync(
+            string host,
+            string? path,
+            int? expectedHttpStatusCode,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+        {
+            // Smoke-хук: детерминированная подмена, без реальной сети.
+            if (_outcomeProbeOverrideForSmoke != null)
+            {
+                return await _outcomeProbeOverrideForSmoke(host, cancellationToken).ConfigureAwait(false);
+            }
+
+            return await HttpsOutcomeProbe.RunAsync(
+                host,
+                path,
+                expectedHttpStatusCode,
                 onConnected: (local, remote) =>
                 {
                     // Регистрируем flow в фильтре, чтобы probe не попадал в пользовательские метрики.

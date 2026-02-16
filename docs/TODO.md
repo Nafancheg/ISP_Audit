@@ -97,11 +97,7 @@
 - [x] Smoke: `UI-025` — escalation flow (apply → FAIL → escalate → retest)
 
 ### P1.11 Стабилизация YouTube/Google (эталонные сценарии)
-- [x] Документ `docs/scenarios/youtube_baseline.md`: браузер, провайдер, профиль, QUIC вкл/выкл, ожидаемый результат
-- [ ] Прогнать вручную оба сценария, зафиксировать логи + скриншоты → docs
-- [ ] По логам: если хуже предыдущей версии — git bisect до коммита
-- [ ] При необходимости: режим classic — фиксированный набор (TLS fragment + DNS), env `ISP_AUDIT_CLASSIC_MODE`
-
+ [x] P1.11: Post-apply ретест для YouTube: строгий outcome-probe (generate_204 YouTube+GoogleVideo), чтобы убрать ложный OK по 301
 ### P1.12 Policy-driven — незакрытое
 - [x] Advanced UI: OperatorSettingsWindow → вкладка «Политики» — DataGrid CRUD (add/edit/delete + валидация)
 - [x] Perf: замер `DecisionGraphSnapshot.Evaluate()` при 100/500/1000 политик → smoke `PERF-004`

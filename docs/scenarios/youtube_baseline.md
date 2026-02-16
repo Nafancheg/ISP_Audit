@@ -104,6 +104,10 @@
 - Post‑Apply ретест должен дать `OK`/`FAIL`/`PARTIAL`/`UNKNOWN` и обновить UI.
 - При `OK` и наличии `txId` (корреляция apply) должен появиться «win» (wins‑библиотека).
 
+Примечание для YouTube:
+- `OK` в post‑Apply ретесте означает, что outcome-probe успешно получил ожидаемый `204` от `https://www.youtube.com/generate_204` и `https://redirector.googlevideo.com/generate_204`.
+- Это более строгий сигнал, чем «успех» на `youtube.com`, который часто даёт обычный редирект `301`.
+
 Зафиксировать:
 - Скрин «после исправления».
 - Короткая выжимка: что применили (QUIC→TCP? TLS fragment?) и какой вердикт.

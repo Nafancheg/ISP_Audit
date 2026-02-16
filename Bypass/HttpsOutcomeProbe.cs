@@ -21,6 +21,8 @@ namespace IspAudit.Bypass
     {
         internal static async Task<OutcomeStatusSnapshot> RunAsync(
             string host,
+            string? path,
+            int? expectedHttpStatusCode,
             Action<IPEndPoint, IPEndPoint>? onConnected,
             TimeSpan timeout,
             CancellationToken cancellationToken)
@@ -29,6 +31,10 @@ namespace IspAudit.Bypass
             {
                 return new OutcomeStatusSnapshot(OutcomeStatus.Unknown, "UNKNOWN", "не задан host для outcome-probe");
             }
+
+            var p = (path ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(p)) p = "/";
+            if (!p.StartsWith("/", StringComparison.Ordinal)) p = "/" + p;
 
             using var timeoutCts = timeout > TimeSpan.Zero
                 ? new CancellationTokenSource(timeout)
@@ -76,7 +82,7 @@ namespace IspAudit.Bypass
                 // Любой корректный HTTP-ответ считаем успехом (код неважен: 200/301/403/404 и т.д.).
                 // Если DPI/блокировка ломает TLS/соединение, мы получим исключение или таймаут.
                 var request =
-                    $"GET / HTTP/1.1\r\n" +
+                    $"GET {p} HTTP/1.1\r\n" +
                     $"Host: {host}\r\n" +
                     "User-Agent: ISP_Audit-outcome-probe\r\n" +
                     "Connection: close\r\n\r\n";
@@ -94,6 +100,19 @@ namespace IspAudit.Bypass
                 }
 
                 var text = line.StartsWith("HTTP/", StringComparison.OrdinalIgnoreCase) ? line.Trim() : "HTTP (unknown)";
+
+                var code = TryParseHttpStatusCode(text);
+                if (expectedHttpStatusCode.HasValue)
+                {
+                    if (code.HasValue && code.Value == expectedHttpStatusCode.Value)
+                    {
+                        return new OutcomeStatusSnapshot(OutcomeStatus.Success, "SUCCESS", $"{text}");
+                    }
+
+                    var got = code.HasValue ? code.Value.ToString() : "unknown";
+                    return new OutcomeStatusSnapshot(OutcomeStatus.Failed, "FAILED", $"{text} (expected {expectedHttpStatusCode.Value}, got {got})");
+                }
+
                 return new OutcomeStatusSnapshot(OutcomeStatus.Success, "SUCCESS", $"{text}");
             }
             catch (OperationCanceledException)
@@ -115,6 +134,24 @@ namespace IspAudit.Bypass
             catch (Exception ex)
             {
                 return new OutcomeStatusSnapshot(OutcomeStatus.Failed, "FAILED", $"error: {ex.Message}");
+            }
+        }
+
+        private static int? TryParseHttpStatusCode(string? httpStatusLine)
+        {
+            try
+            {
+                var line = (httpStatusLine ?? string.Empty).Trim();
+                if (!line.StartsWith("HTTP/", StringComparison.OrdinalIgnoreCase)) return null;
+
+                // Формат: HTTP/1.1 204 No Content
+                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2) return null;
+                return int.TryParse(parts[1], out var code) ? code : null;
+            }
+            catch
+            {
+                return null;
             }
         }
 
