@@ -7,6 +7,25 @@ public partial class App : System.Windows.Application
 {
     private ServiceProvider? _services;
 
+    private void EnsureServicesBuilt()
+    {
+        if (_services != null)
+        {
+            return;
+        }
+
+        // Composition root: DI контейнер живёт весь срок приложения.
+        // Важно: строим контейнер до InitializeComponent(), чтобы XAML ресурсы (конвертеры)
+        // могли безопасно резолвить shared сервисы (например NoiseHostFilter) без fallback new.
+        var services = new ServiceCollection();
+        ConfigureServices(services);
+        _services = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateOnBuild = false,
+            ValidateScopes = false,
+        });
+    }
+
     internal T? GetServiceOrNull<T>() where T : class
     {
         return _services?.GetService<T>();
@@ -24,6 +43,8 @@ public partial class App : System.Windows.Application
 
     public App()
     {
+        EnsureServicesBuilt();
+
         // Загрузить ресурсы из XAML
         InitializeComponent();
 
@@ -105,15 +126,7 @@ public partial class App : System.Windows.Application
 
         try
         {
-            // Composition root: DI контейнер живёт весь срок приложения.
-            // Минимально регистрируем MainViewModel как singleton.
-            var services = new ServiceCollection();
-            ConfigureServices(services);
-            _services = services.BuildServiceProvider(new ServiceProviderOptions
-            {
-                ValidateOnBuild = false,
-                ValidateScopes = false,
-            });
+            EnsureServicesBuilt();
 
             // По умолчанию запускаем «Операторский» UI.
             // Инженерный режим открывается по подтверждению и сохраняется в state/ui_mode.json.

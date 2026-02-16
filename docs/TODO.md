@@ -197,6 +197,7 @@
 	- [x] Убраны fallback-конструкторы/пути, которые создавали `NoiseHostFilter` внутри `DiagnosticOrchestrator` / `TestResultsManager`
 	- [x] `MainViewModel`: граф `TrafficEngine`/`BypassStateManager`/`BypassController`/`DiagnosticOrchestrator`/`TestResultsManager`/`GroupBypassAttachmentStore` переведён на DI (без ручных `new`)
 	- [x] `TrafficEngine` и `BypassStateManager` зарегистрированы в DI (SSoT сохраняется через `BypassStateManager.GetOrCreate`)
+	- [x] Убраны fallback `?? new NoiseHostFilter()` из XAML-конвертеров (`Converters/TestResultGroupConverters.cs`)
 	- [ ] Дальше по зависимостям с ресурсами: `LiveTestingPipeline`, `StandardHostTester`, etc.
 
 ### 4.2 Устранение глобального состояния

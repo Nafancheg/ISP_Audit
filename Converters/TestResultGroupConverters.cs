@@ -9,13 +9,13 @@ namespace IspAudit.Converters
 {
     public sealed class TestResultToGroupKeyConverter : IMultiValueConverter
     {
-        private static NoiseHostFilter GetNoiseHostFilter()
+        private static NoiseHostFilter? TryGetNoiseHostFilter()
         {
             try
             {
                 if (System.Windows.Application.Current is IspAudit.App app)
                 {
-                    return app.GetServiceOrNull<NoiseHostFilter>() ?? new NoiseHostFilter();
+                    return app.GetServiceOrNull<NoiseHostFilter>();
                 }
             }
             catch
@@ -23,7 +23,7 @@ namespace IspAudit.Converters
                 // ignore
             }
 
-            return new NoiseHostFilter();
+            return null;
         }
 
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
@@ -35,7 +35,7 @@ namespace IspAudit.Converters
                 var test = values[0] as TestResult;
                 var suffix = values[1]?.ToString();
 
-                var hostKey = GetPreferredHostKey(test, GetNoiseHostFilter());
+                var hostKey = GetPreferredHostKey(test, TryGetNoiseHostFilter());
                 return ComputeApplyGroupKey(hostKey, suffix);
             }
             catch
@@ -49,7 +49,7 @@ namespace IspAudit.Converters
             throw new NotImplementedException();
         }
 
-        private static string GetPreferredHostKey(TestResult? test, NoiseHostFilter noiseHostFilter)
+        private static string GetPreferredHostKey(TestResult? test, NoiseHostFilter? noiseHostFilter)
         {
             if (test?.Target == null) return string.Empty;
 
@@ -79,7 +79,8 @@ namespace IspAudit.Converters
                     return trimmed;
                 }
 
-                if (!noiseHostFilter.IsNoiseHost(trimmed))
+                // Если DI ещё не готов (крайне ранняя стадия XAML), не считаем домен шумовым.
+                if (noiseHostFilter == null || !noiseHostFilter.IsNoiseHost(trimmed))
                 {
                     return trimmed;
                 }
@@ -128,8 +129,7 @@ namespace IspAudit.Converters
                 if (!isBypassActive) return false;
                 if (string.IsNullOrWhiteSpace(activeGroupKey)) return false;
 
-                var noiseHostFilter = (System.Windows.Application.Current as IspAudit.App)?.GetServiceOrNull<NoiseHostFilter>()
-                    ?? new NoiseHostFilter();
+                var noiseHostFilter = (System.Windows.Application.Current as IspAudit.App)?.GetServiceOrNull<NoiseHostFilter>();
 
                 var hostKey = TestResultToGroupKeyConverterHostKey(test, noiseHostFilter);
                 var rowGroupKey = TestResultToGroupKeyConverterGroupKey(hostKey, suffix);
@@ -147,7 +147,7 @@ namespace IspAudit.Converters
             throw new NotImplementedException();
         }
 
-        private static string TestResultToGroupKeyConverterHostKey(TestResult? test, NoiseHostFilter noiseHostFilter)
+        private static string TestResultToGroupKeyConverterHostKey(TestResult? test, NoiseHostFilter? noiseHostFilter)
         {
             if (test?.Target == null) return string.Empty;
 
@@ -176,7 +176,8 @@ namespace IspAudit.Converters
                     return trimmed;
                 }
 
-                if (!noiseHostFilter.IsNoiseHost(trimmed))
+                // Если DI ещё не готов (крайне ранняя стадия XAML), не считаем домен шумовым.
+                if (noiseHostFilter == null || !noiseHostFilter.IsNoiseHost(trimmed))
                 {
                     return trimmed;
                 }
@@ -223,8 +224,7 @@ namespace IspAudit.Converters
                 if (!canSuggest) return false;
                 if (string.IsNullOrWhiteSpace(suffix)) return false;
 
-                var noiseHostFilter = (System.Windows.Application.Current as IspAudit.App)?.GetServiceOrNull<NoiseHostFilter>()
-                    ?? new NoiseHostFilter();
+                var noiseHostFilter = (System.Windows.Application.Current as IspAudit.App)?.GetServiceOrNull<NoiseHostFilter>();
 
                 var hostKey = GetPreferredHostKey(test, noiseHostFilter).Trim().Trim('.');
                 if (string.IsNullOrWhiteSpace(hostKey)) return false;
@@ -261,7 +261,7 @@ namespace IspAudit.Converters
             throw new NotImplementedException();
         }
 
-        private static string GetPreferredHostKey(TestResult? test, NoiseHostFilter noiseHostFilter)
+        private static string GetPreferredHostKey(TestResult? test, NoiseHostFilter? noiseHostFilter)
         {
             if (test?.Target == null) return string.Empty;
 
@@ -284,7 +284,8 @@ namespace IspAudit.Converters
                     return trimmed;
                 }
 
-                if (!noiseHostFilter.IsNoiseHost(trimmed))
+                // Если DI ещё не готов (крайне ранняя стадия XAML), не считаем домен шумовым.
+                if (noiseHostFilter == null || !noiseHostFilter.IsNoiseHost(trimmed))
                 {
                     return trimmed;
                 }
@@ -303,8 +304,8 @@ namespace IspAudit.Converters
                 var test = value as TestResult;
                 if (test?.Target == null) return false;
 
-                var noiseHostFilter = (System.Windows.Application.Current as IspAudit.App)?.GetServiceOrNull<NoiseHostFilter>()
-                    ?? new NoiseHostFilter();
+                var noiseHostFilter = (System.Windows.Application.Current as IspAudit.App)?.GetServiceOrNull<NoiseHostFilter>();
+                if (noiseHostFilter == null) return false;
 
                 var candidates = new[]
                 {
