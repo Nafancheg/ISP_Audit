@@ -25,12 +25,12 @@ namespace IspAudit.Utils
         private Regex[] _patterns = Array.Empty<Regex>();
         private Regex[] _excludePatterns = Array.Empty<Regex>();
         private readonly IProgress<string>? _progress;
-        
+
         /// <summary>
         /// Количество загруженных паттернов
         /// </summary>
         public int PatternCount => _patterns.Length;
-        
+
         /// <summary>
         /// Количество исключений (whitelist)
         /// </summary>
@@ -89,7 +89,7 @@ namespace IspAudit.Utils
                 foreach (var category in patternsElement.EnumerateObject())
                 {
                     var categoryObj = category.Value;
-                    
+
                     // Загружаем hosts
                     if (categoryObj.TryGetProperty("hosts", out var hostsArray))
                     {
@@ -104,7 +104,7 @@ namespace IspAudit.Utils
                             }
                         }
                     }
-                    
+
                     // Загружаем exclude (whitelist)
                     if (categoryObj.TryGetProperty("exclude", out var excludeArray))
                     {
@@ -125,14 +125,14 @@ namespace IspAudit.Utils
                 _excludePatterns = nextExcludePatterns.ToArray();
 
                 progress?.Report($"[NoiseFilter] Загружено {_patterns.Length} паттернов, {_excludePatterns.Length} исключений из файла");
-                
+
                 // Логируем первые 5 паттернов для отладки
                 if (_patterns.Length > 0)
                 {
                     var sample = string.Join(", ", _patterns.Take(5).Select(p => p.ToString()));
                     progress?.Report($"[NoiseFilter] Примеры паттернов: {sample}");
                 }
-                
+
                 return true;
             }
             catch (Exception ex)
@@ -231,13 +231,13 @@ namespace IspAudit.Utils
             {
                 // Экранируем все спецсимволы кроме *
                 var escaped = Regex.Escape(pattern.ToLowerInvariant());
-                
+
                 // Заменяем \* на соответствующий regex
                 var regexPattern = escaped.Replace("\\*", ".*");
-                
+
                 // Добавляем якоря для точного совпадения
                 regexPattern = "^" + regexPattern + "$";
-                
+
                 return new Regex(regexPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
             }
             catch
