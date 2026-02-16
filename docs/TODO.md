@@ -36,100 +36,12 @@
 
 ## 🟡 P1 — Важные
 
-### P1.1 `DateTime.UtcNow` на hot path TrafficEngine
-- [x] В `Core/Traffic/TrafficEngine.cs` ~L395: заменить `DateTime.UtcNow.Ticks` → `Stopwatch.GetTimestamp()`
-- [x] ~L396: аналогично для endTicks
-- [x] Пересчёт elapsed: `(endTs - startTs) * 1_000_000 / Stopwatch.Frequency`
-- [x] Добавить `using System.Diagnostics` если отсутствует
-- [x] Smoke strict: PASS
-- Источник: audit4 §3.1
-
-### P1.2 Унификация маршалинга в UI-поток
-- [x] Grep `Dispatcher\.Invoke\b` по ViewModels/ — составить список всех 20+ мест
-- [x] Каждый без возвращаемого результата → заменить на `Dispatcher.BeginInvoke`
-- [x] Где нужен результат → оставить Invoke с комментарием `// Invoke: нужен результат`
-- [x] `TestResultsManager.cs`: заменить `Application.Current.Dispatcher` на IProgress или SynchronizationContext
-- [x] Smoke ui + smoke reg: PASS
-- Источник: audit4 §7.1
-
-### P1.3 `IDisposable` для MainViewModel
-- [x] Добавить `: IDisposable` к MainViewModel
-- [x] Реализовать Dispose(): `_trafficEngine?.Dispose()`, `_bypassStateManager?.Dispose()`, `_networkChangeMonitor?.Dispose()`
-- [x] В `App.xaml.cs` OnExit: `(_sharedMainViewModel as IDisposable)?.Dispose()` после ShutdownAsync
-- [x] Smoke strict: PASS
-- Источник: audit4 §2.4
-
-### P1.4 OperatorViewModel декомпозиция
-- [x] Создать `ViewModels/OperatorViewModel.Wizard.cs` (partial) — wizard flow шаги 1-4 (~300 строк)
-- [x] Создать `ViewModels/OperatorViewModel.History.cs` (partial) — история сессий + фильтры (~400 строк)
-- [x] Создать `ViewModels/OperatorViewModel.Sessions.cs` (partial) — persist/load сессий (~200 строк)
-- [x] Создать `ViewModels/OperatorViewModel.AutoPilot.cs` (partial) — execution policy + escalation (~300 строк)
-- [x] В основном OperatorViewModel.cs оставить: свойства состояния, конструктор, маппинг (<400 строк)
-- [x] Smoke ui + smoke strict: PASS
-- Источник: audit4 §1.3
-
-### P1.5 Приоритизация и деградация очередей Pipeline
-- [x] В `LiveTestingPipeline`: high/low очереди для хостов (manual retest, профильные цели, повторные фейлы)
-- [x] TesterWorker: выбирать high первым (high → low) и брать permit до dequeue
-- [x] Политика дропа: low bounded=50 + DropOldest
-- [x] Degrade mode: PendingCount > 20 три тика → для low использовать timeout/2 (best-effort)
-- [x] Метрика QueueAgeMs (Stopwatch на enqueue, diff на dequeue) → лог p95
-- [x] Smoke: `PIPE-020` — высокий enq rate, high-priority начинается <5с
-- [x] Auto-apply auto-retest: enqueue в high-priority (чтобы не «тонул» в low)
-- [x] Smoke reg + smoke ui + smoke strict: PASS
-
-### P1.6 CDN-подхосты — детали по раскрытию
-- [x] В XAML Engineer таблицы: при клике на строку ×N → раскрыть список подхостов (RowDetails)
-- [x] В `TestResultsManager`: метод `GetGroupMembers(string groupKey)` → `IReadOnlyList<TestResult>`
-- [x] В Operator UI: подхосты в Expander «Подробнее» внутри карточки группы
-- [x] Smoke ui: `UI-024` (Engineer ×N) + `UI-026` (Operator «Подробнее»: подхосты)
-
-### P1.8 Operator UI — локализация/тексты
-- [x] Создать `Utils/OperatorTextMapper.cs` — static Dictionary код→текст (DNS_ERROR, TCP_RESET, TLS_HANDSHAKE_TIMEOUT, QUIC_INTERFERENCE, HTTP_REDIRECT_DPI, UDP_BLOCKAGE)
-- [x] Каждому коду: человеческая формулировка + краткая рекомендация (1 строка)
-- [x] OperatorViewModel: использовать OperatorTextMapper для сводки вместо raw кодов
-- [x] CTA тексты: единые формулировки (Проверить / Исправить / Усилить / Откатить / Проверить снова)
-- [x] Smoke ui: Operator UI не показывает raw-коды типа TLS_AUTH_FAILURE
-
-### P1.9 Operator UI — wins-библиотека
-- [x] Создать `Models/WinsEntry.cs`: запись подтверждённого успеха (apply + post-apply OK)
-- [x] Создать `Utils/WinsStore.cs`: persist в `state/wins_store.json` + ENV override `ISP_AUDIT_WINS_STORE_PATH`
-- [x] После post-apply retest OK (и только при наличии txId) → WinsStore.Persist(...)
-- [x] При повторной встрече хоста: если есть Win → кнопка «Исправить» применяет проверенный обход (без подбора) и сразу запускает post-apply ретест
-- [x] Smoke: `REG-028` — wins round-trip (persist + load + best-match)
-
-### P1.10 Operator UI — escalation GUI
-- [x] При PostApplyStatus == FAIL/PARTIAL → IsEscalationAvailable = true, CTA = «Усилить»
-- [x] EscalateCommand: ApplyEscalation(currentGroupKey) → более агрессивная стратегия
-- [x] После escalation: авто post-apply retest → обновление статуса
-- [x] Лог: `[ESCALATION] group={key} from={old} to={new} result={OK/FAIL}`
-- [x] Smoke: `UI-025` — escalation flow (apply → FAIL → escalate → retest)
-
-### P1.11 Стабилизация YouTube/Google (эталонные сценарии)
- [x] P1.11: Post-apply ретест для YouTube: строгий outcome-probe (generate_204 YouTube+GoogleVideo), чтобы убрать ложный OK по 301
-### P1.12 Policy-driven — незакрытое
-- [x] Advanced UI: OperatorSettingsWindow → вкладка «Политики» — DataGrid CRUD (add/edit/delete + валидация)
-- [x] Perf: замер `DecisionGraphSnapshot.Evaluate()` при 100/500/1000 политик → smoke `PERF-004`
-- [x] Cap: max 200 политик, при превышении WARN + отказ
-- [x] Async recompile: compile (hard-conflict detection) на фоне + re-apply текущих опций
-
-### P1.13 Стратегии обхода — долги
-- [x] BadChecksum: tooltip в Engineer UI «Только для фейковых пакетов (TTL=1)» + раздел README
-- [x] QuicObfuscation: финализировать реализацию через `DropUdp443` + вынести apply в `Bypass/Strategies/QuicObfuscationStrategy.cs`
-- [x] HttpHostTricks: метрики applied/matched в наблюдаемость
-- [x] Auto-hostlist: в StandardBlockageClassifier учитывать принадлежность к hostlist при рекомендации
-
-### P1.14 INTEL — доминирование/веса планов
-- [x] В IntelPlanSelector: если новый план ⊂ активного → skip с логом «dominated by {activeId}»
-- [x] PlanWeight = strength × confidence / cost → сортировка при выборе
-- [x] Feedback boost: WinRate > 70% → weight ×1.5; WinRate < 30% → ×0.5
-- [x] Smoke: `REG-029` — dominated plan не применяется повторно
-- [x] QUIC fallback SSoT: убрать дублирование `StrategyId.QuicObfuscation` vs `plan.DropUdp443` (оставить один канонический путь)
-
-### P1.15 Шум в логах и повторный init
-- [x] ConnectionMonitor (polling): отмена при shutdown не логируется как Error (TaskCanceled)
-- [x] MainViewModel.InitializeAsync: идемпотентность (двойной вызов из App + Window_Loaded не перезапускает bypass)
-- [x] MainWindow.Loaded: убран дублирующий вызов InitializeAsync (SSoT: App.EnsureInitializedAsync)
+### P1.16 Семантика стратегии: SelectedStrategy vs EffectiveStrategy
+- Проблема: UI показывает "стратегию" (выбор/рекомендация), но пользователь ожидает, что это "что реально применено".
+	- [ ] Жёстко разделить в модели состояния: Selected/Recommended (из INTEL/UI) и Effective/Applied (из engine snapshot)
+	- [ ] В UI явно подписать оба состояния (например: "Рекомендовано" vs "Активно сейчас")
+	- [ ] Для Effective показывать источники: policy-driven snapshot / legacy / disabled + timestamp последнего apply
+	- [ ] Smoke ui: покрыть кейс "рекомендовано != применено" (не вводит в заблуждение)
 
 ### P1.16 Семантика стратегии: SelectedStrategy vs EffectiveStrategy
 - Проблема: UI показывает "стратегию" (выбор/рекомендация), но пользователь ожидает, что это "что реально применено".
@@ -153,11 +65,6 @@
 ---
 
 ## 🟢 P2 — Низкий приоритет / UX / Рефакторинг
-
-### P2.1 AutoRetest debounce
-- [x] В MainViewModel.Helpers.cs: `_lastAutoRetestTime` + минимальный интервал 5с
-- [x] При попытке ретеста раньше интервала: skip + лог `[RETEST] Throttled`
-- [x] ENV override: `ISP_AUDIT_RETEST_DEBOUNCE_MS` (default 5000)
 
 ### P2.2 Early noise filter
 - [ ] В ClassifierWorker: перед эмитом проверять NoiseHostFilter.IsNoise(host)
@@ -196,33 +103,12 @@
 
 ## Phase 4 — Рефакторинг (архитектурный долг)
 
-### 4.1 DI container
-- [x] Добавлен DI контейнер: NuGet `Microsoft.Extensions.DependencyInjection`, composition root в `App`, регистрации в `Utils/ServiceCollectionExtensions.cs`
-- [x] Shared singleton-сервисы: `NoiseHostFilter`, `ITrafficFilter`→`UnifiedTrafficFilter`, `AutoHostlistService`
-- [x] Удалён legacy static singleton API `NoiseHostFilter.Initialize/Instance` и убраны fallback-пути `?? new NoiseHostFilter()` (включая VM/оркестратор и XAML-конвертеры)
-- [x] `MainViewModel`: основной runtime-граф переведён на DI (singleton): `TrafficEngine` → `BypassStateManager` → `BypassController` + `DiagnosticOrchestrator` + `TestResultsManager` + `GroupBypassAttachmentStore`
-- [ ] Осталось сделать (перенос в DI):
-	- [x] `LiveTestingPipeline`: определён owner/lifetime и зарегистрирована DI-фабрика `ILiveTestingPipelineFactory`, убрано создание через `new` из runtime пути
-	- [x] `StandardHostTester`: вынесено создание в DI-фабрику `IHostTesterFactory` (используется из `ILiveTestingPipelineFactory`), убраны скрытые `new` из runtime пути
-	- [x] Подчинённые сервисы pipeline/tester (DNS/TCP/TLS/HTTP3): вынесены в DI (`IStandardHostTesterProbeService`) и подаются через конструктор `StandardHostTester`
-
-### 4.2 Устранение глобального состояния
-- [x] Удалить legacy `Config.ActiveProfile` (Profiles/*.json loader для целей диагностики)
-- [x] Удалить legacy `Program.Targets`
-- [x] NoiseHostFilter → удалён static singleton API, сервис передаётся через конструктор/DI
-- [x] BypassStateManager.GetOrCreate → registered factory в DI
-
 ### 4.3 Декомпозиция DiagnosticOrchestrator
 - [ ] Выделить `Core/Pipeline/PipelineManager.cs` — lifecycle LiveTestingPipeline
 - [ ] Выделить `Core/Recommendations/RecommendationEngine.cs` — INTEL plan selection/emit
 - [ ] Выделить `ViewModels/CardActionHandler.cs` — Apply/Retest/Details по карточкам
 - [ ] В Orchestrator оставить: координация фаз (start/stop/warmup/silence) + делегирование
 - [ ] Убрать все MessageBox.Show и Dispatcher зависимости из Orchestrator
-
-### 4.4 Разделение документации
-- [x] `ARCHITECTURE_CURRENT.md` — теперь чистый архитектурный справочник (725→444 строк: убраны все датированные записи и inline-changelog)
-- [x] `docs/full_repo_audit_intel.md` — убрана спам-шапка «Дополнение» (942→891 строк), добавлены перекрёстные ссылки
-- [x] Ссылки в README, copilot-instructions, TODO — проверены, без изменений (файл не переименован)
 
 ---
 
