@@ -131,9 +131,9 @@
 ## 🟢 P2 — Низкий приоритет / UX / Рефакторинг
 
 ### P2.1 AutoRetest debounce
-- [ ] В MainViewModel.Helpers.cs: `_lastAutoRetestTime` + минимальный интервал 5с
-- [ ] При попытке ретеста раньше интервала: skip + лог `[RETEST] Throttled`
-- [ ] ENV override: `ISP_AUDIT_RETEST_DEBOUNCE_MS` (default 5000)
+- [x] В MainViewModel.Helpers.cs: `_lastAutoRetestTime` + минимальный интервал 5с
+- [x] При попытке ретеста раньше интервала: skip + лог `[RETEST] Throttled`
+- [x] ENV override: `ISP_AUDIT_RETEST_DEBOUNCE_MS` (default 5000)
 
 ### P2.2 Early noise filter
 - [ ] В ClassifierWorker: перед эмитом проверять NoiseHostFilter.IsNoise(host)

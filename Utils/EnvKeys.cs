@@ -32,6 +32,9 @@ namespace IspAudit.Utils
         public const string EnableV2Doh = "ISP_AUDIT_ENABLE_V2_DOH";
         public const string EnableAutoRetest = "ISP_AUDIT_ENABLE_AUTO_RETEST";
 
+        // Auto-retest debounce (минимальный интервал между автоперетестами после изменения bypass)
+        public const string RetestDebounceMs = "ISP_AUDIT_RETEST_DEBOUNCE_MS";
+
         // Тайминги/пороговые значения (runtime)
         public const string WatchdogTickMs = "ISP_AUDIT_WATCHDOG_TICK_MS";
         public const string WatchdogStaleMs = "ISP_AUDIT_WATCHDOG_STALE_MS";

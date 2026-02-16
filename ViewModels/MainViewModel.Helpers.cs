@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using MaterialDesignThemes.Wpf;
 using IspAudit.Models;
+using IspAudit.Utils;
 
 // Явно указываем WPF вместо WinForms
 using Application = System.Windows.Application;
@@ -132,11 +133,61 @@ namespace IspAudit.ViewModels
 
             if (failedTargets.Count == 0) return;
 
+            // P2.1: debounce — серия переключений bypass может породить лавину ретестов.
+            if (!TryAcquireAutoRetestPermit(reason: propertyName))
+            {
+                Log($"[AutoRetest] Throttled (reason={propertyName})");
+                return;
+            }
+
             Log($"[AutoRetest] Bypass option changed ({propertyName}). Retesting {failedTargets.Count} failed targets...");
 
             // Запускаем ретест
             var opId = Guid.NewGuid().ToString("N");
             await Orchestrator.RetestTargetsAsync(failedTargets, Bypass, opId);
+        }
+
+        private bool TryAcquireAutoRetestPermit(string reason)
+        {
+            var debounceMs = GetAutoRetestDebounceMs();
+
+            // 0 или отрицательное значение = отключить debounce.
+            if (debounceMs <= 0)
+            {
+                lock (_autoRetestSync)
+                {
+                    _lastAutoRetestAtUtc = DateTimeOffset.UtcNow;
+                }
+                return true;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+
+            lock (_autoRetestSync)
+            {
+                var elapsedMs = (now - _lastAutoRetestAtUtc).TotalMilliseconds;
+                if (elapsedMs >= 0 && elapsedMs < debounceMs)
+                {
+                    Log($"[AutoRetest] Throttled: elapsedMs={elapsedMs:0} < debounceMs={debounceMs}; reason={reason}");
+                    return false;
+                }
+
+                _lastAutoRetestAtUtc = now;
+                return true;
+            }
+        }
+
+        private static int GetAutoRetestDebounceMs()
+        {
+            // Default: 5 секунд (см. docs/TODO.md P2.1)
+            const int defaultMs = 5000;
+
+            if (!EnvVar.TryReadInt32(EnvKeys.RetestDebounceMs, out var value)) return defaultMs;
+
+            // Защита от слишком больших/некорректных значений.
+            if (value < 0) return value; // позволяет отключить debounce через отрицательное значение
+            if (value > 600_000) return 600_000;
+            return value;
         }
 
         /// <summary>
@@ -174,6 +225,13 @@ namespace IspAudit.ViewModels
                     .ToList();
 
                 if (failedTargets.Count == 0) return;
+
+                // P2.1: throttle на отложенном авто-ретесте тоже.
+                if (!TryAcquireAutoRetestPermit(reason: _pendingRetestReason))
+                {
+                    Log($"[AutoRetest] Throttled scheduled retest (reason={_pendingRetestReason})");
+                    return;
+                }
 
                 Log($"[AutoRetest] Running scheduled retest after run (reason={_pendingRetestReason}). Targets={failedTargets.Count}");
                 var opId = Guid.NewGuid().ToString("N");

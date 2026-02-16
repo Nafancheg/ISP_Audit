@@ -45,6 +45,10 @@ namespace IspAudit.ViewModels
         private volatile bool _pendingRetestAfterRun;
         private string _pendingRetestReason = "";
 
+        // P2.1: debounce авто-ретеста (чтобы серия тумблеров не запускала лавину ретестов)
+        private readonly object _autoRetestSync = new();
+        private DateTimeOffset _lastAutoRetestAtUtc = DateTimeOffset.MinValue;
+
         private readonly System.Collections.Generic.HashSet<string> _pendingManualRetestHostKeys = new(StringComparer.OrdinalIgnoreCase);
 
         // P0.1 Step 14: единый источник истины для group participation / pinning / merge состояния группы.
