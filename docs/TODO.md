@@ -178,8 +178,8 @@
 - [x] Удалён legacy static singleton API `NoiseHostFilter.Initialize/Instance` и убраны fallback-пути `?? new NoiseHostFilter()` (включая VM/оркестратор и XAML-конвертеры)
 - [x] `MainViewModel`: основной runtime-граф переведён на DI (singleton): `TrafficEngine` → `BypassStateManager` → `BypassController` + `DiagnosticOrchestrator` + `TestResultsManager` + `GroupBypassAttachmentStore`
 - [ ] Осталось сделать (перенос в DI):
-	- [ ] `LiveTestingPipeline`: определить owner/lifetime и зарегистрировать фабрику (например `Func<PipelineConfig, LiveTestingPipeline>`), убрать создание через `new` из runtime пути
-	- [ ] `StandardHostTester`: зарегистрировать как сервис и инжектить (вместо `new`), прокинуть зависимости/таймауты/`CancellationToken`
+	- [x] `LiveTestingPipeline`: определён owner/lifetime и зарегистрирована DI-фабрика `ILiveTestingPipelineFactory`, убрано создание через `new` из runtime пути
+	- [x] `StandardHostTester`: вынесено создание в DI-фабрику `IHostTesterFactory` (используется из `ILiveTestingPipelineFactory`), убраны скрытые `new` из runtime пути
 	- [ ] Подчинённые сервисы pipeline/tester (DNS/TCP/TLS/HTTP3), которые создаются вручную: вынести в регистрации DI и подать через конструкторы
 
 ### 4.2 Устранение глобального состояния

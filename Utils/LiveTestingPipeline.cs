@@ -76,9 +76,8 @@ namespace IspAudit.Utils
         // P1.5: «повторные фейлы» — если по IP уже видели проблему, новые события поднимаем в high.
         private readonly ConcurrentDictionary<string, byte> _recentProblemIps = new(StringComparer.Ordinal);
 
-        // P1.5: если тестер стандартный — можем создать «быструю» версию для деградации (timeout/2) для low.
-        private readonly StandardHostTester? _standardTester;
-        private readonly StandardHostTester? _standardTesterDegraded;
+        // P1.5: «быстрый» тестер для деградации очереди low (timeout/2).
+        private readonly IHostTester? _degradedTester;
 
         private readonly record struct QueuedHost(HostDiscovered Host, long EnqueuedTimestamp, bool IsHighPriority);
 
@@ -163,9 +162,10 @@ namespace IspAudit.Utils
             IProgress<string>? progress = null,
             TrafficEngine? trafficEngine = null,
             DnsParserService? dnsParser = null,
-            IBlockageStateStore? stateStore = null,
+            IBlockageStateStore stateStore = null!,
             AutoHostlistService? autoHostlist = null,
-            IHostTester? tester = null)
+            IHostTester tester = null!,
+            IHostTester? degradedTester = null)
         {
             _config = config;
             _progress = progress;
@@ -180,17 +180,12 @@ namespace IspAudit.Utils
             }
 
             // Инициализация модулей
-            _stateStore = stateStore ?? new InMemoryBlockageStateStore();
+            _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
 
             _autoHostlist = autoHostlist;
 
-            _tester = tester ?? new StandardHostTester(progress, dnsParser?.DnsCache, config.TestTimeout);
-            _standardTester = _tester as StandardHostTester;
-            if (_standardTester != null)
-            {
-                var half = TimeSpan.FromMilliseconds(Math.Max(250, config.TestTimeout.TotalMilliseconds / 2.0));
-                _standardTesterDegraded = new StandardHostTester(progress, dnsParser?.DnsCache, half);
-            }
+            _tester = tester ?? throw new ArgumentNullException(nameof(tester));
+            _degradedTester = degradedTester;
 
             // INTEL: store/adapter (без диагнозов/стратегий на этом шаге)
             _signalsAdapter = new SignalsAdapter(new InMemorySignalSequenceStore());

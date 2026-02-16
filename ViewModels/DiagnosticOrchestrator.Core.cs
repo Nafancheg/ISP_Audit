@@ -105,8 +105,8 @@ namespace IspAudit.ViewModels
                 var noiseFilterPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "noise_hosts.json");
                 _noiseHostFilter.LoadFromFile(noiseFilterPath, new Progress<string>(Log));
 
-                // Создаем единый фильтр трафика (для дедупликации и фильтрации)
-                var trafficFilter = new UnifiedTrafficFilter(_noiseHostFilter);
+                // Единый фильтр трафика (singleton из DI)
+                var trafficFilter = _trafficFilter;
 
                 // Сброс DNS кеша
                 Log("[Orchestrator] Сброс DNS кеша...");
@@ -225,15 +225,17 @@ namespace IspAudit.ViewModels
                     TestTimeout = effectiveTestTimeout
                 };
 
-                _testingPipeline = new LiveTestingPipeline(
+                var stateStore = _tcpRetransmissionTracker != null
+                    ? _stateStoreFactory.CreateWithTrackers(_tcpRetransmissionTracker, _httpRedirectDetector, _rstInspectionService, _udpInspectionService)
+                    : null;
+
+                _testingPipeline = _pipelineFactory.Create(
                     pipelineConfig,
                     filter: trafficFilter,
                     progress: progress,
                     trafficEngine: _trafficEngine,
                     dnsParser: _dnsParser,
-                    stateStore: _tcpRetransmissionTracker != null
-                        ? new InMemoryBlockageStateStore(_tcpRetransmissionTracker, _httpRedirectDetector, _rstInspectionService, _udpInspectionService)
-                        : null,
+                    stateStore: stateStore,
                     autoHostlist: bypassController.AutoHostlist);
 
                 var autoApplyEnabled = enableAutoBypass;
@@ -478,13 +480,13 @@ namespace IspAudit.ViewModels
                 };
 
                 // Используем существующий bypass manager из контроллера
-                _testingPipeline = new LiveTestingPipeline(
+                _testingPipeline = _pipelineFactory.Create(
                     pipelineConfig,
-                    filter: new UnifiedTrafficFilter(_noiseHostFilter),
+                    filter: _trafficFilter,
                     progress: progress,
                     trafficEngine: _trafficEngine,
                     dnsParser: _dnsParser, // Нужен для кеша SNI/DNS имён (стабильнее подписи в UI и авто-hostlist)
-                    stateStore: null, // State store новый
+                    stateStore: null,
                     autoHostlist: bypassController.AutoHostlist);
 
                 _testingPipeline.OnPlanBuilt += (hostKey, plan) =>

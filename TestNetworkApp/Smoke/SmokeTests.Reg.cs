@@ -16,6 +16,7 @@ using IspAudit.Core.Bypass;
 using IspAudit.Core.Intelligence.Contracts;
 using IspAudit.Core.Intelligence.Diagnosis;
 using IspAudit.Core.Intelligence.Strategies;
+using IspAudit.Core.Interfaces;
 using IspAudit.Core.Traffic;
 using IspAudit.Utils;
 using IspAudit.ViewModels;
@@ -961,7 +962,11 @@ namespace TestNetworkApp.Smoke
                     using var provider = BuildIspAuditProvider();
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                     var bypass = new BypassController(engine, autoHostlist);
-                    var orch = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
+                    var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                    var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+                    var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+                    var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
+                    var orch = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
                     var storePlan = typeof(DiagnosticOrchestrator)
                         .GetMethod("StorePlan", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
@@ -1031,7 +1036,11 @@ namespace TestNetworkApp.Smoke
                     using var provider = BuildIspAuditProvider();
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                     var bypass = new BypassController(engine, autoHostlist);
-                    var orch = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
+                    var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                    var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+                    var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+                    var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
+                    var orch = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
                     var storePlan = typeof(DiagnosticOrchestrator)
                         .GetMethod("StorePlan", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
@@ -1334,7 +1343,11 @@ namespace TestNetworkApp.Smoke
 
                     var beforeTxCount = bypass.ApplyTransactions.Count;
 
-                    var orch = new DiagnosticOrchestrator(manager, new NoiseHostFilter());
+                    var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                    var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+                    var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+                    var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
+                    var orch = new DiagnosticOrchestrator(manager, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
                     var plan = new BypassPlan
                     {
@@ -1430,7 +1443,11 @@ namespace TestNetworkApp.Smoke
                     using var provider = BuildIspAuditProvider();
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                     var bypass = new BypassController(manager, autoHostlist);
-                    var orch = new DiagnosticOrchestrator(manager, new NoiseHostFilter());
+                    var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                    var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+                    var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+                    var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
+                    var orch = new DiagnosticOrchestrator(manager, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
                     var beforeTxCount = bypass.ApplyTransactions.Count;
 
@@ -1517,7 +1534,11 @@ namespace TestNetworkApp.Smoke
                     using var provider = BuildIspAuditProvider();
                     var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                     var bypass = new BypassController(manager, autoHostlist);
-                    var orch = new DiagnosticOrchestrator(manager, new NoiseHostFilter());
+                    var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                    var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+                    var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+                    var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
+                    var orch = new DiagnosticOrchestrator(manager, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
                     var beforeTxCount = bypass.ApplyTransactions.Count;
 

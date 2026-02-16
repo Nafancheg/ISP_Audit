@@ -212,6 +212,13 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Smoke gate: добавлен `UI-024` (wiring RowDetails + клика по `×N` + базовая проверка `GetGroupMembers`).
 
 
+Актуализация (Dev, 16.02.2026): DI фабрики для pipeline/tester/state store (Phase 4.1)
+- Убрано скрытое создание `StandardHostTester`/`InMemoryBlockageStateStore` внутри runtime-пути `LiveTestingPipeline`.
+- Введены фабрики `ILiveTestingPipelineFactory`, `IHostTesterFactory`, `IBlockageStateStoreFactory` (per-run lifetime для объектов пайплайна).
+- `DiagnosticOrchestrator` создаёт `LiveTestingPipeline` через `ILiveTestingPipelineFactory` и использует `ITrafficFilter` как singleton из DI.
+- Smoke-наборы `TestNetworkApp` обновлены: прямые `new LiveTestingPipeline(...)` заменены на DI-фабрику.
+
+
 Актуализация (Runtime, 23.12.2025): контроль применения INTEL
 - `Cancel` отменяет не только диагностику, но и ручное применение рекомендаций (отдельный CTS для apply).
 - Защита от устаревшего плана: apply пропускается, если `planHostKey` не совпадает с последней INTEL‑целью, извлечённой из текста INTEL‑диагноза в UI.

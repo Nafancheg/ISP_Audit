@@ -255,8 +255,18 @@ namespace TestNetworkApp.Smoke
                 // Тестируем логику гейтинга по endpoint в DiagnosticOrchestrator детерминированно,
                 // через reflection к приватным методам (в проде эти методы питаются событиями ConnectionMonitor + DnsParserService).
 
-                var engine = new IspAudit.Core.Traffic.TrafficEngine(progress: null);
-                var orch = new IspAudit.ViewModels.DiagnosticOrchestrator(engine, new IspAudit.Utils.NoiseHostFilter());
+                using var provider = BuildIspAuditProvider();
+                var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+                var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
+
+                using var engine = new IspAudit.Core.Traffic.TrafficEngine(progress: null);
+                var orch = new IspAudit.ViewModels.DiagnosticOrchestrator(
+                    engine,
+                    noiseHostFilter,
+                    trafficFilter: new AllowAllTrafficFilter(),
+                    pipelineFactory,
+                    stateStoreFactory);
 
                 var ip = IPAddress.Parse("203.0.113.30");
                 var port = 443;
@@ -368,9 +378,17 @@ namespace TestNetworkApp.Smoke
 
                 using var provider = BuildIspAuditProvider();
                 var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+                var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
 
                 // Pipeline можно поднять без TrafficEngine/DnsParser: health-лог зависит только от активности очередей.
-                using var pipeline = new LiveTestingPipeline(config, filter: trafficFilter, progress: progress, trafficEngine: null, dnsParser: null);
+                using var pipeline = pipelineFactory.Create(
+                    config,
+                    filter: trafficFilter,
+                    progress: progress,
+                    trafficEngine: null,
+                    dnsParser: null,
+                    stateStore: null,
+                    autoHostlist: null);
 
                 // Делаем "активность": добавляем 1 хост в очередь.
                 var host = new HostDiscovered(
@@ -431,6 +449,7 @@ namespace TestNetworkApp.Smoke
                 using var provider = BuildIspAuditProvider();
                 var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
                 var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
+                var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
 
                 autoHostlist.Clear();
                 autoHostlist.Enabled = true;
@@ -462,7 +481,7 @@ namespace TestNetworkApp.Smoke
                     BlockageType: BlockageCode.TlsHandshakeTimeout,
                     TestedAt: DateTime.UtcNow));
 
-                using var pipeline = new LiveTestingPipeline(
+                using var pipeline = pipelineFactory.Create(
                     config,
                     filter: trafficFilter,
                     progress: progress,
@@ -470,7 +489,7 @@ namespace TestNetworkApp.Smoke
                     dnsParser: null,
                     stateStore: store,
                     autoHostlist: autoHostlist,
-                    tester: tester);
+                    testerOverride: tester);
 
                 var ip = IPAddress.Parse("203.0.113.18");
                 var host = new HostDiscovered(
@@ -1126,15 +1145,17 @@ namespace TestNetworkApp.Smoke
                 var highStarted = new TaskCompletionSource<DateTimeOffset>(TaskCreationOptions.RunContinuationsAsynchronously);
                 var tester = new SlowSmokeTester(highKey, highStarted, perHostDelay: TimeSpan.FromMilliseconds(250));
 
-                using var pipeline = new LiveTestingPipeline(
+                using var provider = BuildIspAuditProvider();
+                var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+                using var pipeline = pipelineFactory.Create(
                     config,
+                    filter: new AllowAllTrafficFilter(),
                     progress: null,
                     trafficEngine: null,
                     dnsParser: null,
-                    filter: new AllowAllTrafficFilter(),
                     stateStore: new AllowAllStateStore(),
                     autoHostlist: null,
-                    tester: tester);
+                    testerOverride: tester);
 
                 // Заполняем low-backlog.
                 for (int i = 1; i <= 80; i++)

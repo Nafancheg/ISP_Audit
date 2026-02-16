@@ -1018,9 +1018,9 @@ namespace IspAudit.ViewModels
                         }
                     });
 
-                    using var pipeline = new LiveTestingPipeline(
+                    using var pipeline = _pipelineFactory.Create(
                         pipelineConfig,
-                        filter: new UnifiedTrafficFilter(_noiseHostFilter),
+                        filter: _trafficFilter,
                         progress: progress,
                         trafficEngine: _trafficEngine,
                         dnsParser: _dnsParser,

@@ -199,9 +199,9 @@ namespace IspAudit.Utils
             {
                 // Тестируем хост (DNS, TCP, TLS)
                 var testerToUse = _tester;
-                if (!isHighPriority && _isDegradeMode && _standardTesterDegraded != null && ReferenceEquals(_tester, _standardTester))
+                if (!isHighPriority && _isDegradeMode && _degradedTester != null)
                 {
-                    testerToUse = _standardTesterDegraded;
+                    testerToUse = _degradedTester;
                 }
 
                 var result = await testerToUse.TestHostAsync(host, ct).ConfigureAwait(false);

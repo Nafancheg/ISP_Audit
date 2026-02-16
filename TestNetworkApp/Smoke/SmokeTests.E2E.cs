@@ -59,7 +59,16 @@ namespace TestNetworkApp.Smoke
 
                 using var provider = BuildIspAuditProvider();
                 var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
-                using var pipeline = new LiveTestingPipeline(config, filter: trafficFilter, progress: progress, trafficEngine: null, dnsParser: null, tester: tester);
+                var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+                using var pipeline = pipelineFactory.Create(
+                    config,
+                    filter: trafficFilter,
+                    progress: progress,
+                    trafficEngine: null,
+                    dnsParser: null,
+                    stateStore: null,
+                    autoHostlist: null,
+                    testerOverride: tester);
 
                 var ip = IPAddress.Parse("203.0.113.1");
                 var host = new IspAudit.Core.Models.HostDiscovered(
@@ -292,7 +301,12 @@ namespace TestNetworkApp.Smoke
             var sw = Stopwatch.StartNew();
 
             using var engine = new TrafficEngine();
-            var orchestrator = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
+            using var provider = BuildIspAuditProvider();
+            var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+            var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+            var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+            var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
+            var orchestrator = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
             using var proc = Process.Start(new ProcessStartInfo
             {

@@ -77,7 +77,16 @@ namespace TestNetworkApp.Smoke
 
                 using var provider = BuildIspAuditProvider();
                 var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
-                using var pipeline = new LiveTestingPipeline(config, filter: trafficFilter, progress: progress, trafficEngine: null, dnsParser: null, tester: tester);
+                var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+                using var pipeline = pipelineFactory.Create(
+                    config,
+                    filter: trafficFilter,
+                    progress: progress,
+                    trafficEngine: null,
+                    dnsParser: null,
+                    stateStore: null,
+                    autoHostlist: null,
+                    testerOverride: tester);
 
                 var enqueueSw = Stopwatch.StartNew();
                 var maxPending = 0;
@@ -163,9 +172,18 @@ namespace TestNetworkApp.Smoke
 
                 using var provider = BuildIspAuditProvider();
                 var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+                var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
 
                 // Прогрев
-                using (var warm = new LiveTestingPipeline(config, filter: trafficFilter, progress: progress, trafficEngine: null, dnsParser: null, tester: tester))
+                using (var warm = pipelineFactory.Create(
+                    config,
+                    filter: trafficFilter,
+                    progress: progress,
+                    trafficEngine: null,
+                    dnsParser: null,
+                    stateStore: null,
+                    autoHostlist: null,
+                    testerOverride: tester))
                 {
                     for (var i = 0; i < 50; i++)
                     {
@@ -182,7 +200,15 @@ namespace TestNetworkApp.Smoke
 
                 var baseline = GC.GetTotalMemory(forceFullCollection: true);
 
-                using (var pipeline = new LiveTestingPipeline(config, filter: trafficFilter, progress: progress, trafficEngine: null, dnsParser: null, tester: tester))
+                using (var pipeline = pipelineFactory.Create(
+                    config,
+                    filter: trafficFilter,
+                    progress: progress,
+                    trafficEngine: null,
+                    dnsParser: null,
+                    stateStore: null,
+                    autoHostlist: null,
+                    testerOverride: tester))
                 {
                     var endAt = DateTime.UtcNow + TimeSpan.FromSeconds(20);
                     var i = 0;

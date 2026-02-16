@@ -17,6 +17,7 @@ using IspAudit.Core.Traffic;
 using IspAudit.Core.Traffic.Filters;
 using IspAudit.Windows;
 using IspAudit;
+using IspAudit.Core.Interfaces;
 using System.Windows.Media;
 using System.Net;
 using IspAudit.ViewModels.OrchestratorState;
@@ -82,6 +83,9 @@ namespace IspAudit.ViewModels
         private readonly TrafficEngine _trafficEngine;
         private readonly BypassStateManager _stateManager;
         private readonly NoiseHostFilter _noiseHostFilter;
+        private readonly ITrafficFilter _trafficFilter;
+        private readonly ILiveTestingPipelineFactory _pipelineFactory;
+        private readonly IBlockageStateStoreFactory _stateStoreFactory;
         private TrafficMonitorFilter? _trafficMonitorFilter;
         private TcpRetransmissionTracker? _tcpRetransmissionTracker;
         private HttpRedirectDetector? _httpRedirectDetector;
@@ -199,26 +203,39 @@ namespace IspAudit.ViewModels
         public event Action<string, string, string, string?, string?>? OnPostApplyCheckVerdictV2;
 
         /// <summary>
-        /// Делегат для подтверждения действия (заголовок, текст) → true/false.
-        /// Инъектируется из View-слоя для соблюдения MVVM.
-        /// </summary>
-        public Func<string, string, bool>? ConfirmAction { get; set; }
-
-        /// <summary>
         /// Делегат для показа ошибки/предупреждения (заголовок, текст).
         /// Инъектируется из View-слоя для соблюдения MVVM.
         /// </summary>
         public Action<string, string>? ShowError { get; set; }
 
-        public DiagnosticOrchestrator(BypassStateManager stateManager, NoiseHostFilter noiseHostFilter)
+        /// <summary>
+        /// Делегат для подтверждения действия (заголовок, текст) → true/false.
+        /// Инъектируется из View-слоя для соблюдения MVVM.
+        /// </summary>
+        public Func<string, string, bool>? ConfirmAction { get; set; }
+
+        public DiagnosticOrchestrator(
+            BypassStateManager stateManager,
+            NoiseHostFilter noiseHostFilter,
+            ITrafficFilter trafficFilter,
+            ILiveTestingPipelineFactory pipelineFactory,
+            IBlockageStateStoreFactory stateStoreFactory)
         {
             _stateManager = stateManager ?? throw new ArgumentNullException(nameof(stateManager));
             _trafficEngine = _stateManager.TrafficEngine;
             _noiseHostFilter = noiseHostFilter ?? throw new ArgumentNullException(nameof(noiseHostFilter));
+            _trafficFilter = trafficFilter ?? throw new ArgumentNullException(nameof(trafficFilter));
+            _pipelineFactory = pipelineFactory ?? throw new ArgumentNullException(nameof(pipelineFactory));
+            _stateStoreFactory = stateStoreFactory ?? throw new ArgumentNullException(nameof(stateStoreFactory));
         }
 
-        public DiagnosticOrchestrator(TrafficEngine trafficEngine, NoiseHostFilter noiseHostFilter)
-            : this(BypassStateManager.GetOrCreate(trafficEngine, baseProfile: null, log: null), noiseHostFilter)
+        public DiagnosticOrchestrator(
+            TrafficEngine trafficEngine,
+            NoiseHostFilter noiseHostFilter,
+            ITrafficFilter trafficFilter,
+            ILiveTestingPipelineFactory pipelineFactory,
+            IBlockageStateStoreFactory stateStoreFactory)
+            : this(BypassStateManager.GetOrCreate(trafficEngine, baseProfile: null, log: null), noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory)
         {
         }
 

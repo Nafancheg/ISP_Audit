@@ -5,6 +5,7 @@ using IspAudit.Bypass;
 using IspAudit.Core.Bypass;
 using IspAudit.Core.Traffic;
 using IspAudit.Core.Interfaces;
+using IspAudit.Core.Modules;
 
 namespace IspAudit.Utils
 {
@@ -21,6 +22,15 @@ namespace IspAudit.Utils
 
             // Auto-hostlist (UI + pipeline) должен быть единым, иначе будут расхождения по кандидатам.
             services.AddSingleton<AutoHostlistService>();
+
+            // Tester: фабрика стандартного сетевого тестера (DNS/TCP/TLS/HTTP3).
+            services.AddSingleton<IHostTesterFactory, StandardHostTesterFactory>();
+
+            // Pipeline state store: in-memory (per-run).
+            services.AddSingleton<IBlockageStateStoreFactory, InMemoryBlockageStateStoreFactory>();
+
+            // Pipeline: фабрика создания LiveTestingPipeline (lifetime: per-run).
+            services.AddSingleton<ILiveTestingPipelineFactory, LiveTestingPipelineFactory>();
 
             // Core runtime: единый движок перехвата.
             services.AddSingleton<TrafficEngine>(sp => new TrafficEngine(progress: new Progress<string>(MainViewModel.Log)));
@@ -43,7 +53,10 @@ namespace IspAudit.Utils
             services.AddSingleton<DiagnosticOrchestrator>(sp =>
                 new DiagnosticOrchestrator(
                     sp.GetRequiredService<BypassStateManager>(),
-                    sp.GetRequiredService<NoiseHostFilter>()));
+                    sp.GetRequiredService<NoiseHostFilter>(),
+                    sp.GetRequiredService<ITrafficFilter>(),
+                    sp.GetRequiredService<ILiveTestingPipelineFactory>(),
+                    sp.GetRequiredService<IBlockageStateStoreFactory>()));
             services.AddSingleton<TestResultsManager>();
 
             services.AddSingleton<MainViewModel>();

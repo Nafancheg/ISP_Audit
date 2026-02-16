@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using IspAudit.Core.Interfaces;
 using IspAudit.Core.Traffic;
 using IspAudit.Models;
 using IspAudit.Utils;
@@ -20,8 +21,12 @@ namespace TestNetworkApp.Smoke
             var sw = Stopwatch.StartNew();
 
             using var engine = new TrafficEngine();
-            var orchestrator = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
             using var provider = BuildIspAuditProvider();
+            var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+            var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+            var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+            var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
+            var orchestrator = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
             var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
             var bypass = new BypassController(engine, autoHostlist);
 
@@ -72,8 +77,12 @@ namespace TestNetworkApp.Smoke
             => RunAsync("ORCH-001", "DiagnosticOrchestrator: ретест создает/завершает pipeline", () =>
             {
                 using var engine = new TrafficEngine();
-                var orchestrator = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
                 using var provider = BuildIspAuditProvider();
+                var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+                var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+                var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
+                var orchestrator = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
                 var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                 var bypass = new BypassController(engine, autoHostlist);
 
@@ -107,7 +116,12 @@ namespace TestNetworkApp.Smoke
             }
 
             using var engine = new TrafficEngine();
-            var orchestrator = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
+            using var provider = BuildIspAuditProvider();
+            var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+            var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+            var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+            var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
+            var orchestrator = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
             // Готовим _cts, иначе StartMonitoringServicesAsync не запустится.
             var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -159,7 +173,12 @@ namespace TestNetworkApp.Smoke
             => RunAsync("ORCH-003", "SNI гейтируется по отслеживаемому PID", () =>
             {
                 using var engine = new TrafficEngine();
-                var orchestrator = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
+                using var provider = BuildIspAuditProvider();
+                var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+                var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+                var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
+                var orchestrator = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
                 var trackedPid = 111;
                 var otherPid = 222;
@@ -205,7 +224,12 @@ namespace TestNetworkApp.Smoke
             => RunAsync("ORCH-004", "Ранний SNI буферится и флашится после появления PID", () =>
             {
                 using var engine = new TrafficEngine();
-                var orchestrator = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
+                using var provider = BuildIspAuditProvider();
+                var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+                var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+                var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+                var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
+                var orchestrator = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
                 var trackedPid = 333;
                 var pidTracker = new PidTrackerService(trackedPid);
@@ -256,7 +280,12 @@ namespace TestNetworkApp.Smoke
             var sw = Stopwatch.StartNew();
 
             using var engine = new TrafficEngine();
-            var orchestrator = new DiagnosticOrchestrator(engine, new NoiseHostFilter());
+            using var provider = BuildIspAuditProvider();
+            var noiseHostFilter = provider.GetRequiredService<NoiseHostFilter>();
+            var trafficFilter = provider.GetRequiredService<ITrafficFilter>();
+            var pipelineFactory = provider.GetRequiredService<ILiveTestingPipelineFactory>();
+            var stateStoreFactory = provider.GetRequiredService<IBlockageStateStoreFactory>();
+            var orchestrator = new DiagnosticOrchestrator(engine, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
             using var proc = Process.Start(new ProcessStartInfo
             {

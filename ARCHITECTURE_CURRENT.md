@@ -138,6 +138,7 @@ Wizard из 5 шагов: выбор приложения → источник �
 #### DiagnosticOrchestrator
 
 - Запускает/останавливает `LiveTestingPipeline` и фоновые сервисы.
+- Создаёт per-run экземпляры `LiveTestingPipeline` через `ILiveTestingPipelineFactory` (DI); state store для пайплайна — через `IBlockageStateStoreFactory`.
 - SNI из `DnsParserService` гейтятся по PID через корреляцию remote endpoint → `PidTrackerService.TrackedPids`.
 - SNI не фильтруется `NoiseHostFilter` на входе (фильтрация — только при отображении OK).
 - При UDP blockage устанавливает цель outcome для селективного `DropUdp443`.
@@ -156,6 +157,7 @@ Wizard из 5 шагов: выбор приложения → источник �
 - P1.5: health-лог включает `qAgeP95` (p95 возраста элементов в очереди) и флаг `degrade=ON`.
 - Параллельный Testing: `SemaphoreSlim` через `PipelineConfig.MaxConcurrentTests`.
 - P1.5: degrade mode при backlog — для low применяется best-effort ускорение (timeout/2 для стандартного тестера).
+- Создание зависимостей: `IHostTester` и `IBlockageStateStore` передаются извне (через DI-фабрику пайплайна), без скрытого создания через `new` в runtime-пути.
 - `AutoHostlistService` — кандидаты из `InspectionSignalsSnapshot`.
 - UX-гейт: `OnPlanBuilt` публикуется для `FilterAction.Process` и `LogOnly`.
 
