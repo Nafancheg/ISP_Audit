@@ -2,7 +2,7 @@
 
 Примечание: имя файла историческое (`full_repo_audit_intel.md`). В пользовательском UX и в логах проекта не используется маркировка V1/INTEL; основной префикс рекомендаций — `[INTEL]`.
 
-**Дата**: 09.12.2025 (обновлено 10.12.2025, 17.12.2025, 15.01.2026, 16.01.2026, 29.01.2026, 05.02.2026, 11.02.2026, 12.02.2026, 16.02.2026)
+**Дата**: 09.12.2025 (обновлено 10.12.2025, 17.12.2025, 15.01.2026, 16.01.2026, 29.01.2026, 05.02.2026, 11.02.2026, 12.02.2026, 16.02.2026, 17.02.2026)
 **Версия проекта**: .NET 9, WPF
 **Режим**: GUI-only (WinExe)
 
@@ -218,6 +218,12 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Введены фабрики `ILiveTestingPipelineFactory`, `IHostTesterFactory`, `IBlockageStateStoreFactory` (per-run lifetime для объектов пайплайна).
 - Вынесены подчинённые probe-операции `StandardHostTester` (DNS/TCP/TLS/HTTP3) в DI-сервис `IStandardHostTesterProbeService`.
 - `DiagnosticOrchestrator` создаёт `LiveTestingPipeline` через `ILiveTestingPipelineFactory` и использует `ITrafficFilter` как singleton из DI.
+
+Актуализация (Runtime, 17.02.2026): P0.V23.2 каноны healthcheck
+- В `StandardHostTester` реализован канон `web-like`: после `DNS→TCP→TLS` выполняется HTTP probe `HEAD`, при неуспехе — fallback `GET` (`IStandardHostTesterProbeService.ProbeHttpAsync`).
+- Канон `tcp-only`: для не-443 проверка ограничена `DNS(if hostname)→TCP` (TLS не является обязательным слоем).
+- Канон `udp-observe`: для UDP-целей активные TCP/TLS/H3 пробы не выполняются (observe-only), чтобы исключить ложные FAIL.
+- Для `target=IP` зафиксирован `DnsStatus=N/A`; в `SignalsAdapter` `N/A` не считается DNS-failure.
 
 Актуализация (Runtime, 16.02.2026): structured health verdict в pipeline contract
 - `Core/Models/HostTested` расширен полями `VerdictStatus/UnknownReason` (формат `Ok/Fail/Unknown` + причина unknown).

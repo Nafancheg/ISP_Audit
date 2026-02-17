@@ -23,12 +23,16 @@ namespace IspAudit.Core.Interfaces
             RemoteCertificateValidationCallback? remoteCertificateValidationCallback,
             CancellationToken ct);
 
+        Task<HttpProbeResult> ProbeHttpAsync(string targetHost, TimeSpan timeout, CancellationToken ct);
+
         Task<Http3ProbeResult> ProbeHttp3Async(string targetHost, TimeSpan timeout, CancellationToken ct);
     }
 
     public readonly record struct TcpProbeResult(bool Ok, string? BlockageType);
 
     public readonly record struct TlsProbeResult(bool Ok, string? BlockageType);
+
+    public readonly record struct HttpProbeResult(bool Ok, string Status, int? StatusCode, string MethodUsed, string? Error);
 
     public readonly record struct Http3ProbeResult(bool? Ok, string Status, int? LatencyMs, string? Error);
 }

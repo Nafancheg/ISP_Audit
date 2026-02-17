@@ -170,6 +170,89 @@ namespace IspAudit.Core.Modules
             return new TlsProbeResult(false, blockageType);
         }
 
+        public async Task<HttpProbeResult> ProbeHttpAsync(string targetHost, TimeSpan timeout, CancellationToken ct)
+        {
+            static bool IsHttpSuccessStatusCode(HttpStatusCode code)
+            {
+                var value = (int)code;
+                return value is >= 200 and <= 399;
+            }
+
+            static bool ShouldFallbackToGet(HttpStatusCode code)
+            {
+                // Для web-like допускаем fallback, если HEAD не поддержан/запрещён/не дал успех.
+                return code == HttpStatusCode.MethodNotAllowed
+                       || code == HttpStatusCode.NotImplemented
+                       || code == HttpStatusCode.Forbidden
+                       || code == HttpStatusCode.NotFound
+                       || (int)code >= 400;
+            }
+
+            try
+            {
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                linkedCts.CancelAfter(timeout);
+
+                using var handler = new SocketsHttpHandler
+                {
+                    AllowAutoRedirect = false,
+                    AutomaticDecompression = DecompressionMethods.None,
+                    UseCookies = false,
+                    ConnectTimeout = timeout
+                };
+
+                handler.SslOptions = new SslClientAuthenticationOptions
+                {
+                    TargetHost = targetHost,
+                    EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
+                    CertificateRevocationCheckMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck
+                };
+
+                using var http = new HttpClient(handler, disposeHandler: false)
+                {
+                    Timeout = Timeout.InfiniteTimeSpan
+                };
+
+                var uri = new Uri($"https://{targetHost}/");
+
+                using (var headReq = new HttpRequestMessage(HttpMethod.Head, uri))
+                using (var headResp = await http.SendAsync(headReq, HttpCompletionOption.ResponseHeadersRead, linkedCts.Token).ConfigureAwait(false))
+                {
+                    if (IsHttpSuccessStatusCode(headResp.StatusCode))
+                    {
+                        return new HttpProbeResult(true, "HTTP_OK_HEAD", (int)headResp.StatusCode, "HEAD", null);
+                    }
+
+                    if (!ShouldFallbackToGet(headResp.StatusCode))
+                    {
+                        return new HttpProbeResult(false, "HTTP_FAILED_HEAD", (int)headResp.StatusCode, "HEAD", null);
+                    }
+                }
+
+                using var getReq = new HttpRequestMessage(HttpMethod.Get, uri);
+                using var getResp = await http.SendAsync(getReq, HttpCompletionOption.ResponseHeadersRead, linkedCts.Token).ConfigureAwait(false);
+
+                if (IsHttpSuccessStatusCode(getResp.StatusCode))
+                {
+                    return new HttpProbeResult(true, "HTTP_OK_GET", (int)getResp.StatusCode, "GET", null);
+                }
+
+                return new HttpProbeResult(false, "HTTP_FAILED_GET", (int)getResp.StatusCode, "GET", null);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                return new HttpProbeResult(false, "HTTP_TIMEOUT", null, "HEAD/GET", null);
+            }
+            catch (HttpRequestException ex)
+            {
+                return new HttpProbeResult(false, "HTTP_FAILED", null, "HEAD/GET", ex.GetType().Name);
+            }
+            catch (Exception ex)
+            {
+                return new HttpProbeResult(false, "HTTP_FAILED", null, "HEAD/GET", ex.GetType().Name);
+            }
+        }
+
         public async Task<Http3ProbeResult> ProbeHttp3Async(string targetHost, TimeSpan timeout, CancellationToken ct)
         {
             try

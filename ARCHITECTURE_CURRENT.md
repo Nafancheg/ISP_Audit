@@ -15,7 +15,7 @@
 
 ### Ключевые задачи
 1. **Пассивный мониторинг**: захват исходящих SYN (TCP) и первых датаграмм (UDP) без влияния на приложения.
-2. **Активное тестирование**: независимые DNS / TCP / TLS / HTTP/3 (QUIC) проверки.
+2. **Активное тестирование**: независимые DNS / TCP / TLS / HTTP (`HEAD→GET` fallback для web-like) / HTTP/3 (QUIC) проверки.
 3. **Классификация блокировок**: DNS Spoofing, TCP RST Injection, HTTP Redirect, Packet Drop.
 4. **Обход блокировок (Bypass)**: Fragmentation, Disorder, Fake TTL, Drop RST, QUIC→TCP.
 
@@ -158,7 +158,12 @@ Wizard из 5 шагов: выбор приложения → источник �
 - Параллельный Testing: `SemaphoreSlim` через `PipelineConfig.MaxConcurrentTests`.
 - P1.5: degrade mode при backlog — для low применяется best-effort ускорение (timeout/2 для стандартного тестера).
 - Создание зависимостей: `IHostTester` и `IBlockageStateStore` передаются извне (через DI-фабрику пайплайна), без скрытого создания через `new` в runtime-пути.
-- `StandardHostTester` использует `IStandardHostTesterProbeService` (DNS/TCP/TLS/HTTP3), зарегистрированный в DI.
+- `StandardHostTester` использует `IStandardHostTesterProbeService` (DNS/TCP/TLS/HTTP/HTTP3), зарегистрированный в DI.
+- Каноны healthcheck v2.3 (P0.V23.2):
+    - `web-like`: `DNS → TCP → TLS → HTTP` (`HEAD`, при неуспехе `GET` fallback),
+    - `tcp-only`: `DNS(if hostname) → TCP`,
+    - `udp-observe`: `DNS(if hostname) → observe-only` (без активного TCP/TLS probe),
+    - `target=IP`: `DnsStatus = N/A` (не трактуется как `FAIL(DNS)`).
 - `HostTested` (pipeline contract) расширен полями `VerdictStatus/UnknownReason` для symptom-policy v2.3: healthcheck возвращает структурированный итог `Ok/Fail/Unknown` и причину `Unknown` (например `Cancelled`, `ProbeTimeoutBudget`, `InsufficientDns`) без ломки legacy bool/строк полей.
 - `AutoHostlistService` — кандидаты из `InspectionSignalsSnapshot`.
 - UX-гейт: `OnPlanBuilt` публикуется для `FilterAction.Process` и `LogOnly`.

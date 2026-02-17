@@ -50,6 +50,7 @@ namespace IspAudit.Core.Modules
             string? reverseDnsHostname = null;
             string? blockageType = null;
             int tcpLatencyMs = 0;
+            bool? httpOk = null;
             string? http3Status = null;
             int? http3LatencyMs = null;
             string? http3Error = null;
@@ -198,6 +199,30 @@ namespace IspAudit.Core.Modules
                 // 4. HTTP/3 (QUIC) probe — отдельный тест от TCP/TLS.
                 // Важно: QUIC использует TLS 1.3 внутри QUIC поверх UDP/443, но это не тот же самый канал, что TCP/TLS.
                 // Поэтому фиксируем это отдельными полями и НЕ смешиваем с tlsOk.
+                // 4.1 HTTP web-like probe (HEAD -> GET fallback) для TCP/443 с явным hostname цели.
+                var shouldProbeHttpWebLike = !isUdpObserveOnly
+                    && host.Protocol == IspAudit.Bypass.TransportProtocol.Tcp
+                    && host.RemotePort == 443
+                    && !string.IsNullOrWhiteSpace(host.Hostname)
+                    && !string.IsNullOrWhiteSpace(hostname)
+                    && hostnameFromCacheOrInput
+                    && tcpOk
+                    && tlsOk;
+
+                if (shouldProbeHttpWebLike)
+                {
+                    var httpTimeoutMs = (int)Math.Clamp(_testTimeout.TotalMilliseconds, 900, 2500);
+                    var httpTimeout = TimeSpan.FromMilliseconds(httpTimeoutMs);
+
+                    var http = await _probes.ProbeHttpAsync(hostname!, httpTimeout, ct).ConfigureAwait(false);
+                    httpOk = http.Ok;
+
+                    if (!http.Ok)
+                    {
+                        blockageType ??= BlockageCode.HttpTimeout;
+                    }
+                }
+
                 if (!isUdpObserveOnly && host.RemotePort == 443 && !string.IsNullOrEmpty(hostname) && hostnameFromCacheOrInput)
                 {
                     var h3TimeoutMs = (int)Math.Clamp(_testTimeout.TotalMilliseconds, 700, 2000);
@@ -227,9 +252,17 @@ namespace IspAudit.Core.Modules
                 verdictStatus = "Unknown";
                 unknownReason = testerUnknownReason ?? "ProbeTimeoutBudget";
             }
-            else if (dnsOk && tcpOk && tlsOk)
+            else
             {
-                verdictStatus = "Ok";
+                var requiresHttpForOk = host.Protocol == IspAudit.Bypass.TransportProtocol.Tcp
+                    && host.RemotePort == 443
+                    && !string.IsNullOrWhiteSpace(host.Hostname);
+
+                var httpLayerOk = !requiresHttpForOk || httpOk == true;
+                if (dnsOk && tcpOk && tlsOk && httpLayerOk)
+                {
+                    verdictStatus = "Ok";
+                }
             }
 
             // Узкий deterministic fallback: DNS timeout при отсутствии TCP/TLS успеха помечаем как недостаток DNS-сигнала.
