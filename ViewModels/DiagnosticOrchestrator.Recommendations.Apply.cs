@@ -920,6 +920,45 @@ namespace IspAudit.ViewModels
                     return beforeSuccess >= requiredK && afterSuccess == 0;
                 }
 
+                static string? ResolveGuardrailStopReason(
+                    bool hasBaseline,
+                    bool baselineFresh,
+                    string verdict,
+                    string details)
+                {
+                    if (!hasBaseline)
+                    {
+                        return UnknownReason.NoBaseline.ToString();
+                    }
+
+                    if (!baselineFresh)
+                    {
+                        return UnknownReason.NoBaselineFresh.ToString();
+                    }
+
+                    var normalizedVerdict = (verdict ?? string.Empty).Trim();
+                    if (string.Equals(normalizedVerdict, "PARTIAL", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return "ApplyErrorPartial";
+                    }
+
+                    if (!string.Equals(normalizedVerdict, "UNKNOWN", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return null;
+                    }
+
+                    var reason = PostApplyVerdictContract.ResolveUnknownReason(normalizedVerdict, details);
+                    return reason switch
+                    {
+                        UnknownReason.InsufficientIps => reason.ToString(),
+                        UnknownReason.Cancelled => reason.ToString(),
+                        UnknownReason.ConcurrentApply => reason.ToString(),
+                        UnknownReason.NoBaseline => reason.ToString(),
+                        UnknownReason.NoBaselineFresh => reason.ToString(),
+                        _ => null,
+                    };
+                }
+
                 async Task<(string Verdict, string ProbeDetails)> ComputePostApplyProbeVerdictAsync(string hk, CancellationToken ctt)
                 {
                     try
@@ -1296,7 +1335,49 @@ namespace IspAudit.ViewModels
                         baselineAge,
                         baselineTtl);
 
-                    EmitPostApplyVerdict(hostKey, adjustedLocalSummary.Verdict, "local", adjustedLocalSummary.Details);
+                    var guardrailStopReason = ResolveGuardrailStopReason(
+                        hasPendingBaseline,
+                        isBaselineFresh,
+                        adjustedLocalSummary.Verdict,
+                        adjustedLocalSummary.Details);
+
+                    var guardrailRegression = hasPendingBaseline
+                        && isBaselineFresh
+                        && effectiveAfterSample > 0
+                        && IsGuardrailRegression(baselineSuccessBefore, baselineSampleBefore, effectiveAfterSuccess);
+
+                    var finalVerdict = adjustedLocalSummary.Verdict;
+                    var finalDetails = adjustedLocalSummary.Details;
+
+                    if (guardrailRegression)
+                    {
+                        if (!string.IsNullOrWhiteSpace(guardrailStopReason))
+                        {
+                            finalDetails = $"{finalDetails}; guardrailRollback=SKIPPED; guardrailStopReason={guardrailStopReason}";
+                            Log($"[PostApplyRetest][op={opId}] Guardrail rollback skipped: reason={guardrailStopReason}; scopeKey={scopeKey}");
+                        }
+                        else
+                        {
+                            try
+                            {
+                                await bypassController.RollbackAutopilotOnlyAsync(ct).ConfigureAwait(false);
+                                finalDetails = $"{finalDetails}; guardrailRollback=DONE";
+                                Log($"[PostApplyRetest][op={opId}] Guardrail rollback done: scopeKey={scopeKey}; runId={opId}");
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                finalDetails = $"{finalDetails}; guardrailRollback=CANCELED";
+                                finalVerdict = "UNKNOWN";
+                            }
+                            catch (Exception ex)
+                            {
+                                finalDetails = $"{finalDetails}; guardrailRollback=FAILED; rollbackError={ex.GetType().Name}";
+                                Log($"[PostApplyRetest][op={opId}] Guardrail rollback failed: {ex.Message}");
+                            }
+                        }
+                    }
+
+                    EmitPostApplyVerdict(hostKey, finalVerdict, "local", finalDetails);
 
                     UpdatePostApplyRetestUi(() =>
                     {

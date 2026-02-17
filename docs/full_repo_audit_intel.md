@@ -238,6 +238,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - В `ApplyPlanInternalAsync` добавлен baseline-снимок перед apply: `successCountBefore/M` (K-of-M пробы), `capturedAtUtc`, `runId`, `scopeKey`; контекст сохраняется в pending feedback.
 - В `StartPostApplyRetestAsync` добавлен детерминированный lock по `scopeKey`: параллельный ретест с другим runId помечается как `Unknown(ConcurrentApply)`.
 - Post-apply details расширены метриками guardrail: `beforeSuccessCount/beforeSampleCount`, `afterSuccessCount/afterSampleCount`, `scopeKey`, `runId`, `guardrailPolicy=KofM_2of3`.
+- Добавлен stop-list guardrail rollback: rollback выполняется только при regression `K-of-M` и не выполняется при `NoBaseline`, `NoBaselineFresh`, `InsufficientIps`, `Cancelled`, `ConcurrentApply`, `ApplyError/partial apply`; для stale baseline comparison guardrail пропускается.
 
 Актуализация (Runtime, 16.02.2026): structured health verdict в pipeline contract
 - `Core/Models/HostTested` расширен полями `VerdictStatus/UnknownReason` (формат `Ok/Fail/Unknown` + причина unknown).
