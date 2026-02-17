@@ -58,8 +58,8 @@
 - Depends: P0.V23.1
 - Risk: medium
 - [ ] Канон web-like: DNS → TCP → TLS → HTTP (HEAD → GET fallback)
-- [ ] Канон tcp-only: DNS (if hostname) → TCP
-- [ ] Канон udp-observe: DNS (if hostname) → observe-only (без ложного FAIL по активному UDP, если probe нет)
+- [x] Канон tcp-only: DNS (if hostname) → TCP
+- [x] Канон udp-observe: DNS (if hostname) → observe-only (без ложного FAIL по активному UDP, если probe нет)
 - [x] Исключение target=IP: `DnsOk=N/A`, без `FAIL(DNS)`
 - [ ] Встроить ProbeTimeoutBudget split: run budget + per-layer budget (чтобы дебаг был однозначный)
 

@@ -55,6 +55,7 @@ namespace IspAudit.Core.Modules
             string? http3Error = null;
             var hasTesterException = false;
             string? testerUnknownReason = null;
+            var isUdpObserveOnly = false;
 
             try
             {
@@ -145,6 +146,14 @@ namespace IspAudit.Core.Modules
                 }
 
                 // 2. TCP connect (ретраи в рамках общего таймаута)
+                if (host.Protocol == IspAudit.Bypass.TransportProtocol.Udp)
+                {
+                    // Канон udp-observe: активный TCP/TLS probe не выполняем, чтобы не получать ложный FAIL.
+                    isUdpObserveOnly = true;
+                    tcpOk = true;
+                    tlsOk = true;
+                }
+                else
                 {
                     var tcp = await _probes.ProbeTcpAsync(host.RemoteIp, host.RemotePort, _testTimeout, TcpMaxAttempts, ct).ConfigureAwait(false);
                     tcpOk = tcp.Ok;
@@ -155,39 +164,41 @@ namespace IspAudit.Core.Modules
                     blockageType = tcp.BlockageType;
                 }
 
-                // 3. TLS handshake (обычно только для 443). Для тестов/нестандартных портов допускаем TLS probe,
-                // если задано SNI (это явный сигнал, что соединение TLS).
-                var shouldProbeTls = host.RemotePort == 443 || !string.IsNullOrEmpty(host.SniHostname);
-                if (tcpOk && shouldProbeTls && !string.IsNullOrEmpty(hostname) && hostnameFromCacheOrInput)
+                // 3. TLS handshake только для TCP/443.
+                if (!isUdpObserveOnly)
                 {
-                    var tls = await _probes.ProbeTlsAsync(
-                        host.RemoteIp,
-                        host.RemotePort,
-                        hostname,
-                        _testTimeout,
-                        TlsMaxAttempts,
-                        _remoteCertificateValidationCallback,
-                        ct).ConfigureAwait(false);
+                    var shouldProbeTls = host.Protocol == IspAudit.Bypass.TransportProtocol.Tcp && host.RemotePort == 443;
+                    if (tcpOk && shouldProbeTls && !string.IsNullOrEmpty(hostname) && hostnameFromCacheOrInput)
+                    {
+                        var tls = await _probes.ProbeTlsAsync(
+                            host.RemoteIp,
+                            host.RemotePort,
+                            hostname,
+                            _testTimeout,
+                            TlsMaxAttempts,
+                            _remoteCertificateValidationCallback,
+                            ct).ConfigureAwait(false);
 
-                    tlsOk = tls.Ok;
-                    blockageType ??= tls.BlockageType;
-                }
-                else if (host.RemotePort == 443)
-                {
-                    // Не можем проверить TLS без hostname.
-                    // Фикс недетерминированности делаем не через «псевдо-ошибку», а через стабилизацию SNI-кеша и таймаутов.
-                    tlsOk = tcpOk;
-                }
-                else
-                {
-                    // Не HTTPS - считаем OK если TCP прошел
-                    tlsOk = tcpOk;
+                        tlsOk = tls.Ok;
+                        blockageType ??= tls.BlockageType;
+                    }
+                    else if (host.RemotePort == 443)
+                    {
+                        // Не можем проверить TLS без hostname.
+                        // Фикс недетерминированности делаем не через «псевдо-ошибку», а через стабилизацию SNI-кеша и таймаутов.
+                        tlsOk = tcpOk;
+                    }
+                    else
+                    {
+                        // Канон tcp-only: для не-443 достаточно DNS(if hostname) + TCP.
+                        tlsOk = tcpOk;
+                    }
                 }
 
                 // 4. HTTP/3 (QUIC) probe — отдельный тест от TCP/TLS.
                 // Важно: QUIC использует TLS 1.3 внутри QUIC поверх UDP/443, но это не тот же самый канал, что TCP/TLS.
                 // Поэтому фиксируем это отдельными полями и НЕ смешиваем с tlsOk.
-                if (host.RemotePort == 443 && !string.IsNullOrEmpty(hostname) && hostnameFromCacheOrInput)
+                if (!isUdpObserveOnly && host.RemotePort == 443 && !string.IsNullOrEmpty(hostname) && hostnameFromCacheOrInput)
                 {
                     var h3TimeoutMs = (int)Math.Clamp(_testTimeout.TotalMilliseconds, 700, 2000);
                     var h3Timeout = TimeSpan.FromMilliseconds(h3TimeoutMs);

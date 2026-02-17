@@ -172,7 +172,10 @@ public sealed class SignalsAdapter
 
         var normalizedCode = BlockageCode.Normalize(tested.BlockageType);
 
-        var hasDnsFailure = !tested.DnsOk || (!string.IsNullOrWhiteSpace(tested.DnsStatus) && !string.Equals(tested.DnsStatus, BlockageCode.StatusOk, StringComparison.OrdinalIgnoreCase));
+        var hasDnsFailure = !tested.DnsOk ||
+            (!string.IsNullOrWhiteSpace(tested.DnsStatus)
+             && !string.Equals(tested.DnsStatus, BlockageCode.StatusOk, StringComparison.OrdinalIgnoreCase)
+             && !string.Equals(tested.DnsStatus, "N/A", StringComparison.OrdinalIgnoreCase));
         var hasTcpTimeout = string.Equals(normalizedCode, BlockageCode.TcpConnectTimeout, StringComparison.Ordinal);
 
         var hasTcpReset =
