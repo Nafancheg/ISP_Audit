@@ -69,7 +69,7 @@
 - Risk: medium
 - [x] Оставить `DiagnosisId.HttpRedirect` как HC anomaly channel (не symptom-блокировка по умолчанию)
 - [ ] Жёсткие признаки suspicious: `https→http`, redirect на literal IP/RFC1918/.local, смена eTLD+1
-- [ ] Redirect normalization: lower-case + IDN/punycode + trim trailing dot
+- [x] Redirect normalization: lower-case + IDN/punycode + trim trailing dot
 - [ ] eTLD+1 edge-case: если eTLD+1 не вычислился → не hard-trigger, только soft-score
 - [ ] Soft-score suspicious включать только при burst N/T
 - [ ] RedirectNormal не должен запускать DPI-эскалацию

@@ -229,6 +229,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 Актуализация (Runtime, 17.02.2026): P0.V23.3 HttpRedirect как anomaly-only канал
 - `DiagnosisId.HttpRedirect` оставлен как HC anomaly channel: при `redirectClass=normal` селектор возвращает пустой план (без symptom-блокировки/эскалации по умолчанию).
 - В diagnosis добавлена классификация redirect `suspicious/normal` по жёстким признакам (blockpage-host, literal/private IP, `.local`, eTLD+1 change best-effort).
+- В `HttpRedirectDetector` реализована нормализация redirect host (`lower-case + IDN/punycode + trim trailing dot`) при извлечении из `Location`.
 
 Актуализация (Runtime, 16.02.2026): structured health verdict в pipeline contract
 - `Core/Models/HostTested` расширен полями `VerdictStatus/UnknownReason` (формат `Ok/Fail/Unknown` + причина unknown).

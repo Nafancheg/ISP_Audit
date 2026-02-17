@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Net;
 using System.Text;
 using IspAudit.Core.Models;
@@ -158,7 +159,7 @@ namespace IspAudit.Core.Modules
             {
                 if (Uri.TryCreate(location, UriKind.Absolute, out var uri))
                 {
-                    return uri.Host;
+                    return NormalizeRedirectHost(uri.Host);
                 }
 
                 // Относительный путь — хост нам неизвестен.
@@ -167,6 +168,35 @@ namespace IspAudit.Core.Modules
             catch
             {
                 return null;
+            }
+        }
+
+        private static string? NormalizeRedirectHost(string? host)
+        {
+            if (string.IsNullOrWhiteSpace(host))
+            {
+                return null;
+            }
+
+            var normalized = host.Trim().TrimEnd('.').ToLowerInvariant();
+            if (normalized.Length == 0)
+            {
+                return null;
+            }
+
+            if (IPAddress.TryParse(normalized, out _))
+            {
+                return normalized;
+            }
+
+            try
+            {
+                var idn = new IdnMapping();
+                return idn.GetAscii(normalized);
+            }
+            catch
+            {
+                return normalized;
             }
         }
 
