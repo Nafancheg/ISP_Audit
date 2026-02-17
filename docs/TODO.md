@@ -17,13 +17,13 @@
 ## Policy v2.3 — symptom-based execution (финальный план)
 
 ### Согласованные операционные уточнения v2.3
-- [ ] `VerdictStatus = Ok|Fail|Unknown` + `UnknownReason` (минимум: `InsufficientDns`, `InsufficientIps`, `ProbeTimeoutBudget`, `NoBaseline`, `NoBaselineFresh`, `Cancelled`, `ConcurrentApply`)
-- [ ] S-проекция применяется только при `VerdictStatus != Unknown`; `Unknown` не маппится в S0–S4
-- [ ] `UnknownReason priority`: детерминированный приоритет, если причин несколько
+- [x] `VerdictStatus = Ok|Fail|Unknown` + `UnknownReason` (минимум: `InsufficientDns`, `InsufficientIps`, `ProbeTimeoutBudget`, `NoBaseline`, `NoBaselineFresh`, `Cancelled`, `ConcurrentApply`)
+- [x] S-проекция применяется только при `VerdictStatus != Unknown`; `Unknown` не маппится в S0–S4
+- [x] `UnknownReason priority`: детерминированный приоритет, если причин несколько
 - [ ] Redirect burst defaults: `N=3` разных eTLD+1, `T=10 минут`, `WindowRetention=30 минут`
 - [ ] Redirect normalization: lower-case + IDN/punycode + trim trailing dot; eTLD+1 edge-cases
 - [ ] Guardrail stop-list: не делать rollback/blacklist при `NoBaseline`, `NoBaselineFresh`, `InsufficientIps`, `Cancelled`, `ConcurrentApply`, `ApplyError/partial apply`
-- [ ] Baseline freshness TTL: baseline валиден 30–60 сек (default 60); иначе `Unknown(NoBaselineFresh)`, guardrail не сравнивает
+- [x] Baseline freshness TTL: baseline валиден 30–60 сек (default 60); иначе `Unknown(NoBaselineFresh)`, guardrail не сравнивает
 - [ ] RunId: тащить через baseline/apply/retest/rollback; `ConcurrentApply` определяется по активному RunId на scopeKey
 - [ ] ProbeTimeoutBudget split: global run budget + per-layer budget (DNS/TCP/TLS/HTTP)
 - [ ] Blacklist v1: `version=1`, key=`scopeKey+planSig+deltaStep+reason`, поля `createdAtUtc/expiresAtUtc/hitCount/lastSeenUtc`, дедуп по key
@@ -47,8 +47,8 @@
 - Прогресс 16.02.2026 (итерация 9): UI-проекция `intel:Unknown` скорректирована — `UnifiedTrafficFilter` не отправляет такие случаи в `LogOnly/OK`, а `PipelineMessageParser` трактует их как `Warn` (не `Fail`) с явным сообщением «недостаточно данных».
 - [x] Ввести `VerdictStatus` и `UnknownReason` в результатах healthcheck/post-apply
 - [x] Запретить fallback в S0 при недостатке данных (`Unknown != S0`)
-- [ ] Зафиксировать детерминированный приоритет `UnknownReason`, если причин несколько
-- [ ] `UnknownReason: NoBaselineFresh` как отдельный код (baseline истёк)
+- [x] Зафиксировать детерминированный приоритет `UnknownReason`, если причин несколько
+- [x] `UnknownReason: NoBaselineFresh` как отдельный код (baseline истёк)
 
 #### P0.V23.2 SSoT healthcheck по профилям целей
 - Depends: P0.V23.1
