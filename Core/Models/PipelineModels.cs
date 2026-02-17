@@ -52,7 +52,10 @@ namespace IspAudit.Core.Models
 
         // Заполняется только если VerdictStatus=Unknown.
         // Базовые значения: InsufficientDns | ProbeTimeoutBudget | Cancelled.
-        string? UnknownReason = null
+        string? UnknownReason = null,
+
+        // Признак downgrade из HTTPS в HTTP по Location в web-like probe.
+        bool HasHttpsToHttpRedirect = false
     );
 
     /// <summary>

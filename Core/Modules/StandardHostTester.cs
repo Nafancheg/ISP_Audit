@@ -95,6 +95,7 @@ namespace IspAudit.Core.Modules
             var hasTesterException = false;
             string? testerUnknownReason = null;
             var isUdpObserveOnly = false;
+            var hasHttpsToHttpRedirect = false;
 
             try
             {
@@ -253,6 +254,7 @@ namespace IspAudit.Core.Modules
 
                     var http = await _probes.ProbeHttpAsync(hostname!, httpTimeout, runCt).ConfigureAwait(false);
                     httpOk = http.Ok;
+                    hasHttpsToHttpRedirect = http.IsHttpsToHttpRedirect;
 
                     if (!http.Ok)
                     {
@@ -329,7 +331,8 @@ namespace IspAudit.Core.Modules
                 http3LatencyMs,
                 http3Error,
                 verdictStatus,
-                unknownReason
+                unknownReason,
+                hasHttpsToHttpRedirect
             );
         }
     }

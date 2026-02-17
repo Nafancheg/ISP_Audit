@@ -256,6 +256,7 @@ public sealed class SignalsAdapter
 
             HasHttpRedirect = hasHttpRedirect,
             RedirectToHost = redirectToHost,
+            HasHttpsToHttpRedirect = inspectionSignals.HasHttpsToHttpRedirect,
             RedirectBurstCount = inspectionSignals.RedirectBurstCount,
             RedirectEtldKnown = inspectionSignals.RedirectEtldKnown,
 

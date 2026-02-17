@@ -32,7 +32,7 @@ namespace IspAudit.Core.Interfaces
 
     public readonly record struct TlsProbeResult(bool Ok, string? BlockageType);
 
-    public readonly record struct HttpProbeResult(bool Ok, string Status, int? StatusCode, string MethodUsed, string? Error);
+    public readonly record struct HttpProbeResult(bool Ok, string Status, int? StatusCode, string MethodUsed, string? Error, bool IsHttpsToHttpRedirect = false);
 
     public readonly record struct Http3ProbeResult(bool? Ok, string Status, int? LatencyMs, string? Error);
 }

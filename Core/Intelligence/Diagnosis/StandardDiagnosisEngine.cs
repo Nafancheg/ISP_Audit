@@ -242,6 +242,11 @@ public sealed class StandardDiagnosisEngine
                 suspiciousFlags.Add("blockpage-host");
             }
 
+            if (signals.HasHttpsToHttpRedirect)
+            {
+                suspiciousFlags.Add("https-to-http");
+            }
+
             if (IsLiteralIpOrPrivateNetworkHost(redirectHost))
             {
                 suspiciousFlags.Add("literal-ip-or-private");

@@ -317,6 +317,7 @@ namespace IspAudit.Core.Modules
                 TotalPackets: Math.Max(0, totalPackets),
                 HasHttpRedirect: hasHttpRedirect,
                 RedirectToHost: redirectTo,
+                HasHttpsToHttpRedirect: tested.HasHttpsToHttpRedirect,
                 RedirectBurstCount: Math.Max(0, redirectBurstCount),
                 RedirectEtldKnown: redirectEtldKnown,
                 HasSuspiciousRst: hasSuspiciousRst,

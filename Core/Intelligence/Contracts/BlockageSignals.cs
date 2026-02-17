@@ -91,6 +91,12 @@ public sealed class BlockageSignals
     public string? RedirectToHost { get; init; }
 
     /// <summary>
+    /// Признак downgrade redirect из HTTPS в HTTP (по web-like probe).
+    /// Относится к жёстким suspicious-фактам.
+    /// </summary>
+    public bool HasHttpsToHttpRedirect { get; init; }
+
+    /// <summary>
     /// Количество наблюдений redirect по тому же eTLD+1 в окне burst-детектора (best-effort).
     /// Используется как soft-score suspicious (N/T).
     /// </summary>

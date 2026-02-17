@@ -188,6 +188,22 @@ namespace IspAudit.Core.Modules
                        || (int)code >= 400;
             }
 
+            static bool IsHttpsToHttpRedirect(HttpResponseMessage response)
+            {
+                var location = response.Headers.Location;
+                if (location == null)
+                {
+                    return false;
+                }
+
+                if (!location.IsAbsoluteUri)
+                {
+                    return false;
+                }
+
+                return string.Equals(location.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase);
+            }
+
             try
             {
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -218,38 +234,41 @@ namespace IspAudit.Core.Modules
                 using (var headReq = new HttpRequestMessage(HttpMethod.Head, uri))
                 using (var headResp = await http.SendAsync(headReq, HttpCompletionOption.ResponseHeadersRead, linkedCts.Token).ConfigureAwait(false))
                 {
+                    var isHeadDowngrade = IsHttpsToHttpRedirect(headResp);
+
                     if (IsHttpSuccessStatusCode(headResp.StatusCode))
                     {
-                        return new HttpProbeResult(true, "HTTP_OK_HEAD", (int)headResp.StatusCode, "HEAD", null);
+                        return new HttpProbeResult(true, "HTTP_OK_HEAD", (int)headResp.StatusCode, "HEAD", null, isHeadDowngrade);
                     }
 
                     if (!ShouldFallbackToGet(headResp.StatusCode))
                     {
-                        return new HttpProbeResult(false, "HTTP_FAILED_HEAD", (int)headResp.StatusCode, "HEAD", null);
+                        return new HttpProbeResult(false, "HTTP_FAILED_HEAD", (int)headResp.StatusCode, "HEAD", null, isHeadDowngrade);
                     }
                 }
 
                 using var getReq = new HttpRequestMessage(HttpMethod.Get, uri);
                 using var getResp = await http.SendAsync(getReq, HttpCompletionOption.ResponseHeadersRead, linkedCts.Token).ConfigureAwait(false);
+                var isGetDowngrade = IsHttpsToHttpRedirect(getResp);
 
                 if (IsHttpSuccessStatusCode(getResp.StatusCode))
                 {
-                    return new HttpProbeResult(true, "HTTP_OK_GET", (int)getResp.StatusCode, "GET", null);
+                    return new HttpProbeResult(true, "HTTP_OK_GET", (int)getResp.StatusCode, "GET", null, isGetDowngrade);
                 }
 
-                return new HttpProbeResult(false, "HTTP_FAILED_GET", (int)getResp.StatusCode, "GET", null);
+                return new HttpProbeResult(false, "HTTP_FAILED_GET", (int)getResp.StatusCode, "GET", null, isGetDowngrade);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                return new HttpProbeResult(false, "HTTP_TIMEOUT", null, "HEAD/GET", null);
+                return new HttpProbeResult(false, "HTTP_TIMEOUT", null, "HEAD/GET", null, false);
             }
             catch (HttpRequestException ex)
             {
-                return new HttpProbeResult(false, "HTTP_FAILED", null, "HEAD/GET", ex.GetType().Name);
+                return new HttpProbeResult(false, "HTTP_FAILED", null, "HEAD/GET", ex.GetType().Name, false);
             }
             catch (Exception ex)
             {
-                return new HttpProbeResult(false, "HTTP_FAILED", null, "HEAD/GET", ex.GetType().Name);
+                return new HttpProbeResult(false, "HTTP_FAILED", null, "HEAD/GET", ex.GetType().Name, false);
             }
         }
 

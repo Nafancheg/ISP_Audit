@@ -232,6 +232,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - В `HttpRedirectDetector` реализована нормализация redirect host (`lower-case + IDN/punycode + trim trailing dot`) при извлечении из `Location`.
 - Добавлены redirect-метаданные `RedirectBurstCount` и `RedirectEtldKnown` (детектор → state store → snapshot → `BlockageSignals`).
 - Для eTLD+1 edge-case (`eTLD unknown`) используется только soft-score и только при burst N/T (`N>=3`, `T=10m`); без burst redirect остаётся `normal` anomaly.
+- Добавлен hard-признак `https→http` из web-like HTTP probe (`Location: http://...`): поле `HasHttpsToHttpRedirect` проходит через snapshot/signals и повышает `redirectClass` до `suspicious`.
 
 Актуализация (Runtime, 16.02.2026): structured health verdict в pipeline contract
 - `Core/Models/HostTested` расширен полями `VerdictStatus/UnknownReason` (формат `Ok/Fail/Unknown` + причина unknown).
