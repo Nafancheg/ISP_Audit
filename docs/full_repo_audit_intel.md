@@ -234,6 +234,11 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Для eTLD+1 edge-case (`eTLD unknown`) используется только soft-score и только при burst N/T (`N>=3`, `T=10m`); без burst redirect остаётся `normal` anomaly.
 - Добавлен hard-признак `https→http` из web-like HTTP probe (`Location: http://...`): поле `HasHttpsToHttpRedirect` проходит через snapshot/signals и повышает `redirectClass` до `suspicious`.
 
+Актуализация (Runtime, 17.02.2026): P0.V23.4 groundwork guardrail
+- В `ApplyPlanInternalAsync` добавлен baseline-снимок перед apply: `successCountBefore/M` (K-of-M пробы), `capturedAtUtc`, `runId`, `scopeKey`; контекст сохраняется в pending feedback.
+- В `StartPostApplyRetestAsync` добавлен детерминированный lock по `scopeKey`: параллельный ретест с другим runId помечается как `Unknown(ConcurrentApply)`.
+- Post-apply details расширены метриками guardrail: `beforeSuccessCount/beforeSampleCount`, `afterSuccessCount/afterSampleCount`, `scopeKey`, `runId`, `guardrailPolicy=KofM_2of3`.
+
 Актуализация (Runtime, 16.02.2026): structured health verdict в pipeline contract
 - `Core/Models/HostTested` расширен полями `VerdictStatus/UnknownReason` (формат `Ok/Fail/Unknown` + причина unknown).
 - `StandardHostTester` заполняет поля детерминированно; базовые причины unknown: `Cancelled`, `ProbeTimeoutBudget`, `InsufficientDns`.

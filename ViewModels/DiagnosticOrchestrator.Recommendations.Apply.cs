@@ -41,9 +41,20 @@ namespace IspAudit.ViewModels
         #region Recommendations (Apply)
 
         private const int PostApplyBaselineFreshnessTtlSecondsDefault = 60;
+        private const int PostApplyBaselineSampleCountDefault = 3;
+        private const int PostApplyBaselineProbeTimeoutSeconds = 3;
 
-        private sealed record PendingFeedbackContext(BypassPlan Plan, DateTimeOffset AppliedAtUtc);
+        private sealed record PendingFeedbackContext(
+            BypassPlan Plan,
+            DateTimeOffset AppliedAtUtc,
+            string RunId,
+            string ScopeKey,
+            DateTimeOffset BaselineCapturedAtUtc,
+            int BaselineSuccessCount,
+            int BaselineSampleCount);
+
         private readonly ConcurrentDictionary<string, PendingFeedbackContext> _pendingFeedbackByHostKey = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, string> _activePostApplyRunByScopeKey = new(StringComparer.OrdinalIgnoreCase);
 
         public bool TryGetPendingAppliedPlanForHostKey(string? hostKey, out BypassPlan? plan, out DateTimeOffset appliedAtUtc)
         {
@@ -550,6 +561,11 @@ namespace IspAudit.ViewModels
             var ct = linked.Token;
 
             var beforeState = BuildBypassStateSummary(bypassController);
+            var scopeKey = !string.IsNullOrWhiteSpace(targetKey) ? targetKey : hostKey;
+            var applyRunId = Guid.NewGuid().ToString("N");
+            var baselineCapturedAtUtc = DateTimeOffset.UtcNow;
+            var baselineSuccessCount = 0;
+            var baselineSampleCount = 0;
 
             try
             {
@@ -560,6 +576,39 @@ namespace IspAudit.ViewModels
                 });
 
                 Log($"[APPLY] host={hostKey}; plan={planStrategies}; before={beforeState}");
+
+                if (PlanHasApplicableActions(plan))
+                {
+                    for (var attempt = 0; attempt < PostApplyBaselineSampleCountDefault; attempt++)
+                    {
+                        ct.ThrowIfCancellationRequested();
+
+                        try
+                        {
+                            var probe = await _stateManager.RunOutcomeProbeNowAsync(
+                                hostOverride: hostKey,
+                                timeoutOverride: TimeSpan.FromSeconds(PostApplyBaselineProbeTimeoutSeconds),
+                                cancellationToken: ct).ConfigureAwait(false);
+
+                            baselineSampleCount++;
+                            if (probe.Status == OutcomeStatus.Success)
+                            {
+                                baselineSuccessCount++;
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch
+                        {
+                            baselineSampleCount++;
+                        }
+                    }
+
+                    baselineCapturedAtUtc = DateTimeOffset.UtcNow;
+                    Log($"[APPLY][Baseline][run={applyRunId}] scope={scopeKey}; successBefore={baselineSuccessCount}; sampleBefore={baselineSampleCount}");
+                }
 
                 void OnPhaseEvent(BypassApplyPhaseTiming e)
                 {
@@ -577,7 +626,14 @@ namespace IspAudit.ViewModels
                 // Важно: контекст ключуется по hostKey (домен/IP), так как correlationId доступен только на уровне UI.
                 if (PlanHasApplicableActions(plan))
                 {
-                    _pendingFeedbackByHostKey[hostKey] = new PendingFeedbackContext(plan, DateTimeOffset.UtcNow);
+                    _pendingFeedbackByHostKey[hostKey] = new PendingFeedbackContext(
+                        plan,
+                        DateTimeOffset.UtcNow,
+                        applyRunId,
+                        scopeKey,
+                        baselineCapturedAtUtc,
+                        Math.Max(0, baselineSuccessCount),
+                        Math.Max(0, baselineSampleCount));
                 }
 
                 var afterState = BuildBypassStateSummary(bypassController);
@@ -709,6 +765,27 @@ namespace IspAudit.ViewModels
                 ? Guid.NewGuid().ToString("N")
                 : correlationId.Trim();
 
+            var scopeKey = ResolveAutoApplyTargetHost(hostKey);
+            if (string.IsNullOrWhiteSpace(scopeKey))
+            {
+                scopeKey = hostKey;
+            }
+
+            if (_activePostApplyRunByScopeKey.TryGetValue(scopeKey, out var activeRunId)
+                && !string.Equals(activeRunId, opId, StringComparison.OrdinalIgnoreCase))
+            {
+                var concurrentDetails = BuildUnknownDetails(
+                    UnknownReason.ConcurrentApply,
+                    $"scopeKey={scopeKey}; activeRunId={activeRunId}; currentRunId={opId}");
+
+                EmitPostApplyVerdict(hostKey, "UNKNOWN", "guard", concurrentDetails);
+                PostApplyRetestStatus = "Ретест после Apply: пропущен (concurrent apply)";
+                Log($"[PostApplyRetest][op={opId}] Skip: reason=concurrent_apply; scopeKey={scopeKey}; activeRunId={activeRunId}");
+                return Task.CompletedTask;
+            }
+
+            _activePostApplyRunByScopeKey[scopeKey] = opId;
+
             void EmitPostApplyVerdict(string hk, string verdict, string mode, string? details)
             {
                 try
@@ -809,6 +886,8 @@ namespace IspAudit.ViewModels
                 var baselineTtl = TimeSpan.FromSeconds(PostApplyBaselineFreshnessTtlSecondsDefault);
                 var hasPendingBaseline = _pendingFeedbackByHostKey.TryGetValue(hostKey, out var pendingBaseline) && pendingBaseline != null;
                 var baselineAge = TimeSpan.Zero;
+                var baselineSuccessBefore = Math.Max(0, pendingBaseline?.BaselineSuccessCount ?? 0);
+                var baselineSampleBefore = Math.Max(0, pendingBaseline?.BaselineSampleCount ?? 0);
                 if (hasPendingBaseline && pendingBaseline != null)
                 {
                     baselineAge = DateTimeOffset.UtcNow - pendingBaseline.AppliedAtUtc;
@@ -828,6 +907,18 @@ namespace IspAudit.ViewModels
                 static bool IsYouTubeAnchor(string hk)
                     => string.Equals(hk, "youtube.com", StringComparison.OrdinalIgnoreCase)
                         || string.Equals(hk, "www.youtube.com", StringComparison.OrdinalIgnoreCase);
+
+                static bool IsGuardrailRegression(int beforeSuccess, int beforeSample, int afterSuccess)
+                {
+                    if (beforeSample <= 0)
+                    {
+                        return false;
+                    }
+
+                    // 2/3 или K-of-M: baseline считается «успешным», если успехов не меньше K.
+                    var requiredK = Math.Max(1, (int)Math.Ceiling(beforeSample * (2.0 / 3.0)));
+                    return beforeSuccess >= requiredK && afterSuccess == 0;
+                }
 
                 async Task<(string Verdict, string ProbeDetails)> ComputePostApplyProbeVerdictAsync(string hk, CancellationToken ctt)
                 {
@@ -1006,6 +1097,11 @@ namespace IspAudit.ViewModels
                     {
                         var elapsedMs = (DateTimeOffset.UtcNow - startedAtUtc).TotalMilliseconds;
                         UpdatePostApplyRetestUi(() => { IsPostApplyRetestRunning = false; });
+                        if (_activePostApplyRunByScopeKey.TryGetValue(scopeKey, out var active)
+                            && string.Equals(active, opId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _activePostApplyRunByScopeKey.TryRemove(scopeKey, out _);
+                        }
                         Log($"[PostApplyRetest][op={opId}] Finish: mode=enqueue; elapsedMs={elapsedMs:0}; host={hostKey}");
                     }
                 }
@@ -1019,12 +1115,16 @@ namespace IspAudit.ViewModels
                 var targetIpStrings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var anyOk = false;
                 var anyFail = false;
+                var totalOkCount = 0;
+                var totalFailCount = 0;
 
                 // Более точный режим: если в логах ретеста удалось увидеть SNI, совпадающий с hostKey,
                 // то считаем outcome только по этим записям. Иначе fallback на все target IP.
                 var anySniMatched = false;
                 var anyOkSniMatched = false;
                 var anyFailSniMatched = false;
+                var sniOkCount = 0;
+                var sniFailCount = 0;
 
                 try
                 {
@@ -1096,6 +1196,8 @@ namespace IspAudit.ViewModels
 
                                             if (isFail) anyFail = true;
                                             if (isOk) anyOk = true;
+                                            if (isFail) totalFailCount++;
+                                            if (isOk) totalOkCount++;
 
                                             // Учитываем SNI (если есть) как более точную привязку к hostKey.
                                             // Важно: не требуем совпадения всегда, потому что SNI может быть "-".
@@ -1112,6 +1214,8 @@ namespace IspAudit.ViewModels
                                                     anySniMatched = true;
                                                     if (isFail) anyFailSniMatched = true;
                                                     if (isOk) anyOkSniMatched = true;
+                                                    if (isFail) sniFailCount++;
+                                                    if (isOk) sniOkCount++;
                                                 }
                                             }
                                         }
@@ -1172,8 +1276,17 @@ namespace IspAudit.ViewModels
                         : (summaryFail ? "FAIL" : (summaryOk ? "OK" : "UNKNOWN"));
 
                     var localSummaryDetails = (summaryOk || summaryFail)
-                        ? $"summaryOk={summaryOk}; summaryFail={summaryFail}"
+                        ? $"summaryOk={summaryOk}; summaryFail={summaryFail}; beforeSuccessCount={baselineSuccessBefore}; beforeSampleCount={baselineSampleBefore}; afterSuccessCount={(anySniMatched ? sniOkCount : totalOkCount)}; afterSampleCount={(anySniMatched ? (sniOkCount + sniFailCount) : (totalOkCount + totalFailCount))}; scopeKey={scopeKey}; runId={opId}"
                         : BuildUnknownDetails(UnknownReason.NoBaseline, $"summaryOk={summaryOk}; summaryFail={summaryFail}; no_summary_signals");
+
+                    var effectiveAfterSuccess = anySniMatched ? sniOkCount : totalOkCount;
+                    var effectiveAfterSample = anySniMatched ? (sniOkCount + sniFailCount) : (totalOkCount + totalFailCount);
+
+                    if (effectiveAfterSample > 0)
+                    {
+                        var regression = IsGuardrailRegression(baselineSuccessBefore, baselineSampleBefore, effectiveAfterSuccess);
+                        localSummaryDetails += $"; guardrailRegression={(regression ? 1 : 0)}; guardrailPolicy=KofM_2of3";
+                    }
 
                     var adjustedLocalSummary = ApplyBaselineFreshnessPolicy(
                         verdict,
@@ -1253,6 +1366,11 @@ namespace IspAudit.ViewModels
                 {
                     var elapsedMs = (DateTimeOffset.UtcNow - startedAtUtc).TotalMilliseconds;
                     UpdatePostApplyRetestUi(() => { IsPostApplyRetestRunning = false; });
+                    if (_activePostApplyRunByScopeKey.TryGetValue(scopeKey, out var active)
+                        && string.Equals(active, opId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _activePostApplyRunByScopeKey.TryRemove(scopeKey, out _);
+                    }
                     Log($"[PostApplyRetest][op={opId}] Finish: mode=local; elapsedMs={elapsedMs:0}; host={hostKey}");
                 }
             }, ct);
