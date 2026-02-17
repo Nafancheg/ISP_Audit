@@ -137,6 +137,8 @@ namespace IspAudit.Core.Modules
             var totalPackets = 0;
             bool hasHttpRedirect = false;
             string? redirectTo = null;
+            var redirectBurstCount = 0;
+            var redirectEtldKnown = false;
             bool hasSuspiciousRst = false;
             string? suspiciousRstDetails = null;
 
@@ -165,11 +167,18 @@ namespace IspAudit.Core.Modules
                         hasHttpRedirect = true;
                         redirectTo = target;
                     }
+                    if (_httpRedirectDetector.TryGetRedirectEvidence(tested.Host.RemoteIp, out _, out var burstCount, out var etldKnown))
+                    {
+                        redirectBurstCount = burstCount;
+                        redirectEtldKnown = etldKnown;
+                    }
                 }
                 catch
                 {
                     hasHttpRedirect = false;
                     redirectTo = null;
+                    redirectBurstCount = 0;
+                    redirectEtldKnown = false;
                 }
             }
 
@@ -245,6 +254,8 @@ namespace IspAudit.Core.Modules
 
             var hasHttpRedirect = false;
             string? redirectTo = null;
+            var redirectBurstCount = 0;
+            var redirectEtldKnown = false;
             if (_httpRedirectDetector != null)
             {
                 try
@@ -254,11 +265,18 @@ namespace IspAudit.Core.Modules
                         hasHttpRedirect = true;
                         redirectTo = target;
                     }
+                    if (_httpRedirectDetector.TryGetRedirectEvidence(ip, out _, out var burstCount, out var etldKnown))
+                    {
+                        redirectBurstCount = burstCount;
+                        redirectEtldKnown = etldKnown;
+                    }
                 }
                 catch
                 {
                     hasHttpRedirect = false;
                     redirectTo = null;
+                    redirectBurstCount = 0;
+                    redirectEtldKnown = false;
                 }
             }
 
@@ -299,6 +317,8 @@ namespace IspAudit.Core.Modules
                 TotalPackets: Math.Max(0, totalPackets),
                 HasHttpRedirect: hasHttpRedirect,
                 RedirectToHost: redirectTo,
+                RedirectBurstCount: Math.Max(0, redirectBurstCount),
+                RedirectEtldKnown: redirectEtldKnown,
                 HasSuspiciousRst: hasSuspiciousRst,
                 SuspiciousRstDetails: suspiciousRstDetails,
                 UdpUnansweredHandshakes: Math.Max(0, udpUnanswered));

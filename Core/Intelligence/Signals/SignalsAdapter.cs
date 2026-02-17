@@ -256,6 +256,8 @@ public sealed class SignalsAdapter
 
             HasHttpRedirect = hasHttpRedirect,
             RedirectToHost = redirectToHost,
+            RedirectBurstCount = inspectionSignals.RedirectBurstCount,
+            RedirectEtldKnown = inspectionSignals.RedirectEtldKnown,
 
             UdpUnansweredHandshakes = udpUnanswered,
             Http3AttemptCount = http3AttemptCount,

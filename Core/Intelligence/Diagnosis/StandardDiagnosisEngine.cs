@@ -229,11 +229,14 @@ public sealed class StandardDiagnosisEngine
         // 4) HTTP редирект как наблюдаемый факт
         if (signals.HasHttpRedirect)
         {
+            const int redirectBurstThresholdDefault = 3;
+
             var redirectHost = string.IsNullOrWhiteSpace(signals.RedirectToHost) ? null : signals.RedirectToHost;
             var isLikelyBlockpage = BlockpageHostCatalog.IsLikelyProviderBlockpageHost(redirectHost);
             var sourceHost = TryExtractHostFromHostKey(signals.HostKey);
 
             var suspiciousFlags = new List<string>();
+            var softFlags = new List<string>();
             if (isLikelyBlockpage)
             {
                 suspiciousFlags.Add("blockpage-host");
@@ -249,12 +252,36 @@ public sealed class StandardDiagnosisEngine
                 suspiciousFlags.Add("local-host");
             }
 
-            if (IsEtldPlusOneChanged(sourceHost, redirectHost))
+            var hasEtldHardMismatch = IsEtldPlusOneChanged(sourceHost, redirectHost);
+            if (hasEtldHardMismatch)
             {
                 suspiciousFlags.Add("etld-plus-one-changed");
             }
 
-            var redirectClass = suspiciousFlags.Count > 0 ? "suspicious" : "normal";
+            // eTLD+1 edge-case: если eTLD+1 не вычислился, не делаем hard-trigger.
+            // Учитываем это только как soft-score и только вместе с burst N/T.
+            if (!signals.RedirectEtldKnown && !hasEtldHardMismatch)
+            {
+                softFlags.Add("etld-unknown");
+            }
+
+            var burstCount = Math.Max(0, signals.RedirectBurstCount);
+            var hasBurstNt = burstCount >= redirectBurstThresholdDefault;
+            if (hasBurstNt)
+            {
+                evidence["redirectBurstN"] = burstCount.ToString();
+                evidence["redirectBurstThreshold"] = redirectBurstThresholdDefault.ToString();
+            }
+
+            var hardSuspicious = suspiciousFlags.Count > 0;
+            var softSuspicious = hasBurstNt && softFlags.Count > 0;
+
+            var redirectClass = hardSuspicious || softSuspicious ? "suspicious" : "normal";
+            if (softSuspicious)
+            {
+                suspiciousFlags.AddRange(softFlags.ConvertAll(f => $"soft:{f}+burst"));
+            }
+
             evidence["redirectClass"] = redirectClass;
             if (!string.IsNullOrWhiteSpace(sourceHost))
             {

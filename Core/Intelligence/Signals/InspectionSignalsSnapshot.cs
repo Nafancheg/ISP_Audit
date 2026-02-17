@@ -11,6 +11,8 @@ public readonly record struct InspectionSignalsSnapshot(
     int TotalPackets,
     bool HasHttpRedirect,
     string? RedirectToHost,
+    int RedirectBurstCount,
+    bool RedirectEtldKnown,
     bool HasSuspiciousRst,
     string? SuspiciousRstDetails,
     int UdpUnansweredHandshakes)
@@ -20,6 +22,8 @@ public readonly record struct InspectionSignalsSnapshot(
         TotalPackets: 0,
         HasHttpRedirect: false,
         RedirectToHost: null,
+        RedirectBurstCount: 0,
+        RedirectEtldKnown: false,
         HasSuspiciousRst: false,
         SuspiciousRstDetails: null,
         UdpUnansweredHandshakes: 0);

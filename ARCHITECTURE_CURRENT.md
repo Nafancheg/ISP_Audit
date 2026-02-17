@@ -183,6 +183,7 @@ Wizard из 5 шагов: выбор приложения → источник �
 - UI-правило: случаи `intel:Unknown` при формально успешных DNS/TCP/TLS не отображаются как зелёный `LogOnly/OK`; они переходят в предупреждение (`Warn`) с явной пометкой «недостаточно данных».
 - `HttpRedirect` в diagnosis трактуется как HC anomaly channel: normal redirect (без жёстких suspicious признаков) не запускает bypass/эскалацию; plan строится только для `redirectClass=suspicious`.
 - В `HttpRedirectDetector` добавлена канонизация `Location` host: `lower-case + IDN/punycode + trim trailing dot` перед записью в сигналы.
+- В `InspectionSignalsSnapshot/BlockageSignals` добавлены redirect-метаданные `RedirectBurstCount` и `RedirectEtldKnown`; `StandardDiagnosisEngine` учитывает их как soft-score: `eTLD unknown` повышает класс до `suspicious` только при burst (`N>=3`, окно `T=10m`).
 
 **Step 3 (Selector/Plan)**: `StandardStrategySelector` строит `BypassPlan` по `DiagnosisId + Confidence`. Жёсткие защиты:
 - `confidence < 50` → пустой план.

@@ -90,6 +90,18 @@ public sealed class BlockageSignals
     /// </summary>
     public string? RedirectToHost { get; init; }
 
+    /// <summary>
+    /// Количество наблюдений redirect по тому же eTLD+1 в окне burst-детектора (best-effort).
+    /// Используется как soft-score suspicious (N/T).
+    /// </summary>
+    public int RedirectBurstCount { get; init; }
+
+    /// <summary>
+    /// Удалось ли вычислить eTLD+1 для redirect host (best-effort).
+    /// Если false, edge-case не должен hard-trigger'ить suspicious.
+    /// </summary>
+    public bool RedirectEtldKnown { get; init; }
+
     // UDP/QUIC уровень
 
     /// <summary>

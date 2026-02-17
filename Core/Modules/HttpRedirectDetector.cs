@@ -16,12 +16,15 @@ namespace IspAudit.Core.Modules
     public sealed class HttpRedirectDetector
     {
         private const int MaxHeaderBytes = 2048;
+        private const int RedirectBurstThresholdDefault = 3;
+        private static readonly TimeSpan RedirectBurstWindowDefault = TimeSpan.FromMinutes(10);
 
         private readonly ConcurrentDictionary<TcpFlowKey, FlowBuffer> _buffers = new();
         private readonly ConcurrentDictionary<IPAddress, RedirectInfo> _redirectsByIp = new();
+        private readonly ConcurrentDictionary<string, ConcurrentQueue<DateTime>> _redirectBurstByEtldPlusOne = new(StringComparer.OrdinalIgnoreCase);
 
         private readonly record struct FlowBuffer(byte[] Data, int Length, bool Completed);
-        private readonly record struct RedirectInfo(string TargetHost, DateTime FirstSeenUtc, DateTime LastSeenUtc);
+        private readonly record struct RedirectInfo(string TargetHost, DateTime FirstSeenUtc, DateTime LastSeenUtc, int BurstCount, bool EtldKnown);
 
         public void Attach(TrafficMonitorFilter filter)
         {
@@ -141,15 +144,35 @@ namespace IspAudit.Core.Modules
                     return;
 
                 var now = DateTime.UtcNow;
+                var etldPlusOne = TryGetEtldPlusOne(host);
+                var etldKnown = !string.IsNullOrWhiteSpace(etldPlusOne);
+                var burstCount = etldKnown
+                    ? RegisterAndGetBurstCount(etldPlusOne!, now)
+                    : 1;
+
                 _redirectsByIp.AddOrUpdate(
                     serverIp,
-                    _ => new RedirectInfo(host, now, now),
-                    (_, info) => new RedirectInfo(host, info.FirstSeenUtc, now));
+                    _ => new RedirectInfo(host, now, now, burstCount, etldKnown),
+                    (_, info) => new RedirectInfo(host, info.FirstSeenUtc, now, burstCount, etldKnown));
             }
             catch
             {
                 // Детектор не должен ломать пайплайн.
             }
+        }
+
+        private int RegisterAndGetBurstCount(string etldPlusOne, DateTime nowUtc)
+        {
+            var queue = _redirectBurstByEtldPlusOne.GetOrAdd(etldPlusOne, _ => new ConcurrentQueue<DateTime>());
+            queue.Enqueue(nowUtc);
+
+            var threshold = nowUtc - RedirectBurstWindowDefault;
+            while (queue.TryPeek(out var ts) && ts < threshold)
+            {
+                queue.TryDequeue(out _);
+            }
+
+            return queue.Count;
         }
 
         private static string? ExtractHostFromLocation(string location)
@@ -200,6 +223,44 @@ namespace IspAudit.Core.Modules
             }
         }
 
+        private static string? TryGetEtldPlusOne(string? host)
+        {
+            var normalized = NormalizeRedirectHost(host);
+            if (string.IsNullOrWhiteSpace(normalized) || IPAddress.TryParse(normalized, out _))
+            {
+                return null;
+            }
+
+            var parts = normalized.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length < 2)
+            {
+                return null;
+            }
+
+            return $"{parts[^2]}.{parts[^1]}";
+        }
+
+        /// <summary>
+        /// Попробовать получить расширенное evidence редиректа для указанного IP сервера.
+        /// </summary>
+        public bool TryGetRedirectEvidence(IPAddress ip, out string? targetHost, out int burstCount, out bool etldKnown)
+        {
+            if (ip == null) throw new ArgumentNullException(nameof(ip));
+
+            if (_redirectsByIp.TryGetValue(ip, out var info))
+            {
+                targetHost = info.TargetHost;
+                burstCount = Math.Max(1, info.BurstCount);
+                etldKnown = info.EtldKnown;
+                return true;
+            }
+
+            targetHost = null;
+            burstCount = 0;
+            etldKnown = false;
+            return false;
+        }
+
         /// <summary>
         /// Попробовать получить целевой хост редиректа для указанного IP сервера.
         /// </summary>
@@ -207,9 +268,9 @@ namespace IspAudit.Core.Modules
         {
             if (ip == null) throw new ArgumentNullException(nameof(ip));
 
-            if (_redirectsByIp.TryGetValue(ip, out var info))
+            if (TryGetRedirectEvidence(ip, out var host, out _, out _))
             {
-                targetHost = info.TargetHost;
+                targetHost = host;
                 return true;
             }
 
