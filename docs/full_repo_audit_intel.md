@@ -241,6 +241,14 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Добавлен stop-list guardrail rollback: rollback выполняется только при regression `K-of-M` и не выполняется при `NoBaseline`, `NoBaselineFresh`, `InsufficientIps`, `Cancelled`, `ConcurrentApply`, `ApplyError/partial apply`; для stale baseline comparison guardrail пропускается.
 - Анти-флап критерий зафиксирован как `beforeSuccess>=ceil(2/3*M)` и `afterSuccess=0`; только при выполнении этого условия возможен guardrail rollback.
 
+Актуализация (Runtime, 17.02.2026): P0.V23.5 Blacklist v1
+- Добавлен `Utils/ApplyActionBlacklistStore.cs` (persist: `state/apply_action_blacklist_v1.json`), schema `version=1`.
+- Ключ дедупликации: `scopeKey+planSig+deltaStep+reason`; при повторных hit обновляются `hitCount`, `lastSeenUtc`, `expiresAtUtc`.
+- TTL policy реализована как `TTL_min=10m`, `TTL_max=6h` с capped-продлением при повторных hit.
+- Multi-action apply блокируется по `planSig` (через пустой `deltaStep`), escalation — по `deltaStep` с сохранением `planSig` для трассировки.
+- Blacklist проверяется перед `auto-apply` и перед ручной `escalation`.
+- Blacklist не создаётся в stop-list сценариях (`NoBaseline`, `NoBaselineFresh`, `InsufficientIps`, `Cancelled`, `ConcurrentApply`, `ApplyError/partial apply`), так как запись выполняется только на guardrail-regression вне stop-list.
+
 Актуализация (Runtime, 16.02.2026): structured health verdict в pipeline contract
 - `Core/Models/HostTested` расширен полями `VerdictStatus/UnknownReason` (формат `Ok/Fail/Unknown` + причина unknown).
 - `StandardHostTester` заполняет поля детерминированно; базовые причины unknown: `Cancelled`, `ProbeTimeoutBudget`, `InsufficientDns`.

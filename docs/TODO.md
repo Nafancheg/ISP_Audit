@@ -89,12 +89,12 @@
 
 - Depends: P0.V23.4
 - Risk: medium
-- [ ] Store schema v1 + дедуп/апдейт `hitCount/lastSeenUtc/expiresAtUtc`
-- [ ] TTL policy: `TTL_min/TTL_max` + продление при повторных hit (capped)
-- [ ] Для multi-action apply банить `planSig`
-- [ ] Для escalation банить `deltaStep` (с сохранением `planSig` для трассировки)
-- [ ] Проверять blacklist перед auto-apply и escalation
-- [ ] Не создавать blacklist при `NoBaseline/NoBaselineFresh/ConcurrentApply/Cancelled`
+- [x] Store schema v1 + дедуп/апдейт `hitCount/lastSeenUtc/expiresAtUtc`
+- [x] TTL policy: `TTL_min/TTL_max` + продление при повторных hit (capped)
+- [x] Для multi-action apply банить `planSig`
+- [x] Для escalation банить `deltaStep` (с сохранением `planSig` для трассировки)
+- [x] Проверять blacklist перед auto-apply и escalation
+- [x] Не создавать blacklist при `NoBaseline/NoBaselineFresh/ConcurrentApply/Cancelled`
 
 #### P0.V23.6 UI: reason codes + effective + слойный статус
 

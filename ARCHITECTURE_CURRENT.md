@@ -202,6 +202,8 @@ Wizard из 5 шагов: выбор приложения → источник �
 
 **Step 5 (Feedback)**: `JsonFileFeedbackStore` (`state\feedback_store.json`), ранжирование в селекторе.
 
+**Step 6 (Guardrail Blacklist v1)**: `ApplyActionBlacklistStore` (`state\apply_action_blacklist_v1.json`) — дедуп по ключу `scopeKey+planSig+deltaStep+reason`, поля `createdAtUtc/expiresAtUtc/hitCount/lastSeenUtc`, TTL policy `TTL_min/TTL_max` с capped-продлением. Проверка blacklist выполняется перед `auto-apply` и ручной `escalation`; запись создаётся только при guardrail regression вне stop-list.
+
 **Контрактные константы**: окно агрегации 30/60с, TTL событий 10 мин.
 
 **UI-гейт**: рекомендации принимаются только из строк `[INTEL]`. Legacy строки не обновляют `BypassStrategy`.

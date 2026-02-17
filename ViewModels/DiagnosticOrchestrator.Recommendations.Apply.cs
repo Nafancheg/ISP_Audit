@@ -43,18 +43,111 @@ namespace IspAudit.ViewModels
         private const int PostApplyBaselineFreshnessTtlSecondsDefault = 60;
         private const int PostApplyBaselineSampleCountDefault = 3;
         private const int PostApplyBaselineProbeTimeoutSeconds = 3;
+        private static readonly TimeSpan BlacklistTtlMin = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan BlacklistTtlMax = TimeSpan.FromHours(6);
 
         private sealed record PendingFeedbackContext(
             BypassPlan Plan,
             DateTimeOffset AppliedAtUtc,
             string RunId,
             string ScopeKey,
+            string PlanSig,
+            string DeltaStep,
+            string ActionSource,
             DateTimeOffset BaselineCapturedAtUtc,
             int BaselineSuccessCount,
             int BaselineSampleCount);
 
         private readonly ConcurrentDictionary<string, PendingFeedbackContext> _pendingFeedbackByHostKey = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, string> _activePostApplyRunByScopeKey = new(StringComparer.OrdinalIgnoreCase);
+        private readonly object _blacklistSync = new();
+        private Dictionary<string, ApplyActionBlacklistStore.BlacklistEntry>? _blacklistByKey;
+
+        private Dictionary<string, ApplyActionBlacklistStore.BlacklistEntry> GetBlacklistSnapshot()
+        {
+            lock (_blacklistSync)
+            {
+                if (_blacklistByKey == null)
+                {
+                    _blacklistByKey = ApplyActionBlacklistStore.LoadByKeyBestEffort(Log);
+                }
+
+                return _blacklistByKey;
+            }
+        }
+
+        private static DateTimeOffset ParseUtcOrMin(string? value)
+            => DateTimeOffset.TryParse(value, out var dt) ? dt : DateTimeOffset.MinValue;
+
+        private bool IsBlacklisted(string scopeKey, string planSig, string deltaStep, string reason, out ApplyActionBlacklistStore.BlacklistEntry? entry)
+        {
+            entry = null;
+            var key = ApplyActionBlacklistStore.BuildKey(scopeKey, planSig, deltaStep, reason);
+            var now = DateTimeOffset.UtcNow;
+
+            lock (_blacklistSync)
+            {
+                var map = GetBlacklistSnapshot();
+                if (!map.TryGetValue(key, out var found) || found == null)
+                {
+                    return false;
+                }
+
+                var expiresAt = ParseUtcOrMin(found.ExpiresAtUtc);
+                if (expiresAt <= now)
+                {
+                    map.Remove(key);
+                    ApplyActionBlacklistStore.PersistByKeyBestEffort(map, Log);
+                    return false;
+                }
+
+                entry = found;
+                return true;
+            }
+        }
+
+        private void RecordBlacklistHit(string scopeKey, string planSig, string deltaStep, string reason, string source)
+        {
+            var key = ApplyActionBlacklistStore.BuildKey(scopeKey, planSig, deltaStep, reason);
+            var now = DateTimeOffset.UtcNow;
+
+            lock (_blacklistSync)
+            {
+                var map = GetBlacklistSnapshot();
+                if (map.TryGetValue(key, out var existing) && existing != null)
+                {
+                    var expiresAt = ParseUtcOrMin(existing.ExpiresAtUtc);
+                    var extension = BlacklistTtlMin;
+                    var candidate = expiresAt > now ? expiresAt + extension : now + extension;
+                    var capped = candidate > (now + BlacklistTtlMax) ? now + BlacklistTtlMax : candidate;
+
+                    map[key] = existing with
+                    {
+                        LastSeenUtc = now.ToString("O"),
+                        ExpiresAtUtc = capped.ToString("O"),
+                        HitCount = Math.Max(1, existing.HitCount) + 1
+                    };
+                }
+                else
+                {
+                    map[key] = new ApplyActionBlacklistStore.BlacklistEntry
+                    {
+                        Key = key,
+                        ScopeKey = scopeKey,
+                        PlanSig = planSig,
+                        DeltaStep = deltaStep,
+                        Reason = reason,
+                        Source = source,
+                        CreatedAtUtc = now.ToString("O"),
+                        LastSeenUtc = now.ToString("O"),
+                        ExpiresAtUtc = (now + BlacklistTtlMin).ToString("O"),
+                        HitCount = 1
+                    };
+                }
+
+                ApplyActionBlacklistStore.PersistByKeyBestEffort(map, Log);
+            }
+        }
 
         public bool TryGetPendingAppliedPlanForHostKey(string? hostKey, out BypassPlan? plan, out DateTimeOffset appliedAtUtc)
         {
@@ -335,8 +428,21 @@ namespace IspAudit.ViewModels
                 return null;
             }
 
+            var scopeKey = ResolveAutoApplyTargetHost(hostKey);
+            var planSig = BuildPlanSignature(escalationPlan);
+            if (IsBlacklisted(scopeKey, planSig, escalationReason, reason: "guardrail_regression", out var blEsc))
+            {
+                Log($"[APPLY][ESCALATE] Skip: blacklist_hit scope={scopeKey}; step={escalationReason}; planSig={planSig}; expiresAt={blEsc?.ExpiresAtUtc}");
+                return null;
+            }
+
             Log($"[APPLY][ESCALATE] host='{hostKey}'; step='{escalationReason}'");
-            return await ApplyPlanInternalAsync(bypassController, hostKey, escalationPlan).ConfigureAwait(false);
+            return await ApplyPlanInternalAsync(
+                bypassController,
+                hostKey,
+                escalationPlan,
+                deltaStep: escalationReason,
+                actionSource: "escalation").ConfigureAwait(false);
         }
 
         private static bool TryBuildEscalationPlan(BypassPlan basePlan, BypassController bypassController, out BypassPlan escalationPlan, out string reason)
@@ -458,7 +564,12 @@ namespace IspAudit.ViewModels
             }
         }
 
-        private async Task<ApplyOutcome?> ApplyPlanInternalAsync(BypassController bypassController, string hostKey, BypassPlan plan)
+        private async Task<ApplyOutcome?> ApplyPlanInternalAsync(
+            BypassController bypassController,
+            string hostKey,
+            BypassPlan plan,
+            string? deltaStep = null,
+            string? actionSource = null)
         {
             if (_noiseHostFilter.IsNoiseHost(hostKey))
             {
@@ -631,6 +742,9 @@ namespace IspAudit.ViewModels
                         DateTimeOffset.UtcNow,
                         applyRunId,
                         scopeKey,
+                        planSig,
+                        string.IsNullOrWhiteSpace(deltaStep) ? string.Empty : deltaStep.Trim(),
+                        string.IsNullOrWhiteSpace(actionSource) ? "manual_apply" : actionSource.Trim(),
                         baselineCapturedAtUtc,
                         Math.Max(0, baselineSuccessCount),
                         Math.Max(0, baselineSampleCount));
@@ -1358,6 +1472,16 @@ namespace IspAudit.ViewModels
                         }
                         else
                         {
+                            if (pendingBaseline != null)
+                            {
+                                RecordBlacklistHit(
+                                    pendingBaseline.ScopeKey,
+                                    pendingBaseline.PlanSig,
+                                    pendingBaseline.DeltaStep,
+                                    reason: "guardrail_regression",
+                                    source: pendingBaseline.ActionSource);
+                            }
+
                             try
                             {
                                 await bypassController.RollbackAutopilotOnlyAsync(ct).ConfigureAwait(false);

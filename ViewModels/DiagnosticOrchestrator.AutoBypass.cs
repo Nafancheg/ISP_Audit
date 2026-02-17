@@ -240,6 +240,12 @@ namespace IspAudit.ViewModels
             if (string.IsNullOrWhiteSpace(targetHost)) return;
 
             var planSig = BuildPlanSignature(autoPlan);
+            if (IsBlacklisted(targetHost, planSig, deltaStep: string.Empty, reason: "guardrail_regression", out var blAuto))
+            {
+                Log($"[AUTO_APPLY] Skip (blacklist_hit): target={targetHost}; sig={planSig}; expiresAt={blAuto?.ExpiresAtUtc}");
+                return;
+            }
+
             var planChanged = !_autoApplyLastPlanSignatureByTarget.TryGetValue(targetHost, out var lastSig)
                 || !string.Equals(lastSig, planSig, StringComparison.OrdinalIgnoreCase);
 
@@ -284,6 +290,12 @@ namespace IspAudit.ViewModels
                 planSig = effectiveSig;
                 plan = autoPlan;
 
+                if (IsBlacklisted(targetHost, planSig, deltaStep: string.Empty, reason: "guardrail_regression", out var blAutoRuntime))
+                {
+                    Log($"[AUTO_APPLY] Skip (blacklist_hit): target={targetHost}; sig={planSig}; expiresAt={blAutoRuntime?.ExpiresAtUtc}");
+                    return;
+                }
+
                 // Если пользователь уже вручную жмёт Apply, не мешаем.
                 if (IsApplyRunning)
                 {
@@ -318,7 +330,12 @@ namespace IspAudit.ViewModels
                 }
 
                 // Реальное применение.
-                var outcome = await ApplyPlanInternalAsync(bypassController, targetHost, plan).ConfigureAwait(false);
+                var outcome = await ApplyPlanInternalAsync(
+                    bypassController,
+                    targetHost,
+                    plan,
+                    deltaStep: string.Empty,
+                    actionSource: "auto_apply").ConfigureAwait(false);
                 if (outcome == null)
                 {
                     Log($"[AUTO_APPLY] Done: no-op/skip (outcome null): target={targetHost}");
