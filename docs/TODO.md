@@ -80,7 +80,7 @@
 - Risk: high
 - [x] Baseline до apply: `TcpOkBefore`, `successCountBefore`, `M` (+ RunId, capturedAtUtc)
 - [x] After retest: `TcpOkAfter`, `successCountAfter`, `M` (+ RunId)
-- [ ] Анти-флап: rollback/blacklist только по правилу 2/3 или K-of-M при `before>=1 && after==0`
+- [x] Анти-флап: rollback/blacklist только по правилу 2/3 или K-of-M при `before>=1 && after==0`
 - [x] Явно реализовать stop-list условий, когда rollback запрещён (`NoBaseline`, `NoBaselineFresh`, `InsufficientIps`, `Cancelled`, `ConcurrentApply`, `ApplyError/partial apply`)
 - [x] Baseline freshness TTL: если baseline устарел → `Unknown(NoBaselineFresh)`, guardrail не сравнивает
 - [x] ConcurrentApply: определять по активному RunId на scopeKey (детерминированно)
