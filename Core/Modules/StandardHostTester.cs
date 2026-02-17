@@ -40,6 +40,44 @@ namespace IspAudit.Core.Modules
         public async Task<HostTested> TestHostAsync(HostDiscovered host, CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();
+
+            // P0.V23.2: ProbeTimeoutBudget split.
+            // 1) Общий бюджет всего прогона хоста (run budget).
+            // 2) Отдельные бюджеты слоёв (DNS/TCP/TLS/HTTP/H3), которые дополнительно
+            //    ограничиваются оставшимся временем run budget.
+            var runBudget = TimeSpan.FromMilliseconds(Math.Clamp(_testTimeout.TotalMilliseconds * 2.8, 2500, 12000));
+            var dnsLayerBudget = TimeSpan.FromMilliseconds(Math.Clamp(_testTimeout.TotalMilliseconds * 0.70, 900, 4000));
+            var tcpLayerBudget = TimeSpan.FromMilliseconds(Math.Clamp(_testTimeout.TotalMilliseconds * 1.00, 1200, 5000));
+            var tlsLayerBudget = TimeSpan.FromMilliseconds(Math.Clamp(_testTimeout.TotalMilliseconds * 1.00, 1200, 5000));
+            var httpLayerBudget = TimeSpan.FromMilliseconds(Math.Clamp(_testTimeout.TotalMilliseconds * 0.80, 900, 4000));
+            var h3LayerBudget = TimeSpan.FromMilliseconds(Math.Clamp(_testTimeout.TotalMilliseconds * 0.70, 700, 3000));
+
+            using var runBudgetCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            runBudgetCts.CancelAfter(runBudget);
+            var runCt = runBudgetCts.Token;
+
+            TimeSpan FitToRunBudget(TimeSpan requested, TimeSpan floor)
+            {
+                var remaining = runBudget - sw.Elapsed;
+                if (remaining <= TimeSpan.Zero)
+                {
+                    return TimeSpan.FromMilliseconds(150);
+                }
+
+                var capped = requested <= remaining ? requested : remaining;
+                if (capped < floor)
+                {
+                    capped = floor <= remaining ? floor : remaining;
+                }
+
+                if (capped <= TimeSpan.Zero)
+                {
+                    return TimeSpan.FromMilliseconds(150);
+                }
+
+                return capped;
+            }
+
             bool dnsOk = true;
             bool tcpOk = false;
             bool tlsOk = false;
@@ -87,8 +125,8 @@ namespace IspAudit.Core.Modules
                 // ВАЖНО: reverse DNS не используем как "достоверное" имя для TLS/SNI.
                 try
                 {
-                    var rdnsTimeout = TimeSpan.FromMilliseconds(1500);
-                    reverseDnsHostname = await _probes.TryReverseDnsAsync(ipString, rdnsTimeout, ct).ConfigureAwait(false);
+                    var rdnsTimeout = FitToRunBudget(TimeSpan.FromMilliseconds(1500), TimeSpan.FromMilliseconds(300));
+                    reverseDnsHostname = await _probes.TryReverseDnsAsync(ipString, rdnsTimeout, runCt).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                 {
@@ -118,10 +156,9 @@ namespace IspAudit.Core.Modules
                 {
                     try
                     {
-                        var dnsTimeoutMs = (int)Math.Clamp(_testTimeout.TotalMilliseconds, 2000, 4000);
-                        var dnsTimeout = TimeSpan.FromMilliseconds(dnsTimeoutMs);
+                        var dnsTimeout = FitToRunBudget(dnsLayerBudget, TimeSpan.FromMilliseconds(500));
 
-                        var dnsCompleted = await _probes.CheckForwardDnsAsync(hostname, dnsTimeout, ct).ConfigureAwait(false);
+                        var dnsCompleted = await _probes.CheckForwardDnsAsync(hostname, dnsTimeout, runCt).ConfigureAwait(false);
                         if (!dnsCompleted)
                         {
                             dnsOk = false;
@@ -156,7 +193,8 @@ namespace IspAudit.Core.Modules
                 }
                 else
                 {
-                    var tcp = await _probes.ProbeTcpAsync(host.RemoteIp, host.RemotePort, _testTimeout, TcpMaxAttempts, ct).ConfigureAwait(false);
+                    var tcpTimeout = FitToRunBudget(tcpLayerBudget, TimeSpan.FromMilliseconds(600));
+                    var tcp = await _probes.ProbeTcpAsync(host.RemoteIp, host.RemotePort, tcpTimeout, TcpMaxAttempts, runCt).ConfigureAwait(false);
                     tcpOk = tcp.Ok;
                     if (tcpOk)
                     {
@@ -175,10 +213,10 @@ namespace IspAudit.Core.Modules
                             host.RemoteIp,
                             host.RemotePort,
                             hostname,
-                            _testTimeout,
+                            FitToRunBudget(tlsLayerBudget, TimeSpan.FromMilliseconds(600)),
                             TlsMaxAttempts,
                             _remoteCertificateValidationCallback,
-                            ct).ConfigureAwait(false);
+                            runCt).ConfigureAwait(false);
 
                         tlsOk = tls.Ok;
                         blockageType ??= tls.BlockageType;
@@ -211,10 +249,9 @@ namespace IspAudit.Core.Modules
 
                 if (shouldProbeHttpWebLike)
                 {
-                    var httpTimeoutMs = (int)Math.Clamp(_testTimeout.TotalMilliseconds, 900, 2500);
-                    var httpTimeout = TimeSpan.FromMilliseconds(httpTimeoutMs);
+                    var httpTimeout = FitToRunBudget(httpLayerBudget, TimeSpan.FromMilliseconds(600));
 
-                    var http = await _probes.ProbeHttpAsync(hostname!, httpTimeout, ct).ConfigureAwait(false);
+                    var http = await _probes.ProbeHttpAsync(hostname!, httpTimeout, runCt).ConfigureAwait(false);
                     httpOk = http.Ok;
 
                     if (!http.Ok)
@@ -225,10 +262,9 @@ namespace IspAudit.Core.Modules
 
                 if (!isUdpObserveOnly && host.RemotePort == 443 && !string.IsNullOrEmpty(hostname) && hostnameFromCacheOrInput)
                 {
-                    var h3TimeoutMs = (int)Math.Clamp(_testTimeout.TotalMilliseconds, 700, 2000);
-                    var h3Timeout = TimeSpan.FromMilliseconds(h3TimeoutMs);
+                    var h3Timeout = FitToRunBudget(h3LayerBudget, TimeSpan.FromMilliseconds(500));
 
-                    var h3 = await _probes.ProbeHttp3Async(hostname, h3Timeout, ct).ConfigureAwait(false);
+                    var h3 = await _probes.ProbeHttp3Async(hostname, h3Timeout, runCt).ConfigureAwait(false);
                     http3Ok = h3.Ok;
                     http3Status = h3.Status;
                     http3LatencyMs = h3.LatencyMs;

@@ -164,6 +164,7 @@ Wizard из 5 шагов: выбор приложения → источник �
     - `tcp-only`: `DNS(if hostname) → TCP`,
     - `udp-observe`: `DNS(if hostname) → observe-only` (без активного TCP/TLS probe),
     - `target=IP`: `DnsStatus = N/A` (не трактуется как `FAIL(DNS)`).
+- В `StandardHostTester` добавлен явный split таймаутов (`ProbeTimeoutBudget split`): общий `run budget` для всего прогона хоста + отдельные `per-layer budgets` (DNS/TCP/TLS/HTTP/H3), каждый слой дополнительно ограничивается оставшимся временем run budget.
 - `HostTested` (pipeline contract) расширен полями `VerdictStatus/UnknownReason` для symptom-policy v2.3: healthcheck возвращает структурированный итог `Ok/Fail/Unknown` и причину `Unknown` (например `Cancelled`, `ProbeTimeoutBudget`, `InsufficientDns`) без ломки legacy bool/строк полей.
 - `AutoHostlistService` — кандидаты из `InspectionSignalsSnapshot`.
 - UX-гейт: `OnPlanBuilt` публикуется для `FilterAction.Process` и `LogOnly`.

@@ -61,7 +61,7 @@
 - [x] Канон tcp-only: DNS (if hostname) → TCP
 - [x] Канон udp-observe: DNS (if hostname) → observe-only (без ложного FAIL по активному UDP, если probe нет)
 - [x] Исключение target=IP: `DnsOk=N/A`, без `FAIL(DNS)`
-- [ ] Встроить ProbeTimeoutBudget split: run budget + per-layer budget (чтобы дебаг был однозначный)
+- [x] Встроить ProbeTimeoutBudget split: run budget + per-layer budget (чтобы дебаг был однозначный)
 
 #### P0.V23.3 HttpRedirect: RedirectNormal vs RedirectSuspicious (HC anomaly channel)
 

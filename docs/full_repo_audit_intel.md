@@ -224,6 +224,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Канон `tcp-only`: для не-443 проверка ограничена `DNS(if hostname)→TCP` (TLS не является обязательным слоем).
 - Канон `udp-observe`: для UDP-целей активные TCP/TLS/H3 пробы не выполняются (observe-only), чтобы исключить ложные FAIL.
 - Для `target=IP` зафиксирован `DnsStatus=N/A`; в `SignalsAdapter` `N/A` не считается DNS-failure.
+- В `StandardHostTester` внедрён `ProbeTimeoutBudget split`: общий `run budget` + `per-layer budgets` (DNS/TCP/TLS/HTTP/H3) с ограничением по оставшемуся времени run budget, чтобы таймауты слоёв были детерминированы и отлаживаемы.
 
 Актуализация (Runtime, 16.02.2026): structured health verdict в pipeline contract
 - `Core/Models/HostTested` расширен полями `VerdictStatus/UnknownReason` (формат `Ok/Fail/Unknown` + причина unknown).
