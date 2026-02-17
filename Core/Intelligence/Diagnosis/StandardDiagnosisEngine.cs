@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Net;
 using IspAudit.Core.Intelligence.Contracts;
 using IspAudit.Utils;
 
@@ -229,12 +231,49 @@ public sealed class StandardDiagnosisEngine
         {
             var redirectHost = string.IsNullOrWhiteSpace(signals.RedirectToHost) ? null : signals.RedirectToHost;
             var isLikelyBlockpage = BlockpageHostCatalog.IsLikelyProviderBlockpageHost(redirectHost);
+            var sourceHost = TryExtractHostFromHostKey(signals.HostKey);
+
+            var suspiciousFlags = new List<string>();
+            if (isLikelyBlockpage)
+            {
+                suspiciousFlags.Add("blockpage-host");
+            }
+
+            if (IsLiteralIpOrPrivateNetworkHost(redirectHost))
+            {
+                suspiciousFlags.Add("literal-ip-or-private");
+            }
+
+            if (IsLocalHost(redirectHost))
+            {
+                suspiciousFlags.Add("local-host");
+            }
+
+            if (IsEtldPlusOneChanged(sourceHost, redirectHost))
+            {
+                suspiciousFlags.Add("etld-plus-one-changed");
+            }
+
+            var redirectClass = suspiciousFlags.Count > 0 ? "suspicious" : "normal";
+            evidence["redirectClass"] = redirectClass;
+            if (!string.IsNullOrWhiteSpace(sourceHost))
+            {
+                evidence["sourceHost"] = sourceHost!;
+            }
+            if (suspiciousFlags.Count > 0)
+            {
+                evidence["redirectSuspiciousFlags"] = string.Join(',', suspiciousFlags);
+            }
+
+            notes.Add(redirectClass == "suspicious"
+                ? $"HTTP: redirect suspicious ({string.Join(", ", suspiciousFlags)})"
+                : "HTTP: redirect observed (normal anomaly, no hard suspicious flags)");
 
             return new DiagnosisResult
             {
                 DiagnosisId = DiagnosisId.HttpRedirect,
-                Confidence = isLikelyBlockpage ? 80 : 65,
-                MatchedRuleName = "http-redirect",
+                Confidence = redirectClass == "suspicious" ? (isLikelyBlockpage ? 80 : 70) : 45,
+                MatchedRuleName = redirectClass == "suspicious" ? "http-redirect-suspicious" : "http-redirect-normal",
                 ExplanationNotes = notes,
                 Evidence = evidence,
                 InputSignals = signals,
@@ -433,6 +472,118 @@ public sealed class StandardDiagnosisEngine
             InputSignals = signals,
             DiagnosedAtUtc = DateTimeOffset.UtcNow
         };
+    }
+
+    private static string? TryExtractHostFromHostKey(string? hostKey)
+    {
+        if (string.IsNullOrWhiteSpace(hostKey))
+        {
+            return null;
+        }
+
+        var key = hostKey.Trim();
+        var idx = key.IndexOf(':');
+        var host = idx > 0 ? key[..idx] : key;
+        host = NormalizeHost(host) ?? host;
+
+        return string.IsNullOrWhiteSpace(host) || IPAddress.TryParse(host, out _) ? null : host;
+    }
+
+    private static bool IsLiteralIpOrPrivateNetworkHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return false;
+        }
+
+        var normalized = NormalizeHost(host);
+        if (normalized is null || !IPAddress.TryParse(normalized, out var ip))
+        {
+            return false;
+        }
+
+        if (IPAddress.IsLoopback(ip))
+        {
+            return true;
+        }
+
+        if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            var bytes = ip.GetAddressBytes();
+            // RFC1918: 10/8, 172.16/12, 192.168/16.
+            if (bytes[0] == 10)
+            {
+                return true;
+            }
+
+            if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
+            {
+                return true;
+            }
+
+            if (bytes[0] == 192 && bytes[1] == 168)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsLocalHost(string? host)
+    {
+        var normalized = NormalizeHost(host);
+        return normalized is not null
+            && (normalized.EndsWith(".local", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "localhost", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsEtldPlusOneChanged(string? sourceHost, string? redirectHost)
+    {
+        var src = GetEtldPlusOne(sourceHost);
+        var dst = GetEtldPlusOne(redirectHost);
+        return src is not null && dst is not null && !string.Equals(src, dst, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? GetEtldPlusOne(string? host)
+    {
+        var normalized = NormalizeHost(host);
+        if (string.IsNullOrWhiteSpace(normalized) || IPAddress.TryParse(normalized, out _))
+        {
+            return null;
+        }
+
+        var parts = normalized.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length < 2)
+        {
+            return null;
+        }
+
+        return $"{parts[^2]}.{parts[^1]}";
+    }
+
+    private static string? NormalizeHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return null;
+        }
+
+        var trimmed = host.Trim().TrimEnd('.').ToLowerInvariant();
+        if (trimmed.Length == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var idn = new IdnMapping();
+            return idn.GetAscii(trimmed);
+        }
+        catch
+        {
+            return trimmed;
+        }
     }
 
     private static bool IsLikelyProviderBlockpageHost(string? host)

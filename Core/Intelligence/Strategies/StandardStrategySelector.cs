@@ -60,6 +60,20 @@ public sealed class StandardStrategySelector
             return CreateEmptyPlan(diagnosis.DiagnosisId, confidence, "confidence < 50");
         }
 
+        // P0.V23.3: HttpRedirect остаётся HC anomaly channel.
+        // Для normal-redirect (без жёстких suspicious признаков) обход не предлагаем.
+        if (diagnosis.DiagnosisId == DiagnosisId.HttpRedirect)
+        {
+            var isSuspiciousRedirect = diagnosis.Evidence != null
+                && diagnosis.Evidence.TryGetValue("redirectClass", out var redirectClass)
+                && string.Equals(redirectClass, "suspicious", StringComparison.OrdinalIgnoreCase);
+
+            if (!isSuspiciousRedirect)
+            {
+                return CreateEmptyPlan(diagnosis.DiagnosisId, confidence, "http-redirect anomaly-only (normal redirect)");
+            }
+        }
+
         var candidates = BuildCandidates(diagnosis.DiagnosisId);
 
         var filtered = new List<BypassStrategy>(capacity: candidates.Count);

@@ -226,6 +226,10 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Для `target=IP` зафиксирован `DnsStatus=N/A`; в `SignalsAdapter` `N/A` не считается DNS-failure.
 - В `StandardHostTester` внедрён `ProbeTimeoutBudget split`: общий `run budget` + `per-layer budgets` (DNS/TCP/TLS/HTTP/H3) с ограничением по оставшемуся времени run budget, чтобы таймауты слоёв были детерминированы и отлаживаемы.
 
+Актуализация (Runtime, 17.02.2026): P0.V23.3 HttpRedirect как anomaly-only канал
+- `DiagnosisId.HttpRedirect` оставлен как HC anomaly channel: при `redirectClass=normal` селектор возвращает пустой план (без symptom-блокировки/эскалации по умолчанию).
+- В diagnosis добавлена классификация redirect `suspicious/normal` по жёстким признакам (blockpage-host, literal/private IP, `.local`, eTLD+1 change best-effort).
+
 Актуализация (Runtime, 16.02.2026): structured health verdict в pipeline contract
 - `Core/Models/HostTested` расширен полями `VerdictStatus/UnknownReason` (формат `Ok/Fail/Unknown` + причина unknown).
 - `StandardHostTester` заполняет поля детерминированно; базовые причины unknown: `Cancelled`, `ProbeTimeoutBudget`, `InsufficientDns`.
