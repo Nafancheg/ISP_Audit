@@ -59,6 +59,7 @@ namespace IspAudit.Core.Modules
             try
             {
                 var hostnameFromCacheOrInput = false;
+                var dnsNotApplicableForIpTarget = false;
 
                 var ipString = host.RemoteIp.ToString();
 
@@ -102,6 +103,14 @@ namespace IspAudit.Core.Modules
                     hostname = reverseDnsHostname;
                 }
 
+                // Для target=IP (без исходного hostname/SNI) forward DNS неприменим.
+                // Фиксируем это явно, чтобы не выглядело как DNS=OK/FAIL.
+                if (!hostnameFromCacheOrInput)
+                {
+                    dnsNotApplicableForIpTarget = true;
+                    dnsStatus = "N/A";
+                }
+
                 // 1.1 Проверка Forward DNS (если есть hostname) - реальная проверка на DNS блокировку
                 if (!string.IsNullOrEmpty(hostname) && hostnameFromCacheOrInput)
                 {
@@ -128,6 +137,11 @@ namespace IspAudit.Core.Modules
                         dnsOk = false;
                         dnsStatus = BlockageCode.DnsError;
                     }
+                }
+
+                if (dnsNotApplicableForIpTarget)
+                {
+                    dnsOk = true;
                 }
 
                 // 2. TCP connect (ретраи в рамках общего таймаута)
