@@ -45,8 +45,8 @@
 - Прогресс 16.02.2026 (итерация 7): расширен healthcheck-контракт `HostTested` полями `VerdictStatus/UnknownReason`; `StandardHostTester` заполняет их детерминированно (`Ok/Fail/Unknown`, причины `Cancelled/ProbeTimeoutBudget/InsufficientDns`), INTEL host-meta прокидывает эти поля в сигналы.
 - Прогресс 16.02.2026 (итерация 8): `SignalsAdapter` агрегирует `HostVerdictUnknownCount/LastUnknownReason` в `BlockageSignals`, а `StandardDiagnosisEngine` применяет `Unknown-first guard` (rule `health-unknown`) при отсутствии конкретных блокировочных фактов — `Unknown` больше не деградирует в `NoBlockage`.
 - Прогресс 16.02.2026 (итерация 9): UI-проекция `intel:Unknown` скорректирована — `UnifiedTrafficFilter` не отправляет такие случаи в `LogOnly/OK`, а `PipelineMessageParser` трактует их как `Warn` (не `Fail`) с явным сообщением «недостаточно данных».
-- [ ] Ввести `VerdictStatus` и `UnknownReason` в результатах healthcheck/post-apply
-- [ ] Запретить fallback в S0 при недостатке данных (`Unknown != S0`)
+- [x] Ввести `VerdictStatus` и `UnknownReason` в результатах healthcheck/post-apply
+- [x] Запретить fallback в S0 при недостатке данных (`Unknown != S0`)
 - [ ] Зафиксировать детерминированный приоритет `UnknownReason`, если причин несколько
 - [ ] `UnknownReason: NoBaselineFresh` как отдельный код (baseline истёк)
 
