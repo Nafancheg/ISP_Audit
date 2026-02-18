@@ -236,7 +236,7 @@ Wizard из 5 шагов: выбор приложения → источник �
 | 4 | `ISP_AUDIT_POLICY_DRIVEN_TCP443` | TCP/443 TLS ClientHello |
 
 **ClassicMode gate**:
-- `ISP_AUDIT_CLASSIC_MODE=1` переводит runtime reactive-мутации в observe-only в пределах текущего run (сейчас: `ReactiveTargetSync` и auto-retest от bypass-тумблеров), при этом ручные `apply/escalate/rollback` остаются доступны.
+- `ISP_AUDIT_CLASSIC_MODE=1` переводит runtime reactive-мутации в observe-only в пределах текущего run (сейчас: `ReactiveTargetSync`, auto-retest от bypass-тумблеров и auto-adjust `TlsBypassService` — `AutoAdjustAggressive/AutoTTL`), при этом ручные `apply/escalate/rollback` остаются доступны.
 
 **Semantic Groups**: `Core/Models/SemanticGroup.cs`, `Core/Bypass/SemanticGroupEvaluator.cs` — статус `NO_TRAFFIC / PARTIAL / ENABLED` по per-policy метрикам.
 

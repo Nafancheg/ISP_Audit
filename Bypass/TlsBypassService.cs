@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using IspAudit.Core.Traffic;
 using IspAudit.Core.Traffic.Filters;
 using IspAudit.Core.Models;
+using IspAudit.Utils;
 
 using Timer = System.Timers.Timer;
 
@@ -24,6 +25,7 @@ namespace IspAudit.Bypass
         private readonly Action<string>? _log;
         private readonly Func<DateTime> _now;
         private readonly bool _useTrafficEngine;
+        private readonly bool _classicModeObserveOnly;
         private readonly object _sync = new();
         private readonly Timer _metricsTimer;
 
@@ -75,11 +77,17 @@ namespace IspAudit.Bypass
             _baseProfile = baseProfile;
             _log = log;
             _useTrafficEngine = useTrafficEngine;
+            _classicModeObserveOnly = EnvVar.ReadBool(EnvKeys.ClassicMode, defaultValue: false);
             _now = nowProvider ?? (() => DateTime.Now);
             _options = TlsBypassOptions.CreateDefault(_baseProfile);
             _presets = BuildPresets(_baseProfile);
             _autoAdjust = new AggressiveAutoAdjustStrategy(_now);
             _autoTtl = new AutoTtlAdjustStrategy(_log, _now);
+
+            if (_classicModeObserveOnly)
+            {
+                _log?.Invoke($"[Bypass] ClassicMode active ({EnvKeys.ClassicMode}=1): auto-adjust mutations are observe-only for current run.");
+            }
 
             _metricsTimer = new Timer
             {

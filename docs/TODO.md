@@ -114,6 +114,7 @@
 
 - Depends: P0.V23.2, P0.V23.4
 - Risk: medium
+- [x] Прогресс 18.02.2026 (итерация 2): в `ISP_AUDIT_CLASSIC_MODE` добавлен observe-only для auto-adjust `TlsBypassService` (`AutoAdjustAggressive/AutoTTL`) — метрики/вердикты продолжают считаться, но авто-мутации опций не применяются внутри run.
 - [x] Прогресс 18.02.2026 (итерация 1): введён `ISP_AUDIT_CLASSIC_MODE`; в ClassicMode включён observe-only для `ReactiveTargetSync` и отключён auto-retest от bypass-тумблеров (`EnableAutoRetestOnBypassChange=false`), при этом ручные `apply/escalate/rollback` не ограничиваются.
 - [x] Ввести `ISP_AUDIT_CLASSIC_MODE` и документировать семантику
 - [ ] Observe-only для реактивных мутаций within-run (auto-retest toggles, reactive target sync, auto-adjust, auto-add targets)

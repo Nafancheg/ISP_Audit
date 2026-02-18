@@ -82,18 +82,21 @@ namespace IspAudit.Bypass
 
                 var verdict = CalculateVerdict(metrics, options);
 
-                var adjustedSizes = _autoAdjust.TryAdjust(options, metrics, verdict);
-                if (adjustedSizes != null)
+                if (!_classicModeObserveOnly)
                 {
-                    await ApplyAsync(options with { FragmentSizes = adjustedSizes }, CancellationToken.None).ConfigureAwait(false);
-                    return;
-                }
+                    var adjustedSizes = _autoAdjust.TryAdjust(options, metrics, verdict);
+                    if (adjustedSizes != null)
+                    {
+                        await ApplyAsync(options with { FragmentSizes = adjustedSizes }, CancellationToken.None).ConfigureAwait(false);
+                        return;
+                    }
 
-                var adjustedOptions = _autoTtl.TryAdjust(options, metrics, verdict);
-                if (adjustedOptions != null)
-                {
-                    await ApplyAsync(adjustedOptions, CancellationToken.None).ConfigureAwait(false);
-                    return;
+                    var adjustedOptions = _autoTtl.TryAdjust(options, metrics, verdict);
+                    if (adjustedOptions != null)
+                    {
+                        await ApplyAsync(adjustedOptions, CancellationToken.None).ConfigureAwait(false);
+                        return;
+                    }
                 }
 
                 MetricsUpdated?.Invoke(metrics);
@@ -375,6 +378,11 @@ namespace IspAudit.Bypass
         /// </summary>
         internal async Task<bool> TryAutoAdjustOnceForSmoke(TlsBypassMetrics metrics, TlsBypassVerdict? verdictOverride = null)
         {
+            if (_classicModeObserveOnly)
+            {
+                return false;
+            }
+
             TlsBypassOptions options;
             lock (_sync)
             {
