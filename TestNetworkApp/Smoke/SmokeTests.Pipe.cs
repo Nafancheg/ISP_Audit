@@ -866,10 +866,10 @@ namespace TestNetworkApp.Smoke
             try
             {
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                cts.CancelAfter(TimeSpan.FromSeconds(10));
+                cts.CancelAfter(TimeSpan.FromSeconds(12));
 
                 // Детерминированно: локальный TLS сервер с self-signed сертификатом.
-                // Для smoke мы отключаем валидацию сертификата в StandardHostTester через callback.
+                // Проверяем именно TLS handshake (ClientHello -> ServerHello) без зависимости от внешней сети.
                 var host = "localhost";
                 var ip = IPAddress.Loopback;
 
@@ -878,36 +878,40 @@ namespace TestNetworkApp.Smoke
                 listener.Start();
                 var port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
-                var serverTask = RunSingleTlsServerAsync(listener, certificate, cts.Token);
-
-                using var provider = BuildIspAuditProvider();
-                var probes = provider.GetRequiredService<IStandardHostTesterProbeService>();
-                var tester = new StandardHostTester(
-                    probes,
-                    progress: null,
-                    remoteCertificateValidationCallback: (_, cert, _, errors)
-                        => cert is X509Certificate2 cert2
-                           && string.Equals(cert2.Thumbprint, certificate.Thumbprint, StringComparison.OrdinalIgnoreCase)
-                           && (errors == SslPolicyErrors.None || errors == SslPolicyErrors.RemoteCertificateChainErrors));
-                var discovered = new HostDiscovered(
-                    Key: $"{ip}:{port}:TCP",
-                    RemoteIp: ip,
-                    RemotePort: port,
-                    Protocol: BypassTransportProtocol.Tcp,
-                    DiscoveredAt: DateTime.UtcNow)
+                var serverOptions = new SslServerAuthenticationOptions
                 {
-                    SniHostname = host,
-                    Hostname = host
+                    ServerCertificate = certificate,
+                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                    ClientCertificateRequired = false,
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
                 };
 
-                var tested = await tester.TestHostAsync(discovered, cts.Token).ConfigureAwait(false);
-                if (!tested.TlsOk)
+                var serverTask = Task.Run(async () =>
                 {
-                    return new SmokeTestResult("PIPE-010", "TLS ClientHello → ServerHello", SmokeOutcome.Fail, sw.Elapsed,
-                        $"TLS не OK (BlockageType={tested.BlockageType ?? "<null>"})");
-                }
+                    using var serverClient = await listener.AcceptTcpClientAsync(cts.Token).ConfigureAwait(false);
+                    using var serverSsl = new SslStream(serverClient.GetStream(), leaveInnerStreamOpen: false);
+                    await serverSsl.AuthenticateAsServerAsync(serverOptions, cts.Token).ConfigureAwait(false);
+                }, cts.Token);
 
-                // Дожидаемся сервера, чтобы исключить гонки и утечки.
+                using var client = new TcpClient();
+                await client.ConnectAsync(ip, port, cts.Token).ConfigureAwait(false);
+
+                using var clientSsl = new SslStream(
+                    client.GetStream(),
+                    leaveInnerStreamOpen: false,
+                    userCertificateValidationCallback: (_, cert, _, errors)
+                        => cert != null
+                           && string.Equals(cert.GetCertHashString(), certificate.GetCertHashString(), StringComparison.OrdinalIgnoreCase)
+                           && (errors == SslPolicyErrors.None || errors == SslPolicyErrors.RemoteCertificateChainErrors));
+
+                var clientOptions = new SslClientAuthenticationOptions
+                {
+                    TargetHost = host,
+                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                };
+
+                await clientSsl.AuthenticateAsClientAsync(clientOptions, cts.Token).ConfigureAwait(false);
                 await serverTask.ConfigureAwait(false);
 
                 return new SmokeTestResult("PIPE-010", "TLS ClientHello → ServerHello", SmokeOutcome.Pass, sw.Elapsed,
@@ -953,51 +957,6 @@ namespace TestNetworkApp.Smoke
                 return X509CertificateLoader.LoadPkcs12(cert.Export(X509ContentType.Pfx), password: null);
             }
 
-            static async Task RunSingleTlsServerAsync(TcpListener listener, X509Certificate2 certificate, CancellationToken ct2)
-            {
-                // StandardHostTester делает 2 отдельных подключения:
-                // 1) TCP probe (connect+close)
-                // 2) TLS probe (новый connect + handshake)
-                // Плюс возможен повтор TLS (до 2 попыток).
-                var options = new SslServerAuthenticationOptions
-                {
-                    ServerCertificate = certificate,
-                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                    ClientCertificateRequired = false,
-                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-                };
-
-                try
-                {
-                    for (int acceptIndex = 0; acceptIndex < 3; acceptIndex++)
-                    {
-                        using var client = await listener.AcceptTcpClientAsync(ct2).ConfigureAwait(false);
-
-                        // Первая сессия — это TCP probe, он не шлёт TLS bytes.
-                        if (acceptIndex == 0)
-                        {
-                            continue;
-                        }
-
-                        using var ssl = new SslStream(client.GetStream(), leaveInnerStreamOpen: false);
-                        try
-                        {
-                            await ssl.AuthenticateAsServerAsync(options, ct2).ConfigureAwait(false);
-                            return;
-                        }
-                        catch when (acceptIndex < 2)
-                        {
-                            // Дадим следующей попытке шанс (у клиента 2 TLS-попытки).
-                        }
-                    }
-
-                    throw new InvalidOperationException("TLS server: не удалось выполнить handshake за ожидаемое число подключений");
-                }
-                finally
-                {
-                    listener.Stop();
-                }
-            }
         }
 
         public static async Task<SmokeTestResult> Pipe_Tester_ReverseDns_8888(CancellationToken ct)

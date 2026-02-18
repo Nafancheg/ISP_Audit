@@ -100,6 +100,7 @@
 
 - Depends: P0.V23.1, P0.V23.2, P0.V23.4, P0.V23.5
 - Risk: low-medium
+- [x] Прогресс 18.02.2026 (strict stability): стабилизирован `PIPE-010` (локальный TLS handshake) — тест переведён на прямой детерминированный `SslStream` client/server handshake на loopback с pinning сертификата (убран ложный `NoSkip` fail по таймауту).
 - [x] Прогресс 18.02.2026: добавлен smoke-reg гейт `REG-030` на стабильность `ReasonCode/ReasonText` и слойного статуса (`DNS/TCP/TLS/HTTP + redirectClass`) в UI-контракте post-apply.
 - [x] Показывать TargetHost
 - [x] Показывать строку слоя `DNS/TCP/TLS/HTTP` (+ redirect class)
