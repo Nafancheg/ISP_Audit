@@ -78,7 +78,7 @@
 
 - `ISP_AUDIT_CLASSIC_MODE`
   - Назначение: ClassicMode (freeze mutation within-run).
-  - Семантика: при `1` реактивные мутации в текущем run переводятся в observe-only (сейчас: `ReactiveTargetSync`, авто-ретест от bypass-тумблеров и auto-adjust `TlsBypassService` — `AutoAdjustAggressive/AutoTTL`), но ручные операции `apply/escalate/rollback` остаются разрешены.
+  - Семантика: при `1` реактивные мутации в текущем run переводятся в observe-only (сейчас: `ReactiveTargetSync`, авто-ретест от bypass-тумблеров, auto-adjust `TlsBypassService` — `AutoAdjustAggressive/AutoTTL`, и runtime auto-add targets для селективного QUIC→TCP), но ручные операции `apply/escalate/rollback` остаются разрешены.
   - По умолчанию: `0`.
 
 - `ISP_AUDIT_RETEST_DEBOUNCE_MS`

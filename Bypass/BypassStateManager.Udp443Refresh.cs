@@ -38,6 +38,11 @@ namespace IspAudit.Bypass
         {
             try
             {
+                if (_classicModeObserveOnly)
+                {
+                    return default;
+                }
+
                 hostKey = (hostKey ?? string.Empty).Trim();
                 if (string.IsNullOrWhiteSpace(hostKey)) return default;
                 if (ip == null) return default;

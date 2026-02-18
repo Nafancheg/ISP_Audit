@@ -10,6 +10,7 @@ using IspAudit.Core.Bypass;
 using IspAudit.Core.Models;
 using IspAudit.Core.Traffic;
 using IspAudit.Core.RuntimeAdaptation;
+using IspAudit.Utils;
 
 namespace IspAudit.Bypass
 {
@@ -231,6 +232,7 @@ namespace IspAudit.Bypass
         private readonly TrafficEngine _trafficEngine;
         private readonly TlsBypassService _tlsService;
         private readonly Action<string>? _log;
+        private readonly bool _classicModeObserveOnly;
         private readonly SemaphoreSlim _applyGate = new(1, 1);
 
         // P1.12: пользовательские политики (CRUD в settings). Держим как массив-снимок,
@@ -301,6 +303,7 @@ namespace IspAudit.Bypass
             _trafficEngine = trafficEngine;
             BaseProfile = baseProfile;
             _log = log;
+            _classicModeObserveOnly = EnvVar.ReadBool(EnvKeys.ClassicMode, defaultValue: false);
 
             _journal = new BypassSessionJournal(BypassSessionJournal.GetDefaultPath(), _log);
 
@@ -330,6 +333,11 @@ namespace IspAudit.Bypass
             // Включаем guard: все последующие вызовы к TrafficEngine/TlsBypassService,
             // сделанные не из менеджера, будут логироваться как ошибка.
             BypassStateManagerGuard.EnforceManagerUsage = true;
+
+            if (_classicModeObserveOnly)
+            {
+                _log?.Invoke($"[Bypass] ClassicMode active ({EnvKeys.ClassicMode}=1): runtime auto-add targets is observe-only for current run.");
+            }
         }
 
         private BypassStateManager(TrafficEngine trafficEngine, TlsBypassService tlsService, BypassProfile baseProfile, Action<string>? log)
@@ -338,6 +346,7 @@ namespace IspAudit.Bypass
             _tlsService = tlsService;
             BaseProfile = baseProfile;
             _log = log;
+            _classicModeObserveOnly = EnvVar.ReadBool(EnvKeys.ClassicMode, defaultValue: false);
 
             _journal = new BypassSessionJournal(BypassSessionJournal.GetDefaultPath(), _log);
 
@@ -358,6 +367,11 @@ namespace IspAudit.Bypass
             ReactiveTargetSync = new ReactiveTargetSyncService(this, _log);
 
             BypassStateManagerGuard.EnforceManagerUsage = true;
+
+            if (_classicModeObserveOnly)
+            {
+                _log?.Invoke($"[Bypass] ClassicMode active ({EnvKeys.ClassicMode}=1): runtime auto-add targets is observe-only for current run.");
+            }
         }
 
         public TlsBypassOptions GetOptionsSnapshot() => _tlsService.GetOptionsSnapshot();
