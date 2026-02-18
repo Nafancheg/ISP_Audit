@@ -409,6 +409,165 @@ namespace TestNetworkApp.Smoke
                 }
             }, ct);
 
+        public static Task<SmokeTestResult> REG_UiReasonContract_ReasonCodeReasonText_AreStable(CancellationToken ct)
+            => RunAsync("REG-030", "REG: UI reason-контракт (ReasonCode/ReasonText + слойный статус) стабилен", () =>
+            {
+                try
+                {
+                    var mapReasonCode = typeof(MainViewModel).GetMethod(
+                        "MapReasonCode",
+                        BindingFlags.Static | BindingFlags.NonPublic);
+
+                    var mapReasonText = typeof(MainViewModel).GetMethod(
+                        "MapReasonText",
+                        BindingFlags.Static | BindingFlags.NonPublic);
+
+                    var buildLayerStatusLine = typeof(MainViewModel).GetMethod(
+                        "BuildLayerStatusLine",
+                        BindingFlags.Static | BindingFlags.NonPublic);
+
+                    if (mapReasonCode == null || mapReasonText == null || buildLayerStatusLine == null)
+                    {
+                        return new SmokeTestResult(
+                            "REG-030",
+                            "REG: UI reason-контракт (ReasonCode/ReasonText + слойный статус) стабилен",
+                            SmokeOutcome.Fail,
+                            TimeSpan.Zero,
+                            "Не найдены приватные методы контракта (MapReasonCode/MapReasonText/BuildLayerStatusLine)");
+                    }
+
+                    string InvokeCode(IspAudit.Models.PostApplyVerdictContract contract, string details)
+                        => (string)(mapReasonCode.Invoke(null, new object?[] { contract, details }) ?? string.Empty);
+
+                    string InvokeText(string code)
+                        => (string)(mapReasonText.Invoke(null, new object?[] { code }) ?? string.Empty);
+
+                    string InvokeLayer(string rowDetails, string postApplyDetails)
+                        => (string)(buildLayerStatusLine.Invoke(null, new object?[] { rowDetails, postApplyDetails }) ?? string.Empty);
+
+                    var okCode = InvokeCode(
+                        new IspAudit.Models.PostApplyVerdictContract
+                        {
+                            Status = IspAudit.Models.VerdictStatus.Ok,
+                            UnknownReason = IspAudit.Models.UnknownReason.None,
+                            VerdictCode = "OK"
+                        },
+                        details: string.Empty);
+
+                    if (!string.Equals(okCode, "POST_APPLY_OK", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult(
+                            "REG-030",
+                            "REG: UI reason-контракт (ReasonCode/ReasonText + слойный статус) стабилен",
+                            SmokeOutcome.Fail,
+                            TimeSpan.Zero,
+                            $"Ожидали POST_APPLY_OK, получили '{okCode}'");
+                    }
+
+                    var unknownIpsCode = InvokeCode(
+                        new IspAudit.Models.PostApplyVerdictContract
+                        {
+                            Status = IspAudit.Models.VerdictStatus.Unknown,
+                            UnknownReason = IspAudit.Models.UnknownReason.InsufficientIps,
+                            VerdictCode = "INSUFFICIENTIPS"
+                        },
+                        details: "reason=InsufficientIps; no_targets_resolved");
+
+                    if (!string.Equals(unknownIpsCode, "UNKNOWN_INSUFFICIENT_IPS", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult(
+                            "REG-030",
+                            "REG: UI reason-контракт (ReasonCode/ReasonText + слойный статус) стабилен",
+                            SmokeOutcome.Fail,
+                            TimeSpan.Zero,
+                            $"Ожидали UNKNOWN_INSUFFICIENT_IPS, получили '{unknownIpsCode}'");
+                    }
+
+                    var rollbackSkippedCode = InvokeCode(
+                        new IspAudit.Models.PostApplyVerdictContract
+                        {
+                            Status = IspAudit.Models.VerdictStatus.Unknown,
+                            UnknownReason = IspAudit.Models.UnknownReason.NoBaselineFresh,
+                            VerdictCode = "NOBASELINEFRESH"
+                        },
+                        details: "guardrailRollback=SKIPPED; guardrailStopReason=NoBaselineFresh");
+
+                    if (!string.Equals(rollbackSkippedCode, "ROLLBACK_SKIPPED_NOBASELINEFRESH", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult(
+                            "REG-030",
+                            "REG: UI reason-контракт (ReasonCode/ReasonText + слойный статус) стабилен",
+                            SmokeOutcome.Fail,
+                            TimeSpan.Zero,
+                            $"Ожидали ROLLBACK_SKIPPED_NOBASELINEFRESH, получили '{rollbackSkippedCode}'");
+                    }
+
+                    var rollbackDoneCode = InvokeCode(
+                        new IspAudit.Models.PostApplyVerdictContract
+                        {
+                            Status = IspAudit.Models.VerdictStatus.Fail,
+                            UnknownReason = IspAudit.Models.UnknownReason.None,
+                            VerdictCode = "FAIL"
+                        },
+                        details: "guardrailRollback=DONE; guardrailRegression=1");
+
+                    if (!string.Equals(rollbackDoneCode, "ROLLBACK_DONE", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult(
+                            "REG-030",
+                            "REG: UI reason-контракт (ReasonCode/ReasonText + слойный статус) стабилен",
+                            SmokeOutcome.Fail,
+                            TimeSpan.Zero,
+                            $"Ожидали ROLLBACK_DONE, получили '{rollbackDoneCode}'");
+                    }
+
+                    var rollbackDoneText = InvokeText("ROLLBACK_DONE");
+                    if (!string.Equals(rollbackDoneText, "Guardrail обнаружил регрессию и выполнил rollback.", StringComparison.Ordinal))
+                    {
+                        return new SmokeTestResult(
+                            "REG-030",
+                            "REG: UI reason-контракт (ReasonCode/ReasonText + слойный статус) стабилен",
+                            SmokeOutcome.Fail,
+                            TimeSpan.Zero,
+                            $"Неожиданный ReasonText для ROLLBACK_DONE: '{rollbackDoneText}'");
+                    }
+
+                    var layerLine = InvokeLayer(
+                        rowDetails: "DNS:✓ TCP:✗ TLS:✗ HTTP:✗ | TCP_CONNECT_TIMEOUT",
+                        postApplyDetails: "redirectClass=suspicious");
+
+                    if (!layerLine.Contains("DNS=✓", StringComparison.Ordinal)
+                        || !layerLine.Contains("TCP=✗", StringComparison.Ordinal)
+                        || !layerLine.Contains("TLS=✗", StringComparison.Ordinal)
+                        || !layerLine.Contains("HTTP=✗", StringComparison.Ordinal)
+                        || !layerLine.Contains("RedirectClass=suspicious", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult(
+                            "REG-030",
+                            "REG: UI reason-контракт (ReasonCode/ReasonText + слойный статус) стабилен",
+                            SmokeOutcome.Fail,
+                            TimeSpan.Zero,
+                            $"Слойный статус сформирован некорректно: '{layerLine}'");
+                    }
+
+                    return new SmokeTestResult(
+                        "REG-030",
+                        "REG: UI reason-контракт (ReasonCode/ReasonText + слойный статус) стабилен",
+                        SmokeOutcome.Pass,
+                        TimeSpan.Zero,
+                        "OK");
+                }
+                catch (Exception ex)
+                {
+                    return new SmokeTestResult(
+                        "REG-030",
+                        "REG: UI reason-контракт (ReasonCode/ReasonText + слойный статус) стабилен",
+                        SmokeOutcome.Fail,
+                        TimeSpan.Zero,
+                        ex.Message);
+                }
+            }, ct);
+
         public static Task<SmokeTestResult> REG_WinsStore_Persisted_RoundTrip(CancellationToken ct)
             => RunAsync("REG-028", "REG: wins store persist+reload + best-match", () =>
             {

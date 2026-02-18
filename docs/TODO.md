@@ -100,11 +100,12 @@
 
 - Depends: P0.V23.1, P0.V23.2, P0.V23.4, P0.V23.5
 - Risk: low-medium
-- [ ] Показывать TargetHost
-- [ ] Показывать строку слоя `DNS/TCP/TLS/HTTP` (+ redirect class)
-- [ ] Показывать `EffectiveStrategy + LastAction/AppliedAt` (+ RunId optional для debug)
-- [ ] Показывать `ReasonCode` и стабильный `ReasonText` при skip/fail/rollback/unknown
-- [ ] `ReasonCode` — закрытый словарь; тексты стабильные (не «свободный текст»)
+- [x] Прогресс 18.02.2026: добавлен smoke-reg гейт `REG-030` на стабильность `ReasonCode/ReasonText` и слойного статуса (`DNS/TCP/TLS/HTTP + redirectClass`) в UI-контракте post-apply.
+- [x] Показывать TargetHost
+- [x] Показывать строку слоя `DNS/TCP/TLS/HTTP` (+ redirect class)
+- [x] Показывать `EffectiveStrategy + LastAction/AppliedAt` (+ RunId optional для debug)
+- [x] Показывать `ReasonCode` и стабильный `ReasonText` при skip/fail/rollback/unknown
+- [x] `ReasonCode` — закрытый словарь; тексты стабильные (не «свободный текст»)
 
 ### 🟡 P1 (управляемость/воспроизводимость)
 

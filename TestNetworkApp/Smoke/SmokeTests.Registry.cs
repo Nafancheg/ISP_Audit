@@ -108,6 +108,7 @@ namespace TestNetworkApp.Smoke
                 ["REG-026"] = REG_AutoBypass_Policy_Skips_LowConfidence,
                 ["REG-027"] = REG_AutoBypass_Policy_Skips_HighRiskStrategy,
                 ["REG-029"] = REG_IntelPlan_DominatedPlan_SkipsSecondApply,
+                ["REG-030"] = REG_UiReasonContract_ReasonCodeReasonText_AreStable,
 
                 ["PIPE-005"] = Pipe_UnifiedFilter_LoopbackDropped,
                 ["PIPE-006"] = Pipe_UnifiedFilter_NoiseOnlyOnDisplay,
