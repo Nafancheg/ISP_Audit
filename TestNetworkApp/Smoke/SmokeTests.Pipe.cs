@@ -570,6 +570,9 @@ namespace TestNetworkApp.Smoke
                     TotalPackets: 20,
                     HasHttpRedirect: false,
                     RedirectToHost: null,
+                    HasHttpsToHttpRedirect: false,
+                    RedirectBurstCount: 0,
+                    RedirectEtldKnown: false,
                     HasSuspiciousRst: true,
                     SuspiciousRstDetails: "TTL=64 (expected 50-55)",
                     UdpUnansweredHandshakes: 0);
@@ -882,7 +885,10 @@ namespace TestNetworkApp.Smoke
                 var tester = new StandardHostTester(
                     probes,
                     progress: null,
-                    remoteCertificateValidationCallback: static (_, _, _, _) => true);
+                    remoteCertificateValidationCallback: (_, cert, _, errors)
+                        => cert is X509Certificate2 cert2
+                           && string.Equals(cert2.Thumbprint, certificate.Thumbprint, StringComparison.OrdinalIgnoreCase)
+                           && (errors == SslPolicyErrors.None || errors == SslPolicyErrors.RemoteCertificateChainErrors));
                 var discovered = new HostDiscovered(
                     Key: $"{ip}:{port}:TCP",
                     RemoteIp: ip,
@@ -944,7 +950,7 @@ namespace TestNetworkApp.Smoke
                 using var cert = req.CreateSelfSigned(notBefore, notAfter);
 
                 // Важно: вернуть с приватным ключом и в удобном формате для SslStream.
-                return new X509Certificate2(cert.Export(X509ContentType.Pfx));
+                return X509CertificateLoader.LoadPkcs12(cert.Export(X509ContentType.Pfx), password: null);
             }
 
             static async Task RunSingleTlsServerAsync(TcpListener listener, X509Certificate2 certificate, CancellationToken ct2)

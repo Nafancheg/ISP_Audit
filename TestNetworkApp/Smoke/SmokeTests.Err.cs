@@ -90,7 +90,7 @@ namespace TestNetworkApp.Smoke
             var sw = Stopwatch.StartNew();
             try
             {
-                var monitor = new ConnectionMonitorService();
+                using var monitor = new ConnectionMonitorService();
                 monitor.UsePollingMode = true;
 
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);

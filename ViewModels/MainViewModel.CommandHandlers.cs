@@ -1247,6 +1247,14 @@ namespace IspAudit.ViewModels
                 }
 
                 SetPostApplyCheckResultForGroupKey(groupKey, mapped, nowUtc, d);
+                UpdatePostApplyActionStatusForGroupKey(
+                    groupKey,
+                    hk,
+                    verdictContract,
+                    mode,
+                    d,
+                    correlationId,
+                    checkedAtUtc: nowUtc);
 
                 // Персистим last-known результат по groupKey.
                 var entry = new IspAudit.Utils.PostApplyCheckStore.PostApplyCheckEntry
@@ -1281,6 +1289,281 @@ namespace IspAudit.ViewModels
         private void ApplyPostApplyVerdictToHostKey(string hostKey, string verdict, string mode, string? details, string? correlationId)
         {
             ApplyPostApplyVerdictToHostKey(hostKey, PostApplyVerdictContract.FromLegacy(verdict, details), mode, details, correlationId);
+        }
+
+        private void UpdatePostApplyActionStatusForGroupKey(
+            string groupKey,
+            string hostKey,
+            PostApplyVerdictContract verdictContract,
+            string? mode,
+            string? details,
+            string? correlationId,
+            DateTimeOffset? checkedAtUtc)
+        {
+            if (string.IsNullOrWhiteSpace(groupKey)) return;
+
+            var key = groupKey.Trim().Trim('.');
+            if (string.IsNullOrWhiteSpace(key)) return;
+
+            var normalizedHost = (hostKey ?? string.Empty).Trim().Trim('.');
+            var normalizedMode = (mode ?? string.Empty).Trim();
+            var normalizedDetails = (details ?? string.Empty).Trim();
+
+            var reasonCode = MapReasonCode(verdictContract, normalizedDetails);
+            var reasonText = MapReasonText(reasonCode);
+            var runIdText = string.IsNullOrWhiteSpace(correlationId) ? string.Empty : correlationId.Trim();
+            var lastAction = MapLastAction(normalizedMode, normalizedDetails);
+            var appliedAtText = ResolveAppliedAtText(normalizedHost, key, runIdText, checkedAtUtc);
+
+            var tx = Bypass.TryGetLatestApplyTransactionForGroupKey(key);
+            var effectiveStrategyFallback = tx?.AppliedStrategyText ?? string.Empty;
+
+            UiBeginInvoke(() =>
+            {
+                foreach (var r in Results.TestResults)
+                {
+                    var rowHostKey = GetPreferredHostKey(r);
+                    if (string.IsNullOrWhiteSpace(rowHostKey)) continue;
+
+                    var rowGroupKey = GetStableApplyGroupKeyForHostKey(rowHostKey);
+                    if (!string.Equals(rowGroupKey, key, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var layerLine = BuildLayerStatusLine(r.Details, normalizedDetails);
+                    var effective = ResolveEffectiveStrategyText(r, effectiveStrategyFallback);
+
+                    var status =
+                        $"TargetHost: {normalizedHost}\n" +
+                        $"{layerLine}\n" +
+                        $"EffectiveStrategy: {effective}\n" +
+                        $"LastAction: {lastAction}; AppliedAt: {appliedAtText}";
+
+                    if (!string.IsNullOrWhiteSpace(runIdText))
+                    {
+                        status += $"; RunId: {runIdText}";
+                    }
+
+                    status += $"\nReasonCode: {reasonCode}\nReasonText: {reasonText}";
+
+                    r.ActionStatusText = status;
+                }
+            });
+        }
+
+        private static string MapReasonCode(PostApplyVerdictContract verdictContract, string details)
+        {
+            var d = (details ?? string.Empty).Trim();
+
+            if (ContainsValue(d, "guardrailRollback", "DONE")) return "ROLLBACK_DONE";
+            if (ContainsValue(d, "guardrailRollback", "FAILED")) return "ROLLBACK_FAILED";
+
+            if (ContainsValue(d, "guardrailRollback", "SKIPPED"))
+            {
+                var stop = ReadTokenValue(d, "guardrailStopReason");
+                return string.IsNullOrWhiteSpace(stop)
+                    ? "ROLLBACK_SKIPPED_STOPLIST"
+                    : $"ROLLBACK_SKIPPED_{NormalizeReasonToken(stop)}";
+            }
+
+            if (d.Contains("ApplyErrorPartial", StringComparison.OrdinalIgnoreCase))
+            {
+                return "APPLY_ERROR_PARTIAL";
+            }
+
+            return verdictContract.Status switch
+            {
+                VerdictStatus.Ok => "POST_APPLY_OK",
+                VerdictStatus.Fail => "POST_APPLY_FAIL",
+                VerdictStatus.Unknown => verdictContract.UnknownReason switch
+                {
+                    UnknownReason.InsufficientDns => "UNKNOWN_INSUFFICIENT_DNS",
+                    UnknownReason.InsufficientIps => "UNKNOWN_INSUFFICIENT_IPS",
+                    UnknownReason.ProbeTimeoutBudget => "UNKNOWN_PROBE_TIMEOUT_BUDGET",
+                    UnknownReason.NoBaseline => "UNKNOWN_NO_BASELINE",
+                    UnknownReason.NoBaselineFresh => "UNKNOWN_NO_BASELINE_FRESH",
+                    UnknownReason.Cancelled => "UNKNOWN_CANCELLED",
+                    UnknownReason.ConcurrentApply => "UNKNOWN_CONCURRENT_APPLY",
+                    _ => "UNKNOWN_UNCLASSIFIED"
+                },
+                _ => "UNKNOWN_UNCLASSIFIED"
+            };
+        }
+
+        private static string MapReasonText(string reasonCode)
+        {
+            return reasonCode switch
+            {
+                "POST_APPLY_OK" => "Пост-проверка подтверждает доступность цели после применения.",
+                "POST_APPLY_FAIL" => "Пост-проверка показывает, что проблема после применения сохраняется.",
+                "UNKNOWN_INSUFFICIENT_DNS" => "Недостаточно данных DNS для надёжного вывода.",
+                "UNKNOWN_INSUFFICIENT_IPS" => "Целевые IP не определены для пост-проверки.",
+                "UNKNOWN_PROBE_TIMEOUT_BUDGET" => "Вышел бюджет времени пост-проверки (таймаут).",
+                "UNKNOWN_NO_BASELINE" => "Нет baseline-сигналов для сравнения результата.",
+                "UNKNOWN_NO_BASELINE_FRESH" => "Baseline устарел и не используется для guardrail-сравнения.",
+                "UNKNOWN_CANCELLED" => "Пост-проверка отменена.",
+                "UNKNOWN_CONCURRENT_APPLY" => "Обнаружено конкурентное применение на том же scope.",
+                "APPLY_ERROR_PARTIAL" => "Применение завершилось частично; guardrail не выполняет rollback.",
+                "ROLLBACK_DONE" => "Guardrail обнаружил регрессию и выполнил rollback.",
+                "ROLLBACK_FAILED" => "Guardrail обнаружил регрессию, но rollback завершился ошибкой.",
+                "ROLLBACK_SKIPPED_NOBASELINE" => "Rollback пропущен: baseline отсутствует.",
+                "ROLLBACK_SKIPPED_NOBASELINEFRESH" => "Rollback пропущен: baseline устарел.",
+                "ROLLBACK_SKIPPED_INSUFFICIENTIPS" => "Rollback пропущен: недостаточно целевых IP.",
+                "ROLLBACK_SKIPPED_CANCELLED" => "Rollback пропущен: операция отменена.",
+                "ROLLBACK_SKIPPED_CONCURRENTAPPLY" => "Rollback пропущен: конкурентное применение.",
+                "ROLLBACK_SKIPPED_APPLYERRORPARTIAL" => "Rollback пропущен: частичное применение.",
+                "ROLLBACK_SKIPPED_STOPLIST" => "Rollback пропущен по stop-list политике guardrail.",
+                "UNKNOWN_UNCLASSIFIED" => "Пост-проверка вернула неопределённый результат.",
+                _ when reasonCode.StartsWith("ROLLBACK_SKIPPED_", StringComparison.OrdinalIgnoreCase)
+                    => "Rollback пропущен по стоп-условию guardrail.",
+                _ => "Неизвестная причина результата пост-проверки."
+            };
+        }
+
+        private static string BuildLayerStatusLine(string? rowDetails, string? postApplyDetails)
+        {
+            var details = (rowDetails ?? string.Empty).Trim();
+            var post = (postApplyDetails ?? string.Empty).Trim();
+
+            var dns = ExtractLayerMark(details, "DNS");
+            var tcp = ExtractLayerMark(details, "TCP");
+            var tls = ExtractLayerMark(details, "TLS");
+            var http = ExtractLayerMark(details, "HTTP");
+
+            var redirectClass = ReadTokenValue(details, "redirectClass");
+            if (string.IsNullOrWhiteSpace(redirectClass))
+            {
+                redirectClass = ReadTokenValue(post, "redirectClass");
+            }
+
+            var redirectSuffix = string.IsNullOrWhiteSpace(redirectClass)
+                ? string.Empty
+                : $"; RedirectClass={redirectClass}";
+
+            return $"Слои: DNS={dns} TCP={tcp} TLS={tls} HTTP={http}{redirectSuffix}";
+        }
+
+        private static string ExtractLayerMark(string details, string layer)
+        {
+            if (string.IsNullOrWhiteSpace(details) || string.IsNullOrWhiteSpace(layer))
+            {
+                return "n/a";
+            }
+
+            var marker = layer + ":";
+            var index = details.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (index < 0)
+            {
+                return "n/a";
+            }
+
+            var start = index + marker.Length;
+            if (start >= details.Length)
+            {
+                return "n/a";
+            }
+
+            var end = start;
+            while (end < details.Length)
+            {
+                var ch = details[end];
+                if (char.IsWhiteSpace(ch) || ch == '|' || ch == ';')
+                {
+                    break;
+                }
+
+                end++;
+            }
+
+            var value = details.Substring(start, end - start).Trim();
+            return string.IsNullOrWhiteSpace(value) ? "n/a" : value;
+        }
+
+        private static string ResolveEffectiveStrategyText(TestResult result, string fallback)
+        {
+            var applied = (result.AppliedBypassStrategy ?? string.Empty).Trim();
+            if (!string.IsNullOrWhiteSpace(applied)) return applied;
+
+            var recommended = (result.BypassStrategy ?? string.Empty).Trim();
+            if (!string.IsNullOrWhiteSpace(recommended)) return recommended;
+
+            var fb = (fallback ?? string.Empty).Trim();
+            return string.IsNullOrWhiteSpace(fb) ? "-" : fb;
+        }
+
+        private string ResolveAppliedAtText(string hostKey, string groupKey, string runId, DateTimeOffset? checkedAtUtc)
+        {
+            if (Orchestrator.TryGetPendingAppliedPlanForHostKey(hostKey, out _, out var pendingAppliedAt))
+            {
+                return pendingAppliedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss");
+            }
+
+            if (!string.IsNullOrWhiteSpace(runId))
+            {
+                var txById = Bypass.TryGetApplyTransactionById(runId);
+                if (txById != null && DateTimeOffset.TryParse(txById.CreatedAtUtc, out var txAt))
+                {
+                    return txAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss");
+                }
+            }
+
+            var latestTx = Bypass.TryGetLatestApplyTransactionForGroupKey(groupKey);
+            if (latestTx != null && DateTimeOffset.TryParse(latestTx.CreatedAtUtc, out var latestAt))
+            {
+                return latestAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss");
+            }
+
+            if (checkedAtUtc.HasValue)
+            {
+                return checkedAtUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss");
+            }
+
+            return "-";
+        }
+
+        private static string MapLastAction(string mode, string details)
+        {
+            if (ContainsValue(details, "guardrailRollback", "DONE")) return "rollback";
+            if (ContainsValue(details, "guardrailRollback", "FAILED")) return "rollback_failed";
+            if (ContainsValue(details, "guardrailRollback", "SKIPPED")) return "rollback_skipped";
+
+            if (string.Equals(mode, "enqueue", StringComparison.OrdinalIgnoreCase)) return "post_apply_enqueue";
+            if (string.Equals(mode, "local", StringComparison.OrdinalIgnoreCase)) return "post_apply_local";
+            return string.IsNullOrWhiteSpace(mode) ? "post_apply" : mode;
+        }
+
+        private static string? ReadTokenValue(string details, string token)
+        {
+            if (string.IsNullOrWhiteSpace(details) || string.IsNullOrWhiteSpace(token)) return null;
+
+            var parts = details.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var part in parts)
+            {
+                if (!part.StartsWith(token + "=", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var value = part.Substring(token.Length + 1).Trim();
+                return string.IsNullOrWhiteSpace(value) ? null : value;
+            }
+
+            return null;
+        }
+
+        private static bool ContainsValue(string details, string token, string expectedValue)
+        {
+            var value = ReadTokenValue(details, token);
+            if (string.IsNullOrWhiteSpace(value)) return false;
+
+            return string.Equals(value, expectedValue, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeReasonToken(string value)
+        {
+            var chars = value.Where(ch => char.IsLetterOrDigit(ch)).ToArray();
+            return chars.Length == 0 ? "UNKNOWN" : new string(chars).ToUpperInvariant();
         }
 
         private void TryRecordWinFromPostApplyOkBestEffort(

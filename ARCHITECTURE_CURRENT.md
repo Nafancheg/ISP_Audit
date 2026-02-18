@@ -204,6 +204,8 @@ Wizard из 5 шагов: выбор приложения → источник �
 
 **Step 6 (Guardrail Blacklist v1)**: `ApplyActionBlacklistStore` (`state\apply_action_blacklist_v1.json`) — дедуп по ключу `scopeKey+planSig+deltaStep+reason`, поля `createdAtUtc/expiresAtUtc/hitCount/lastSeenUtc`, TTL policy `TTL_min/TTL_max` с capped-продлением. Проверка blacklist выполняется перед `auto-apply` и ручной `escalation`; запись создаётся только при guardrail regression вне stop-list.
 
+**Step 7 (UI Reason Contract v2.3, P0.V23.6)**: при post-apply verdict `MainViewModel` формирует стабильный UI-контракт причины: `ReasonCode` (закрытый словарь) + локализованный `ReasonText` (детерминированный маппинг). В строке действия карточки показываются `TargetHost`, слойный срез `DNS/TCP/TLS/HTTP` (best-effort, + `redirectClass` если доступен), `EffectiveStrategy`, `LastAction/AppliedAt` и опциональный `RunId` для debug.
+
 **Контрактные константы**: окно агрегации 30/60с, TTL событий 10 мин.
 
 **UI-гейт**: рекомендации принимаются только из строк `[INTEL]`. Legacy строки не обновляют `BypassStrategy`.

@@ -1673,6 +1673,9 @@ namespace TestNetworkApp.Smoke
                     TotalPackets: 0,
                     HasHttpRedirect: false,
                     RedirectToHost: null,
+                    HasHttpsToHttpRedirect: false,
+                    RedirectBurstCount: 0,
+                    RedirectEtldKnown: false,
                     HasSuspiciousRst: true,
                     SuspiciousRstDetails: "TTL=5 (expected 50-55)",
                     UdpUnansweredHandshakes: 0);
@@ -1789,6 +1792,9 @@ namespace TestNetworkApp.Smoke
                     TotalPackets: 10,
                     HasHttpRedirect: false,
                     RedirectToHost: null,
+                    HasHttpsToHttpRedirect: false,
+                    RedirectBurstCount: 0,
+                    RedirectEtldKnown: false,
                     HasSuspiciousRst: false,
                     SuspiciousRstDetails: null,
                     UdpUnansweredHandshakes: 0);
@@ -1833,6 +1839,9 @@ namespace TestNetworkApp.Smoke
                     TotalPackets: 0,
                     HasHttpRedirect: false,
                     RedirectToHost: null,
+                    HasHttpsToHttpRedirect: false,
+                    RedirectBurstCount: 0,
+                    RedirectEtldKnown: false,
                     HasSuspiciousRst: true,
                     SuspiciousRstDetails: "TTL=64 (обычный=50-55)",
                     UdpUnansweredHandshakes: 0);
@@ -2186,6 +2195,9 @@ namespace TestNetworkApp.Smoke
                     TotalPackets: 10,
                     HasHttpRedirect: true,
                     RedirectToHost: "example.org",
+                    HasHttpsToHttpRedirect: false,
+                    RedirectBurstCount: 0,
+                    RedirectEtldKnown: false,
                     HasSuspiciousRst: false,
                     SuspiciousRstDetails: null,
                     UdpUnansweredHandshakes: 0);
@@ -3054,9 +3066,9 @@ namespace TestNetworkApp.Smoke
             var sw = Stopwatch.StartNew();
             try
             {
-                var engine = new TrafficEngine(progress: null);
+                using var engine = new TrafficEngine(progress: null);
                 var baseProfile = BypassProfile.CreateDefault();
-                var tlsService = new TlsBypassService(engine, baseProfile, log: null, startMetricsTimer: false, useTrafficEngine: false, nowProvider: () => DateTime.Now);
+                using var tlsService = new TlsBypassService(engine, baseProfile, log: null, startMetricsTimer: false, useTrafficEngine: false, nowProvider: () => DateTime.Now);
                 using var provider = BuildIspAuditProvider();
                 var autoHostlist = provider.GetRequiredService<AutoHostlistService>();
                 var controller = new BypassController(tlsService, baseProfile, autoHostlist);

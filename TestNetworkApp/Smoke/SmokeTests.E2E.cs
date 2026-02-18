@@ -153,7 +153,7 @@ namespace TestNetworkApp.Smoke
                     AutoAdjustAggressive = false
                 };
 
-                var service = new TlsBypassService(engine, profile, _ => { }, useTrafficEngine: false, startMetricsTimer: false, nowProvider: () => DateTime.UtcNow);
+                using var service = new TlsBypassService(engine, profile, _ => { }, useTrafficEngine: false, startMetricsTimer: false, nowProvider: () => DateTime.UtcNow);
 
                 var filter = new BypassFilter(profile);
                 var sender = new CapturePacketSender();
@@ -331,7 +331,7 @@ namespace TestNetworkApp.Smoke
             var pidTracker = new PidTrackerService(proc.Id);
             SetPrivateField(orchestrator, "_pidTracker", pidTracker);
 
-            var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(6));
             SetPrivateField(orchestrator, "_cts", cts);
 

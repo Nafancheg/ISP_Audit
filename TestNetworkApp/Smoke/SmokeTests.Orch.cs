@@ -130,7 +130,7 @@ namespace TestNetworkApp.Smoke
             var orchestrator = new DiagnosticOrchestrator(manager, noiseHostFilter, trafficFilter, pipelineFactory, stateStoreFactory);
 
             // Готовим _cts, иначе StartMonitoringServicesAsync не запустится.
-            var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(6));
             SetPrivateField(orchestrator, "_cts", cts);
 
@@ -320,7 +320,7 @@ namespace TestNetworkApp.Smoke
             SetPrivateField(orchestrator, "_pidTracker", pidTracker);
 
             // Оркестратору нужен _cts.
-            var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(6));
             SetPrivateField(orchestrator, "_cts", cts);
 

@@ -740,6 +740,16 @@ namespace IspAudit.ViewModels
                             }
 
                             SetPostApplyCheckResultForGroupKey(groupKey, mapped, atUtc, details);
+
+                            var verdictContract = PostApplyVerdictContract.FromLegacy(entry.Verdict, details);
+                            UpdatePostApplyActionStatusForGroupKey(
+                                groupKey,
+                                entry.HostKey,
+                                verdictContract,
+                                entry.Mode,
+                                details,
+                                correlationId: null,
+                                checkedAtUtc: atUtc);
                         }
                     });
                 }

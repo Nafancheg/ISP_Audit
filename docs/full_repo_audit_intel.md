@@ -249,6 +249,11 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Blacklist проверяется перед `auto-apply` и перед ручной `escalation`.
 - Blacklist не создаётся в stop-list сценариях (`NoBaseline`, `NoBaselineFresh`, `InsufficientIps`, `Cancelled`, `ConcurrentApply`, `ApplyError/partial apply`), так как запись выполняется только на guardrail-regression вне stop-list.
 
+Актуализация (UI/Runtime, 17.02.2026): P0.V23.6 reason contract + layer/effective статус
+- В `MainViewModel` добавлен стабильный пост-Apply UI-контракт причины: `ReasonCode` из закрытого словаря + детерминированный локализованный `ReasonText`.
+- Для карточек группы при post-apply verdict обновляется расширенный action-status: `TargetHost`, слойный срез `DNS/TCP/TLS/HTTP` (best-effort + `redirectClass`), `EffectiveStrategy`, `LastAction/AppliedAt`, опционально `RunId`.
+- Контракт применяется как для live verdict, так и при восстановлении `post_apply_checks` с диска (после перезапуска UI состояние причины/контекста не теряется).
+
 Актуализация (Runtime, 16.02.2026): structured health verdict в pipeline contract
 - `Core/Models/HostTested` расширен полями `VerdictStatus/UnknownReason` (формат `Ok/Fail/Unknown` + причина unknown).
 - `StandardHostTester` заполняет поля детерминированно; базовые причины unknown: `Cancelled`, `ProbeTimeoutBudget`, `InsufficientDns`.
