@@ -1,4 +1,6 @@
-﻿# ISP_Audit — Архитектура
+﻿<!-- markdownlint-disable MD007 MD022 MD032 MD040 MD058 MD060 -->
+
+# ISP_Audit — Архитектура
 
 **Версия документа:** 3.1 (Architecture Reference)
 **Технологии:** .NET 9, WPF, WinDivert 2.2.0

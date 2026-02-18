@@ -213,7 +213,7 @@
 
 #### P2.3 История транзакций для карточки
 
-- [ ] В TestResult: List<ApplyTransaction> TransactionHistory (max 10)
+- [ ] В TestResult: список `ApplyTransaction` в `TransactionHistory` (max 10)
 - [ ] В BypassController.ApplyIntelPlan: добавлять запись в TransactionHistory
 - [ ] В Engineer UI: двойной клик → DataGrid с TransactionHistory (время, план, результат)
 
