@@ -76,6 +76,11 @@
 - `ISP_AUDIT_ENABLE_AUTO_RETEST`
   - Назначение: автоперепроверка при изменении bypass-тумблеров.
 
+- `ISP_AUDIT_CLASSIC_MODE`
+  - Назначение: ClassicMode (freeze mutation within-run).
+  - Семантика: при `1` реактивные мутации в текущем run переводятся в observe-only (сейчас: `ReactiveTargetSync` и авто-ретест от bypass-тумблеров), но ручные операции `apply/escalate/rollback` остаются разрешены.
+  - По умолчанию: `0`.
+
 - `ISP_AUDIT_RETEST_DEBOUNCE_MS`
   - Назначение: минимальный интервал (debounce/throttle) между автоперетестами при изменении bypass.
   - Значение: число миллисекунд.

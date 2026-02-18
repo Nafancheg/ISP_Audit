@@ -50,7 +50,23 @@ namespace IspAudit
             /// Разрешить авто-ретест после изменения тумблеров bypass в UI.
             /// По умолчанию false: ретест должен запускаться явно пользователем.
             /// </summary>
-            public static bool EnableAutoRetestOnBypassChange => ReadBoolEnv(EnvKeys.EnableAutoRetest, defaultValue: false);
+            public static bool EnableAutoRetestOnBypassChange
+            {
+                get
+                {
+                    if (ClassicMode)
+                    {
+                        return false;
+                    }
+
+                    return ReadBoolEnv(EnvKeys.EnableAutoRetest, defaultValue: false);
+                }
+            }
+
+            /// <summary>
+            /// ClassicMode: в рамках текущего run реактивные мутации переводятся в observe-only.
+            /// </summary>
+            public static bool ClassicMode => ReadBoolEnv(EnvKeys.ClassicMode, defaultValue: false);
         }
 
         private static bool ReadBoolEnv(string name, bool defaultValue)

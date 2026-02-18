@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
+using IspAudit.Utils;
 
 namespace IspAudit.Core.RuntimeAdaptation;
 
@@ -29,6 +30,7 @@ public sealed class ReactiveTargetSyncService
     private readonly int _maxNudgeBatch;
     private readonly long _minNudgeIntervalTicks;
     private long _lastNudgeTick;
+    private readonly bool _classicModeObserveOnly;
 
 
     public ReactiveTargetSyncService(
@@ -44,6 +46,12 @@ public sealed class ReactiveTargetSyncService
         _maxAttempts = opt.MaxAttempts;
         _maxNudgeBatch = opt.MaxNudgeBatch;
         _minNudgeIntervalTicks = (long)(opt.MinNudgeInterval.TotalSeconds * Stopwatch.Frequency);
+        _classicModeObserveOnly = EnvVar.ReadBool(EnvKeys.ClassicMode, defaultValue: false);
+
+        if (_classicModeObserveOnly)
+        {
+            _log?.Invoke($"[ReactiveTargetSync] ClassicMode active ({EnvKeys.ClassicMode}=1): observe-only, sync mutations disabled for current run.");
+        }
 
         _queue = Channel.CreateBounded<string>(new BoundedChannelOptions(opt.QueueCapacity)
         {
@@ -117,6 +125,7 @@ public sealed class ReactiveTargetSyncService
     public void OnUdpBlockage(IPAddress ip, ReactiveTargetSyncContext context)
     {
         if (ip == null) return;
+        if (_classicModeObserveOnly) return;
 
         try
         {

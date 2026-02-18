@@ -111,6 +111,9 @@
     - Модель доставки: inbound bounded-очередь + coalescing по (scope, ip, type) + retry-until-delivered (TTL/лимит попыток).
         «Доставлено» означает: legacy filter получил targets и/или обновлён DecisionGraphSnapshot (policy-driven path), а не просто "попробовали".
 
+    - ClassicMode (18.02.2026): при `ISP_AUDIT_CLASSIC_MODE=1` runtime reactive-мутации переводятся в observe-only в пределах run.
+        На текущем этапе это отключает мутационный путь `ReactiveTargetSync` и авто-ретест от bypass-тумблеров, сохраняя доступными ручные `apply/escalate/rollback`.
+
 Практика (после Apply):
 - После ручного `Apply` UI запускает короткий **пост-Apply ретест** по цели (активные TCP/TLS проверки), чтобы быстро показать, помог ли обход.
 - P0.V23.1 (этап 1): введён структурированный сигнал post-apply verdict `V3` с полями `VerdictStatus/UnknownReason`; legacy-сигналы (`V1/V2`) сохранены для совместимости.

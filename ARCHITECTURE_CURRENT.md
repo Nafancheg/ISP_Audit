@@ -235,6 +235,9 @@ Wizard из 5 шагов: выбор приложения → источник �
 | 3 | `ISP_AUDIT_POLICY_DRIVEN_TCP80` | TCP/80 HTTP Host tricks |
 | 4 | `ISP_AUDIT_POLICY_DRIVEN_TCP443` | TCP/443 TLS ClientHello |
 
+**ClassicMode gate**:
+- `ISP_AUDIT_CLASSIC_MODE=1` переводит runtime reactive-мутации в observe-only в пределах текущего run (сейчас: `ReactiveTargetSync` и auto-retest от bypass-тумблеров), при этом ручные `apply/escalate/rollback` остаются доступны.
+
 **Semantic Groups**: `Core/Models/SemanticGroup.cs`, `Core/Bypass/SemanticGroupEvaluator.cs` — статус `NO_TRAFFIC / PARTIAL / ENABLED` по per-policy метрикам.
 
 ### 3.2.3 Service Groups (Accumulative Attachment Model)
@@ -318,6 +321,8 @@ Wizard из 5 шагов: выбор приложения → источник �
 - **Глобальный** (`DropUdp443Global`): весь UDP/443.
 
 Для нескольких активных сервисов — union по целям. Реактивное обновление через `ReactiveTargetSyncService` (bounded-очередь + coalescing + retry-until-delivered).
+
+При `ISP_AUDIT_CLASSIC_MODE=1` `ReactiveTargetSyncService` работает в режиме observe-only (входящие сигналы не приводят к мутациям execution-state в рамках run).
 
 IPv6: селективность недоступна, сохраняется drop при включённом `DropUdp443`.
 
