@@ -82,7 +82,7 @@ namespace IspAudit.Bypass
 
                 var verdict = CalculateVerdict(metrics, options);
 
-                if (!_classicModeObserveOnly)
+                if (!IsClassicModeObserveOnly())
                 {
                     var adjustedSizes = _autoAdjust.TryAdjust(options, metrics, verdict);
                     if (adjustedSizes != null)
@@ -378,7 +378,7 @@ namespace IspAudit.Bypass
         /// </summary>
         internal async Task<bool> TryAutoAdjustOnceForSmoke(TlsBypassMetrics metrics, TlsBypassVerdict? verdictOverride = null)
         {
-            if (_classicModeObserveOnly)
+            if (IsClassicModeObserveOnly())
             {
                 return false;
             }

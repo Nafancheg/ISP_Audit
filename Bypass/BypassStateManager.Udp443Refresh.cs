@@ -38,7 +38,7 @@ namespace IspAudit.Bypass
         {
             try
             {
-                if (_classicModeObserveOnly)
+                if (IsClassicModeObserveOnly())
                 {
                     return default;
                 }

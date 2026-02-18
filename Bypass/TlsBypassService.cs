@@ -25,7 +25,6 @@ namespace IspAudit.Bypass
         private readonly Action<string>? _log;
         private readonly Func<DateTime> _now;
         private readonly bool _useTrafficEngine;
-        private readonly bool _classicModeObserveOnly;
         private readonly object _sync = new();
         private readonly Timer _metricsTimer;
 
@@ -55,6 +54,9 @@ namespace IspAudit.Bypass
         /// </summary>
         internal TrafficEngine TrafficEngineForManager => _trafficEngine;
 
+        private static bool IsClassicModeObserveOnly()
+            => EnvVar.ReadBool(EnvKeys.ClassicMode, defaultValue: false);
+
         public TlsBypassService(TrafficEngine trafficEngine, BypassProfile baseProfile, Action<string>? log = null)
             : this(trafficEngine, baseProfile, log, startMetricsTimer: true, useTrafficEngine: true, nowProvider: null)
         {
@@ -77,14 +79,13 @@ namespace IspAudit.Bypass
             _baseProfile = baseProfile;
             _log = log;
             _useTrafficEngine = useTrafficEngine;
-            _classicModeObserveOnly = EnvVar.ReadBool(EnvKeys.ClassicMode, defaultValue: false);
             _now = nowProvider ?? (() => DateTime.Now);
             _options = TlsBypassOptions.CreateDefault(_baseProfile);
             _presets = BuildPresets(_baseProfile);
             _autoAdjust = new AggressiveAutoAdjustStrategy(_now);
             _autoTtl = new AutoTtlAdjustStrategy(_log, _now);
 
-            if (_classicModeObserveOnly)
+            if (IsClassicModeObserveOnly())
             {
                 _log?.Invoke($"[Bypass] ClassicMode active ({EnvKeys.ClassicMode}=1): auto-adjust mutations are observe-only for current run.");
             }

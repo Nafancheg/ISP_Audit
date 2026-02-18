@@ -118,6 +118,7 @@
         `TestTimeout/MaxConcurrentTests/VPN-profile` фиксируются на старт операции и используются единообразно при создании pipeline (основной run, manual retest, local post-apply retest).
     - P1.V23.1 (latched post-apply policy, 18.02.2026): в apply→post-apply-retest добавлен `LatchedPostApplyPolicy`.
         На run фиксируются baseline attempts/probe timeout/freshness TTL, guardrail `K-of-M`, порядок оценки (`SNI-first` с fallback на IP) и post-apply budgets (`enqueue warmup`, `outcome probe timeout`, `local drain timeout`, `max concurrency`).
+    - P1.V23.1 (ClassicMode runtime gate refresh, 18.02.2026): `TlsBypassService`, `BypassStateManager` и `ReactiveTargetSyncService` используют dynamic check `ISP_AUDIT_CLASSIC_MODE` (без latched bool в ctor), чтобы freeze действовал within-run и не залипал между runs.
 
 Практика (после Apply):
 - После ручного `Apply` UI запускает короткий **пост-Apply ретест** по цели (активные TCP/TLS проверки), чтобы быстро показать, помог ли обход.

@@ -114,6 +114,7 @@
 
 - Depends: P0.V23.2, P0.V23.4
 - Risk: medium
+- [x] Прогресс 18.02.2026 (итерация 6): ClassicMode-gate в `TlsBypassService`, `BypassStateManager` и `ReactiveTargetSyncService` переведён на dynamic check (без latched bool в ctor) — freeze больше не «залипает» между runs; при снятии `ISP_AUDIT_CLASSIC_MODE` возобновляются auto-adjust/auto-add/sync-мутации на следующем run.
 - [x] Прогресс 18.02.2026 (итерация 5): в apply→post-apply-retest цепочке добавлен `LatchedPostApplyPolicy`; на run фиксируются baseline attempts/probe timeout/freshness TTL, guardrail `K-of-M`, порядок оценки (`SNI-first` с fallback на IP) и post-apply budgets (enqueue warmup, outcome probe timeout, local drain timeout, max concurrency).
 - [x] Прогресс 18.02.2026 (итерация 3): в `ISP_AUDIT_CLASSIC_MODE` добавлен observe-only для runtime auto-add targets (быстрый QUIC→TCP refresh через `TrySyncUdp443SelectiveTargetsFromObservedIp` больше не мутирует observed-target cache/targets в рамках run).
 - [x] Прогресс 18.02.2026 (итерация 4): в `DiagnosticOrchestrator` введён `LatchedProbeRunConfig` — `TestTimeout/MaxConcurrentTests/VPN-profile` фиксируются на старт операции и используются единообразно в `RunAsync`, manual `RetestTargetsAsync` и local post-apply retest pipeline.
@@ -121,8 +122,8 @@
 - [x] Прогресс 18.02.2026 (итерация 1): введён `ISP_AUDIT_CLASSIC_MODE`; в ClassicMode включён observe-only для `ReactiveTargetSync` и отключён auto-retest от bypass-тумблеров (`EnableAutoRetestOnBypassChange=false`), при этом ручные `apply/escalate/rollback` не ограничиваются.
 - [x] Ввести `ISP_AUDIT_CLASSIC_MODE` и документировать семантику
 - [x] Observe-only для реактивных мутаций within-run (auto-retest toggles, reactive target sync, auto-adjust, auto-add targets)
-- [ ] Разрешить всегда: apply/escalate/rollback и guardrail rollback
-- [ ] Между runs разрешить latched update caches/adjust
+- [x] Разрешить всегда: apply/escalate/rollback и guardrail rollback
+- [x] Между runs разрешить latched update caches/adjust
 - [x] Фиксировать параметры проверок на run (`timeouts/attempts/M-K/order + budgets`)
 
 #### P1.V23.2 Redirect burst cache (N/T + retention)
