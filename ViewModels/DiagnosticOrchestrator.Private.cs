@@ -127,6 +127,35 @@ namespace IspAudit.ViewModels
             return new SolidColorBrush(System.Windows.Media.Color.FromRgb(r, g, b));
         }
 
+        private LatchedProbeRunConfig CaptureLatchedProbeRunConfig(BypassController bypassController, int maxConcurrentTests = 5)
+        {
+            var vpnDetected = bypassController.IsVpnDetected;
+            var testTimeout = vpnDetected
+                ? TimeSpan.FromSeconds(8)
+                : TimeSpan.FromSeconds(3);
+
+            var latched = new LatchedProbeRunConfig(
+                IsVpnDetected: vpnDetected,
+                TestTimeout: testTimeout,
+                MaxConcurrentTests: Math.Max(1, maxConcurrentTests),
+                CapturedAtUtc: DateTime.UtcNow);
+
+            Log($"[RunConfig] Latched: vpn={(latched.IsVpnDetected ? 1 : 0)}; timeoutMs={(int)latched.TestTimeout.TotalMilliseconds}; maxConcurrency={latched.MaxConcurrentTests}; capturedAt={latched.CapturedAtUtc:O}");
+
+            return latched;
+        }
+
+        private static PipelineConfig BuildLatchedPipelineConfig(LatchedProbeRunConfig latched, bool enableAutoBypass)
+        {
+            return new PipelineConfig
+            {
+                EnableLiveTesting = true,
+                EnableAutoBypass = enableAutoBypass,
+                MaxConcurrentTests = latched.MaxConcurrentTests,
+                TestTimeout = latched.TestTimeout
+            };
+        }
+
         #endregion
     }
 }

@@ -1285,17 +1285,8 @@ namespace IspAudit.ViewModels
 
                     Log($"[PostApplyRetest][op={opId}] Mode=local (standalone pipeline)");
 
-                    var effectiveTestTimeout = bypassController.IsVpnDetected
-                        ? TimeSpan.FromSeconds(8)
-                        : TimeSpan.FromSeconds(3);
-
-                    var pipelineConfig = new PipelineConfig
-                    {
-                        EnableLiveTesting = true,
-                        EnableAutoBypass = false,
-                        MaxConcurrentTests = 5,
-                        TestTimeout = effectiveTestTimeout
-                    };
+                    var latchedRunConfig = CaptureLatchedProbeRunConfig(bypassController, maxConcurrentTests: 5);
+                    var pipelineConfig = BuildLatchedPipelineConfig(latchedRunConfig, enableAutoBypass: false);
 
                     // Собираем IP-адреса цели: DNS + локальные кеши.
                     var hosts = await BuildPostApplyRetestHostsAsync(hostKey, port: 443, ct).ConfigureAwait(false);

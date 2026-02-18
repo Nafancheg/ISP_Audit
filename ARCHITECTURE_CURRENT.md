@@ -238,6 +238,10 @@ Wizard из 5 шагов: выбор приложения → источник �
 **ClassicMode gate**:
 - `ISP_AUDIT_CLASSIC_MODE=1` переводит runtime reactive-мутации в observe-only в пределах текущего run (сейчас: `ReactiveTargetSync`, auto-retest от bypass-тумблеров, auto-adjust `TlsBypassService` — `AutoAdjustAggressive/AutoTTL`, и runtime auto-add targets для селективного QUIC→TCP), при этом ручные `apply/escalate/rollback` остаются доступны.
 
+**Latched run config (P1.V23.1)**:
+- На старт операции (`RunAsync`/manual retest/local post-apply retest) оркестратор фиксирует `TestTimeout`, `MaxConcurrentTests` и VPN-профиль в `LatchedProbeRunConfig`.
+- В пределах операции pipeline создаётся только из latched-снимка, что исключает дрейф параметров при runtime-изменениях.
+
 **Semantic Groups**: `Core/Models/SemanticGroup.cs`, `Core/Bypass/SemanticGroupEvaluator.cs` — статус `NO_TRAFFIC / PARTIAL / ENABLED` по per-policy метрикам.
 
 ### 3.2.3 Service Groups (Accumulative Attachment Model)

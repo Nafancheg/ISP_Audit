@@ -114,6 +114,9 @@
     - ClassicMode (18.02.2026): при `ISP_AUDIT_CLASSIC_MODE=1` runtime reactive-мутации переводятся в observe-only в пределах run.
         На текущем этапе это отключает мутационные пути `ReactiveTargetSync`, авто-ретест от bypass-тумблеров, auto-adjust `TlsBypassService` (`AutoAdjustAggressive/AutoTTL`) и runtime auto-add targets (селективный QUIC refresh), сохраняя доступными ручные `apply/escalate/rollback`.
 
+    - P1.V23.1 (latched run config, 18.02.2026): в `DiagnosticOrchestrator` добавлен `LatchedProbeRunConfig`.
+        `TestTimeout/MaxConcurrentTests/VPN-profile` фиксируются на старт операции и используются единообразно при создании pipeline (основной run, manual retest, local post-apply retest).
+
 Практика (после Apply):
 - После ручного `Apply` UI запускает короткий **пост-Apply ретест** по цели (активные TCP/TLS проверки), чтобы быстро показать, помог ли обход.
 - P0.V23.1 (этап 1): введён структурированный сигнал post-apply verdict `V3` с полями `VerdictStatus/UnknownReason`; legacy-сигналы (`V1/V2`) сохранены для совместимости.

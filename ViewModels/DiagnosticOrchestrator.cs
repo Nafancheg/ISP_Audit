@@ -157,6 +157,14 @@ namespace IspAudit.ViewModels
         private readonly HashSet<string> _legacyRecommendedStrategies = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _legacyManualRecommendations = new(StringComparer.OrdinalIgnoreCase);
 
+        // P1.V23.1 ClassicMode: фиксируем параметры активных проверок на старт run,
+        // чтобы в пределах одной операции они не дрейфовали.
+        private readonly record struct LatchedProbeRunConfig(
+            bool IsVpnDetected,
+            TimeSpan TestTimeout,
+            int MaxConcurrentTests,
+            DateTime CapturedAtUtc);
+
         // Последний INTEL-диагноз (для панели рекомендаций)
         private string _lastIntelDiagnosisSummary = "";
 

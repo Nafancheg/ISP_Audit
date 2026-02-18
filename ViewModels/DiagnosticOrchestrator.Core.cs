@@ -213,17 +213,8 @@ namespace IspAudit.ViewModels
                     progress);
 
                 // 7. Создание LiveTestingPipeline (тестирование + bypass)
-                var effectiveTestTimeout = bypassController.IsVpnDetected
-                    ? TimeSpan.FromSeconds(8)
-                    : TimeSpan.FromSeconds(3);
-
-                var pipelineConfig = new PipelineConfig
-                {
-                    EnableLiveTesting = true,
-                    EnableAutoBypass = enableAutoBypass,
-                    MaxConcurrentTests = 5,
-                    TestTimeout = effectiveTestTimeout
-                };
+                var latchedRunConfig = CaptureLatchedProbeRunConfig(bypassController, maxConcurrentTests: 5);
+                var pipelineConfig = BuildLatchedPipelineConfig(latchedRunConfig, enableAutoBypass: enableAutoBypass);
 
                 var stateStore = _tcpRetransmissionTracker != null
                     ? _stateStoreFactory.CreateWithTrackers(_tcpRetransmissionTracker, _httpRedirectDetector, _rstInspectionService, _udpInspectionService)
@@ -467,17 +458,8 @@ namespace IspAudit.ViewModels
                 });
 
                 // Создаем pipeline только для тестирования (без сниффера)
-                var effectiveTestTimeout = bypassController.IsVpnDetected
-                    ? TimeSpan.FromSeconds(8)
-                    : TimeSpan.FromSeconds(3);
-
-                var pipelineConfig = new PipelineConfig
-                {
-                    EnableLiveTesting = true,
-                    EnableAutoBypass = false, // Bypass уже настроен контроллером
-                    MaxConcurrentTests = 5,
-                    TestTimeout = effectiveTestTimeout
-                };
+                var latchedRunConfig = CaptureLatchedProbeRunConfig(bypassController, maxConcurrentTests: 5);
+                var pipelineConfig = BuildLatchedPipelineConfig(latchedRunConfig, enableAutoBypass: false); // Bypass уже настроен контроллером
 
                 // Используем существующий bypass manager из контроллера
                 _testingPipeline = _pipelineFactory.Create(
