@@ -99,6 +99,31 @@ namespace IspAudit.ViewModels
         private static DateTimeOffset ParseUtcOrMin(string? value)
             => DateTimeOffset.TryParse(value, out var dt) ? dt : DateTimeOffset.MinValue;
 
+        private void LogPolicyEvent(
+            string eventName,
+            string? runId,
+            string? scopeKey,
+            string? planSig,
+            string? reasonCode,
+            string? details = null)
+        {
+            static string Sanitize(string? value)
+            {
+                var s = (value ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(s)) return "-";
+                return s.Replace(";", ",", StringComparison.Ordinal);
+            }
+
+            var evt = Sanitize(eventName);
+            var rid = Sanitize(runId);
+            var scope = Sanitize(scopeKey);
+            var sig = Sanitize(planSig);
+            var reason = Sanitize(reasonCode);
+            var extra = Sanitize(details);
+
+            Log($"[POLICY_EVT] event={evt}; runId={rid}; scopeKey={scope}; planSig={sig}; reasonCode={reason}; details={extra}");
+        }
+
         private LatchedPostApplyPolicy CaptureLatchedPostApplyPolicy()
         {
             var sampleM = Math.Max(1, PostApplyGuardrailSampleMDefault);
@@ -463,12 +488,14 @@ namespace IspAudit.ViewModels
             if (string.IsNullOrWhiteSpace(hostKey) || basePlan == null)
             {
                 Log("[APPLY][ESCALATE] Skip: нет базового плана/цели");
+                LogPolicyEvent("skip_reason", runId: null, scopeKey: hostKey, planSig: null, reasonCode: "NO_BASE_PLAN");
                 return null;
             }
 
             if (!TryBuildEscalationPlan(basePlan, bypassController, out var escalationPlan, out var escalationReason))
             {
                 Log($"[APPLY][ESCALATE] Skip: нечего усиливать (host='{hostKey}'; reason='{escalationReason}')");
+                LogPolicyEvent("skip_reason", runId: null, scopeKey: hostKey, planSig: null, reasonCode: "ESCALATION_NOT_AVAILABLE", details: escalationReason);
                 return null;
             }
 
@@ -477,10 +504,13 @@ namespace IspAudit.ViewModels
             if (IsBlacklisted(scopeKey, planSig, escalationReason, reason: "guardrail_regression", out var blEsc))
             {
                 Log($"[APPLY][ESCALATE] Skip: blacklist_hit scope={scopeKey}; step={escalationReason}; planSig={planSig}; expiresAt={blEsc?.ExpiresAtUtc}");
+                LogPolicyEvent("blacklist_hit", runId: null, scopeKey: scopeKey, planSig: planSig, reasonCode: "GUARDRAIL_REGRESSION", details: $"step={escalationReason}; expiresAt={blEsc?.ExpiresAtUtc}");
+                LogPolicyEvent("skip_reason", runId: null, scopeKey: scopeKey, planSig: planSig, reasonCode: "BLACKLIST_HIT", details: escalationReason);
                 return null;
             }
 
             Log($"[APPLY][ESCALATE] host='{hostKey}'; step='{escalationReason}'");
+            LogPolicyEvent("escalate", runId: null, scopeKey: scopeKey, planSig: planSig, reasonCode: "MANUAL_ESCALATE", details: escalationReason);
             return await ApplyPlanInternalAsync(
                 bypassController,
                 hostKey,
@@ -618,6 +648,7 @@ namespace IspAudit.ViewModels
             if (_noiseHostFilter.IsNoiseHost(hostKey))
             {
                 Log($"[APPLY] Skip: шумовой хост '{hostKey}'");
+                LogPolicyEvent("skip_reason", runId: null, scopeKey: hostKey, planSig: null, reasonCode: "NOISE_HOST");
                 return null;
             }
 
@@ -646,6 +677,7 @@ namespace IspAudit.ViewModels
                     || IspAudit.Core.Intelligence.Execution.IntelPlanSelector.IsDominated(planSig, lastSig)))
             {
                 Log($"[APPLY] Skip: уже применено (dominated by '{lastSig}') (target='{targetKey}'; sig='{planSig}')");
+                LogPolicyEvent("skip_reason", runId: null, scopeKey: targetKey, planSig: planSig, reasonCode: "ALREADY_APPLIED", details: $"dominatedBy={lastSig}");
                 return new ApplyOutcome(hostKey, appliedUiText, planStrategies, plan.Reasoning)
                 {
                     Status = "ALREADY_APPLIED",
@@ -659,6 +691,7 @@ namespace IspAudit.ViewModels
             if (Interlocked.CompareExchange(ref _applyInFlight, 1, 0) != 0)
             {
                 Log($"[APPLY] Skip: apply уже выполняется (host='{hostKey}')");
+                LogPolicyEvent("skip_reason", runId: null, scopeKey: hostKey, planSig: planSig, reasonCode: "APPLY_IN_FLIGHT");
                 return new ApplyOutcome(hostKey, string.Empty, string.Empty, plan.Reasoning)
                 {
                     Status = "BUSY",
@@ -732,6 +765,7 @@ namespace IspAudit.ViewModels
                 });
 
                 Log($"[APPLY] host={hostKey}; plan={planStrategies}; before={beforeState}");
+                LogPolicyEvent("apply", runId: applyRunId, scopeKey: scopeKey, planSig: planSig, reasonCode: "START", details: $"host={hostKey}");
 
                 if (PlanHasApplicableActions(plan))
                 {
@@ -798,6 +832,7 @@ namespace IspAudit.ViewModels
 
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[APPLY] OK; after={afterState}");
+                LogPolicyEvent("apply", runId: applyRunId, scopeKey: scopeKey, planSig: planSig, reasonCode: "APPLIED", details: afterState);
                 ResetRecommendations();
 
                 // P1.1: фиксируем сигнатуру последнего успешного применения для дедупликации.
@@ -825,6 +860,7 @@ namespace IspAudit.ViewModels
             {
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[APPLY] ROLLBACK (cancel/timeout); after={afterState}");
+                LogPolicyEvent("rollback", runId: applyRunId, scopeKey: scopeKey, planSig: planSig, reasonCode: "CANCELED_OR_TIMEOUT", details: afterState);
 
                 if (oce is BypassApplyService.BypassApplyCanceledException ce)
                 {
@@ -850,6 +886,7 @@ namespace IspAudit.ViewModels
             {
                 var afterState = BuildBypassStateSummary(bypassController);
                 Log($"[APPLY] ROLLBACK (error); after={afterState}; error={ex.Message}");
+                LogPolicyEvent("rollback", runId: applyRunId, scopeKey: scopeKey, planSig: planSig, reasonCode: "APPLY_ERROR", details: ex.GetType().Name);
 
                 if (ex is BypassApplyService.BypassApplyFailedException fe)
                 {
@@ -1517,6 +1554,7 @@ namespace IspAudit.ViewModels
                         {
                             finalDetails = $"{finalDetails}; guardrailRollback=SKIPPED; guardrailStopReason={guardrailStopReason}";
                             Log($"[PostApplyRetest][op={opId}] Guardrail rollback skipped: reason={guardrailStopReason}; scopeKey={scopeKey}");
+                            LogPolicyEvent("skip_reason", runId: opId, scopeKey: scopeKey, planSig: pendingBaseline?.PlanSig, reasonCode: $"GUARDRAIL_STOP_{guardrailStopReason}");
                         }
                         else
                         {
@@ -1535,16 +1573,19 @@ namespace IspAudit.ViewModels
                                 await bypassController.RollbackAutopilotOnlyAsync(ct).ConfigureAwait(false);
                                 finalDetails = $"{finalDetails}; guardrailRollback=DONE";
                                 Log($"[PostApplyRetest][op={opId}] Guardrail rollback done: scopeKey={scopeKey}; runId={opId}");
+                                LogPolicyEvent("rollback", runId: opId, scopeKey: scopeKey, planSig: pendingBaseline?.PlanSig, reasonCode: "GUARDRAIL_ROLLBACK_DONE");
                             }
                             catch (OperationCanceledException)
                             {
                                 finalDetails = $"{finalDetails}; guardrailRollback=CANCELED";
                                 finalVerdict = "UNKNOWN";
+                                LogPolicyEvent("rollback", runId: opId, scopeKey: scopeKey, planSig: pendingBaseline?.PlanSig, reasonCode: "GUARDRAIL_ROLLBACK_CANCELED");
                             }
                             catch (Exception ex)
                             {
                                 finalDetails = $"{finalDetails}; guardrailRollback=FAILED; rollbackError={ex.GetType().Name}";
                                 Log($"[PostApplyRetest][op={opId}] Guardrail rollback failed: {ex.Message}");
+                                LogPolicyEvent("rollback", runId: opId, scopeKey: scopeKey, planSig: pendingBaseline?.PlanSig, reasonCode: "GUARDRAIL_ROLLBACK_FAILED", details: ex.GetType().Name);
                             }
                         }
                     }

@@ -139,9 +139,10 @@
 
 - Depends: P0.V23.1
 - Risk: low
-- [ ] Единые события: `apply/escalate/rollback/blacklist_hit/skip_reason`
-- [ ] Во все события добавить `RunId`, `scopeKey`, `planSig`, `ReasonCode`
-- [ ] Логи пригодны для smoke/assert без парсинга «свободного текста»
+- [x] Прогресс 18.02.2026: в `DiagnosticOrchestrator` добавлен unified structured log `POLICY_EVT` с событиями `apply/escalate/rollback/blacklist_hit/skip_reason`.
+- [x] Единые события: `apply/escalate/rollback/blacklist_hit/skip_reason`
+- [x] Во все события добавить `RunId`, `scopeKey`, `planSig`, `ReasonCode`
+- [x] Логи пригодны для smoke/assert без парсинга «свободного текста»
 
 ### 🟢 P2 (улучшения)
 

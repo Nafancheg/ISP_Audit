@@ -243,6 +243,8 @@ namespace IspAudit.ViewModels
             if (IsBlacklisted(targetHost, planSig, deltaStep: string.Empty, reason: "guardrail_regression", out var blAuto))
             {
                 Log($"[AUTO_APPLY] Skip (blacklist_hit): target={targetHost}; sig={planSig}; expiresAt={blAuto?.ExpiresAtUtc}");
+                LogPolicyEvent("blacklist_hit", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "GUARDRAIL_REGRESSION", details: $"expiresAt={blAuto?.ExpiresAtUtc}");
+                LogPolicyEvent("skip_reason", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "BLACKLIST_HIT");
                 return;
             }
 
@@ -253,6 +255,7 @@ namespace IspAudit.ViewModels
             if (IsAutoApplyCooldownActive(targetHost, allowWhenPlanChanged: true, planChanged: planChanged, out var remaining))
             {
                 Log($"[AUTO_APPLY] Skip (cooldown {remaining.TotalSeconds:0}s): target={targetHost}; from={hostKey}");
+                LogPolicyEvent("skip_reason", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "AUTO_APPLY_COOLDOWN", details: $"remainingSec={remaining.TotalSeconds:0}");
                 return;
             }
 
@@ -293,6 +296,8 @@ namespace IspAudit.ViewModels
                 if (IsBlacklisted(targetHost, planSig, deltaStep: string.Empty, reason: "guardrail_regression", out var blAutoRuntime))
                 {
                     Log($"[AUTO_APPLY] Skip (blacklist_hit): target={targetHost}; sig={planSig}; expiresAt={blAutoRuntime?.ExpiresAtUtc}");
+                    LogPolicyEvent("blacklist_hit", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "GUARDRAIL_REGRESSION", details: $"expiresAt={blAutoRuntime?.ExpiresAtUtc}");
+                    LogPolicyEvent("skip_reason", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "BLACKLIST_HIT");
                     return;
                 }
 
@@ -300,6 +305,7 @@ namespace IspAudit.ViewModels
                 if (IsApplyRunning)
                 {
                     Log($"[AUTO_APPLY] Skip (manual apply running): target={targetHost}; from={sourceHostKey}");
+                    LogPolicyEvent("skip_reason", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "MANUAL_APPLY_RUNNING");
                     return;
                 }
 
@@ -309,6 +315,7 @@ namespace IspAudit.ViewModels
                 if (IsAutoApplyCooldownActive(targetHost, allowWhenPlanChanged: true, planChanged: planChanged, out var remaining))
                 {
                     Log($"[AUTO_APPLY] Skip (cooldown {remaining.TotalSeconds:0}s): target={targetHost}; from={sourceHostKey}");
+                    LogPolicyEvent("skip_reason", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "AUTO_APPLY_COOLDOWN", details: $"remainingSec={remaining.TotalSeconds:0}");
                     return;
                 }
 
@@ -319,6 +326,7 @@ namespace IspAudit.ViewModels
                 using var op = BypassOperationContext.Enter(txId, "auto_apply", targetHost);
 
                 Log($"[AUTO_APPLY] Start: target={targetHost}; source={sourceHostKey}; tx={txId}");
+                LogPolicyEvent("apply", runId: txId, scopeKey: targetHost, planSig: planSig, reasonCode: "AUTO_APPLY_START", details: $"source={sourceHostKey}");
 
                 try
                 {
@@ -396,10 +404,12 @@ namespace IspAudit.ViewModels
                 _ = Task.Run(() => EnqueueAutoRetestAsync(targetHost));
 
                 Log($"[AUTO_APPLY] Done: target={targetHost}; status={outcome.Status}; applied='{outcome.AppliedStrategyText}'");
+                LogPolicyEvent("apply", runId: txId, scopeKey: targetHost, planSig: planSig, reasonCode: $"AUTO_APPLY_{outcome.Status}", details: outcome.AppliedStrategyText);
             }
             catch (Exception ex)
             {
                 Log($"[AUTO_APPLY] FAILED: target={targetHost}; error={ex.Message}");
+                LogPolicyEvent("apply", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "AUTO_APPLY_FAILED", details: ex.GetType().Name);
             }
             finally
             {

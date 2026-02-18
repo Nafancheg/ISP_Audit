@@ -248,6 +248,10 @@ Wizard из 5 шагов: выбор приложения → источник �
 - `Core/Modules/HttpRedirectDetector.cs` ведёт сессионный оконный кэш redirect-событий с параметрами `N/T`: `N` считается как число **разных** eTLD+1 за `T=10m` (после normalization: lower-case + trim trailing dot + IDN/punycode).
 - Добавлен retention `WindowRetention=30m` для burst-событий и cleanup устаревших IP→redirect записей (`_redirectsByIp`), чтобы кэш не рос бесконтрольно.
 
+**Structured policy events (P1.V23.3)**:
+- В `DiagnosticOrchestrator` добавлен unified structured event-лог `POLICY_EVT` для контуров `apply/escalate/rollback/blacklist_hit/skip_reason`.
+- Формат фиксированный (`event/runId/scopeKey/planSig/reasonCode/details`), чтобы smoke/assert мог проверять логи по ключам без парсинга свободного текста.
+
 **Semantic Groups**: `Core/Models/SemanticGroup.cs`, `Core/Bypass/SemanticGroupEvaluator.cs` — статус `NO_TRAFFIC / PARTIAL / ENABLED` по per-policy метрикам.
 
 ### 3.2.3 Service Groups (Accumulative Attachment Model)
