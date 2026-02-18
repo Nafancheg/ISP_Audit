@@ -43,8 +43,27 @@ namespace IspAudit.ViewModels
         private const int PostApplyBaselineFreshnessTtlSecondsDefault = 60;
         private const int PostApplyBaselineSampleCountDefault = 3;
         private const int PostApplyBaselineProbeTimeoutSeconds = 3;
+        private const int PostApplyGuardrailSampleMDefault = 3;
+        private const int PostApplyGuardrailSuccessKDefault = 2;
+        private const int PostApplyOutcomeProbeTimeoutSecondsDefault = 6;
+        private const int PostApplyEnqueueWarmupMsDefault = 350;
+        private const int PostApplyLocalDrainTimeoutSecondsDefault = 15;
+        private const int PostApplyRetestMaxConcurrentTestsDefault = 5;
         private static readonly TimeSpan BlacklistTtlMin = TimeSpan.FromMinutes(10);
         private static readonly TimeSpan BlacklistTtlMax = TimeSpan.FromHours(6);
+
+        private readonly record struct LatchedPostApplyPolicy(
+            int BaselineSampleCount,
+            TimeSpan BaselineProbeTimeout,
+            TimeSpan BaselineFreshnessTtl,
+            int GuardrailSampleM,
+            int GuardrailSuccessK,
+            TimeSpan OutcomeProbeTimeout,
+            TimeSpan EnqueueWarmupDelay,
+            TimeSpan LocalDrainTimeout,
+            int RetestMaxConcurrentTests,
+            string EvaluationOrder,
+            DateTime CapturedAtUtc);
 
         private sealed record PendingFeedbackContext(
             BypassPlan Plan,
@@ -56,7 +75,8 @@ namespace IspAudit.ViewModels
             string ActionSource,
             DateTimeOffset BaselineCapturedAtUtc,
             int BaselineSuccessCount,
-            int BaselineSampleCount);
+            int BaselineSampleCount,
+            LatchedPostApplyPolicy Policy);
 
         private readonly ConcurrentDictionary<string, PendingFeedbackContext> _pendingFeedbackByHostKey = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, string> _activePostApplyRunByScopeKey = new(StringComparer.OrdinalIgnoreCase);
@@ -78,6 +98,30 @@ namespace IspAudit.ViewModels
 
         private static DateTimeOffset ParseUtcOrMin(string? value)
             => DateTimeOffset.TryParse(value, out var dt) ? dt : DateTimeOffset.MinValue;
+
+        private LatchedPostApplyPolicy CaptureLatchedPostApplyPolicy()
+        {
+            var sampleM = Math.Max(1, PostApplyGuardrailSampleMDefault);
+            var successK = Math.Max(1, Math.Min(PostApplyGuardrailSuccessKDefault, sampleM));
+            var baselineSampleCount = Math.Max(1, PostApplyBaselineSampleCountDefault);
+
+            var latched = new LatchedPostApplyPolicy(
+                BaselineSampleCount: baselineSampleCount,
+                BaselineProbeTimeout: TimeSpan.FromSeconds(Math.Max(1, PostApplyBaselineProbeTimeoutSeconds)),
+                BaselineFreshnessTtl: TimeSpan.FromSeconds(Math.Max(1, PostApplyBaselineFreshnessTtlSecondsDefault)),
+                GuardrailSampleM: sampleM,
+                GuardrailSuccessK: successK,
+                OutcomeProbeTimeout: TimeSpan.FromSeconds(Math.Max(1, PostApplyOutcomeProbeTimeoutSecondsDefault)),
+                EnqueueWarmupDelay: TimeSpan.FromMilliseconds(Math.Max(0, PostApplyEnqueueWarmupMsDefault)),
+                LocalDrainTimeout: TimeSpan.FromSeconds(Math.Max(1, PostApplyLocalDrainTimeoutSecondsDefault)),
+                RetestMaxConcurrentTests: Math.Max(1, PostApplyRetestMaxConcurrentTestsDefault),
+                EvaluationOrder: "sni_first_then_ip_fallback",
+                CapturedAtUtc: DateTime.UtcNow);
+
+            Log($"[PostApplyPolicy] Latched: baselineAttempts={latched.BaselineSampleCount}; baselineProbeTimeoutMs={(int)latched.BaselineProbeTimeout.TotalMilliseconds}; baselineFreshTtlMs={(int)latched.BaselineFreshnessTtl.TotalMilliseconds}; guardrail={latched.GuardrailSuccessK}of{latched.GuardrailSampleM}; outcomeProbeTimeoutMs={(int)latched.OutcomeProbeTimeout.TotalMilliseconds}; enqueueWarmupMs={(int)latched.EnqueueWarmupDelay.TotalMilliseconds}; localDrainTimeoutMs={(int)latched.LocalDrainTimeout.TotalMilliseconds}; maxConcurrency={latched.RetestMaxConcurrentTests}; order={latched.EvaluationOrder}; capturedAt={latched.CapturedAtUtc:O}");
+
+            return latched;
+        }
 
         private bool IsBlacklisted(string scopeKey, string planSig, string deltaStep, string reason, out ApplyActionBlacklistStore.BlacklistEntry? entry)
         {
@@ -677,6 +721,7 @@ namespace IspAudit.ViewModels
             var baselineCapturedAtUtc = DateTimeOffset.UtcNow;
             var baselineSuccessCount = 0;
             var baselineSampleCount = 0;
+            var latchedPostApplyPolicy = CaptureLatchedPostApplyPolicy();
 
             try
             {
@@ -690,7 +735,7 @@ namespace IspAudit.ViewModels
 
                 if (PlanHasApplicableActions(plan))
                 {
-                    for (var attempt = 0; attempt < PostApplyBaselineSampleCountDefault; attempt++)
+                    for (var attempt = 0; attempt < latchedPostApplyPolicy.BaselineSampleCount; attempt++)
                     {
                         ct.ThrowIfCancellationRequested();
 
@@ -698,7 +743,7 @@ namespace IspAudit.ViewModels
                         {
                             var probe = await _stateManager.RunOutcomeProbeNowAsync(
                                 hostOverride: hostKey,
-                                timeoutOverride: TimeSpan.FromSeconds(PostApplyBaselineProbeTimeoutSeconds),
+                                timeoutOverride: latchedPostApplyPolicy.BaselineProbeTimeout,
                                 cancellationToken: ct).ConfigureAwait(false);
 
                             baselineSampleCount++;
@@ -747,7 +792,8 @@ namespace IspAudit.ViewModels
                         string.IsNullOrWhiteSpace(actionSource) ? "manual_apply" : actionSource.Trim(),
                         baselineCapturedAtUtc,
                         Math.Max(0, baselineSuccessCount),
-                        Math.Max(0, baselineSampleCount));
+                        Math.Max(0, baselineSampleCount),
+                        latchedPostApplyPolicy);
                 }
 
                 var afterState = BuildBypassStateSummary(bypassController);
@@ -997,8 +1043,9 @@ namespace IspAudit.ViewModels
 
             return Task.Run(async () =>
             {
-                var baselineTtl = TimeSpan.FromSeconds(PostApplyBaselineFreshnessTtlSecondsDefault);
                 var hasPendingBaseline = _pendingFeedbackByHostKey.TryGetValue(hostKey, out var pendingBaseline) && pendingBaseline != null;
+                var latchedPostApplyPolicy = pendingBaseline?.Policy ?? CaptureLatchedPostApplyPolicy();
+                var baselineTtl = latchedPostApplyPolicy.BaselineFreshnessTtl;
                 var baselineAge = TimeSpan.Zero;
                 var baselineSuccessBefore = Math.Max(0, pendingBaseline?.BaselineSuccessCount ?? 0);
                 var baselineSampleBefore = Math.Max(0, pendingBaseline?.BaselineSampleCount ?? 0);
@@ -1011,7 +1058,7 @@ namespace IspAudit.ViewModels
 
                 if (hasPendingBaseline)
                 {
-                    Log($"[PostApplyRetest][op={opId}] Baseline: ageSec={(int)Math.Round(baselineAge.TotalSeconds)}; ttlSec={(int)Math.Round(baselineTtl.TotalSeconds)}; fresh={(isBaselineFresh ? 1 : 0)}");
+                    Log($"[PostApplyRetest][op={opId}] Baseline: ageSec={(int)Math.Round(baselineAge.TotalSeconds)}; ttlSec={(int)Math.Round(baselineTtl.TotalSeconds)}; fresh={(isBaselineFresh ? 1 : 0)}; guardrail={latchedPostApplyPolicy.GuardrailSuccessK}of{latchedPostApplyPolicy.GuardrailSampleM}; order={latchedPostApplyPolicy.EvaluationOrder}");
                 }
                 else
                 {
@@ -1022,15 +1069,15 @@ namespace IspAudit.ViewModels
                     => string.Equals(hk, "youtube.com", StringComparison.OrdinalIgnoreCase)
                         || string.Equals(hk, "www.youtube.com", StringComparison.OrdinalIgnoreCase);
 
-                static bool IsGuardrailRegression(int beforeSuccess, int beforeSample, int afterSuccess)
+                static bool IsGuardrailRegression(int beforeSuccess, int beforeSample, int afterSuccess, int requiredSampleM, int requiredSuccessK)
                 {
                     if (beforeSample <= 0)
                     {
                         return false;
                     }
 
-                    // 2/3 или K-of-M: baseline считается «успешным», если успехов не меньше K.
-                    var requiredK = Math.Max(1, (int)Math.Ceiling(beforeSample * (2.0 / 3.0)));
+                    var effectiveM = Math.Max(1, Math.Min(beforeSample, Math.Max(1, requiredSampleM)));
+                    var requiredK = Math.Max(1, Math.Min(Math.Max(1, requiredSuccessK), effectiveM));
                     return beforeSuccess >= requiredK && afterSuccess == 0;
                 }
 
@@ -1085,14 +1132,14 @@ namespace IspAudit.ViewModels
                                 hostOverride: "www.youtube.com",
                                 pathOverride: "/generate_204",
                                 expectedHttpStatusCodeOverride: 204,
-                                timeoutOverride: TimeSpan.FromSeconds(6),
+                                timeoutOverride: latchedPostApplyPolicy.OutcomeProbeTimeout,
                                 cancellationToken: ctt).ConfigureAwait(false);
 
                             var probeB = await _stateManager.RunOutcomeProbeNowAsync(
                                 hostOverride: "redirector.googlevideo.com",
                                 pathOverride: "/generate_204",
                                 expectedHttpStatusCodeOverride: 204,
-                                timeoutOverride: TimeSpan.FromSeconds(6),
+                                timeoutOverride: latchedPostApplyPolicy.OutcomeProbeTimeout,
                                 cancellationToken: ctt).ConfigureAwait(false);
 
                             var aOk = probeA.Status == OutcomeStatus.Success;
@@ -1113,7 +1160,7 @@ namespace IspAudit.ViewModels
                         // Default: прежний общий probe (TLS+любой HTTP ответ).
                         var probe = await _stateManager.RunOutcomeProbeNowAsync(
                             hostOverride: hk,
-                            timeoutOverride: TimeSpan.FromSeconds(6),
+                            timeoutOverride: latchedPostApplyPolicy.OutcomeProbeTimeout,
                             cancellationToken: ctt).ConfigureAwait(false);
 
                         var v = probe.Status switch
@@ -1179,7 +1226,7 @@ namespace IspAudit.ViewModels
                         var linkedCt = linked.Token;
 
                         // Даем движку короткое время применить правила после Apply.
-                        await Task.Delay(TimeSpan.FromMilliseconds(350), linkedCt).ConfigureAwait(false);
+                        await Task.Delay(latchedPostApplyPolicy.EnqueueWarmupDelay, linkedCt).ConfigureAwait(false);
 
                         var hosts = await BuildPostApplyRetestHostsAsync(hostKey, port: 443, linkedCt).ConfigureAwait(false);
                         if (hosts.Count == 0)
@@ -1285,7 +1332,7 @@ namespace IspAudit.ViewModels
 
                     Log($"[PostApplyRetest][op={opId}] Mode=local (standalone pipeline)");
 
-                    var latchedRunConfig = CaptureLatchedProbeRunConfig(bypassController, maxConcurrentTests: 5);
+                    var latchedRunConfig = CaptureLatchedProbeRunConfig(bypassController, maxConcurrentTests: latchedPostApplyPolicy.RetestMaxConcurrentTests);
                     var pipelineConfig = BuildLatchedPipelineConfig(latchedRunConfig, enableAutoBypass: false);
 
                     // Собираем IP-адреса цели: DNS + локальные кеши.
@@ -1406,7 +1453,7 @@ namespace IspAudit.ViewModels
                         await pipeline.EnqueueHostAsync(h, IspAudit.Utils.LiveTestingPipeline.HostPriority.High).ConfigureAwait(false);
                     }
 
-                    await pipeline.DrainAndCompleteAsync(TimeSpan.FromSeconds(15)).ConfigureAwait(false);
+                    await pipeline.DrainAndCompleteAsync(latchedPostApplyPolicy.LocalDrainTimeout).ConfigureAwait(false);
 
                     // Итог: даже если outcome неоднозначен — логируем наблюдаемое.
                     var summaryOk = anySniMatched ? anyOkSniMatched : anyOk;
@@ -1428,8 +1475,13 @@ namespace IspAudit.ViewModels
 
                     if (effectiveAfterSample > 0)
                     {
-                        var regression = IsGuardrailRegression(baselineSuccessBefore, baselineSampleBefore, effectiveAfterSuccess);
-                        localSummaryDetails += $"; guardrailRegression={(regression ? 1 : 0)}; guardrailPolicy=KofM_2of3";
+                        var regression = IsGuardrailRegression(
+                            baselineSuccessBefore,
+                            baselineSampleBefore,
+                            effectiveAfterSuccess,
+                            latchedPostApplyPolicy.GuardrailSampleM,
+                            latchedPostApplyPolicy.GuardrailSuccessK);
+                        localSummaryDetails += $"; guardrailRegression={(regression ? 1 : 0)}; guardrailPolicy=KofM_{latchedPostApplyPolicy.GuardrailSuccessK}of{latchedPostApplyPolicy.GuardrailSampleM}; evalOrder={latchedPostApplyPolicy.EvaluationOrder}";
                     }
 
                     var adjustedLocalSummary = ApplyBaselineFreshnessPolicy(
@@ -1449,7 +1501,12 @@ namespace IspAudit.ViewModels
                     var guardrailRegression = hasPendingBaseline
                         && isBaselineFresh
                         && effectiveAfterSample > 0
-                        && IsGuardrailRegression(baselineSuccessBefore, baselineSampleBefore, effectiveAfterSuccess);
+                        && IsGuardrailRegression(
+                            baselineSuccessBefore,
+                            baselineSampleBefore,
+                            effectiveAfterSuccess,
+                            latchedPostApplyPolicy.GuardrailSampleM,
+                            latchedPostApplyPolicy.GuardrailSuccessK);
 
                     var finalVerdict = adjustedLocalSummary.Verdict;
                     var finalDetails = adjustedLocalSummary.Details;

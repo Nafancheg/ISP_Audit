@@ -241,6 +241,7 @@ Wizard из 5 шагов: выбор приложения → источник �
 **Latched run config (P1.V23.1)**:
 - На старт операции (`RunAsync`/manual retest/local post-apply retest) оркестратор фиксирует `TestTimeout`, `MaxConcurrentTests` и VPN-профиль в `LatchedProbeRunConfig`.
 - В пределах операции pipeline создаётся только из latched-снимка, что исключает дрейф параметров при runtime-изменениях.
+- В apply→post-apply-retest контуре дополнительно фиксируется `LatchedPostApplyPolicy`: `baseline attempts/probe timeout/freshness TTL`, guardrail `K-of-M`, порядок оценки (`SNI-first` с fallback на IP) и post-apply budgets (`enqueue warmup/outcome probe/local drain/max concurrency`).
 
 **Semantic Groups**: `Core/Models/SemanticGroup.cs`, `Core/Bypass/SemanticGroupEvaluator.cs` — статус `NO_TRAFFIC / PARTIAL / ENABLED` по per-policy метрикам.
 

@@ -116,6 +116,8 @@
 
     - P1.V23.1 (latched run config, 18.02.2026): в `DiagnosticOrchestrator` добавлен `LatchedProbeRunConfig`.
         `TestTimeout/MaxConcurrentTests/VPN-profile` фиксируются на старт операции и используются единообразно при создании pipeline (основной run, manual retest, local post-apply retest).
+    - P1.V23.1 (latched post-apply policy, 18.02.2026): в apply→post-apply-retest добавлен `LatchedPostApplyPolicy`.
+        На run фиксируются baseline attempts/probe timeout/freshness TTL, guardrail `K-of-M`, порядок оценки (`SNI-first` с fallback на IP) и post-apply budgets (`enqueue warmup`, `outcome probe timeout`, `local drain timeout`, `max concurrency`).
 
 Практика (после Apply):
 - После ручного `Apply` UI запускает короткий **пост-Apply ретест** по цели (активные TCP/TLS проверки), чтобы быстро показать, помог ли обход.

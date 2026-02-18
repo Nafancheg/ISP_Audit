@@ -114,6 +114,7 @@
 
 - Depends: P0.V23.2, P0.V23.4
 - Risk: medium
+- [x] Прогресс 18.02.2026 (итерация 5): в apply→post-apply-retest цепочке добавлен `LatchedPostApplyPolicy`; на run фиксируются baseline attempts/probe timeout/freshness TTL, guardrail `K-of-M`, порядок оценки (`SNI-first` с fallback на IP) и post-apply budgets (enqueue warmup, outcome probe timeout, local drain timeout, max concurrency).
 - [x] Прогресс 18.02.2026 (итерация 3): в `ISP_AUDIT_CLASSIC_MODE` добавлен observe-only для runtime auto-add targets (быстрый QUIC→TCP refresh через `TrySyncUdp443SelectiveTargetsFromObservedIp` больше не мутирует observed-target cache/targets в рамках run).
 - [x] Прогресс 18.02.2026 (итерация 4): в `DiagnosticOrchestrator` введён `LatchedProbeRunConfig` — `TestTimeout/MaxConcurrentTests/VPN-profile` фиксируются на старт операции и используются единообразно в `RunAsync`, manual `RetestTargetsAsync` и local post-apply retest pipeline.
 - [x] Прогресс 18.02.2026 (итерация 2): в `ISP_AUDIT_CLASSIC_MODE` добавлен observe-only для auto-adjust `TlsBypassService` (`AutoAdjustAggressive/AutoTTL`) — метрики/вердикты продолжают считаться, но авто-мутации опций не применяются внутри run.
@@ -122,7 +123,7 @@
 - [x] Observe-only для реактивных мутаций within-run (auto-retest toggles, reactive target sync, auto-adjust, auto-add targets)
 - [ ] Разрешить всегда: apply/escalate/rollback и guardrail rollback
 - [ ] Между runs разрешить latched update caches/adjust
-- [ ] Фиксировать параметры проверок на run (`timeouts/attempts/M-K/order + budgets`) *(частично: timeout/maxConcurrency + vpn-profile уже latched)*
+- [x] Фиксировать параметры проверок на run (`timeouts/attempts/M-K/order + budgets`)
 
 #### P1.V23.2 Redirect burst cache (N/T + retention)
 
