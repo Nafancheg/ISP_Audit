@@ -1,3 +1,5 @@
+<!-- markdownlint-disable MD040 MD060 -->
+
 # ISP_Audit — Полный аудит #4
 
 Дата: 10.02.2026
