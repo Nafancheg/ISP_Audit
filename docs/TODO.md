@@ -130,9 +130,10 @@
 
 - Depends: P0.V23.3
 - Risk: low
-- [ ] Сессионный/оконный кэш redirect-host статистики
-- [ ] Очистка/retention по `WindowRetention`
-- [ ] Детерминированная агрегация по eTLD+1 (после normalization)
+- [x] Прогресс 18.02.2026: `HttpRedirectDetector` переведён на burst-подсчёт `N` как количество **разных** eTLD+1 в окне `T=10m` после normalization (lower-case + trim dot + IDN/punycode), добавлен retention `WindowRetention=30m` и cleanup устаревших redirect записей.
+- [x] Сессионный/оконный кэш redirect-host статистики
+- [x] Очистка/retention по `WindowRetention`
+- [x] Детерминированная агрегация по eTLD+1 (после normalization)
 
 #### P1.V23.3 Structured events/logging v2
 

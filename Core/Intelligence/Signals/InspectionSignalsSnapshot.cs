@@ -12,6 +12,7 @@ public readonly record struct InspectionSignalsSnapshot(
     bool HasHttpRedirect,
     string? RedirectToHost,
     bool HasHttpsToHttpRedirect,
+    // Количество разных eTLD+1 redirect-целей за burst-окно (N/T), best-effort.
     int RedirectBurstCount,
     bool RedirectEtldKnown,
     bool HasSuspiciousRst,

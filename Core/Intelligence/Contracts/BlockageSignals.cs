@@ -97,7 +97,7 @@ public sealed class BlockageSignals
     public bool HasHttpsToHttpRedirect { get; init; }
 
     /// <summary>
-    /// Количество наблюдений redirect по тому же eTLD+1 в окне burst-детектора (best-effort).
+    /// Количество разных eTLD+1, наблюдавшихся в окне burst-детектора (best-effort).
     /// Используется как soft-score suspicious (N/T).
     /// </summary>
     public int RedirectBurstCount { get; init; }

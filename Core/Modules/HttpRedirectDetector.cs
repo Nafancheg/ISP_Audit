@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
@@ -16,15 +17,17 @@ namespace IspAudit.Core.Modules
     public sealed class HttpRedirectDetector
     {
         private const int MaxHeaderBytes = 2048;
-        private const int RedirectBurstThresholdDefault = 3;
         private static readonly TimeSpan RedirectBurstWindowDefault = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan RedirectWindowRetentionDefault = TimeSpan.FromMinutes(30);
 
         private readonly ConcurrentDictionary<TcpFlowKey, FlowBuffer> _buffers = new();
         private readonly ConcurrentDictionary<IPAddress, RedirectInfo> _redirectsByIp = new();
-        private readonly ConcurrentDictionary<string, ConcurrentQueue<DateTime>> _redirectBurstByEtldPlusOne = new(StringComparer.OrdinalIgnoreCase);
+        private readonly object _redirectBurstSync = new();
+        private readonly Queue<RedirectBurstEvent> _redirectBurstEvents = new();
 
         private readonly record struct FlowBuffer(byte[] Data, int Length, bool Completed);
         private readonly record struct RedirectInfo(string TargetHost, DateTime FirstSeenUtc, DateTime LastSeenUtc, int BurstCount, bool EtldKnown);
+        private readonly record struct RedirectBurstEvent(string EtldPlusOne, DateTime SeenAtUtc);
 
         public void Attach(TrafficMonitorFilter filter)
         {
@@ -147,8 +150,10 @@ namespace IspAudit.Core.Modules
                 var etldPlusOne = TryGetEtldPlusOne(host);
                 var etldKnown = !string.IsNullOrWhiteSpace(etldPlusOne);
                 var burstCount = etldKnown
-                    ? RegisterAndGetBurstCount(etldPlusOne!, now)
+                    ? RegisterAndGetBurstDistinctEtldCount(etldPlusOne!, now)
                     : 1;
+
+                CleanupExpiredRedirects(now);
 
                 _redirectsByIp.AddOrUpdate(
                     serverIp,
@@ -161,18 +166,49 @@ namespace IspAudit.Core.Modules
             }
         }
 
-        private int RegisterAndGetBurstCount(string etldPlusOne, DateTime nowUtc)
+        private int RegisterAndGetBurstDistinctEtldCount(string etldPlusOne, DateTime nowUtc)
         {
-            var queue = _redirectBurstByEtldPlusOne.GetOrAdd(etldPlusOne, _ => new ConcurrentQueue<DateTime>());
-            queue.Enqueue(nowUtc);
-
-            var threshold = nowUtc - RedirectBurstWindowDefault;
-            while (queue.TryPeek(out var ts) && ts < threshold)
+            lock (_redirectBurstSync)
             {
-                queue.TryDequeue(out _);
-            }
+                _redirectBurstEvents.Enqueue(new RedirectBurstEvent(etldPlusOne, nowUtc));
 
-            return queue.Count;
+                var retentionThreshold = nowUtc - RedirectWindowRetentionDefault;
+                while (_redirectBurstEvents.Count > 0 && _redirectBurstEvents.Peek().SeenAtUtc < retentionThreshold)
+                {
+                    _redirectBurstEvents.Dequeue();
+                }
+
+                var burstThreshold = nowUtc - RedirectBurstWindowDefault;
+                var distinctEtld = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var ev in _redirectBurstEvents)
+                {
+                    if (ev.SeenAtUtc < burstThreshold)
+                    {
+                        continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(ev.EtldPlusOne))
+                    {
+                        distinctEtld.Add(ev.EtldPlusOne);
+                    }
+                }
+
+                var count = distinctEtld.Count;
+                return count <= 0 ? 1 : count;
+            }
+        }
+
+        private void CleanupExpiredRedirects(DateTime nowUtc)
+        {
+            var retentionThreshold = nowUtc - RedirectWindowRetentionDefault;
+
+            foreach (var pair in _redirectsByIp)
+            {
+                if (pair.Value.LastSeenUtc < retentionThreshold)
+                {
+                    _redirectsByIp.TryRemove(pair.Key, out _);
+                }
+            }
         }
 
         private static string? ExtractHostFromLocation(string location)

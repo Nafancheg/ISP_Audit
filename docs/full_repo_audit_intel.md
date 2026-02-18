@@ -243,6 +243,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - В `HttpRedirectDetector` реализована нормализация redirect host (`lower-case + IDN/punycode + trim trailing dot`) при извлечении из `Location`.
 - Добавлены redirect-метаданные `RedirectBurstCount` и `RedirectEtldKnown` (детектор → state store → snapshot → `BlockageSignals`).
 - Для eTLD+1 edge-case (`eTLD unknown`) используется только soft-score и только при burst N/T (`N>=3`, `T=10m`); без burst redirect остаётся `normal` anomaly.
+- P1.V23.2 (18.02.2026): `HttpRedirectDetector` использует оконный burst-cache с retention (`WindowRetention=30m`), а `N` трактуется как число **разных** eTLD+1 за `T=10m` (после normalization: lower-case + trim trailing dot + IDN/punycode).
 - Добавлен hard-признак `https→http` из web-like HTTP probe (`Location: http://...`): поле `HasHttpsToHttpRedirect` проходит через snapshot/signals и повышает `redirectClass` до `suspicious`.
 
 Актуализация (Runtime, 17.02.2026): P0.V23.4 groundwork guardrail

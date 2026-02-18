@@ -276,6 +276,7 @@ public sealed class StandardDiagnosisEngine
             {
                 evidence["redirectBurstN"] = burstCount.ToString();
                 evidence["redirectBurstThreshold"] = redirectBurstThresholdDefault.ToString();
+                evidence["redirectBurstScope"] = "distinct-etld-plus-one";
             }
 
             var hardSuspicious = suspiciousFlags.Count > 0;

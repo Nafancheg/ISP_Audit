@@ -244,6 +244,10 @@ Wizard из 5 шагов: выбор приложения → источник �
 - В пределах операции pipeline создаётся только из latched-снимка, что исключает дрейф параметров при runtime-изменениях.
 - В apply→post-apply-retest контуре дополнительно фиксируется `LatchedPostApplyPolicy`: `baseline attempts/probe timeout/freshness TTL`, guardrail `K-of-M`, порядок оценки (`SNI-first` с fallback на IP) и post-apply budgets (`enqueue warmup/outcome probe/local drain/max concurrency`).
 
+**Redirect burst cache (P1.V23.2)**:
+- `Core/Modules/HttpRedirectDetector.cs` ведёт сессионный оконный кэш redirect-событий с параметрами `N/T`: `N` считается как число **разных** eTLD+1 за `T=10m` (после normalization: lower-case + trim trailing dot + IDN/punycode).
+- Добавлен retention `WindowRetention=30m` для burst-событий и cleanup устаревших IP→redirect записей (`_redirectsByIp`), чтобы кэш не рос бесконтрольно.
+
 **Semantic Groups**: `Core/Models/SemanticGroup.cs`, `Core/Bypass/SemanticGroupEvaluator.cs` — статус `NO_TRAFFIC / PARTIAL / ENABLED` по per-policy метрикам.
 
 ### 3.2.3 Service Groups (Accumulative Attachment Model)
