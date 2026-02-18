@@ -247,6 +247,7 @@ Wizard из 5 шагов: выбор приложения → источник �
 **Redirect burst cache (P1.V23.2)**:
 - `Core/Modules/HttpRedirectDetector.cs` ведёт сессионный оконный кэш redirect-событий с параметрами `N/T`: `N` считается как число **разных** eTLD+1 за `T=10m` (после normalization: lower-case + trim trailing dot + IDN/punycode).
 - Добавлен retention `WindowRetention=30m` для burst-событий и cleanup устаревших IP→redirect записей (`_redirectsByIp`), чтобы кэш не рос бесконтрольно.
+- Параметры `N/T/TTL` вынесены в runtime ENV (`ISP_AUDIT_REDIRECT_BURST_N`, `ISP_AUDIT_REDIRECT_BURST_WINDOW_MINUTES`, `ISP_AUDIT_REDIRECT_WINDOW_RETENTION_MINUTES`) с безопасным clamp/дефолтами.
 
 **Structured policy events (P1.V23.3)**:
 - В `DiagnosticOrchestrator` добавлен unified structured event-лог `POLICY_EVT` для контуров `apply/escalate/rollback/blacklist_hit/skip_reason`.

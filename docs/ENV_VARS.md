@@ -104,3 +104,19 @@
 - `ISP_AUDIT_OUTCOME_DELAY_MS`
 - `ISP_AUDIT_OUTCOME_TIMEOUT_MS`
   - Назначение: задержка/таймаут outcome-probe.
+
+- `ISP_AUDIT_REDIRECT_BURST_N`
+  - Назначение: порог `N` для soft-score suspicious redirect (число разных eTLD+1 в окне `T`).
+  - По умолчанию: `3`.
+  - Диапазон: `1..20` (вне диапазона clamp).
+
+- `ISP_AUDIT_REDIRECT_BURST_WINDOW_MINUTES`
+  - Назначение: размер окна `T` (в минутах) для burst-cache redirect.
+  - По умолчанию: `10`.
+  - Диапазон: `1..1440`.
+
+- `ISP_AUDIT_REDIRECT_WINDOW_RETENTION_MINUTES`
+  - Назначение: retention (в минутах) для redirect burst-cache и cleanup устаревших IP-записей.
+  - По умолчанию: `30`.
+  - Диапазон: `1..1440`.
+  - Примечание: если задано меньше `BURST_WINDOW`, автоматически повышается до значения окна.

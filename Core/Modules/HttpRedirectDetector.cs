@@ -17,8 +17,13 @@ namespace IspAudit.Core.Modules
     public sealed class HttpRedirectDetector
     {
         private const int MaxHeaderBytes = 2048;
+        private const int RedirectBurstDistinctEtldThresholdDefault = 3;
         private static readonly TimeSpan RedirectBurstWindowDefault = TimeSpan.FromMinutes(10);
         private static readonly TimeSpan RedirectWindowRetentionDefault = TimeSpan.FromMinutes(30);
+
+        private readonly int _redirectBurstDistinctEtldThreshold;
+        private readonly TimeSpan _redirectBurstWindow;
+        private readonly TimeSpan _redirectWindowRetention;
 
         private readonly ConcurrentDictionary<TcpFlowKey, FlowBuffer> _buffers = new();
         private readonly ConcurrentDictionary<IPAddress, RedirectInfo> _redirectsByIp = new();
@@ -28,6 +33,42 @@ namespace IspAudit.Core.Modules
         private readonly record struct FlowBuffer(byte[] Data, int Length, bool Completed);
         private readonly record struct RedirectInfo(string TargetHost, DateTime FirstSeenUtc, DateTime LastSeenUtc, int BurstCount, bool EtldKnown);
         private readonly record struct RedirectBurstEvent(string EtldPlusOne, DateTime SeenAtUtc);
+
+        public HttpRedirectDetector()
+        {
+            _redirectBurstDistinctEtldThreshold = ReadPositiveIntOrDefault(
+                EnvKeys.RedirectBurstDistinctEtldThreshold,
+                RedirectBurstDistinctEtldThresholdDefault,
+                min: 1,
+                max: 20);
+
+            var burstWindowMinutes = ReadPositiveIntOrDefault(
+                EnvKeys.RedirectBurstWindowMinutes,
+                (int)RedirectBurstWindowDefault.TotalMinutes,
+                min: 1,
+                max: 1440);
+
+            var retentionMinutes = ReadPositiveIntOrDefault(
+                EnvKeys.RedirectWindowRetentionMinutes,
+                (int)RedirectWindowRetentionDefault.TotalMinutes,
+                min: 1,
+                max: 1440);
+
+            _redirectBurstWindow = TimeSpan.FromMinutes(burstWindowMinutes);
+            _redirectWindowRetention = TimeSpan.FromMinutes(Math.Max(retentionMinutes, burstWindowMinutes));
+        }
+
+        private static int ReadPositiveIntOrDefault(string envName, int defaultValue, int min, int max)
+        {
+            if (!EnvVar.TryReadInt32(envName, out var value))
+            {
+                return defaultValue;
+            }
+
+            if (value < min) return min;
+            if (value > max) return max;
+            return value;
+        }
 
         public void Attach(TrafficMonitorFilter filter)
         {
@@ -172,13 +213,13 @@ namespace IspAudit.Core.Modules
             {
                 _redirectBurstEvents.Enqueue(new RedirectBurstEvent(etldPlusOne, nowUtc));
 
-                var retentionThreshold = nowUtc - RedirectWindowRetentionDefault;
+                var retentionThreshold = nowUtc - _redirectWindowRetention;
                 while (_redirectBurstEvents.Count > 0 && _redirectBurstEvents.Peek().SeenAtUtc < retentionThreshold)
                 {
                     _redirectBurstEvents.Dequeue();
                 }
 
-                var burstThreshold = nowUtc - RedirectBurstWindowDefault;
+                var burstThreshold = nowUtc - _redirectBurstWindow;
                 var distinctEtld = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var ev in _redirectBurstEvents)
                 {
@@ -200,7 +241,7 @@ namespace IspAudit.Core.Modules
 
         private void CleanupExpiredRedirects(DateTime nowUtc)
         {
-            var retentionThreshold = nowUtc - RedirectWindowRetentionDefault;
+            var retentionThreshold = nowUtc - _redirectWindowRetention;
 
             foreach (var pair in _redirectsByIp)
             {

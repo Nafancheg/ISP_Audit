@@ -244,6 +244,7 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Добавлены redirect-метаданные `RedirectBurstCount` и `RedirectEtldKnown` (детектор → state store → snapshot → `BlockageSignals`).
 - Для eTLD+1 edge-case (`eTLD unknown`) используется только soft-score и только при burst N/T (`N>=3`, `T=10m`); без burst redirect остаётся `normal` anomaly.
 - P1.V23.2 (18.02.2026): `HttpRedirectDetector` использует оконный burst-cache с retention (`WindowRetention=30m`), а `N` трактуется как число **разных** eTLD+1 за `T=10m` (после normalization: lower-case + trim trailing dot + IDN/punycode).
+- P2.V23.1 (18.02.2026, частично): параметры redirect `N/T/TTL` вынесены в runtime ENV (`ISP_AUDIT_REDIRECT_BURST_N`, `ISP_AUDIT_REDIRECT_BURST_WINDOW_MINUTES`, `ISP_AUDIT_REDIRECT_WINDOW_RETENTION_MINUTES`) и применяются в `HttpRedirectDetector`/`StandardDiagnosisEngine`.
 - P1.V23.3 (18.02.2026): в `DiagnosticOrchestrator` введены structured policy events (`POLICY_EVT`) для `apply/escalate/rollback/blacklist_hit/skip_reason` с ключами `event/runId/scopeKey/planSig/reasonCode/details`.
 - Добавлен hard-признак `https→http` из web-like HTTP probe (`Location: http://...`): поле `HasHttpsToHttpRedirect` проходит через snapshot/signals и повышает `redirectClass` до `suspicious`.
 

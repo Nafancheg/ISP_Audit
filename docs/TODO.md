@@ -148,7 +148,8 @@
 
 #### P2.V23.1 Тюнинг дефолтов N/T/TTL по телеметрии
 
-- [ ] Вынести параметры в runtime-конфиг/ENV
+- [x] Прогресс 18.02.2026: для redirect N/T/TTL добавлены runtime ENV (`ISP_AUDIT_REDIRECT_BURST_N`, `ISP_AUDIT_REDIRECT_BURST_WINDOW_MINUTES`, `ISP_AUDIT_REDIRECT_WINDOW_RETENTION_MINUTES`) и подключены в `HttpRedirectDetector` + `StandardDiagnosisEngine`.
+- [x] Вынести параметры в runtime-конфиг/ENV
 - [ ] Подготовить методику пересмотра дефолтов
 
 #### P2.V23.2 Advanced diagnostics UI (optional)

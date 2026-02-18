@@ -13,6 +13,16 @@ namespace IspAudit.Core.Intelligence.Diagnosis;
 /// </summary>
 public sealed class StandardDiagnosisEngine
 {
+    private static int ReadRedirectBurstThreshold()
+    {
+        if (!EnvVar.TryReadInt32(EnvKeys.RedirectBurstDistinctEtldThreshold, out var value))
+        {
+            return 3;
+        }
+
+        return Math.Clamp(value, 1, 20);
+    }
+
     public DiagnosisResult Diagnose(BlockageSignals signals)
     {
         if (signals is null) throw new ArgumentNullException(nameof(signals));
@@ -229,7 +239,7 @@ public sealed class StandardDiagnosisEngine
         // 4) HTTP редирект как наблюдаемый факт
         if (signals.HasHttpRedirect)
         {
-            const int redirectBurstThresholdDefault = 3;
+            var redirectBurstThreshold = ReadRedirectBurstThreshold();
 
             var redirectHost = string.IsNullOrWhiteSpace(signals.RedirectToHost) ? null : signals.RedirectToHost;
             var isLikelyBlockpage = BlockpageHostCatalog.IsLikelyProviderBlockpageHost(redirectHost);
@@ -271,11 +281,11 @@ public sealed class StandardDiagnosisEngine
             }
 
             var burstCount = Math.Max(0, signals.RedirectBurstCount);
-            var hasBurstNt = burstCount >= redirectBurstThresholdDefault;
+            var hasBurstNt = burstCount >= redirectBurstThreshold;
             if (hasBurstNt)
             {
                 evidence["redirectBurstN"] = burstCount.ToString();
-                evidence["redirectBurstThreshold"] = redirectBurstThresholdDefault.ToString();
+                evidence["redirectBurstThreshold"] = redirectBurstThreshold.ToString();
                 evidence["redirectBurstScope"] = "distinct-etld-plus-one";
             }
 

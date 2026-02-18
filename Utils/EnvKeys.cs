@@ -47,5 +47,10 @@ namespace IspAudit.Utils
 
         public const string OutcomeDelayMs = "ISP_AUDIT_OUTCOME_DELAY_MS";
         public const string OutcomeTimeoutMs = "ISP_AUDIT_OUTCOME_TIMEOUT_MS";
+
+        // Redirect burst cache / N-T-retention tuning
+        public const string RedirectBurstDistinctEtldThreshold = "ISP_AUDIT_REDIRECT_BURST_N";
+        public const string RedirectBurstWindowMinutes = "ISP_AUDIT_REDIRECT_BURST_WINDOW_MINUTES";
+        public const string RedirectWindowRetentionMinutes = "ISP_AUDIT_REDIRECT_WINDOW_RETENTION_MINUTES";
     }
 }
