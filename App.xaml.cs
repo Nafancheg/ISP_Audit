@@ -1,11 +1,18 @@
 using Microsoft.Extensions.DependencyInjection;
 using IspAudit.Utils;
+using System.Threading;
 
 namespace IspAudit;
 
 public partial class App : System.Windows.Application
 {
     private ServiceProvider? _services;
+    private int _fatalUiErrorHandlingStarted;
+
+    private bool TryBeginFatalUiErrorHandling()
+    {
+        return Interlocked.CompareExchange(ref _fatalUiErrorHandlingStarted, 1, 0) == 0;
+    }
 
     private void EnsureServicesBuilt()
     {
@@ -57,6 +64,13 @@ public partial class App : System.Windows.Application
 
     private void App_DispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
     {
+        // Anti-storm: если уже обрабатываем критическую ошибку, не показываем повторные диалоги.
+        if (!TryBeginFatalUiErrorHandling())
+        {
+            e.Handled = true;
+            return;
+        }
+
         try
         {
             IspAudit.Utils.AppCrashReporter.TryWrite(e.Exception, source: "DispatcherUnhandledException", isTerminating: false);
@@ -87,6 +101,11 @@ public partial class App : System.Windows.Application
 
     private static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
+        if (Current is App app && !app.TryBeginFatalUiErrorHandling())
+        {
+            return;
+        }
+
         try
         {
             if (e.ExceptionObject is Exception ex)
@@ -109,6 +128,12 @@ public partial class App : System.Windows.Application
 
     private static void TaskScheduler_UnobservedTaskException(object? sender, System.Threading.Tasks.UnobservedTaskExceptionEventArgs e)
     {
+        if (Current is App app && !app.TryBeginFatalUiErrorHandling())
+        {
+            e.SetObserved();
+            return;
+        }
+
         try
         {
             IspAudit.Utils.AppCrashReporter.TryWrite(e.Exception, source: "TaskScheduler.UnobservedTaskException", isTerminating: null);

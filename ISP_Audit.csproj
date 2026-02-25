@@ -51,4 +51,25 @@
     <PackageReference Include="System.Management" Version="9.0.0" />
   </ItemGroup>
 
+  <Target Name="PublishAndCopyTestNetworkApp" AfterTargets="Build" Condition="'$(SkipCopyTestNetworkApp)' != 'true'">
+    <PropertyGroup>
+      <TestNetworkAppProject>$(MSBuildProjectDirectory)\TestNetworkApp\TestNetworkApp.csproj</TestNetworkAppProject>
+      <TestNetworkAppBuildDir>$(MSBuildProjectDirectory)\TestNetworkApp\bin\$(Configuration)\net9.0-windows\</TestNetworkAppBuildDir>
+    </PropertyGroup>
+
+    <MSBuild
+      Projects="$(TestNetworkAppProject)"
+      Targets="Build"
+      Properties="Configuration=$(Configuration);SkipCopyTestNetworkApp=true" />
+
+    <ItemGroup>
+      <TestNetworkAppArtifacts Include="$(TestNetworkAppBuildDir)TestNetworkApp.exe" />
+      <TestNetworkAppArtifacts Include="$(TestNetworkAppBuildDir)TestNetworkApp.dll" />
+      <TestNetworkAppArtifacts Include="$(TestNetworkAppBuildDir)TestNetworkApp.deps.json" />
+      <TestNetworkAppArtifacts Include="$(TestNetworkAppBuildDir)TestNetworkApp.runtimeconfig.json" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(TestNetworkAppArtifacts)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

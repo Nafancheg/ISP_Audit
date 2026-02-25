@@ -147,6 +147,7 @@ namespace IspAudit.ViewModels
             };
             Orchestrator.OnDiagnosticComplete += () =>
             {
+                _cancelTransitionPending = false;
                 ScreenState = "done";
                 CommandManager.InvalidateRequerySuggested();
 

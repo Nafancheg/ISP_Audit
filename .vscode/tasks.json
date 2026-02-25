@@ -1,115 +1,108 @@
 {
-	"version": "2.0.0",
-	"tasks": [
-		{
-			"label": "dotnet build",
-			"type": "shell",
-			"command": "dotnet",
-			"args": [
-				"build"
-			],
-			"isBackground": false,
-			"problemMatcher": [
-				"$msCompile"
-			],
-			"group": "build"
-		},
-		{
-			"label": "dotnet build",
-			"type": "shell",
-			"command": "dotnet",
-			"args": [
-				"build"
-			],
-			"isBackground": false,
-			"problemMatcher": [
-				"$msCompile"
-			]
-		},
-		{
-			"label": "dotnet build",
-			"type": "shell",
-			"command": "dotnet",
-			"args": [
-				"build"
-			],
-			"isBackground": false,
-			"problemMatcher": [
-				"$msCompile"
-			]
-		},
-		{
-			"label": "dotnet build",
-			"type": "shell",
-			"command": "dotnet",
-			"args": [
-				"build"
-			],
-			"isBackground": false,
-			"problemMatcher": [
-				"$msCompile"
-			]
-		},
-		{
-			"label": "dotnet build",
-			"type": "shell",
-			"command": "dotnet",
-			"args": [
-				"build"
-			],
-			"isBackground": false,
-			"problemMatcher": [
-				"$msCompile"
-			]
-		},
-		{
-			"label": "smoke strict (SmokeLauncher)",
-			"type": "shell",
-			"command": "dotnet",
-			"args": [
-				"run",
-				"-c",
-				"Debug",
-				"--project",
-				"SmokeLauncher/SmokeLauncher.csproj"
-			],
-			"isBackground": false
-		},
-		{
-			"label": "smoke reg (non-admin)",
-			"type": "shell",
-			"command": "dotnet",
-			"args": [
-				"run",
-				"-c",
-				"Debug",
-				"--project",
-				"TestNetworkApp/TestNetworkApp.csproj",
-				"--",
-				"--smoke",
-				"reg",
-				"--json",
-				"artifacts\\smoke_reg_latest.json"
-			],
-			"isBackground": false
-		},
-		{
-			"label": "smoke ui (non-admin)",
-			"type": "shell",
-			"command": "dotnet",
-			"args": [
-				"run",
-				"-c",
-				"Debug",
-				"--project",
-				"TestNetworkApp/TestNetworkApp.csproj",
-				"--",
-				"--smoke",
-				"ui",
-				"--json",
-				"artifacts\\smoke_ui_latest.json"
-			],
-			"isBackground": false
-		}
-	]
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "restore",
+      "type": "shell",
+      "command": "${env:USERPROFILE}\\.dotnet\\dotnet.exe",
+      "args": [
+	"restore",
+	"ISP_Audit.sln"
+      ],
+      "isBackground": false
+    },
+    {
+      "label": "build (Debug)",
+      "type": "shell",
+      "command": "${env:USERPROFILE}\\.dotnet\\dotnet.exe",
+      "args": [
+	"build",
+	"ISP_Audit.sln",
+	"-c",
+	"Debug"
+      ],
+      "isBackground": false,
+      "problemMatcher": [
+	"$msCompile"
+      ],
+      "group": "build"
+    },
+    {
+      "label": "test (ISP_Audit.Tests)",
+      "type": "shell",
+      "command": "${env:USERPROFILE}\\.dotnet\\dotnet.exe",
+      "args": [
+	"test",
+	"ISP_Audit.Tests/ISP_Audit.Tests.csproj",
+	"-c",
+	"Debug",
+	"--no-build"
+      ],
+      "isBackground": false
+    },
+    {
+      "label": "publish TestNetworkApp",
+      "type": "shell",
+      "command": "${env:USERPROFILE}\\.dotnet\\dotnet.exe",
+      "args": [
+	"publish",
+	"TestNetworkApp/TestNetworkApp.csproj",
+	"-c",
+	"Release",
+	"-r",
+	"win-x64",
+	"--self-contained",
+	"false",
+	"-o",
+	"TestNetworkApp/bin/Publish"
+      ],
+      "isBackground": false
+    },
+    {
+      "label": "smoke infra (non-admin)",
+      "type": "shell",
+      "command": "${env:USERPROFILE}\\.dotnet\\dotnet.exe",
+      "args": [
+	"run",
+	"-c",
+	"Debug",
+	"--project",
+	"TestNetworkApp/TestNetworkApp.csproj",
+	"--",
+	"--smoke",
+	"infra",
+	"--json",
+	"artifacts\\smoke_infra_latest.json"
+      ],
+      "isBackground": false
+    },
+    {
+      "label": "smoke ui reducer",
+      "type": "shell",
+      "command": "${env:USERPROFILE}\\.dotnet\\dotnet.exe",
+      "args": [
+	"run",
+	"-c",
+	"Debug",
+	"--project",
+	"TestNetworkApp/TestNetworkApp.csproj",
+	"--",
+	"--ui-reducer-smoke"
+      ],
+      "isBackground": false
+    },
+    {
+      "label": "smoke strict (SmokeLauncher)",
+      "type": "shell",
+      "command": "${env:USERPROFILE}\\.dotnet\\dotnet.exe",
+      "args": [
+	"run",
+	"-c",
+	"Debug",
+	"--project",
+	"SmokeLauncher/SmokeLauncher.csproj"
+      ],
+      "isBackground": false
+    }
+  ]
 }

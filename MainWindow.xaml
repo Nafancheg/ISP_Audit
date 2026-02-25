@@ -748,7 +748,7 @@
                                         <DataTemplate>
                                             <TextBlock Foreground="{DynamicResource MaterialDesignBody}" FontSize="12" TextWrapping="Wrap">
                                                 <Run Text="• "/>
-                                                <Run Text="{Binding DisplayHost}"/>
+                                                <Run Text="{Binding DisplayHost, Mode=OneWay}"/>
                                             </TextBlock>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
@@ -772,7 +772,7 @@
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding DisplayHost}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding DisplayHost, Mode=OneWay}" FontWeight="SemiBold"/>
                                         <Border Background="#DBEAFE" CornerRadius="4" Padding="6,2" Margin="8,0,0,0"
                                                 Cursor="Hand" MouseLeftButtonUp="AggregatedMemberBadge_MouseLeftButtonUp"
                                                 VerticalAlignment="Center"

@@ -20,6 +20,12 @@ namespace IspAudit.ViewModels
         private bool _isBasicTestMode = false;
         private bool _isDarkTheme = false;
 
+        // Guard от повторного/дребезжащего выполнения Start/Stop команды.
+        private int _startStopCommandInFlight;
+        private volatile bool _cancelTransitionPending;
+        private DateTime _lastCancelRequestedUtc = DateTime.MinValue;
+        private static readonly TimeSpan StartAfterCancelGuardWindow = TimeSpan.FromMilliseconds(1200);
+
         // P1.x: явное согласие оператора на системные изменения DNS/DoH.
         // По умолчанию: запрещено. Разрешение хранится в state/operator_consent.json.
         private bool _allowDnsDohSystemChanges;

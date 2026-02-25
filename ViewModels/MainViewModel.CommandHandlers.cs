@@ -921,30 +921,41 @@ namespace IspAudit.ViewModels
 
         private async Task ConnectDomainFromResultAsync(TestResult? test)
         {
-            if (test == null)
+            try
             {
-                return;
+                if (test == null)
+                {
+                    return;
+                }
+
+                // Важно: HasDomainSuggestion вычисляется от SelectedTestResult.
+                // Поэтому перед доменным Apply выставляем выбранную строку.
+                SelectedTestResult = test;
+
+                var preferredHostKey = GetPreferredHostKey(test) ?? string.Empty;
+                string? domainOverride = null;
+
+                // Если строка относится к текущей авто-подсказке семейства — используем её.
+                // Иначе fallback: домен этой строки (последние 2 лейбла).
+                if (IspAudit.Utils.DomainUtils.IsHostInSuffix(preferredHostKey, Results.SuggestedDomainSuffix) && Results.CanSuggestDomainAggregation)
+                {
+                    domainOverride = Results.SuggestedDomainSuffix;
+                }
+                else if (IspAudit.Utils.DomainUtils.TryGetBaseSuffix(preferredHostKey, out var baseSuffix))
+                {
+                    domainOverride = baseSuffix;
+                }
+
+                await ApplyDomainRecommendationsAsync(domainOverride).ConfigureAwait(false);
             }
-
-            // Важно: HasDomainSuggestion вычисляется от SelectedTestResult.
-            // Поэтому перед доменным Apply выставляем выбранную строку.
-            SelectedTestResult = test;
-
-            var preferredHostKey = GetPreferredHostKey(test) ?? string.Empty;
-            string? domainOverride = null;
-
-            // Если строка относится к текущей авто-подсказке семейства — используем её.
-            // Иначе fallback: домен этой строки (последние 2 лейбла).
-            if (IspAudit.Utils.DomainUtils.IsHostInSuffix(preferredHostKey, Results.SuggestedDomainSuffix) && Results.CanSuggestDomainAggregation)
+            catch (OperationCanceledException)
             {
-                domainOverride = Results.SuggestedDomainSuffix;
+                Log("[APPLY] Отмена доменного применения из карточки");
             }
-            else if (IspAudit.Utils.DomainUtils.TryGetBaseSuffix(preferredHostKey, out var baseSuffix))
+            catch (Exception ex)
             {
-                domainOverride = baseSuffix;
+                Log($"[APPLY] Ошибка доменного применения из карточки: {ex.Message}");
             }
-
-            await ApplyDomainRecommendationsAsync(domainOverride).ConfigureAwait(false);
         }
 
         private void TogglePinDomainFromResult(TestResult? test)
@@ -2323,14 +2334,46 @@ namespace IspAudit.ViewModels
 
         private async Task StartOrCancelAsync()
         {
-            if (IsRunning)
+            if (System.Threading.Interlocked.Exchange(ref _startStopCommandInFlight, 1) == 1)
             {
-                Log("→ Cancelling diagnostic");
-                Orchestrator.Cancel();
+                Log("[StartStop] Игнор: команда уже выполняется");
+                return;
             }
-            else
+
+            try
             {
+                var nowUtc = DateTime.UtcNow;
+
+                // Пока идёт переход к остановке, любые повторные клики считаем продолжением Cancel.
+                if (IsRunning || _cancelTransitionPending)
+                {
+                    if (!_cancelTransitionPending)
+                    {
+                        _cancelTransitionPending = true;
+                        _lastCancelRequestedUtc = nowUtc;
+                        Log("→ Cancelling diagnostic");
+                        Orchestrator.Cancel();
+                    }
+                    else
+                    {
+                        Log("[StartStop] Остановка уже запрошена");
+                    }
+
+                    return;
+                }
+
+                // Защита от «дребезга» кнопки: случайный повторный invoke сразу после Cancel не запускает новый run.
+                if ((nowUtc - _lastCancelRequestedUtc) < StartAfterCancelGuardWindow)
+                {
+                    Log("[StartStop] Игнор: слишком ранний старт после остановки");
+                    return;
+                }
+
                 await StartDiagnosticAsync();
+            }
+            finally
+            {
+                System.Threading.Interlocked.Exchange(ref _startStopCommandInFlight, 0);
             }
         }
 
