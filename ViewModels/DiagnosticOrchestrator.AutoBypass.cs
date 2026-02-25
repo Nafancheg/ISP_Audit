@@ -17,6 +17,7 @@ namespace IspAudit.ViewModels
         private readonly ConcurrentDictionary<string, DateTimeOffset> _autoApplyLastAttemptUtcByTarget = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, DateTimeOffset> _autoApplyLastSuccessUtcByTarget = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, string> _autoApplyLastPlanSignatureByTarget = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, ConcurrentQueue<DateTimeOffset>> _autoApplyLowConfidenceHitsByPolicyKey = new(StringComparer.OrdinalIgnoreCase);
 
         // MVP значения: достаточно, чтобы не «душить» UI/движок.
         private static readonly TimeSpan AutoApplyCooldown = TimeSpan.FromSeconds(45);
@@ -25,7 +26,12 @@ namespace IspAudit.ViewModels
 
         // P1.11: execution policy автопилота.
         // Авто-применение должно быть консервативным: только безопасные/обратимые действия.
-        private const int AutoApplyMinConfidence = 70;
+        private const int AutoApplyMinConfidenceDefault = 70;
+        private const int AutoApplySafeMinConfidenceDefault = 70;
+        private const int AutoApplyConfidenceBoostWindowMinutesDefault = 10;
+        private const int AutoApplyConfidenceBoostRequiredHitsDefault = 3;
+        private const int AutoApplyConfidenceBoostPerHitDefault = 5;
+        private const int AutoApplyConfidenceBoostMaxDefault = 20;
 
         private static readonly HashSet<StrategyId> AutoApplyAllowedStrategyIds = new()
         {
@@ -40,11 +46,19 @@ namespace IspAudit.ViewModels
             StrategyId.DropRst,
         };
 
+        // Safe-tier: действия с пониженным порогом confidence (при отдельном ENV).
+        // В текущем этапе считаем безопасными только TLS fragment + assist DropUdp443.
+        private static readonly HashSet<StrategyId> AutoApplySafeStrategyIds = new()
+        {
+            StrategyId.TlsFragment,
+        };
+
         private void ResetAutoApplyState()
         {
             _autoApplyLastAttemptUtcByTarget.Clear();
             _autoApplyLastSuccessUtcByTarget.Clear();
             _autoApplyLastPlanSignatureByTarget.Clear();
+            _autoApplyLowConfidenceHitsByPolicyKey.Clear();
         }
 
         private static string BuildPlanSignature(BypassPlan? plan)
@@ -60,7 +74,7 @@ namespace IspAudit.ViewModels
             return $"{strategies}|U{(plan.DropUdp443 ? 1 : 0)}|N{(plan.AllowNoSni ? 1 : 0)}";
         }
 
-        private bool TryBuildAutoApplyPlan(BypassPlan plan, out BypassPlan autoPlan, out string reason)
+        private bool TryBuildAutoApplyPlan(string hostKey, BypassPlan plan, out BypassPlan autoPlan, out string reason)
         {
             autoPlan = plan;
             reason = string.Empty;
@@ -72,10 +86,16 @@ namespace IspAudit.ViewModels
             }
 
             var conf = Math.Clamp(plan.PlanConfidence, 0, 100);
-            if (conf < AutoApplyMinConfidence)
+            var minConfidence = AutoApplyMinConfidenceDefault;
+            if (EnvVar.TryReadInt32(EnvKeys.AutoApplyMinConfidence, out var cfgMinConfidence))
             {
-                reason = $"confidence<{AutoApplyMinConfidence}";
-                return false;
+                minConfidence = Math.Clamp(cfgMinConfidence, 0, 100);
+            }
+
+            var minConfidenceSafe = AutoApplySafeMinConfidenceDefault;
+            if (EnvVar.TryReadInt32(EnvKeys.AutoApplySafeMinConfidence, out var cfgMinConfidenceSafe))
+            {
+                minConfidenceSafe = Math.Clamp(cfgMinConfidenceSafe, 0, 100);
             }
 
             var allowDnsDoh = false;
@@ -132,6 +152,28 @@ namespace IspAudit.ViewModels
                 return false;
             }
 
+            var safeOnly = allowDropUdp443
+                && filtered.Count == 0
+                || (filtered.Count > 0
+                    && filtered.All(s => AutoApplySafeStrategyIds.Contains(s.Id))
+                    && !allowNoSni);
+            var requiredConfidence = safeOnly ? minConfidenceSafe : minConfidence;
+
+            var normalizedTargetHost = ResolveAutoApplyTargetHost(hostKey);
+            var planSig = BuildPlanSignature(plan);
+            var now = DateTimeOffset.UtcNow;
+            var (hits, boost, requiredHits) = GetConfidenceBoost(normalizedTargetHost, planSig, now);
+            var effectiveConfidence = Math.Clamp(conf + boost, 0, 100);
+
+            if (effectiveConfidence < requiredConfidence)
+            {
+                RegisterLowConfidenceHit(normalizedTargetHost, planSig, now);
+                reason = safeOnly
+                    ? $"confidence<{requiredConfidence};tier=safe;raw={conf};effective={effectiveConfidence};hits={hits};requiredHits={requiredHits};boost={boost}"
+                    : $"confidence<{requiredConfidence};tier=general;raw={conf};effective={effectiveConfidence};hits={hits};requiredHits={requiredHits};boost={boost}";
+                return false;
+            }
+
             // Не мутируем исходный план: создаём “auto plan” со строгими ограничениями.
             autoPlan = new BypassPlan
             {
@@ -149,6 +191,92 @@ namespace IspAudit.ViewModels
 
             return true;
         }
+
+        private (int hits, int boost, int requiredHits) GetConfidenceBoost(string targetHost, string planSig, DateTimeOffset nowUtc)
+        {
+            var requiredHits = ReadClampedEnvInt(
+                EnvKeys.AutoApplyConfidenceBoostRequiredHits,
+                AutoApplyConfidenceBoostRequiredHitsDefault,
+                min: 1,
+                max: 20);
+            var windowMinutes = ReadClampedEnvInt(
+                EnvKeys.AutoApplyConfidenceBoostWindowMinutes,
+                AutoApplyConfidenceBoostWindowMinutesDefault,
+                min: 1,
+                max: 120);
+            var boostPerHit = ReadClampedEnvInt(
+                EnvKeys.AutoApplyConfidenceBoostPerHit,
+                AutoApplyConfidenceBoostPerHitDefault,
+                min: 0,
+                max: 50);
+            var maxBoost = ReadClampedEnvInt(
+                EnvKeys.AutoApplyConfidenceBoostMax,
+                AutoApplyConfidenceBoostMaxDefault,
+                min: 0,
+                max: 50);
+
+            if (string.IsNullOrWhiteSpace(targetHost) || string.IsNullOrWhiteSpace(planSig))
+            {
+                return (hits: 0, boost: 0, requiredHits: requiredHits);
+            }
+
+            var key = BuildLowConfidencePolicyKey(targetHost, planSig);
+            var queue = _autoApplyLowConfidenceHitsByPolicyKey.GetOrAdd(key, _ => new ConcurrentQueue<DateTimeOffset>());
+
+            var cutoff = nowUtc - TimeSpan.FromMinutes(windowMinutes);
+            while (queue.TryPeek(out var head) && head < cutoff)
+            {
+                queue.TryDequeue(out _);
+            }
+
+            var hits = queue.Count;
+            if (hits < requiredHits || boostPerHit <= 0 || maxBoost <= 0)
+            {
+                return (hits: hits, boost: 0, requiredHits: requiredHits);
+            }
+
+            var overThreshold = hits - requiredHits + 1;
+            var boost = Math.Clamp(overThreshold * boostPerHit, 0, maxBoost);
+            return (hits: hits, boost: boost, requiredHits: requiredHits);
+        }
+
+        private void RegisterLowConfidenceHit(string targetHost, string planSig, DateTimeOffset nowUtc)
+        {
+            if (string.IsNullOrWhiteSpace(targetHost) || string.IsNullOrWhiteSpace(planSig))
+            {
+                return;
+            }
+
+            var windowMinutes = ReadClampedEnvInt(
+                EnvKeys.AutoApplyConfidenceBoostWindowMinutes,
+                AutoApplyConfidenceBoostWindowMinutesDefault,
+                min: 1,
+                max: 120);
+
+            var key = BuildLowConfidencePolicyKey(targetHost, planSig);
+            var queue = _autoApplyLowConfidenceHitsByPolicyKey.GetOrAdd(key, _ => new ConcurrentQueue<DateTimeOffset>());
+            queue.Enqueue(nowUtc);
+
+            var cutoff = nowUtc - TimeSpan.FromMinutes(windowMinutes);
+            while (queue.TryPeek(out var head) && head < cutoff)
+            {
+                queue.TryDequeue(out _);
+            }
+        }
+
+        private static int ReadClampedEnvInt(string envKey, int defaultValue, int min, int max)
+        {
+            var value = defaultValue;
+            if (EnvVar.TryReadInt32(envKey, out var parsed))
+            {
+                value = parsed;
+            }
+
+            return Math.Clamp(value, min, max);
+        }
+
+        private static string BuildLowConfidencePolicyKey(string targetHost, string planSig)
+            => $"{targetHost}|{planSig}";
 
         private string ResolveAutoApplyTargetHost(string hostKey)
         {
@@ -218,11 +346,19 @@ namespace IspAudit.ViewModels
                 return;
             }
 
-            if (!TryBuildAutoApplyPlan(plan, out var autoPlan, out var policyReason))
+            if (!TryBuildAutoApplyPlan(hostKey, plan, out var autoPlan, out var policyReason))
             {
                 if (!string.IsNullOrWhiteSpace(policyReason))
                 {
                     Log($"[AUTO_APPLY] Skip (policy {policyReason}): from={hostKey}");
+                    var reasonCode = policyReason.StartsWith("confidence<", StringComparison.OrdinalIgnoreCase)
+                        ? "LOW_CONFIDENCE"
+                        : policyReason.Contains("DoH requires consent", StringComparison.OrdinalIgnoreCase)
+                            ? "DOH_CONSENT_REQUIRED"
+                            : policyReason.Contains("no eligible actions", StringComparison.OrdinalIgnoreCase)
+                                ? "UNSAFE_OR_NOT_ALLOWED_ACTIONS"
+                                : "POLICY_BLOCK";
+                    LogPolicyEvent("skip_reason", runId: null, scopeKey: hostKey, planSig: BuildPlanSignature(plan), reasonCode: reasonCode, details: policyReason);
                 }
 
                 return;
@@ -276,9 +412,17 @@ namespace IspAudit.ViewModels
                 if (_cts?.IsCancellationRequested == true) return;
 
                 // P1.11: enforcement policy (confidence/risk/allowlist/consent) на этапе исполнения.
-                if (!TryBuildAutoApplyPlan(plan, out var autoPlan, out var policyReason))
+                if (!TryBuildAutoApplyPlan(targetHost, plan, out var autoPlan, out var policyReason))
                 {
                     Log($"[AUTO_APPLY] Skip (policy {policyReason}): target={targetHost}; from={sourceHostKey}");
+                    var reasonCode = policyReason.StartsWith("confidence<", StringComparison.OrdinalIgnoreCase)
+                        ? "LOW_CONFIDENCE"
+                        : policyReason.Contains("DoH requires consent", StringComparison.OrdinalIgnoreCase)
+                            ? "DOH_CONSENT_REQUIRED"
+                            : policyReason.Contains("no eligible actions", StringComparison.OrdinalIgnoreCase)
+                                ? "UNSAFE_OR_NOT_ALLOWED_ACTIONS"
+                                : "POLICY_BLOCK";
+                    LogPolicyEvent("skip_reason", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: reasonCode, details: policyReason);
                     return;
                 }
 

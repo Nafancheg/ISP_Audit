@@ -36,6 +36,14 @@ namespace IspAudit.Utils
         // Auto-retest debounce (минимальный интервал между автоперетестами после изменения bypass)
         public const string RetestDebounceMs = "ISP_AUDIT_RETEST_DEBOUNCE_MS";
 
+        // Auto-apply policy tuning
+        public const string AutoApplyMinConfidence = "ISP_AUDIT_AUTO_APPLY_MIN_CONFIDENCE";
+        public const string AutoApplySafeMinConfidence = "ISP_AUDIT_AUTO_APPLY_SAFE_MIN_CONFIDENCE";
+        public const string AutoApplyConfidenceBoostWindowMinutes = "ISP_AUDIT_AUTO_APPLY_CONFIDENCE_BOOST_WINDOW_MINUTES";
+        public const string AutoApplyConfidenceBoostRequiredHits = "ISP_AUDIT_AUTO_APPLY_CONFIDENCE_BOOST_REQUIRED_HITS";
+        public const string AutoApplyConfidenceBoostPerHit = "ISP_AUDIT_AUTO_APPLY_CONFIDENCE_BOOST_PER_HIT";
+        public const string AutoApplyConfidenceBoostMax = "ISP_AUDIT_AUTO_APPLY_CONFIDENCE_BOOST_MAX";
+
         // Тайминги/пороговые значения (runtime)
         public const string WatchdogTickMs = "ISP_AUDIT_WATCHDOG_TICK_MS";
         public const string WatchdogStaleMs = "ISP_AUDIT_WATCHDOG_STALE_MS";

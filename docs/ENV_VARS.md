@@ -87,6 +87,38 @@
   - По умолчанию: `5000`.
   - Примечание: `0` отключает debounce, отрицательное значение также отключает debounce (для экспериментов).
 
+- `ISP_AUDIT_AUTO_APPLY_MIN_CONFIDENCE`
+  - Назначение: минимальная уверенность (`PlanConfidence`) для auto-apply.
+  - Значение: целое число `0..100` (вне диапазона clamp).
+  - По умолчанию: `70`.
+  - Примечание: используется только для policy-гейта auto-apply; при недостижении порога фиксируется `skip_reason=LOW_CONFIDENCE`.
+
+- `ISP_AUDIT_AUTO_APPLY_SAFE_MIN_CONFIDENCE`
+  - Назначение: отдельный порог уверенности для safe-tier auto-apply.
+  - Значение: целое число `0..100` (вне диапазона clamp).
+  - По умолчанию: `70`.
+  - Семантика: применяется только для safe-only плана (`TlsFragment` и/или assist `DropUdp443`); для остальных случаев используется `ISP_AUDIT_AUTO_APPLY_MIN_CONFIDENCE`.
+
+- `ISP_AUDIT_AUTO_APPLY_CONFIDENCE_BOOST_WINDOW_MINUTES`
+  - Назначение: окно (в минутах) для накопления повторяемых low-confidence срабатываний одного и того же `scope+planSig`.
+  - По умолчанию: `10`.
+  - Диапазон: `1..120`.
+
+- `ISP_AUDIT_AUTO_APPLY_CONFIDENCE_BOOST_REQUIRED_HITS`
+  - Назначение: число повторений low-confidence в окне, после которого включается boost confidence.
+  - По умолчанию: `3`.
+  - Диапазон: `1..20`.
+
+- `ISP_AUDIT_AUTO_APPLY_CONFIDENCE_BOOST_PER_HIT`
+  - Назначение: шаг повышения confidence за каждое повторение сверх порога.
+  - По умолчанию: `5`.
+  - Диапазон: `0..50`.
+
+- `ISP_AUDIT_AUTO_APPLY_CONFIDENCE_BOOST_MAX`
+  - Назначение: верхний предел суммарного boost confidence.
+  - По умолчанию: `20`.
+  - Диапазон: `0..50`.
+
 ---
 
 ## 4) Тайминги/пороговые значения (runtime)
