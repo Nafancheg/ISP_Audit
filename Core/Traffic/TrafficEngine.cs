@@ -104,16 +104,16 @@ namespace IspAudit.Core.Traffic
         internal TrafficEngineMutationContext? GetLastMutationContextSnapshot()
             => Volatile.Read(ref _lastMutation);
 
-            private string FormatLastMutationForLog()
+        private string FormatLastMutationForLog()
+        {
+            var lastMutation = GetLastMutationContextSnapshot();
+            if (lastMutation == null)
             {
-                var lastMutation = GetLastMutationContextSnapshot();
-                if (lastMutation == null)
-                {
-                    return string.Empty;
-                }
-
-                return $" | lastMutation seq={lastMutation.Seq} id={lastMutation.CorrelationId} op={lastMutation.Operation} utc={lastMutation.TimestampUtc} details={lastMutation.Details}";
+                return string.Empty;
             }
+
+            return $" | lastMutation seq={lastMutation.Seq} id={lastMutation.CorrelationId} op={lastMutation.Operation} utc={lastMutation.TimestampUtc} details={lastMutation.Details}";
+        }
 
         public void RegisterFilter(IPacketFilter filter)
         {
@@ -229,7 +229,7 @@ namespace IspAudit.Core.Traffic
 
                 if (_handle.IsInvalid)
                 {
-                     throw new Exception("Failed to open WinDivert handle. Check admin privileges or driver installation.");
+                    throw new Exception("Failed to open WinDivert handle. Check admin privileges or driver installation.");
                 }
 
                 _loopTask = Task.Run(() => Loop(_cts.Token), _cts.Token);
@@ -530,9 +530,25 @@ namespace IspAudit.Core.Traffic
 
         public void Dispose()
         {
-            // Task.Run чтобы избежать deadlock при вызове из UI-потока
-            Task.Run(() => StopAsync()).Wait(TimeSpan.FromSeconds(5));
-            _cts?.Dispose();
+            try
+            {
+                // P2.RUNTIME.1: не блокируем shutdown через Wait/Result.
+                var stopTask = StopAsync();
+                _ = stopTask.ContinueWith(t =>
+                {
+                    if (t.Exception != null)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[TrafficEngine] StopAsync failed: {t.Exception.GetBaseException().Message}");
+                    }
+
+                    try { _cts?.Dispose(); } catch { }
+                }, TaskScheduler.Default);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[TrafficEngine] Dispose failed: {ex.Message}");
+                try { _cts?.Dispose(); } catch { }
+            }
         }
     }
 }

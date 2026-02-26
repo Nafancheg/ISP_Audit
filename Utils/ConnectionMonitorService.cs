@@ -272,9 +272,25 @@ namespace IspAudit.Utils
 
         public void Dispose()
         {
-            // Task.Run чтобы избежать deadlock при вызове из UI-потока
-            Task.Run(() => StopAsync()).Wait(TimeSpan.FromSeconds(5));
-            _cts?.Dispose();
+            try
+            {
+                // P2.RUNTIME.1: не блокируем UI-путь shutdown через Wait/Result.
+                var stopTask = StopAsync();
+                _ = stopTask.ContinueWith(t =>
+                {
+                    if (t.Exception != null)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ConnectionMonitor] StopAsync failed: {t.Exception.GetBaseException().Message}");
+                    }
+
+                    try { _cts?.Dispose(); } catch { }
+                }, TaskScheduler.Default);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ConnectionMonitor] Dispose failed: {ex.Message}");
+                try { _cts?.Dispose(); } catch { }
+            }
         }
     }
 }

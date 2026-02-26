@@ -201,21 +201,27 @@ namespace IspAudit.Utils
             _testerQueue.Writer.TryComplete();
             _bypassQueue.Writer.TryComplete();
 
-            // Ждём завершения воркеров максимум 3 секунды
             try
             {
-                if (_healthTask != null)
-                {
-                    Task.WhenAll(_workers.Append(_healthTask)).Wait(3000);
-                }
-                else
-                {
-                    Task.WhenAll(_workers).Wait(3000);
-                }
-            }
-            catch { }
+                // P2.RUNTIME.1: не блокируем Dispose через Wait/Result.
+                var workersTask = _healthTask != null
+                    ? Task.WhenAny(Task.WhenAll(_workers.Append(_healthTask)), Task.Delay(3000))
+                    : Task.WhenAny(Task.WhenAll(_workers), Task.Delay(3000));
 
-            try { _cts.Dispose(); } catch { }
+                _ = workersTask.ContinueWith(t =>
+                {
+                    if (t.Exception != null)
+                    {
+                        _progress?.Report($"[Pipeline] WARN dispose async wait failed: {t.Exception.GetBaseException().Message}");
+                    }
+
+                    try { _cts.Dispose(); } catch { }
+                }, TaskScheduler.Default);
+            }
+            catch
+            {
+                try { _cts.Dispose(); } catch { }
+            }
         }
     }
 }

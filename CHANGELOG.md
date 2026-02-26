@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ P2.RUNTIME.1 — снижение sync-over-async в shutdown/dispose
+
+- В shutdown/dispose путях убраны блокирующие `Wait/Result` на stop-операциях: `ConnectionMonitorService`, `DnsSnifferService`, `PidTrackerService`, `TrafficEngine`, `LiveTestingPipeline`, `ReactiveTargetSyncService`.
+- `Dispose` переведён на неблокирующий best-effort паттерн: запуск `StopAsync`/ожидания воркеров в фоне через continuation с диагностикой ошибок и безопасным отложенным `Dispose` для CTS.
+- Цель этапа выполнена: UI-путь shutdown не блокируется синхронными ожиданиями stop-задач.
+
 ### ✅ P2.ASYNC.1 — выравнивание UI async/await контрактов
 
 - В UI command-цепочках `MainViewModel` убраны `ConfigureAwait(false)` из путей, где после `await` обновляется bindable-состояние (`IsApplyingRecommendations`, `ActionStatusText`, post-apply статус, participation markers и др.).

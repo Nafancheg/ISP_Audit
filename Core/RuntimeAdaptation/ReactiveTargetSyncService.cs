@@ -70,14 +70,14 @@ public sealed class ReactiveTargetSyncService
         {
             _cts.Cancel();
 
-            // Best-effort: не блокируем shutdown надолго.
-            try
+            // P2.RUNTIME.1: не блокируем shutdown через Wait/Result.
+            _ = _worker.ContinueWith(t =>
             {
-                _worker.Wait(TimeSpan.FromMilliseconds(200));
-            }
-            catch
-            {
-            }
+                if (t.Exception != null)
+                {
+                    _log?.Invoke($"[ReactiveTargetSync] WARN dispose async wait failed: {t.Exception.GetBaseException().Message}");
+                }
+            }, TaskScheduler.Default);
         }
         catch
         {

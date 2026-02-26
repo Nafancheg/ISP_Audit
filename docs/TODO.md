@@ -10,7 +10,7 @@
 
 - [x] P2.ARCH.2: убрать прямую зависимость orchestration-модуля от WPF Dispatcher (`Application.Current`) — **готово, когда** `PipelineManager` работает через абстракцию диспетчеризации, а WPF-деталь остаётся только в UI composition.
 - [x] P2.ASYNC.1: привести UI-слой к контракту async/await (без `ConfigureAwait(false)` в command-цепочках с обновлением bindable-состояния) — **готово, когда** UI-команды не нарушают thread-affinity WPF и smoke UI/reg PASS.
-- [ ] P2.RUNTIME.1: снизить sync-over-async в shutdown/dispose путях (`Wait/Result` на stop-операциях) — **готово, когда** остановка сервисов выполняется без блокирующих ожиданий на UI-пути и без регрессий smoke strict.
+- [x] P2.RUNTIME.1: снизить sync-over-async в shutdown/dispose путях (`Wait/Result` на stop-операциях) — **готово, когда** остановка сервисов выполняется без блокирующих ожиданий на UI-пути и без регрессий smoke strict.
 - [ ] P2.OBS.1: убрать пустые `catch` в runtime-коде и добавить контрактное логирование контекста — **готово, когда** в production-коде нет silent catch без причины/лога, а инциденты можно трассировать по логам.
 
 ## [NEXT]

@@ -737,9 +737,25 @@ namespace IspAudit.Utils
                 System.Diagnostics.Debug.WriteLine($"[DnsParser] CTS.Cancel: {ex.Message}");
             }
 
-            // Task.Run чтобы избежать deadlock при вызове из UI-потока
-            Task.Run(() => StopAsync()).Wait(TimeSpan.FromSeconds(5));
-            _cts.Dispose();
+            try
+            {
+                // P2.RUNTIME.1: не блокируем shutdown через Wait/Result.
+                var stopTask = StopAsync();
+                _ = stopTask.ContinueWith(t =>
+                {
+                    if (t.Exception != null)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DnsParser] StopAsync failed: {t.Exception.GetBaseException().Message}");
+                    }
+
+                    try { _cts.Dispose(); } catch { }
+                }, TaskScheduler.Default);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DnsParser] Dispose failed: {ex.Message}");
+                try { _cts.Dispose(); } catch { }
+            }
         }
 
         public event Action<string, string>? OnDnsLookupFailed;
