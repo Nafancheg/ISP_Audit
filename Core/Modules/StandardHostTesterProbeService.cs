@@ -12,6 +12,10 @@ namespace IspAudit.Core.Modules
 {
     public sealed class StandardHostTesterProbeService : IStandardHostTesterProbeService
     {
+        // P2.5: единый HTTP/3 клиент (MsQuic) для всех H3 probe, чтобы не создавать handler/client на каждый вызов.
+        private static readonly SocketsHttpHandler Http3Handler = CreateHttp3Handler();
+        private static readonly HttpClient Http3Client = CreateHttp3Client();
+
         public async Task<string?> TryReverseDnsAsync(string ipString, TimeSpan timeout, CancellationToken ct)
         {
             try
@@ -281,28 +285,6 @@ namespace IspAudit.Core.Modules
 
                 var h3Sw = Stopwatch.StartNew();
 
-                // SocketsHttpHandler использует MsQuic на Windows для HTTP/3.
-                using var handler = new SocketsHttpHandler
-                {
-                    AllowAutoRedirect = false,
-                    AutomaticDecompression = DecompressionMethods.None,
-                    UseCookies = false,
-                    ConnectTimeout = timeout
-                };
-
-                handler.SslOptions = new SslClientAuthenticationOptions
-                {
-                    TargetHost = targetHost,
-                    EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
-                    CertificateRevocationCheckMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck
-                };
-
-                using var http = new HttpClient(handler, disposeHandler: false)
-                {
-                    // Управляем таймаутом через CancellationToken, чтобы отличать отмену от общего ct.
-                    Timeout = Timeout.InfiniteTimeSpan
-                };
-
                 var uri = new Uri($"https://{targetHost}/");
                 using var req = new HttpRequestMessage(HttpMethod.Head, uri)
                 {
@@ -310,7 +292,7 @@ namespace IspAudit.Core.Modules
                     VersionPolicy = HttpVersionPolicy.RequestVersionExact
                 };
 
-                using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, attemptCts.Token).ConfigureAwait(false);
+                using var resp = await Http3Client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, attemptCts.Token).ConfigureAwait(false);
 
                 h3Sw.Stop();
                 var latencyMs = (int)Math.Max(0, Math.Round(h3Sw.Elapsed.TotalMilliseconds, MidpointRounding.AwayFromZero));
@@ -344,6 +326,36 @@ namespace IspAudit.Core.Modules
             {
                 return new Http3ProbeResult(false, "H3_FAILED", null, ex.GetType().Name);
             }
+        }
+
+        private static SocketsHttpHandler CreateHttp3Handler()
+        {
+            var handler = new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                AutomaticDecompression = DecompressionMethods.None,
+                UseCookies = false,
+                // Консервативный timeout коннекта; точный бюджет контролируется через CancellationToken в ProbeHttp3Async.
+                ConnectTimeout = TimeSpan.FromSeconds(5),
+                // Ограничиваем lifetime соединений, чтобы не держать QUIC-пулы бесконечно.
+                PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+            };
+
+            handler.SslOptions = new SslClientAuthenticationOptions
+            {
+                EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
+                CertificateRevocationCheckMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck
+            };
+
+            return handler;
+        }
+
+        private static HttpClient CreateHttp3Client()
+        {
+            return new HttpClient(Http3Handler, disposeHandler: false)
+            {
+                Timeout = Timeout.InfiniteTimeSpan
+            };
         }
 
         private static async Task<(bool Completed, T? Result)> WithTimeoutAsync<T>(Task<T> task, TimeSpan timeout, CancellationToken ct)

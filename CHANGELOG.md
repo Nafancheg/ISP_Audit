@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ P2.5 — static HttpClient для H3 probe
+
+- В `StandardHostTesterProbeService` убрано per-call создание `SocketsHttpHandler`/`HttpClient` в `ProbeHttp3Async`.
+- Добавлены единые static `Http3Handler` (`PooledConnectionLifetime=2m`) и `Http3Client` (`Timeout=Infinite`, бюджет через `CancellationToken`).
+- Семантика H3-вердиктов (`H3_OK/H3_TIMEOUT/H3_FAILED/H3_NOT_SUPPORTED`) сохранена без изменения контрактов.
+
 ### ✅ P2.6 — lifecycle отписки событий
 
 - `MainViewModel` переведён с анонимных подписок на хранимые handlers для `OnLog`, `PropertyChanged`, `OnPerformanceUpdate`, `OnPipelineMessage`, `OnDiagnosticComplete`, `OnPostApplyCheckVerdictV3`, `CollectionChanged`.

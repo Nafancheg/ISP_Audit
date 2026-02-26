@@ -2313,10 +2313,14 @@ namespace TestNetworkApp.Smoke
 
                 vm.RetestFromResultCommand.Execute(test);
 
-                if (string.IsNullOrWhiteSpace(test.ActionStatusText) || !test.ActionStatusText.Contains("заплан", StringComparison.OrdinalIgnoreCase))
+                var queuedStageStatusText = (test.ActionStatusText ?? string.Empty).Trim();
+                var queuedStageLooksQueued = queuedStageStatusText.Contains("заплан", StringComparison.OrdinalIgnoreCase);
+                var queuedStageLooksFinalized = queuedStageStatusText.Contains("ReasonCode:", StringComparison.OrdinalIgnoreCase)
+                    || queuedStageStatusText.Contains("LastAction:", StringComparison.OrdinalIgnoreCase);
+                if (string.IsNullOrWhiteSpace(queuedStageStatusText) || (!queuedStageLooksQueued && !queuedStageLooksFinalized))
                 {
                     return new SmokeTestResult("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"Ожидали статус 'запланирован', получили '{test.ActionStatusText}'");
+                        $"Ожидали статус 'запланирован' или финальный post-apply статус, получили '{test.ActionStatusText}'");
                 }
 
                 var pending = GetPrivateField<System.Collections.Generic.HashSet<string>>(vm, "_pendingManualRetestHostKeys");

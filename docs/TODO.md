@@ -12,7 +12,7 @@
 - [x] P1.18: инвалидация/миграция `WinsStore` после изменения семантики outcome-probe — **готово, когда** legacy записи не дают «фальш-OK» и миграция покрыта smoke.
 - [x] P2.7: атомарная запись state-файлов через `FileAtomicWriter` (`operator_sessions`, `feedback_store`, `operator_consent`, `domain_groups`, `post_apply_checks`, `ui_mode`) — **готово, когда** убраны прямые `File.WriteAllText` в указанных store и smoke round-trip PASS.
 - [x] P2.6: корректная отписка от событий в shutdown/dispose (`OnLog`, `PropertyChanged`, `OnPerformanceUpdate`, `OnPipelineMessage`, `OnDiagnosticComplete`, др.) — **готово, когда** нет висящих подписок после завершения сессии и smoke PASS.
-- [ ] P2.5: устранить per-call создание `HttpClient` в `ProbeHttp3Async` (единый static client + handler) — **готово, когда** используется единый клиент и `smoke strict` PASS.
+- [x] P2.5: устранить per-call создание `HttpClient` в `ProbeHttp3Async` (единый static client + handler) — **готово, когда** используется единый клиент и `smoke strict` PASS.
 
 ## [NEXT]
 
