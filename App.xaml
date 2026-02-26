@@ -92,6 +92,19 @@
                 </Setter>
             </Style>
 
+            <!--
+                 Глобально скрываем визуальные полосы прокрутки,
+                 но оставляем скролл через колесо мыши/тачпад/клавиши.
+            -->
+            <Style TargetType="ScrollBar">
+                <Setter Property="Opacity" Value="0"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="IsHitTestVisible" Value="False"/>
+                <Setter Property="Width" Value="0"/>
+                <Setter Property="Height" Value="0"/>
+            </Style>
+
             <!-- TextBox Style (MD Outlined) -->
             <Style x:Key="ModernTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource MaterialDesignTextBox}">
                 <Setter Property="materialDesign:HintAssist.IsFloating" Value="False"/>
