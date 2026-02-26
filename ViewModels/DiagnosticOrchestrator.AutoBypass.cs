@@ -278,6 +278,46 @@ namespace IspAudit.ViewModels
         private static string BuildLowConfidencePolicyKey(string targetHost, string planSig)
             => $"{targetHost}|{planSig}";
 
+        private static string MapAutoApplyPolicyReasonCode(BypassPlan plan, string? policyReason)
+        {
+            var reason = policyReason ?? string.Empty;
+
+            if (reason.StartsWith("confidence<", StringComparison.OrdinalIgnoreCase))
+            {
+                return "LOW_CONFIDENCE";
+            }
+
+            if (reason.Contains("DoH requires consent", StringComparison.OrdinalIgnoreCase))
+            {
+                return "DOH_CONSENT_REQUIRED";
+            }
+
+            if (reason.Contains("no eligible actions", StringComparison.OrdinalIgnoreCase))
+            {
+                var reasoning = plan?.Reasoning ?? string.Empty;
+                if (reasoning.Contains("tcp", StringComparison.OrdinalIgnoreCase)
+                    && (reasoning.Contains("invariant", StringComparison.OrdinalIgnoreCase)
+                        || reasoning.Contains("regression", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return "TCP_INVARIANT";
+                }
+
+                return "UNSAFE_OR_NOT_ALLOWED_ACTIONS";
+            }
+
+            return "POLICY_BLOCK";
+        }
+
+        private void LogAutoApplySkip(string scopeKey, string? planSig, string reasonCode, string? details)
+        {
+            var scope = string.IsNullOrWhiteSpace(scopeKey) ? "-" : scopeKey;
+            var sig = string.IsNullOrWhiteSpace(planSig) ? "-" : planSig;
+            var extra = string.IsNullOrWhiteSpace(details) ? "-" : details;
+
+            Log($"[WARN][ORCH][STEP] Auto-apply skip: reason={reasonCode}; scope={scope}; sig={sig}; details={extra}");
+            LogPolicyEvent("skip_reason", runId: null, scopeKey: scopeKey, planSig: planSig, reasonCode: reasonCode, details: details);
+        }
+
         private string ResolveAutoApplyTargetHost(string hostKey)
         {
             var hk = (hostKey ?? string.Empty).Trim().Trim('.');
@@ -338,11 +378,16 @@ namespace IspAudit.ViewModels
 
         private void TryStartAutoApplyFromPlan(string hostKey, BypassPlan plan, BypassController bypassController)
         {
-            if (bypassController == null) return;
+            if (bypassController == null)
+            {
+                LogAutoApplySkip(hostKey, BuildPlanSignature(plan), "BYPASS_CONTROLLER_NULL", null);
+                return;
+            }
 
             // Не накапливаем очередь фоновых задач: автопилот «мягкий». Если уже занят — пропускаем.
             if (_autoApplyGate.CurrentCount == 0)
             {
+                LogAutoApplySkip(hostKey, BuildPlanSignature(plan), "AUTO_APPLY_GATE_BUSY", null);
                 return;
             }
 
@@ -350,37 +395,45 @@ namespace IspAudit.ViewModels
             {
                 if (!string.IsNullOrWhiteSpace(policyReason))
                 {
-                    Log($"[AUTO_APPLY] Skip (policy {policyReason}): from={hostKey}");
-                    var reasonCode = policyReason.StartsWith("confidence<", StringComparison.OrdinalIgnoreCase)
-                        ? "LOW_CONFIDENCE"
-                        : policyReason.Contains("DoH requires consent", StringComparison.OrdinalIgnoreCase)
-                            ? "DOH_CONSENT_REQUIRED"
-                            : policyReason.Contains("no eligible actions", StringComparison.OrdinalIgnoreCase)
-                                ? "UNSAFE_OR_NOT_ALLOWED_ACTIONS"
-                                : "POLICY_BLOCK";
-                    LogPolicyEvent("skip_reason", runId: null, scopeKey: hostKey, planSig: BuildPlanSignature(plan), reasonCode: reasonCode, details: policyReason);
+                    var reasonCode = MapAutoApplyPolicyReasonCode(plan, policyReason);
+                    LogAutoApplySkip(hostKey, BuildPlanSignature(plan), reasonCode, policyReason);
                 }
 
                 return;
             }
 
-            if (!PlanHasApplicableActions(autoPlan)) return;
+            if (!PlanHasApplicableActions(autoPlan))
+            {
+                LogAutoApplySkip(hostKey, BuildPlanSignature(autoPlan), "NO_APPLICABLE_ACTIONS", null);
+                return;
+            }
 
             // Диагностика должна быть активна: auto-apply имеет смысл только в live-сценарии.
-            if (!IsDiagnosticRunning) return;
+            if (!IsDiagnosticRunning)
+            {
+                LogAutoApplySkip(hostKey, BuildPlanSignature(autoPlan), "DIAGNOSTIC_NOT_RUNNING", null);
+                return;
+            }
 
             // Не делаем auto-apply по шумовым/техническим целям.
-            if (_noiseHostFilter.IsNoiseHost(hostKey)) return;
+            if (_noiseHostFilter.IsNoiseHost(hostKey))
+            {
+                LogAutoApplySkip(hostKey, BuildPlanSignature(autoPlan), "NOISE_HOST", null);
+                return;
+            }
 
             var targetHost = ResolveAutoApplyTargetHost(hostKey);
-            if (string.IsNullOrWhiteSpace(targetHost)) return;
+            if (string.IsNullOrWhiteSpace(targetHost))
+            {
+                LogAutoApplySkip(hostKey, BuildPlanSignature(autoPlan), "EMPTY_TARGET_HOST", null);
+                return;
+            }
 
             var planSig = BuildPlanSignature(autoPlan);
             if (IsBlacklisted(targetHost, planSig, deltaStep: string.Empty, reason: "guardrail_regression", out var blAuto))
             {
-                Log($"[AUTO_APPLY] Skip (blacklist_hit): target={targetHost}; sig={planSig}; expiresAt={blAuto?.ExpiresAtUtc}");
                 LogPolicyEvent("blacklist_hit", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "GUARDRAIL_REGRESSION", details: $"expiresAt={blAuto?.ExpiresAtUtc}");
-                LogPolicyEvent("skip_reason", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "BLACKLIST_HIT");
+                LogAutoApplySkip(targetHost, planSig, "BLACKLIST_HIT", $"expiresAt={blAuto?.ExpiresAtUtc}");
                 return;
             }
 
@@ -390,8 +443,7 @@ namespace IspAudit.ViewModels
             // UI/оркестратор уже показывают рекомендацию — auto-apply должен быть «мягким» и не спамить.
             if (IsAutoApplyCooldownActive(targetHost, allowWhenPlanChanged: true, planChanged: planChanged, out var remaining))
             {
-                Log($"[AUTO_APPLY] Skip (cooldown {remaining.TotalSeconds:0}s): target={targetHost}; from={hostKey}");
-                LogPolicyEvent("skip_reason", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "AUTO_APPLY_COOLDOWN", details: $"remainingSec={remaining.TotalSeconds:0}");
+                LogAutoApplySkip(targetHost, planSig, "AUTO_APPLY_COOLDOWN", $"remainingSec={remaining.TotalSeconds:0}");
                 return;
             }
 
@@ -409,20 +461,17 @@ namespace IspAudit.ViewModels
             await _autoApplyGate.WaitAsync().ConfigureAwait(false);
             try
             {
-                if (_cts?.IsCancellationRequested == true) return;
+                if (_cts?.IsCancellationRequested == true)
+                {
+                    LogAutoApplySkip(targetHost, planSig, "CANCELLED", "cts_requested=true");
+                    return;
+                }
 
                 // P1.11: enforcement policy (confidence/risk/allowlist/consent) на этапе исполнения.
                 if (!TryBuildAutoApplyPlan(targetHost, plan, out var autoPlan, out var policyReason))
                 {
-                    Log($"[AUTO_APPLY] Skip (policy {policyReason}): target={targetHost}; from={sourceHostKey}");
-                    var reasonCode = policyReason.StartsWith("confidence<", StringComparison.OrdinalIgnoreCase)
-                        ? "LOW_CONFIDENCE"
-                        : policyReason.Contains("DoH requires consent", StringComparison.OrdinalIgnoreCase)
-                            ? "DOH_CONSENT_REQUIRED"
-                            : policyReason.Contains("no eligible actions", StringComparison.OrdinalIgnoreCase)
-                                ? "UNSAFE_OR_NOT_ALLOWED_ACTIONS"
-                                : "POLICY_BLOCK";
-                    LogPolicyEvent("skip_reason", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: reasonCode, details: policyReason);
+                    var reasonCode = MapAutoApplyPolicyReasonCode(plan, policyReason);
+                    LogAutoApplySkip(targetHost, planSig, reasonCode, policyReason);
                     return;
                 }
 
@@ -430,7 +479,7 @@ namespace IspAudit.ViewModels
                 var effectiveSig = BuildPlanSignature(autoPlan);
                 if (string.IsNullOrWhiteSpace(effectiveSig))
                 {
-                    Log($"[AUTO_APPLY] Skip (empty sig): target={targetHost}; from={sourceHostKey}");
+                    LogAutoApplySkip(targetHost, planSig, "EMPTY_PLAN_SIGNATURE", $"source={sourceHostKey}");
                     return;
                 }
 
@@ -439,17 +488,15 @@ namespace IspAudit.ViewModels
 
                 if (IsBlacklisted(targetHost, planSig, deltaStep: string.Empty, reason: "guardrail_regression", out var blAutoRuntime))
                 {
-                    Log($"[AUTO_APPLY] Skip (blacklist_hit): target={targetHost}; sig={planSig}; expiresAt={blAutoRuntime?.ExpiresAtUtc}");
                     LogPolicyEvent("blacklist_hit", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "GUARDRAIL_REGRESSION", details: $"expiresAt={blAutoRuntime?.ExpiresAtUtc}");
-                    LogPolicyEvent("skip_reason", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "BLACKLIST_HIT");
+                    LogAutoApplySkip(targetHost, planSig, "BLACKLIST_HIT", $"expiresAt={blAutoRuntime?.ExpiresAtUtc}");
                     return;
                 }
 
                 // Если пользователь уже вручную жмёт Apply, не мешаем.
                 if (IsApplyRunning)
                 {
-                    Log($"[AUTO_APPLY] Skip (manual apply running): target={targetHost}; from={sourceHostKey}");
-                    LogPolicyEvent("skip_reason", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "MANUAL_APPLY_RUNNING");
+                    LogAutoApplySkip(targetHost, planSig, "MANUAL_APPLY_RUNNING", $"source={sourceHostKey}");
                     return;
                 }
 
@@ -458,8 +505,7 @@ namespace IspAudit.ViewModels
 
                 if (IsAutoApplyCooldownActive(targetHost, allowWhenPlanChanged: true, planChanged: planChanged, out var remaining))
                 {
-                    Log($"[AUTO_APPLY] Skip (cooldown {remaining.TotalSeconds:0}s): target={targetHost}; from={sourceHostKey}");
-                    LogPolicyEvent("skip_reason", runId: null, scopeKey: targetHost, planSig: planSig, reasonCode: "AUTO_APPLY_COOLDOWN", details: $"remainingSec={remaining.TotalSeconds:0}");
+                    LogAutoApplySkip(targetHost, planSig, "AUTO_APPLY_COOLDOWN", $"remainingSec={remaining.TotalSeconds:0}");
                     return;
                 }
 
