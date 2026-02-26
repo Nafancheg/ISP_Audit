@@ -66,6 +66,9 @@ namespace TestNetworkApp.Smoke
                 ["ERR-006"] = Err_DoHOnly_NoHostname_DoesNotCrash,
                 ["ERR-007"] = Err_Ipv6Host_ParsesAndTests,
                 ["ERR-008"] = Err_LongClientHello_Fragmentation_NoOverflow,
+                ["ERR-010"] = Err_FixService_Apply_Canceled_NoCrash,
+                ["ERR-011"] = Err_FixService_RunCommand_InvalidExe_NoCrash,
+                ["ERR-012"] = Err_FixService_RunCommand_Timeout_NoCrash,
 
                 ["E2E-001"] = E2E_FullPipeline_EnqueueToUiCard,
                 ["E2E-002"] = E2E_BypassEnabled_ProducesFragmentationMetrics,

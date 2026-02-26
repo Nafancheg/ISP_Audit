@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ P2.4 — fail-path smoke для FixService (ERR-010/011/012)
+
+- Добавлены три fail-path smoke-теста в `SmokeTests.Err.cs`: `ERR-010` (cancel в `ApplyDnsFixAsync`), `ERR-011` (ошибка запуска несуществующей команды), `ERR-012` (таймаут команды) — все с критерием «без crash».
+- Тесты зарегистрированы в `SmokeTests.Registry.cs` и включены в `smoke_tests_plan.md`, чтобы входить в strict-smoke по плану.
+- В fail-path проверяется корректный контракт результата (`success=false` + диагностический текст) без необработанных исключений.
+
 ### ✅ P2.3 — история apply-транзакций в карточке и Engineer DataGrid
 
 - В `BypassController.ApplyTransactions` добавлен явный UI-контракт `TransactionHistory` для выбранной агрегированной строки применения.

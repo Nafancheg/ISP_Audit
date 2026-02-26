@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using IspAudit.Bypass;
@@ -320,5 +321,153 @@ namespace TestNetworkApp.Smoke
                 return new SmokeTestResult("ERR-008", "Длинный ClientHello (>1500) фрагментируется без переполнения", SmokeOutcome.Pass, TimeSpan.Zero,
                     $"OK: отправлено фрагментов: {sender.Sent.Count}");
             }, ct);
+
+        public static async Task<SmokeTestResult> Err_FixService_Apply_Canceled_NoCrash(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                using var canceled = new CancellationTokenSource();
+                canceled.Cancel();
+
+                var (success, error) = await FixService.ApplyDnsFixAsync(
+                    presetName: "Cloudflare",
+                    reason: "smoke_err_010_canceled",
+                    cancellationToken: canceled.Token).ConfigureAwait(false);
+
+                if (success)
+                {
+                    return new SmokeTestResult("ERR-010", "FixService: ApplyDnsFixAsync cancel не крашит", SmokeOutcome.Fail, sw.Elapsed,
+                        "Ожидали отмену (success=false), получили success=true");
+                }
+
+                if (string.IsNullOrWhiteSpace(error) || !error.Contains("отмен", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SmokeTestResult("ERR-010", "FixService: ApplyDnsFixAsync cancel не крашит", SmokeOutcome.Fail, sw.Elapsed,
+                        $"Ожидали сообщение об отмене, получили: '{error}'");
+                }
+
+                return new SmokeTestResult("ERR-010", "FixService: ApplyDnsFixAsync cancel не крашит", SmokeOutcome.Pass, sw.Elapsed,
+                    "OK: отмена обработана без исключения");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("ERR-010", "FixService: ApplyDnsFixAsync cancel не крашит", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
+        public static async Task<SmokeTestResult> Err_FixService_RunCommand_InvalidExe_NoCrash(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                var (success, output) = await RunFixServiceCommandForSmokeAsync(
+                    "definitely_not_existing_command_isp_audit.exe",
+                    "--version",
+                    TimeSpan.FromSeconds(2),
+                    ct).ConfigureAwait(false);
+
+                if (success)
+                {
+                    return new SmokeTestResult("ERR-011", "FixService: invalid command возвращает ошибку без crash", SmokeOutcome.Fail, sw.Elapsed,
+                        "Ожидали success=false для несуществующей команды");
+                }
+
+                if (string.IsNullOrWhiteSpace(output))
+                {
+                    return new SmokeTestResult("ERR-011", "FixService: invalid command возвращает ошибку без crash", SmokeOutcome.Fail, sw.Elapsed,
+                        "Ожидали текст ошибки в output");
+                }
+
+                return new SmokeTestResult("ERR-011", "FixService: invalid command возвращает ошибку без crash", SmokeOutcome.Pass, sw.Elapsed,
+                    "OK: ошибка процесса обработана без исключения");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("ERR-011", "FixService: invalid command возвращает ошибку без crash", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
+        public static async Task<SmokeTestResult> Err_FixService_RunCommand_Timeout_NoCrash(CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                var (success, output) = await RunFixServiceCommandForSmokeAsync(
+                    "powershell",
+                    "-NoProfile -ExecutionPolicy Bypass -Command \"Start-Sleep -Seconds 5\"",
+                    TimeSpan.FromMilliseconds(150),
+                    ct).ConfigureAwait(false);
+
+                if (success)
+                {
+                    return new SmokeTestResult("ERR-012", "FixService: timeout команды не крашит", SmokeOutcome.Fail, sw.Elapsed,
+                        "Ожидали success=false на таймауте");
+                }
+
+                if (string.IsNullOrWhiteSpace(output) || !output.Contains("TIMEOUT", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new SmokeTestResult("ERR-012", "FixService: timeout команды не крашит", SmokeOutcome.Fail, sw.Elapsed,
+                        $"Ожидали признак TIMEOUT в output, получили: '{output}'");
+                }
+
+                return new SmokeTestResult("ERR-012", "FixService: timeout команды не крашит", SmokeOutcome.Pass, sw.Elapsed,
+                    "OK: таймаут обработан штатно");
+            }
+            catch (Exception ex)
+            {
+                return new SmokeTestResult("ERR-012", "FixService: timeout команды не крашит", SmokeOutcome.Fail, sw.Elapsed, ex.Message);
+            }
+        }
+
+        private static async Task<(bool success, string output)> RunFixServiceCommandForSmokeAsync(
+            string fileName,
+            string arguments,
+            TimeSpan timeout,
+            CancellationToken ct)
+        {
+            var runMethod = typeof(FixService).GetMethod(
+                "RunCommandAsync",
+                BindingFlags.Static | BindingFlags.NonPublic,
+                binder: null,
+                types: new[] { typeof(string), typeof(string), typeof(TimeSpan), typeof(CancellationToken) },
+                modifiers: null);
+
+            if (runMethod == null)
+            {
+                throw new InvalidOperationException("Не найден private метод FixService.RunCommandAsync(string,string,TimeSpan,CancellationToken)");
+            }
+
+            var taskObj = runMethod.Invoke(null, new object[] { fileName, arguments, timeout, ct }) as Task;
+            if (taskObj == null)
+            {
+                throw new InvalidOperationException("FixService.RunCommandAsync вернул null Task");
+            }
+
+            await taskObj.ConfigureAwait(false);
+
+            var resultProp = taskObj.GetType().GetProperty("Result");
+            if (resultProp == null)
+            {
+                throw new InvalidOperationException("У Task отсутствует Result");
+            }
+
+            var resultObj = resultProp.GetValue(taskObj);
+            if (resultObj == null)
+            {
+                return (false, string.Empty);
+            }
+
+            var item1 = resultObj.GetType().GetField("Item1");
+            var item2 = resultObj.GetType().GetField("Item2");
+            if (item1 == null || item2 == null)
+            {
+                throw new InvalidOperationException("Неверный формат результата RunCommandAsync");
+            }
+
+            var success = item1.GetValue(resultObj) is bool ok && ok;
+            var output = item2.GetValue(resultObj)?.ToString() ?? string.Empty;
+            return (success, output);
+        }
     }
 }
