@@ -205,9 +205,10 @@
 - [x] Прогресс 25.02.2026 (итерация 2): добавлен tiering порогов auto-apply — отдельный ENV `ISP_AUDIT_AUTO_APPLY_SAFE_MIN_CONFIDENCE` для safe-only планов (`TlsFragment` и/или assist `DropUdp443`), общий порог остаётся в `ISP_AUDIT_AUTO_APPLY_MIN_CONFIDENCE`.
 - [x] Прогресс 25.02.2026 (итерация 3): добавлено накопление confidence по повторяемости low-confidence сигналов (`scope+planSig`) в окне времени с runtime ENV-настройками (`WINDOW_MINUTES`, `REQUIRED_HITS`, `PER_HIT`, `MAX`), расчёт ведётся в `DiagnosticOrchestrator.AutoBypass`.
 - [x] Прогресс 26.02.2026 (итерация 4): унифицировано логирование skip auto-apply через `LogAutoApplySkip` — покрыты policy/cooldown/blacklist/manual apply/gate busy/noise/diag off/empty target/empty signature/cancelled, добавлен reason-код `TCP_INVARIANT` при policy-отказах с соответствующим reasoning.
+- [x] Прогресс 26.02.2026 (итерация 5): зафиксирована финальная трактовка tiering — safe-only действия (`TLS_FRAGMENT`, assist `DROP_UDP_443`) допускаются при пониженном пороге, потенциально опасные шаги в auto-apply не эскалируются «по высокому порогу», а запрещены policy-gate/allowlist (более строгий вариант).
 
 - [x] Вынести пороги в настройки/ENV (минимум: общий порог и отдельный порог для safe-стратегий)
-- [ ] Ввести tiering: безопасные шаги (например TLS_FRAGMENT, DROP_UDP_443) допускаются при меньшей уверенности, опасные (Fake/NoSNI/и т.п.) — только при высокой
+- [x] Tiering зафиксирован: safe-only (`TLS_FRAGMENT`, `DROP_UDP_443`) допускаются при меньшей уверенности; dangerous стратегии в auto-apply запрещены policy-gate (строже, чем «только при высокой»)
 - [x] Добавить накопление уверенности от повторяемости (N одинаковых фейлов за окно времени → повышаем confidence)
 - [x] Логи: всегда печатать причину skip auto-apply (порог/небезопасно/инвариант TCP/blacklist)
 
