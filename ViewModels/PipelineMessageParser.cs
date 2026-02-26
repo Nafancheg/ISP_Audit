@@ -343,18 +343,9 @@ namespace IspAudit.ViewModels
                             // КРИТИЧНО: Проверяем на шум перед созданием карточки ошибки
                             if (_ctx.IsNoiseHost(host))
                             {
-                                // Удаляем существующую карточку (ищем по всем полям)
-                                var toRemove = _ctx.TestResults.FirstOrDefault(t =>
-                                    t.Target.Host.Equals(host, StringComparison.OrdinalIgnoreCase) ||
-                                    t.Target.Name.Equals(host, StringComparison.OrdinalIgnoreCase) ||
-                                    t.Target.FallbackIp == host);
-                                if (toRemove != null)
-                                {
-                                    _ctx.TestResults.Remove(toRemove);
-                                    _ctx.Log($"[UI] Удалена шумовая карточка при ошибке: {host}");
-                                    _ctx.NotifyCountersChanged();
-                                }
-                                return;
+                                // P2.2: шумовой FAIL больше не удаляем.
+                                // Он приходит как WARN из Classifier/UiWorker и должен оставаться в UI.
+                                _ctx.Log($"[UI] Шумовой FAIL не удаляется: {host}");
                             }
 
                             // Если цель - IP адрес, убираем "DNS:✓" из сообщения
@@ -401,6 +392,33 @@ namespace IspAudit.ViewModels
                             }
 
                             _ctx.UpdateTestResult(uiKey, status, _ctx.StripNameTokens(msg), fallbackIp);
+                            _ctx.SetLastUpdatedHost(uiKey);
+
+                            ApplyNameTokensFromMessage(uiKey, msg);
+                        }
+                    }
+                }
+                else if (msg.StartsWith("⚠ "))
+                {
+                    // Формат WARN от UiWorker:
+                    // "⚠ 1.2.3.4:443 | DNS:... TCP:... TLS:... H3:... | BLOCKAGE ..."
+                    var parts = msg.Substring(2).Split('|');
+                    if (parts.Length > 0)
+                    {
+                        var hostPortStr = parts[0].Trim().Split(' ')[0];
+                        var hostPort = hostPortStr.Split(':');
+                        if (hostPort.Length == 2)
+                        {
+                            var host = hostPort[0];
+                            var uiKey = _ctx.SelectUiKey(host, msg);
+                            var fallbackIp = IPAddress.TryParse(host, out _) ? host : null;
+
+                            if (IPAddress.TryParse(host, out _))
+                            {
+                                msg = msg.Replace("DNS:✓ ", "").Replace("DNS:✓", "");
+                            }
+
+                            _ctx.UpdateTestResult(uiKey, TestStatus.Warn, _ctx.StripNameTokens(msg), fallbackIp);
                             _ctx.SetLastUpdatedHost(uiKey);
 
                             ApplyNameTokensFromMessage(uiKey, msg);

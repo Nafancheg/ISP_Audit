@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ P2.2 — Early noise filter (ClassifierWorker)
+
+- В `LiveTestingPipeline.ClassifierStage` добавлен ранний noise-gate: `noise + OK` не эмитится в UI (только детальный debug-log).
+- Для `noise + FAIL` добавлен WARN-path: результат маркируется как пониженный и в UI-стадии публикуется строкой `⚠` вместо `❌`.
+- `PipelineMessageParser` расширен обработкой `⚠ host:port | ...`: обновляет карточку со статусом `Warn` и не удаляет шумовые проблемные карточки.
+
 ### ✅ P2.5 — static HttpClient для H3 probe
 
 - В `StandardHostTesterProbeService` убрано per-call создание `SocketsHttpHandler`/`HttpClient` в `ProbeHttp3Async`.

@@ -125,6 +125,17 @@ namespace IspAudit.Utils
                         }
                     }
 
+                    var bestNoiseKey = !string.IsNullOrWhiteSpace(tested.SniHostname)
+                        ? tested.SniHostname
+                        : (!string.IsNullOrWhiteSpace(hostname)
+                            ? hostname
+                            : tested.ReverseDnsHostname);
+                    var isNoiseHost = !string.IsNullOrWhiteSpace(bestNoiseKey) && _filter.IsNoise(bestNoiseKey);
+                    var isChecksOk = tested.DnsOk
+                        && tested.TcpOk
+                        && tested.TlsOk
+                        && tested.Http3Ok != false;
+
                     // Auto-hostlist: добавляем кандидатов только по не-шумовым хостам.
                     if (_autoHostlist != null)
                     {
@@ -141,6 +152,21 @@ namespace IspAudit.Utils
                     // Формируем результат для UI/фильтра: стратегия всегда NONE, а в RecommendedAction кладём факты/уверенность.
                     // Важно: делаем это ПОСЛЕ EnrichDiagnosisWithAutoHostlist, чтобы метки autoHL попали в UI хвост.
                     var blocked = BuildHostBlockedForUi(tested, inspection, diagnosis, plan);
+
+                    // P2.2: ранний noise-filter на этапе классификатора.
+                    // 1) noise + OK: не эмитим в UI, оставляем только детальный лог.
+                    // 2) noise + FAIL: пропускаем в UI, но понижаем до WARN (обрабатывается в UiWorker/Parser).
+                    if (isNoiseHost && isChecksOk)
+                    {
+                        _progress?.Report($"[DEBUG][CLASSIFIER][STEP] noise_ok_suppressed host={(remoteIpString ?? tested.Host.Key)} name={bestNoiseKey}; details={blocked.RecommendedAction}");
+                        Interlocked.Increment(ref _statUiDropped);
+                        continue;
+                    }
+
+                    if (isNoiseHost && !isChecksOk)
+                    {
+                        blocked = blocked with { RecommendedAction = $"{blocked.RecommendedAction}; noise=warn" };
+                    }
 
                     // Принимаем решение о показе через единый фильтр
                     var decision = _filter.ShouldDisplay(blocked);

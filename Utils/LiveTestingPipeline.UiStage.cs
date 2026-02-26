@@ -86,6 +86,9 @@ namespace IspAudit.Utils
                         ? PipelineContract.BypassUnknown
                         : blocked.TestResult.BlockageType;
 
+                    var isNoiseWarn = !string.IsNullOrWhiteSpace(blocked.RecommendedAction)
+                        && blocked.RecommendedAction.Contains("noise=warn", StringComparison.OrdinalIgnoreCase);
+
                     // Краткий хвост из текста рекомендации (там уже зашиты счётчики фейлов и ретрансмиссий)
                     string? suffix = null;
                     if (!string.IsNullOrWhiteSpace(blocked.RecommendedAction))
@@ -110,9 +113,10 @@ namespace IspAudit.Utils
                         }
                     }
 
+                    var severityPrefix = isNoiseWarn ? "⚠" : "❌";
                     var uiLine = suffix is null
-                        ? $"❌ {details} | {checks} | {blockage}"
-                        : $"❌ {details} | {checks} | {blockage} {suffix}";
+                        ? $"{severityPrefix} {details} | {checks} | {blockage}"
+                        : $"{severityPrefix} {details} | {checks} | {blockage} {suffix}";
 
                     _progress?.Report(uiLine);
 
