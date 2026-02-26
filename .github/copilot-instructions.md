@@ -42,9 +42,9 @@
 3) smoke-проверки (минимум):
   - `smoke infra (non-admin)`
   - `smoke strict (SmokeLauncher)`
-4) `dotnet format` **не является блокирующим gate** в текущем репозитории (из-за известных legacy whitespace-проблем):
-  - запускать только по явной задаче/рефакторингу форматирования,
-  - не блокировать commit/push, если проблема не относится к текущей правке.
+4) проверка форматирования **только изменённых файлов**:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-format-changed.ps1`
+  - этот шаг является gate для текущей итерации и не зависит от legacy whitespace в неизмённых файлах.
 
 Только после этого:
 `git add -A` → `git commit -m "<кратко и по делу>"` → при необходимости `git push`.
@@ -249,7 +249,7 @@ if (NetUtils.LikelyVpnActive()) { // проверяет TAP/TUN адаптеры
 `dotnet build` → (если есть тесты) `dotnet test` → `smoke infra (non-admin)` → `smoke strict (SmokeLauncher)`
 → `git add -A` → `git commit -m "<кратко и по делу>"` → при необходимости `git push`.
 
-`dotnet format` выполнять отдельно только в задачах форматирования/рефакторинга; как release/commit-gate не использовать, пока в репозитории не устранён legacy whitespace долг.
+Полный `dotnet format` по всему репозиторию запускать отдельно только в задачах форматирования/рефакторинга.
 
 Параллельно:
 - `docs\TODO.md` обновлять всегда
