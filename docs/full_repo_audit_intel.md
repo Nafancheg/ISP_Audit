@@ -245,6 +245,25 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Для eTLD+1 edge-case (`eTLD unknown`) используется только soft-score и только при burst N/T (`N>=3`, `T=10m`); без burst redirect остаётся `normal` anomaly.
 - P1.V23.2 (18.02.2026): `HttpRedirectDetector` использует оконный burst-cache с retention (`WindowRetention=30m`), а `N` трактуется как число **разных** eTLD+1 за `T=10m` (после normalization: lower-case + trim trailing dot + IDN/punycode).
 - P2.V23.1 (18.02.2026, частично): параметры redirect `N/T/TTL` вынесены в runtime ENV (`ISP_AUDIT_REDIRECT_BURST_N`, `ISP_AUDIT_REDIRECT_BURST_WINDOW_MINUTES`, `ISP_AUDIT_REDIRECT_WINDOW_RETENTION_MINUTES`) и применяются в `HttpRedirectDetector`/`StandardDiagnosisEngine`.
+- P2.V23.1 (26.02.2026, закрыто): зафиксирована методика пересмотра дефолтов `N/T/TTL` по телеметрии.
+    - Объект пересмотра: только три runtime-дефолта redirect burst (`N/T/TTL`), без изменения алгоритма классификации.
+    - Минимальный вход: не менее 7 дней телеметрии и не менее 1000 redirect-событий суммарно по срезу; сравнение проводится на одинаковом наборе каналов/сегментов.
+    - Критерии кандидата на изменение:
+        - рост доли `suspicious` redirect без подтверждения проблемного healthcheck (proxy на ложноположительные) > 20% относительно базовой недели;
+        - либо деградация чувствительности (пропуск кейсов с подтверждённым blockpage/https→http) > 10%.
+    - Границы изменений за один цикл:
+        - `N`: шаг не более ±1;
+        - `T`: шаг не более ±2 минуты;
+        - `TTL`: шаг не более ±5 минут;
+        - не более одного параметра за цикл, остальные фиксируются.
+    - Процедура rollout:
+        - Stage 1: изменение только через ENV (без правок кода) на ограниченном контуре;
+        - Stage 2: контроль 48 часов по метрикам `redirectClass`, `RedirectBurstCount`, доле `Unknown`, и корреляции с post-apply guardrail;
+        - Stage 3: если метрики в допуске, параметр переносится в дефолт и фиксируется в changelog.
+    - Допуск/откат:
+        - немедленный rollback к предыдущим значениям при росте `Unknown` > 15% или guardrail-regression > 10% от базы;
+        - rollback выполняется только через ENV, код не меняется до подтверждения стабильности.
+    - Обязательная фиксация результата цикла: дата, исходные значения, новые значения, объём выборки, итог (`accept/reject`), ссылка на smoke strict отчёт.
 - P1.V23.3 (18.02.2026): в `DiagnosticOrchestrator` введены structured policy events (`POLICY_EVT`) для `apply/escalate/rollback/blacklist_hit/skip_reason` с ключами `event/runId/scopeKey/planSig/reasonCode/details`.
 - Добавлен hard-признак `https→http` из web-like HTTP probe (`Location: http://...`): поле `HasHttpsToHttpRedirect` проходит через snapshot/signals и повышает `redirectClass` до `suspicious`.
 
