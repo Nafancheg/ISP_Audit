@@ -2,6 +2,17 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ P2.ARCH.1 — декуплинг UI-диалогов/окон из MainViewModel
+
+- Добавлен UI-bridge `Windows/MainViewModelUiBridge.cs` для диалогов/окон (`error`, `confirm`, `open-file`, `show-details`) как WPF-деталь UI-слоя.
+- `MainViewModel` переведён на делегаты bridge: убраны прямые вызовы `MessageBox`, `OpenFileDialog`, `TestDetailsWindow.ShowDialog` из command-handlers и constructor wiring.
+- Критерий P2.ARCH.1 выполнен: в `ViewModels/MainViewModel*.cs` и `ViewModels/DiagnosticOrchestrator*.cs` отсутствуют прямые вызовы `MessageBox/OpenFileDialog/ShowDialog`.
+
+### 🧹 TODO cleanup (wave 2): перенос выполненного из `docs/TODO.md`
+
+- Из backlog-файла удалены выполненные пункты и зафиксированы в changelog: `P1.18 (OK критерий)`, `P1.18 (WinsStore migration)`, `P2.7`, `P2.6`, `P2.5`, `P2.2`, `P2.3`, `P2.4`, `P2.V23.1`, `Runtime incidents`, `Phase 4.3`, `P2.UI.1`, `P2.UI.2`.
+- `docs/TODO.md` переведён в формат «только активные задачи»: добавлен новый план архитектурных доработок `P2.ARCH.* / P2.ASYNC.1 / P2.RUNTIME.1 / P2.OBS.1` и оставлен `Phase 5` как отложенный.
+
 ### ✅ P2.UI.2 — скрытие полос прокрутки по всему UI
 
 - В `App.xaml` добавлен глобальный стиль `ScrollBar`: визуальные полосы прокрутки скрыты (`Opacity=0`, `Width/Height=0`, `IsHitTestVisible=False`) во всех окнах и контролах.

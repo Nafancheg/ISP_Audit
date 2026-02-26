@@ -14,10 +14,6 @@ using IspAudit.Utils;
 
 // Явно указываем WPF вместо WinForms
 using Application = System.Windows.Application;
-using MessageBox = System.Windows.MessageBox;
-using MessageBoxButton = System.Windows.MessageBoxButton;
-using MessageBoxImage = System.Windows.MessageBoxImage;
-using MessageBoxResult = System.Windows.MessageBoxResult;
 
 namespace IspAudit.ViewModels
 {
@@ -791,14 +787,12 @@ namespace IspAudit.ViewModels
                 var name = Results.SuggestedDomainGroupDisplayName;
                 if (string.IsNullOrWhiteSpace(name)) name = key;
 
-                var res = MessageBox.Show(
-                    $"Закрепить learned-группу '{name}' как pinned?\n\n" +
-                    "Pinned-группы имеют приоритет и сохраняются в state/domain_groups.json.",
+                var confirmed = _confirmYesNoDialog(
                     "Закрепить группу",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
+                    $"Закрепить learned-группу '{name}' как pinned?\n\n" +
+                    "Pinned-группы имеют приоритет и сохраняются в state/domain_groups.json.");
 
-                if (res != MessageBoxResult.Yes)
+                if (!confirmed)
                 {
                     return;
                 }
@@ -2407,8 +2401,7 @@ namespace IspAudit.ViewModels
                 targetExePath = GetTestNetworkAppPath() ?? "";
                 if (string.IsNullOrEmpty(targetExePath))
                 {
-                    MessageBox.Show("Не удалось найти TestNetworkApp.exe", "Ошибка",
-                        MessageBoxButton.OK, MessageBoxImage.Error);
+                    _showErrorDialog("Ошибка", "Не удалось найти TestNetworkApp.exe");
                     return;
                 }
                 Log($"[Mode] Basic Test: {targetExePath}");
@@ -2417,8 +2410,7 @@ namespace IspAudit.ViewModels
             {
                 if (string.IsNullOrEmpty(ExePath) || !File.Exists(ExePath))
                 {
-                    MessageBox.Show("Файл не найден.", "Ошибка",
-                        MessageBoxButton.OK, MessageBoxImage.Error);
+                    _showErrorDialog("Ошибка", "Файл не найден.");
                     return;
                 }
                 targetExePath = ExePath;
@@ -2434,15 +2426,10 @@ namespace IspAudit.ViewModels
 
         private void BrowseExe()
         {
-            var dialog = new Microsoft.Win32.OpenFileDialog
+            var selectedPath = _pickExecutablePathDialog();
+            if (!string.IsNullOrWhiteSpace(selectedPath))
             {
-                Filter = "Исполняемые файлы (*.exe)|*.exe|Все файлы (*.*)|*.*",
-                Title = "Выберите exe файл приложения"
-            };
-
-            if (dialog.ShowDialog() == true)
-            {
-                ExePath = dialog.FileName;
+                ExePath = selectedPath;
                 Log($"[BrowseExe] Selected: {ExePath}");
             }
         }
@@ -2494,8 +2481,7 @@ namespace IspAudit.ViewModels
             catch (Exception ex)
             {
                 Log($"[Report] Error: {ex.Message}");
-                MessageBox.Show($"Ошибка создания отчета: {ex.Message}", "Ошибка",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                _showErrorDialog("Ошибка", $"Ошибка создания отчета: {ex.Message}");
             }
         }
 
@@ -2557,11 +2543,7 @@ namespace IspAudit.ViewModels
                     applyDetailsJson = null;
                 }
 
-                var window = new IspAudit.Windows.TestDetailsWindow(result, applyDetailsJson)
-                {
-                    Owner = Application.Current.MainWindow
-                };
-                window.ShowDialog();
+                _showTestDetailsDialog(result, applyDetailsJson);
             }
             catch (Exception ex)
             {

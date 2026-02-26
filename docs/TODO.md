@@ -8,25 +8,18 @@
 
 ## [NOW]
 
-- [x] P1.18: унифицировать критерий `OK` между enqueue/local post-apply ретестом — **готово, когда** один и тот же вход даёт одинаковый verdict в обоих режимах + smoke/reg PASS.
-- [x] P1.18: инвалидация/миграция `WinsStore` после изменения семантики outcome-probe — **готово, когда** legacy записи не дают «фальш-OK» и миграция покрыта smoke.
-- [x] P2.7: атомарная запись state-файлов через `FileAtomicWriter` (`operator_sessions`, `feedback_store`, `operator_consent`, `domain_groups`, `post_apply_checks`, `ui_mode`) — **готово, когда** убраны прямые `File.WriteAllText` в указанных store и smoke round-trip PASS.
-- [x] P2.6: корректная отписка от событий в shutdown/dispose (`OnLog`, `PropertyChanged`, `OnPerformanceUpdate`, `OnPipelineMessage`, `OnDiagnosticComplete`, др.) — **готово, когда** нет висящих подписок после завершения сессии и smoke PASS.
-- [x] P2.5: устранить per-call создание `HttpClient` в `ProbeHttp3Async` (единый static client + handler) — **готово, когда** используется единый клиент и `smoke strict` PASS.
+- [ ] P2.ARCH.2: убрать прямую зависимость orchestration-модуля от WPF Dispatcher (`Application.Current`) — **готово, когда** `PipelineManager` работает через абстракцию диспетчеризации, а WPF-деталь остаётся только в UI composition.
+- [ ] P2.ASYNC.1: привести UI-слой к контракту async/await (без `ConfigureAwait(false)` в command-цепочках с обновлением bindable-состояния) — **готово, когда** UI-команды не нарушают thread-affinity WPF и smoke UI/reg PASS.
+- [ ] P2.RUNTIME.1: снизить sync-over-async в shutdown/dispose путях (`Wait/Result` на stop-операциях) — **готово, когда** остановка сервисов выполняется без блокирующих ожиданий на UI-пути и без регрессий smoke strict.
+- [ ] P2.OBS.1: убрать пустые `catch` в runtime-коде и добавить контрактное логирование контекста — **готово, когда** в production-коде нет silent catch без причины/лога, а инциденты можно трассировать по логам.
 
 ## [NEXT]
 
-- [x] P2.UI.2: скрыть полосы прокрутки во всём интерфейсе при сохранении скролла (колесо/тачпад/клавиши) — **готово, когда** вертикальные/горизонтальные scrollbar не отображаются в окнах приложения, а содержимое продолжает прокручиваться.
-- [x] P2.UI.1: исправить визуальные артефакты Operator UI (обрезка кнопки в окне настроек, склейка текста в заголовке истории сессий) — **готово, когда** кнопка `Закрыть` полностью видима при штатном размере окна и заголовок сессии отображает `дата | длительность | outcome` без наложений.
-- [x] P2.2: Early noise filter в `ClassifierWorker` (noise+OK не эмитить в UI, noise+FAIL понижать до WARN) — **готово, когда** реализовано правило + `PIPE-011` PASS.
-- [x] P2.3: история apply-транзакций в карточке (`TransactionHistory` + Engineer DataGrid) — **готово, когда** история сохраняется и отображается в UI.
-- [x] P2.4: fail-path smoke для `FixService` (`ERR-010/011/012`) — **готово, когда** все три кейса проходят без crash.
-- [x] P2.V23.1: методика пересмотра дефолтов `N/T/TTL` по телеметрии — **готово, когда** документирована процедура и критерии изменения дефолтов.
-- [x] Runtime incidents: чеклист сбора контекста зависаний/крашей (`±100` строк, классификация фазы, targeted timeout fix) — **готово, когда** шаблон инцидента оформлен и применяется на первом реальном кейсе.
+- [ ] P2.ARCH.3: унифицировать UI-bridge (confirm/error/dialog/open-file/show-details) в одном месте composition root — **готово, когда** wiring сделан централизованно и не дублируется между командами.
+- [ ] P2.ARCH.4: уточнить границы слоёв в архитектурной документации (допустимые зависимости для ViewModels/Orchestrator/Core) — **готово, когда** в `ARCHITECTURE_CURRENT.md` добавлен раздел «Layering contracts» и ссылки на smoke-gates.
 
 ## [LATER]
 
-- [x] Phase 4.3: декомпозиция `DiagnosticOrchestrator` (`PipelineManager`, `RecommendationEngine`, `CardActionHandler`) — **готово, когда** orchestration разделён на модули без изменения внешнего контракта и smoke PASS.
 - [ ] Phase 5: Native Core (Rust DLL + WinDivert FFI + packet parser + TLS/SNI parser) — **готово, когда** есть рабочий минимальный контур сборки/интеграции и smoke strict PASS.
 
 ---

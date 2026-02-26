@@ -11,6 +11,7 @@ using IspAudit.Bypass;
 using IspAudit.Core.Bypass;
 using IspAudit.Models;
 using IspAudit.Utils;
+using IspAudit.Windows;
 using IspAudit.Wpf;
 
 // Явно указываем WPF вместо WinForms
@@ -65,6 +66,11 @@ namespace IspAudit.ViewModels
 
         // P0.1 Step 14: единый источник истины для group participation / pinning / merge состояния группы.
         private readonly GroupBypassAttachmentStore _groupBypassAttachmentStore;
+        private readonly Action<string, string> _showErrorDialog;
+        private readonly Func<string, string, bool> _confirmOkCancelDialog;
+        private readonly Func<string, string, bool> _confirmYesNoDialog;
+        private readonly Func<string?> _pickExecutablePathDialog;
+        private readonly Action<TestResult, string?> _showTestDetailsDialog;
 
         // P1.7/P1.8: персист результата пост‑проверки по groupKey.
         private readonly object _postApplyChecksSync = new();
@@ -98,6 +104,11 @@ namespace IspAudit.ViewModels
             Orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
             Results = resultsManager ?? throw new ArgumentNullException(nameof(resultsManager));
             _groupBypassAttachmentStore = groupBypassAttachmentStore ?? throw new ArgumentNullException(nameof(groupBypassAttachmentStore));
+            _showErrorDialog = MainViewModelUiBridge.ShowError;
+            _confirmOkCancelDialog = MainViewModelUiBridge.ConfirmOkCancel;
+            _confirmYesNoDialog = MainViewModelUiBridge.ConfirmYesNo;
+            _pickExecutablePathDialog = MainViewModelUiBridge.PickExecutablePath;
+            _showTestDetailsDialog = MainViewModelUiBridge.ShowTestDetails;
 
             // Явное согласие на DNS/DoH системного уровня — по умолчанию запрещено.
             // Важно: на старте только читаем из store, без записи обратно.
@@ -113,13 +124,8 @@ namespace IspAudit.ViewModels
             _bypassState.AllowDnsDohSystemChanges = _allowDnsDohSystemChanges;
 
             // MVVM: инъекция UI-делегатов для диалогов (вместо прямого MessageBox в ViewModel)
-            Orchestrator.ShowError = (title, msg) =>
-                System.Windows.MessageBox.Show(msg, title,
-                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-            Orchestrator.ConfirmAction = (title, msg) =>
-                System.Windows.MessageBox.Show(msg, title,
-                    System.Windows.MessageBoxButton.OKCancel, System.Windows.MessageBoxImage.Question)
-                == System.Windows.MessageBoxResult.OK;
+            Orchestrator.ShowError = (title, msg) => _showErrorDialog(title, msg);
+            Orchestrator.ConfirmAction = (title, msg) => _confirmOkCancelDialog(title, msg);
 
             // P1.9: агрегация строк результатов по pinned groupKey (state/group_participation.json)
             Results.GroupBypassAttachmentStore = _groupBypassAttachmentStore;
@@ -366,15 +372,13 @@ namespace IspAudit.ViewModels
             {
                 try
                 {
-                    var result = System.Windows.MessageBox.Show(
+                    var confirmed = _confirmOkCancelDialog(
+                        "Подтверждение: полный откат",
                         "Снять всё (включая ручные настройки Engineer)?\n\n" +
                         "Действие выключит обход и, при наличии backup, попытается восстановить исходные DNS/DoH настройки Windows.\n\n" +
-                        "Если вы не уверены — нажмите Отмена.",
-                        "Подтверждение: полный откат",
-                        System.Windows.MessageBoxButton.OKCancel,
-                        System.Windows.MessageBoxImage.Warning);
+                        "Если вы не уверены — нажмите Отмена.");
 
-                    if (result != System.Windows.MessageBoxResult.OK)
+                    if (!confirmed)
                     {
                         return;
                     }
