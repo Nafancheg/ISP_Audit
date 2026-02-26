@@ -110,6 +110,20 @@ namespace IspAudit.ViewModels
             _pickExecutablePathDialog = MainViewModelUiBridge.PickExecutablePath;
             _showTestDetailsDialog = MainViewModelUiBridge.ShowTestDetails;
 
+            // P2.ARCH.2: WPF-диспетчеризация настраивается в UI composition,
+            // orchestration-модуль не должен зависеть от Application.Current напрямую.
+            Orchestrator.ConfigureUiDispatcher(action =>
+            {
+                var dispatcher = Application.Current?.Dispatcher;
+                if (dispatcher == null || dispatcher.CheckAccess())
+                {
+                    action();
+                    return;
+                }
+
+                dispatcher.BeginInvoke(action);
+            });
+
             // Явное согласие на DNS/DoH системного уровня — по умолчанию запрещено.
             // Важно: на старте только читаем из store, без записи обратно.
             _allowDnsDohSystemChanges = OperatorConsentStore.LoadOrDefault(defaultValue: false);

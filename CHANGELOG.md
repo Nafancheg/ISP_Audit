@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ P2.ARCH.2 — декуплинг PipelineManager от WPF Dispatcher
+
+- `ViewModels/Orchestrator/PipelineManager.cs` переведён на абстракцию диспетчеризации `Action<Action>`: удалена прямая зависимость от `Application.Current`.
+- В `ViewModels/DiagnosticOrchestrator.cs` добавлен `ConfigureUiDispatcher(...)`, чтобы wiring диспетчеризации задавался извне orchestration-модуля.
+- WPF-деталь перемещена в UI composition: `MainViewModel` настраивает dispatcher через `Application.Current.Dispatcher` в `ViewModels/MainViewModel.Constructor.cs`.
+
 ### ✅ P2.ARCH.1 — декуплинг UI-диалогов/окон из MainViewModel
 
 - Добавлен UI-bridge `Windows/MainViewModelUiBridge.cs` для диалогов/окон (`error`, `confirm`, `open-file`, `show-details`) как WPF-деталь UI-слоя.

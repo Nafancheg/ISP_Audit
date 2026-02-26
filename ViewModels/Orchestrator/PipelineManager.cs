@@ -5,19 +5,43 @@ using IspAudit.Core.Intelligence.Contracts;
 using IspAudit.Core.Models;
 using IspAudit.Utils;
 
-using Application = System.Windows.Application;
-
 namespace IspAudit.ViewModels.Orchestrator;
 
 internal sealed class PipelineManager
 {
+    private Action<Action> _dispatchToUi;
+
+    public PipelineManager(Action<Action>? dispatchToUi = null)
+    {
+        _dispatchToUi = dispatchToUi ?? (action => action());
+    }
+
+    public void ConfigureUiDispatcher(Action<Action>? dispatchToUi)
+    {
+        _dispatchToUi = dispatchToUi ?? (action => action());
+    }
+
+    private void DispatchToUi(Action action)
+    {
+        if (action == null) return;
+
+        try
+        {
+            _dispatchToUi(action);
+        }
+        catch
+        {
+            action();
+        }
+    }
+
     public Progress<string> CreateUiProgress(Action<string> onUiMessage)
     {
         if (onUiMessage == null) throw new ArgumentNullException(nameof(onUiMessage));
 
         return new Progress<string>(msg =>
         {
-            Application.Current?.Dispatcher.BeginInvoke(() => onUiMessage(msg));
+            DispatchToUi(() => onUiMessage(msg));
         });
     }
 
@@ -28,7 +52,7 @@ internal sealed class PipelineManager
 
         pipeline.OnPlanBuilt += (hostKey, plan) =>
         {
-            Application.Current?.Dispatcher.BeginInvoke(() => onPlanBuilt(hostKey, plan));
+            DispatchToUi(() => onPlanBuilt(hostKey, plan));
         };
     }
 

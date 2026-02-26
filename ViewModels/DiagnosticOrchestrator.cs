@@ -249,6 +249,11 @@ namespace IspAudit.ViewModels
             _cardActionHandler = new CardActionHandler();
         }
 
+        public void ConfigureUiDispatcher(Action<Action>? dispatchToUi)
+        {
+            _pipelineManager.ConfigureUiDispatcher(dispatchToUi);
+        }
+
         #region Properties
 
         public bool IsDiagnosticRunning
