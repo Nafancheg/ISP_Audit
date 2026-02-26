@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ Runtime incidents — чеклист и первый реальный кейс
+
+- Добавлен шаблон разбора runtime-инцидентов: `docs/incidents/RUNTIME_INCIDENT_CHECKLIST.md` (обязательные `±100` строк контекста, классификация фазы, targeted timeout/status fix, валидация).
+- Добавлен первый применённый кейс по шаблону: `docs/incidents/INCIDENT_2026-02-26_REG-004_queue_race.md` на реальном strict fail (`REG-004`, `smoke_strict_20260226_110750.log.txt`).
+- В кейсе зафиксированы: якорный лог-контекст, фаза `POST_APPLY_RETEST`, root-cause (queue/final-status race), и итоговая стабилизация smoke-контракта.
+
 ### ✅ P2.V23.1 — методика пересмотра дефолтов N/T/TTL
 
 - В `docs/full_repo_audit_intel.md` зафиксирована процедура изменения redirect-дефолтов `N/T/TTL` по телеметрии: минимальная выборка, критерии кандидата, шаги изменения, rollout и rollback.
