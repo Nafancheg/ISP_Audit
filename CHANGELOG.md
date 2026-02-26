@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ P2.7 — атомарная запись state-store
+
+- Добавлен `Utils/FileAtomicWriter.cs` (temp-file + atomic rename в той же директории).
+- На атомарную запись переведены хранилища: `operator_sessions`, `feedback_store`, `operator_consent`, `domain_groups`, `post_apply_checks`, `ui_mode`.
+- Убраны прямые `File.WriteAllText` из целевых persist-путей, чтобы исключить частично записанные JSON при сбоях/прерывании процесса.
+
 ### ✅ P1.18 — post-apply verdict и WinsStore
 
 - **Единая семантика `OK` post-apply**: для `enqueue` и `local` итоговый verdict теперь определяется через общий `OutcomeProbe` (локальная pipeline-сводка остаётся в деталях и для guardrail-логики).

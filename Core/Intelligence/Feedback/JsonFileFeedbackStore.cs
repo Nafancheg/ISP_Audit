@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using IspAudit.Utils;
 
 namespace IspAudit.Core.Intelligence.Feedback;
 
@@ -140,10 +142,7 @@ public sealed class JsonFileFeedbackStore : IFeedbackStore
                     Directory.CreateDirectory(dir);
                 }
 
-                var tmp = FilePath + ".tmp";
-                File.WriteAllText(tmp, json);
-                File.Copy(tmp, FilePath, overwrite: true);
-                File.Delete(tmp);
+                FileAtomicWriter.WriteAllText(FilePath, json, Encoding.UTF8);
             }
             catch
             {

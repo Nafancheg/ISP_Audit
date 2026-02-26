@@ -98,7 +98,7 @@ namespace IspAudit.Utils
                     }
                 }
 
-                File.WriteAllText(path, json, Encoding.UTF8);
+                FileAtomicWriter.WriteAllText(path, json, Encoding.UTF8);
             }
             catch (Exception ex)
             {

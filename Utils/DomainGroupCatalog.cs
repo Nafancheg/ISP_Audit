@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 
 namespace IspAudit.Utils
@@ -210,7 +211,7 @@ namespace IspAudit.Utils
                 state = Normalize(state);
                 var path = CatalogFilePath;
                 var json = JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(path, json);
+                FileAtomicWriter.WriteAllText(path, json, Encoding.UTF8);
             }
             catch (Exception ex)
             {
