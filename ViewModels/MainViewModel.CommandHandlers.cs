@@ -142,7 +142,7 @@ namespace IspAudit.ViewModels
                 var txId = Guid.NewGuid().ToString("N");
                 using var op = BypassOperationContext.Enter(txId, "ui_apply_recommendations", preferredHostKey);
 
-                var outcome = await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey).ConfigureAwait(false);
+                var outcome = await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey);
 
                 // Практический UX: сразу запускаем короткий пост-Apply ретест по цели.
                 if (outcome != null && string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
@@ -170,7 +170,7 @@ namespace IspAudit.ViewModels
                     if (endpoints.Count == 0)
                     {
                         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
-                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token);
                     }
 
                     if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
@@ -238,7 +238,7 @@ namespace IspAudit.ViewModels
                 var txId = Guid.NewGuid().ToString("N");
                 using var op = BypassOperationContext.Enter(txId, "ui_apply_verified_win", preferredHostKey);
 
-                var outcome = await Orchestrator.ApplyProvidedPlanAsync(Bypass, plan, preferredHostKey).ConfigureAwait(false);
+                var outcome = await Orchestrator.ApplyProvidedPlanAsync(Bypass, plan, preferredHostKey);
 
                 // Практический UX: сразу запускаем короткий пост-Apply ретест по цели.
                 if (outcome != null && string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
@@ -266,7 +266,7 @@ namespace IspAudit.ViewModels
                     if (endpoints.Count == 0)
                     {
                         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
-                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token);
                     }
 
                     if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
@@ -383,7 +383,7 @@ namespace IspAudit.ViewModels
                 var txId = Guid.NewGuid().ToString("N");
                 using var op = BypassOperationContext.Enter(txId, "ui_apply_escalation", preferredHostKey);
 
-                var outcome = await Orchestrator.ApplyEscalationAsync(Bypass, preferredHostKey).ConfigureAwait(false);
+                var outcome = await Orchestrator.ApplyEscalationAsync(Bypass, preferredHostKey);
                 if (outcome == null)
                 {
                     Log("[APPLY][ESCALATE] Нет доступной ступени усиления");
@@ -431,7 +431,7 @@ namespace IspAudit.ViewModels
                     if (endpoints.Count == 0)
                     {
                         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
-                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token);
                     }
 
                     if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
@@ -508,7 +508,7 @@ namespace IspAudit.ViewModels
                 var txId = Guid.NewGuid().ToString("N");
                 using var op = BypassOperationContext.Enter(txId, "ui_apply_domain", domain, domain);
 
-                var outcome = await Orchestrator.ApplyRecommendationsForDomainAsync(Bypass, domain).ConfigureAwait(false);
+                var outcome = await Orchestrator.ApplyRecommendationsForDomainAsync(Bypass, domain);
 
                 // Практический UX: ретестим доменную цель.
                 if (outcome != null && string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
@@ -536,7 +536,7 @@ namespace IspAudit.ViewModels
                     if (endpoints.Count == 0)
                     {
                         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
-                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token);
                     }
 
                     if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
@@ -651,7 +651,7 @@ namespace IspAudit.ViewModels
                 var txId = Guid.NewGuid().ToString("N");
                 using var op = BypassOperationContext.Enter(txId, "ui_apply_domain_group", anchorDomain, anchorDomain);
 
-                var outcome = await Orchestrator.ApplyRecommendationsForDomainGroupAsync(Bypass, groupKey, anchorDomain, domains).ConfigureAwait(false);
+                var outcome = await Orchestrator.ApplyRecommendationsForDomainGroupAsync(Bypass, groupKey, anchorDomain, domains);
 
                 // Практический UX: ретестим anchor-домен (OutcomeTargetHost).
                 if (outcome != null && string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
@@ -681,7 +681,7 @@ namespace IspAudit.ViewModels
                     if (endpoints.Count == 0)
                     {
                         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1100));
-                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token);
                     }
 
                     foreach (var d in domains)
@@ -695,7 +695,7 @@ namespace IspAudit.ViewModels
                             using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(600));
                             try
                             {
-                                extra = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(d, cts.Token).ConfigureAwait(false);
+                                extra = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(d, cts.Token);
                             }
                             catch
                             {
@@ -850,7 +850,7 @@ namespace IspAudit.ViewModels
                 var txId = Guid.NewGuid().ToString("N");
                 using var op = BypassOperationContext.Enter(txId, "ui_apply_card", preferredHostKey);
 
-                var outcome = await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey).ConfigureAwait(false);
+                var outcome = await Orchestrator.ApplyRecommendationsAsync(Bypass, preferredHostKey);
 
                 // Практический UX: ретестим именно выбранную цель.
                 if (outcome != null && string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
@@ -878,7 +878,7 @@ namespace IspAudit.ViewModels
                     if (endpoints.Count == 0)
                     {
                         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
-                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token).ConfigureAwait(false);
+                        endpoints = await Orchestrator.ResolveCandidateIpEndpointsSnapshotAsync(outcome.HostKey, cts.Token);
                     }
 
                     if (string.Equals(outcome.Status, "APPLIED", StringComparison.OrdinalIgnoreCase))
@@ -940,7 +940,7 @@ namespace IspAudit.ViewModels
                     domainOverride = baseSuffix;
                 }
 
-                await ApplyDomainRecommendationsAsync(domainOverride).ConfigureAwait(false);
+                await ApplyDomainRecommendationsAsync(domainOverride);
             }
             catch (OperationCanceledException)
             {
@@ -1074,7 +1074,7 @@ namespace IspAudit.ViewModels
             try
             {
                 test.ActionStatusText = "Переподключаю…";
-                await Orchestrator.NudgeReconnectAsync(Bypass, hostKey).ConfigureAwait(false);
+                await Orchestrator.NudgeReconnectAsync(Bypass, hostKey);
 
                 // По UX после переподключения просим быстрый ретест. Если сейчас идёт диагностика — ставим в очередь.
                 if (IsRunning)
@@ -2125,7 +2125,7 @@ namespace IspAudit.ViewModels
             var preferredHostKey = GetPreferredHostKey(SelectedTestResult);
             try
             {
-                await Orchestrator.NudgeReconnectAsync(Bypass, preferredHostKey).ConfigureAwait(false);
+                await Orchestrator.NudgeReconnectAsync(Bypass, preferredHostKey);
             }
             catch (Exception ex)
             {

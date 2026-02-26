@@ -112,7 +112,7 @@ namespace IspAudit.ViewModels
             _isSourceSectionExpanded = Status == OperatorStatus.Idle;
             _didAutoCollapseSourceSection = Status != OperatorStatus.Idle;
 
-            RollbackCommand = new RelayCommand(async _ => await RollbackAsync().ConfigureAwait(false));
+            RollbackCommand = new RelayCommand(async _ => await RollbackAsync());
             ClearHistoryCommand = new RelayCommand(_ => ClearHistoryBestEffort());
             ClearSessionsCommand = new RelayCommand(_ => ClearSessionsBestEffort());
             ToggleDetailsCommand = new RelayCommand(_ => IsDetailsExpanded = !IsDetailsExpanded);

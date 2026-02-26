@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ P2.ASYNC.1 — выравнивание UI async/await контрактов
+
+- В UI command-цепочках `MainViewModel` убраны `ConfigureAwait(false)` из путей, где после `await` обновляется bindable-состояние (`IsApplyingRecommendations`, `ActionStatusText`, post-apply статус, participation markers и др.).
+- Аналогично убраны `ConfigureAwait(false)` из UI-path сохранения пользовательских политик (`MainViewModel.UserPolicies`) и rollback-команды Operator (`OperatorViewModel` / `OperatorViewModel.AutoPilot`).
+- Целевой критерий выполнен: в `ViewModels/MainViewModel.CommandHandlers.cs`, `ViewModels/MainViewModel.UserPolicies.cs`, `ViewModels/OperatorViewModel*.cs` отсутствуют `ConfigureAwait(false)`.
+
 ### ✅ P2.ARCH.2 — декуплинг PipelineManager от WPF Dispatcher
 
 - `ViewModels/Orchestrator/PipelineManager.cs` переведён на абстракцию диспетчеризации `Action<Action>`: удалена прямая зависимость от `Application.Current`.

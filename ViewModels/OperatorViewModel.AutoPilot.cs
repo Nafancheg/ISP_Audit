@@ -16,7 +16,7 @@ namespace IspAudit.ViewModels
 
             try
             {
-                await Main.Bypass.RollbackAutopilotOnlyAsync().ConfigureAwait(false);
+                await Main.Bypass.RollbackAutopilotOnlyAsync();
                 _activeSession?.Actions.Add("Откат: выполнено (только Autopilot)");
 
                 // Rollback часто является «закрывающим» действием. Если сессия без проверки — закрываем сразу.

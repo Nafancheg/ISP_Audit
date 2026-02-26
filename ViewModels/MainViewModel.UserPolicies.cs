@@ -131,7 +131,7 @@ namespace IspAudit.ViewModels
             }
             catch
             {
-                UiBeginInvoke(() => UserFlowPoliciesStatusText = "Не удалось загрузить политики (best-effort)." );
+                UiBeginInvoke(() => UserFlowPoliciesStatusText = "Не удалось загрузить политики (best-effort).");
             }
         }
 
@@ -182,13 +182,13 @@ namespace IspAudit.ViewModels
                 await Task.Run(() =>
                 {
                     _ = policies.Count == 0 ? null : PolicySetCompiler.CompileOrThrow(policies);
-                }).ConfigureAwait(false);
+                });
 
                 // Персист.
                 UserFlowPolicyStore.SaveBestEffort(policies);
 
                 // Применяем в runtime: set + re-apply текущих опций (фон).
-                await Bypass.SetUserFlowPoliciesAndRecompileAsync(policies, CancellationToken.None).ConfigureAwait(false);
+                await Bypass.SetUserFlowPoliciesAndRecompileAsync(policies, CancellationToken.None);
 
                 UiBeginInvoke(() =>
                 {
