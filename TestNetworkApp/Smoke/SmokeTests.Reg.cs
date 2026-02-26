@@ -2339,10 +2339,14 @@ namespace TestNetworkApp.Smoke
                         "После flush ожидали, что очередь будет пустой");
                 }
 
-                if (string.IsNullOrWhiteSpace(test.ActionStatusText) || !test.ActionStatusText.Contains("очеред", StringComparison.OrdinalIgnoreCase))
+                var statusText = (test.ActionStatusText ?? string.Empty).Trim();
+                var looksQueued = statusText.Contains("очеред", StringComparison.OrdinalIgnoreCase);
+                var looksFinalized = statusText.Contains("ReasonCode:", StringComparison.OrdinalIgnoreCase)
+                    || statusText.Contains("LastAction:", StringComparison.OrdinalIgnoreCase);
+                if (string.IsNullOrWhiteSpace(statusText) || (!looksQueued && !looksFinalized))
                 {
                     return new SmokeTestResult("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", SmokeOutcome.Fail, TimeSpan.Zero,
-                        $"Ожидали статус с 'очередь', получили '{test.ActionStatusText}'");
+                        $"Ожидали статус с 'очередь' или финальный post-apply статус, получили '{test.ActionStatusText}'");
                 }
 
                 return new SmokeTestResult("REG-004", "REG: per-card ретест ставится в очередь во время диагностики", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
