@@ -517,6 +517,32 @@
                                             </DataGrid.Columns>
                                         </DataGrid>
 
+                                        <TextBlock Text="История выбранной транзакции"
+                                                   FontWeight="SemiBold"
+                                                   FontSize="13"
+                                                   Margin="0,10,0,6"/>
+
+                                        <DataGrid ItemsSource="{Binding Bypass.SelectedApplyTransaction.TransactionHistory}"
+                                                  AutoGenerateColumns="False"
+                                                  CanUserAddRows="False"
+                                                  CanUserDeleteRows="False"
+                                                  IsReadOnly="True"
+                                                  HeadersVisibility="Column"
+                                                  GridLinesVisibility="None"
+                                                  FontSize="12"
+                                                  Height="170"
+                                                  RowBackground="{DynamicResource MaterialDesignPaper}"
+                                                  AlternatingRowBackground="{DynamicResource MaterialDesignPaper}">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Time (UTC)" Binding="{Binding CreatedAtUtc}" Width="150"/>
+                                                <DataGridTextColumn Header="Host" Binding="{Binding InitiatorHostKey}" Width="*"/>
+                                                <DataGridTextColumn Header="Group" Binding="{Binding GroupKey}" Width="160"/>
+                                                <DataGridTextColumn Header="Applied" Binding="{Binding AppliedStrategyText}" Width="200"/>
+                                                <DataGridTextColumn Header="Plan" Binding="{Binding PlanText}" Width="220"/>
+                                                <DataGridTextColumn Header="Status" Binding="{Binding Result.Status}" Width="100"/>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+
                                         <TextBlock Text="JSON транзакции (для репорта)" FontWeight="SemiBold" FontSize="13" Margin="0,10,0,6"/>
 
                                         <TextBox Style="{StaticResource ModernTextBoxStyle}"

@@ -1811,10 +1811,30 @@ namespace IspAudit.ViewModels
         {
             try
             {
+                var history = Bypass.GetApplyTransactionHistoryForGroupKey(groupKey);
+                var historyNode = new JsonArray();
+                foreach (var tx in history)
+                {
+                    historyNode.Add(new JsonObject
+                    {
+                        ["transactionId"] = tx.TransactionId,
+                        ["createdAtUtc"] = tx.CreatedAtUtc,
+                        ["initiatorHostKey"] = tx.InitiatorHostKey,
+                        ["groupKey"] = tx.GroupKey,
+                        ["candidateIpCount"] = tx.CandidateIpEndpoints?.Count ?? 0,
+                        ["appliedStrategyText"] = tx.AppliedStrategyText,
+                        ["planText"] = tx.PlanText,
+                        ["activationStatusText"] = tx.ActivationStatusText,
+                        ["resultStatus"] = tx.Result?.Status ?? string.Empty,
+                        ["resultError"] = tx.Result?.Error ?? string.Empty
+                    });
+                }
+
                 var root = new JsonObject
                 {
                     ["groupKey"] = (groupKey ?? string.Empty).Trim().Trim('.'),
-                    ["participation"] = BuildParticipationSnapshotNode(groupKey)
+                    ["participation"] = BuildParticipationSnapshotNode(groupKey),
+                    ["transactionHistory"] = historyNode
                 };
 
                 if (!string.IsNullOrWhiteSpace(txJson))

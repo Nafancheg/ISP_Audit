@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ P2.3 — история apply-транзакций в карточке и Engineer DataGrid
+
+- В `BypassController.ApplyTransactions` добавлен явный UI-контракт `TransactionHistory` для выбранной агрегированной строки применения.
+- В Engineer вкладке «Применение» добавлен отдельный DataGrid истории выбранной транзакции (`Bypass.SelectedApplyTransaction.TransactionHistory`) с ключевыми полями времени/хоста/плана/статуса.
+- В JSON деталей карточки (`BuildSelectedResultDetailsJson`) добавлена секция `transactionHistory`; в JSON экспорта строки сохранена обратная совместимость (`transactionHistory` + legacy `transactions`).
+
 ### ✅ P2.2 — Early noise filter (ClassifierWorker)
 
 - В `LiveTestingPipeline.ClassifierStage` добавлен ранний noise-gate: `noise + OK` не эмитится в UI (только детальный debug-log).

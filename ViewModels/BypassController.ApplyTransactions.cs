@@ -42,6 +42,11 @@ namespace IspAudit.ViewModels
             /// </summary>
             public IReadOnlyList<BypassApplyTransaction> Transactions { get; }
 
+            /// <summary>
+            /// Явный алиас для UI-контракта истории транзакций в Engineer DataGrid.
+            /// </summary>
+            public IReadOnlyList<BypassApplyTransaction> TransactionHistory => Transactions;
+
             // Проксируем поля для DataGrid (совместимость с существующими биндингами).
             public string CreatedAtUtc => Latest.CreatedAtUtc;
             public string InitiatorHostKey => Latest.InitiatorHostKey;
@@ -167,6 +172,27 @@ namespace IspAudit.ViewModels
             catch
             {
                 return string.Empty;
+            }
+        }
+
+        public IReadOnlyList<BypassApplyTransaction> GetApplyTransactionHistoryForGroupKey(string? groupKey)
+        {
+            try
+            {
+                var key = (groupKey ?? string.Empty).Trim().Trim('.');
+                if (string.IsNullOrWhiteSpace(key)) return Array.Empty<BypassApplyTransaction>();
+
+                var history = _applyTransactionsJournal
+                    .Snapshot()
+                    .Where(t => string.Equals((t.GroupKey ?? string.Empty).Trim().Trim('.'), key, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(t => ParseCreatedAtUtcOrMin(t.CreatedAtUtc))
+                    .ToList();
+
+                return history;
+            }
+            catch
+            {
+                return Array.Empty<BypassApplyTransaction>();
             }
         }
 
@@ -790,6 +816,8 @@ namespace IspAudit.ViewModels
                     });
                 }
 
+                root["transactionHistory"] = items;
+                // Backward compatibility для существующих потребителей JSON экспорта.
                 root["transactions"] = items;
 
                 return root.ToJsonString(jsonOpts);
