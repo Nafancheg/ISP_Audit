@@ -26,8 +26,8 @@ namespace IspAudit.ViewModels
         private readonly BypassStateManager _bypassState;
         private readonly NoiseHostFilter _noiseHostFilter;
         private readonly AutoHostlistService _autoHostlistService;
-    private readonly object _initializeGate = new();
-    private Task? _initializeTask;
+        private readonly object _initializeGate = new();
+        private Task? _initializeTask;
 
 
         private readonly NetworkChangeMonitor? _networkChangeMonitor;
@@ -35,6 +35,18 @@ namespace IspAudit.ViewModels
 
         // Защита от повторного Dispose().
         private int _disposeSignaled;
+
+        // P2.6: храним подписки, чтобы гарантированно отписываться в Shutdown/Dispose.
+        private Action<double>? _trafficEngineOnPerformanceUpdateHandler;
+        private PropertyChangedEventHandler? _bypassPropertyChangedHandler;
+        private Action<string>? _orchestratorOnPipelineMessageHandler;
+        private Action? _orchestratorOnDiagnosticCompleteHandler;
+        private PropertyChangedEventHandler? _orchestratorPropertyChangedHandler;
+        private Action<string, PostApplyVerdictContract, string, string?, string?>? _orchestratorOnPostApplyCheckVerdictV3Handler;
+        private PropertyChangedEventHandler? _resultsPropertyChangedHandler;
+        private NotifyCollectionChangedEventHandler? _resultsCollectionAddedSyncHandler;
+        private NotifyCollectionChangedEventHandler? _applyTransactionsAddedSyncHandler;
+        private Action<string>? _networkChangedHandler;
 
         // P1.4: Post-crash диагнозы — баннер про crash-reports.
         private volatile bool _pendingCrashReportsPrompt;
@@ -91,10 +103,11 @@ namespace IspAudit.ViewModels
             // Важно: на старте только читаем из store, без записи обратно.
             _allowDnsDohSystemChanges = OperatorConsentStore.LoadOrDefault(defaultValue: false);
 
-            _trafficEngine.OnPerformanceUpdate += ms =>
+            _trafficEngineOnPerformanceUpdateHandler = ms =>
             {
                 Application.Current?.Dispatcher.BeginInvoke(() => TrafficEngineLatency = ms);
             };
+            _trafficEngine.OnPerformanceUpdate += _trafficEngineOnPerformanceUpdateHandler;
 
             // Прокидываем согласие в core слой (executor apply использует этот gate).
             _bypassState.AllowDnsDohSystemChanges = _allowDnsDohSystemChanges;
@@ -113,7 +126,7 @@ namespace IspAudit.ViewModels
 
             // Подписываемся на события
             Bypass.OnLog += Log;
-            Bypass.PropertyChanged += (s, e) =>
+            _bypassPropertyChangedHandler = (s, e) =>
             {
                 OnPropertyChanged(e.PropertyName ?? "");
                 SafeFireAndForget(CheckAndRetestFailedTargetsAsync(e.PropertyName));
@@ -137,15 +150,18 @@ namespace IspAudit.ViewModels
                     RaiseActiveApplySummaryChanged();
                 }
             };
+            Bypass.PropertyChanged += _bypassPropertyChangedHandler;
 
             Orchestrator.OnLog += Log;
-            Orchestrator.OnPipelineMessage += msg =>
+            _orchestratorOnPipelineMessageHandler = msg =>
             {
                 CurrentAction = msg;
                 Results.ParsePipelineMessage(msg);
                 UpdateUserMessage(msg);
             };
-            Orchestrator.OnDiagnosticComplete += () =>
+            Orchestrator.OnPipelineMessage += _orchestratorOnPipelineMessageHandler;
+
+            _orchestratorOnDiagnosticCompleteHandler = () =>
             {
                 _cancelTransitionPending = false;
                 ScreenState = "done";
@@ -203,7 +219,9 @@ namespace IspAudit.ViewModels
                     }
                 }
             };
-            Orchestrator.PropertyChanged += (s, e) =>
+            Orchestrator.OnDiagnosticComplete += _orchestratorOnDiagnosticCompleteHandler;
+
+            _orchestratorPropertyChangedHandler = (s, e) =>
             {
                 OnPropertyChanged(e.PropertyName ?? "");
                 if (e.PropertyName == nameof(Orchestrator.IsDiagnosticRunning))
@@ -247,8 +265,9 @@ namespace IspAudit.ViewModels
                     OnPropertyChanged(nameof(ApplyStatusText));
                 }
             };
+            Orchestrator.PropertyChanged += _orchestratorPropertyChangedHandler;
 
-            Orchestrator.OnPostApplyCheckVerdictV3 += (hostKey, verdictContract, mode, details, correlationId) =>
+            _orchestratorOnPostApplyCheckVerdictV3Handler = (hostKey, verdictContract, mode, details, correlationId) =>
             {
                 try
                 {
@@ -263,9 +282,10 @@ namespace IspAudit.ViewModels
                     // ignore
                 }
             };
+            Orchestrator.OnPostApplyCheckVerdictV3 += _orchestratorOnPostApplyCheckVerdictV3Handler;
 
             Results.OnLog += Log;
-            Results.PropertyChanged += (s, e) =>
+            _resultsPropertyChangedHandler = (s, e) =>
             {
                 OnPropertyChanged(e.PropertyName ?? "");
                 OnPropertyChanged(nameof(RunningStatusText));
@@ -302,6 +322,7 @@ namespace IspAudit.ViewModels
                     CommandManager.InvalidateRequerySuggested();
                 }
             };
+            Results.PropertyChanged += _resultsPropertyChangedHandler;
 
             // Инициализация результатов
             Results.Initialize();
@@ -422,7 +443,7 @@ namespace IspAudit.ViewModels
             if (Application.Current != null)
             {
                 _networkChangeMonitor = new NetworkChangeMonitor(Log);
-                _networkChangeMonitor.NetworkChanged += _ =>
+                _networkChangedHandler = _ =>
                 {
                     try
                     {
@@ -433,6 +454,7 @@ namespace IspAudit.ViewModels
                         // ignore
                     }
                 };
+                _networkChangeMonitor.NetworkChanged += _networkChangedHandler;
                 _networkChangeMonitor.Start();
             }
 
@@ -446,7 +468,7 @@ namespace IspAudit.ViewModels
             // Step 7/9: авто-обновление per-card статусов/деталей.
             try
             {
-                Results.TestResults.CollectionChanged += (_, e) =>
+                _resultsCollectionAddedSyncHandler = (_, e) =>
                 {
                     try
                     {
@@ -472,6 +494,7 @@ namespace IspAudit.ViewModels
                         // ignore
                     }
                 };
+                Results.TestResults.CollectionChanged += _resultsCollectionAddedSyncHandler;
             }
             catch
             {
@@ -480,7 +503,7 @@ namespace IspAudit.ViewModels
 
             try
             {
-                Bypass.ApplyTransactions.CollectionChanged += (_, e) =>
+                _applyTransactionsAddedSyncHandler = (_, e) =>
                 {
                     try
                     {
@@ -506,6 +529,7 @@ namespace IspAudit.ViewModels
                         // ignore
                     }
                 };
+                Bypass.ApplyTransactions.CollectionChanged += _applyTransactionsAddedSyncHandler;
             }
             catch
             {
@@ -852,6 +876,8 @@ namespace IspAudit.ViewModels
 
         public async Task ShutdownAsync()
         {
+            UnsubscribeFromEventsBestEffort();
+
             // 1) Останавливаем диагностику/применение рекомендаций, если они идут.
             try
             {
@@ -911,6 +937,8 @@ namespace IspAudit.ViewModels
                 return;
             }
 
+            UnsubscribeFromEventsBestEffort();
+
             // Dispose не должен зависать: только best-effort cleanup.
             try
             {
@@ -959,6 +987,8 @@ namespace IspAudit.ViewModels
 
         public void OnAppExit()
         {
+            UnsubscribeFromEventsBestEffort();
+
             try
             {
                 _bypassState.MarkCleanShutdown();
@@ -972,6 +1002,178 @@ namespace IspAudit.ViewModels
             try
             {
                 _networkChangeMonitor?.Dispose();
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void UnsubscribeFromEventsBestEffort()
+        {
+            try
+            {
+                if (_trafficEngineOnPerformanceUpdateHandler != null)
+                {
+                    _trafficEngine.OnPerformanceUpdate -= _trafficEngineOnPerformanceUpdateHandler;
+                    _trafficEngineOnPerformanceUpdateHandler = null;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                Bypass.OnLog -= Log;
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (_bypassPropertyChangedHandler != null)
+                {
+                    Bypass.PropertyChanged -= _bypassPropertyChangedHandler;
+                    _bypassPropertyChangedHandler = null;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                Orchestrator.OnLog -= Log;
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (_orchestratorOnPipelineMessageHandler != null)
+                {
+                    Orchestrator.OnPipelineMessage -= _orchestratorOnPipelineMessageHandler;
+                    _orchestratorOnPipelineMessageHandler = null;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (_orchestratorOnDiagnosticCompleteHandler != null)
+                {
+                    Orchestrator.OnDiagnosticComplete -= _orchestratorOnDiagnosticCompleteHandler;
+                    _orchestratorOnDiagnosticCompleteHandler = null;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (_orchestratorPropertyChangedHandler != null)
+                {
+                    Orchestrator.PropertyChanged -= _orchestratorPropertyChangedHandler;
+                    _orchestratorPropertyChangedHandler = null;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (_orchestratorOnPostApplyCheckVerdictV3Handler != null)
+                {
+                    Orchestrator.OnPostApplyCheckVerdictV3 -= _orchestratorOnPostApplyCheckVerdictV3Handler;
+                    _orchestratorOnPostApplyCheckVerdictV3Handler = null;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                Results.OnLog -= Log;
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (_resultsPropertyChangedHandler != null)
+                {
+                    Results.PropertyChanged -= _resultsPropertyChangedHandler;
+                    _resultsPropertyChangedHandler = null;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (_resultsCollectionAddedSyncHandler != null)
+                {
+                    Results.TestResults.CollectionChanged -= _resultsCollectionAddedSyncHandler;
+                    _resultsCollectionAddedSyncHandler = null;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (_applyTransactionsAddedSyncHandler != null)
+                {
+                    Bypass.ApplyTransactions.CollectionChanged -= _applyTransactionsAddedSyncHandler;
+                    _applyTransactionsAddedSyncHandler = null;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (_networkChangeMonitor != null && _networkChangedHandler != null)
+                {
+                    _networkChangeMonitor.NetworkChanged -= _networkChangedHandler;
+                    _networkChangedHandler = null;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            UnsubscribeResultsViewEventsBestEffort();
+
+            try
+            {
+                Orchestrator.ShowError = null;
+                Orchestrator.ConfirmAction = null;
             }
             catch
             {

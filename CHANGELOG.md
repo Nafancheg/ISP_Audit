@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ P2.6 — lifecycle отписки событий
+
+- `MainViewModel` переведён с анонимных подписок на хранимые handlers для `OnLog`, `PropertyChanged`, `OnPerformanceUpdate`, `OnPipelineMessage`, `OnDiagnosticComplete`, `OnPostApplyCheckVerdictV3`, `CollectionChanged`.
+- Добавлен централизованный `UnsubscribeFromEventsBestEffort()` с вызовом из `ShutdownAsync`, `Dispose` и `OnAppExit`.
+- Для `ResultsView` добавлена отдельная очистка подписок/таймера (`UnsubscribeResultsViewEventsBestEffort`), включая отписку от `TestResult.PropertyChanged`.
+
 ### ✅ P2.7 — атомарная запись state-store
 
 - Добавлен `Utils/FileAtomicWriter.cs` (temp-file + atomic rename в той же директории).

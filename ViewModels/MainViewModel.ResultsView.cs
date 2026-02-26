@@ -12,6 +12,9 @@ namespace IspAudit.ViewModels
     {
         private ICollectionView? _resultsView;
         private DispatcherTimer? _resultsViewRefreshTimer;
+        private NotifyCollectionChangedEventHandler? _resultsViewCollectionChangedHandler;
+        private NotifyCollectionChangedEventHandler? _resultsViewApplyTransactionsChangedHandler;
+        private EventHandler? _resultsViewRefreshTimerTickHandler;
 
         private bool _isResultsFocusMode = true;
         public bool IsResultsFocusMode
@@ -106,7 +109,8 @@ namespace IspAudit.ViewModels
         {
             _resultsView = CreateResultsView();
 
-            Results.TestResults.CollectionChanged += OnTestResultsCollectionChanged;
+            _resultsViewCollectionChangedHandler = OnTestResultsCollectionChanged;
+            Results.TestResults.CollectionChanged += _resultsViewCollectionChangedHandler;
 
             foreach (var tr in Results.TestResults)
             {
@@ -116,7 +120,8 @@ namespace IspAudit.ViewModels
             // Обновляем summary при изменениях apply-журнала (видимость "что применено").
             try
             {
-                Bypass.ApplyTransactions.CollectionChanged += (_, __) => RaiseActiveApplySummaryChanged();
+                _resultsViewApplyTransactionsChangedHandler = (_, __) => RaiseActiveApplySummaryChanged();
+                Bypass.ApplyTransactions.CollectionChanged += _resultsViewApplyTransactionsChangedHandler;
             }
             catch
             {
@@ -183,7 +188,7 @@ namespace IspAudit.ViewModels
                 {
                     Interval = TimeSpan.FromMilliseconds(150)
                 };
-                _resultsViewRefreshTimer.Tick += (_, __) =>
+                _resultsViewRefreshTimerTickHandler = (_, __) =>
                 {
                     try
                     {
@@ -195,6 +200,7 @@ namespace IspAudit.ViewModels
                         // ignore
                     }
                 };
+                _resultsViewRefreshTimer.Tick += _resultsViewRefreshTimerTickHandler;
             }
 
             try
@@ -259,6 +265,66 @@ namespace IspAudit.ViewModels
         private void RaiseActiveApplySummaryChanged()
         {
             OnPropertyChanged(nameof(ActiveApplySummaryText));
+        }
+
+        private void UnsubscribeResultsViewEventsBestEffort()
+        {
+            try
+            {
+                if (_resultsViewCollectionChangedHandler != null)
+                {
+                    Results.TestResults.CollectionChanged -= _resultsViewCollectionChangedHandler;
+                    _resultsViewCollectionChangedHandler = null;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (_resultsViewApplyTransactionsChangedHandler != null)
+                {
+                    Bypass.ApplyTransactions.CollectionChanged -= _resultsViewApplyTransactionsChangedHandler;
+                    _resultsViewApplyTransactionsChangedHandler = null;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                foreach (var tr in Results.TestResults)
+                {
+                    UnhookTestResult(tr);
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (_resultsViewRefreshTimer != null)
+                {
+                    if (_resultsViewRefreshTimerTickHandler != null)
+                    {
+                        _resultsViewRefreshTimer.Tick -= _resultsViewRefreshTimerTickHandler;
+                        _resultsViewRefreshTimerTickHandler = null;
+                    }
+
+                    _resultsViewRefreshTimer.Stop();
+                    _resultsViewRefreshTimer = null;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
         }
     }
 }
