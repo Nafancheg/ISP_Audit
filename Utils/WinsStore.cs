@@ -17,6 +17,7 @@ namespace IspAudit.Utils
         private const int MaxEntries = 256;
         private const int MaxJsonBytes = 512 * 1024; // best-effort защита от раздувания
         private const string DefaultFileName = "wins_store.json";
+        private const int CurrentSemanticsVersion = 2;
 
         private const string EnvVarPathOverride = EnvKeys.WinsStorePath;
 
@@ -66,12 +67,45 @@ namespace IspAudit.Utils
                     return new Dictionary<string, WinsEntry>(StringComparer.OrdinalIgnoreCase);
                 }
 
-                return entries
+                var latestByHost = entries
                     .Where(e => e != null && !string.IsNullOrWhiteSpace(e.HostKey))
                     .OrderByDescending(e => ParseUtcOrMin(e.VerifiedAtUtc))
                     .Take(MaxEntries)
                     .GroupBy(e => NormalizeKey(e.HostKey), StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+                    .Select(g => g.First())
+                    .ToList();
+
+                var droppedLegacyCount = 0;
+                var migratedLegacyCount = 0;
+                var compatible = new List<WinsEntry>(latestByHost.Count);
+
+                foreach (var entry in latestByHost)
+                {
+                    if (!IsCompatibleWithCurrentSemantics(entry))
+                    {
+                        droppedLegacyCount++;
+                        continue;
+                    }
+
+                    var normalized = NormalizeToCurrentSemantics(entry);
+                    if (normalized.SemanticsVersion != entry.SemanticsVersion)
+                    {
+                        migratedLegacyCount++;
+                    }
+
+                    compatible.Add(normalized);
+                }
+
+                var result = compatible
+                    .ToDictionary(e => NormalizeKey(e.HostKey), e => e, StringComparer.OrdinalIgnoreCase);
+
+                if (droppedLegacyCount > 0 || migratedLegacyCount > 0)
+                {
+                    log?.Invoke($"[WinsStore] Migration: droppedLegacy={droppedLegacyCount}; migratedLegacy={migratedLegacyCount}");
+                    PersistByHostKeyBestEffort(result, log);
+                }
+
+                return result;
             }
             catch (Exception ex)
             {
@@ -96,6 +130,8 @@ namespace IspAudit.Utils
                 var list = (byHostKey ?? new Dictionary<string, WinsEntry>(StringComparer.OrdinalIgnoreCase))
                     .Values
                     .Where(e => e != null && !string.IsNullOrWhiteSpace(e.HostKey))
+                    .Where(IsCompatibleWithCurrentSemantics)
+                    .Select(NormalizeToCurrentSemantics)
                     .OrderByDescending(e => ParseUtcOrMin(e.VerifiedAtUtc))
                     .Take(MaxEntries)
                     .ToList();
@@ -187,6 +223,55 @@ namespace IspAudit.Utils
             if (string.IsNullOrWhiteSpace(utc)) return DateTimeOffset.MinValue;
             if (DateTimeOffset.TryParse(utc, out var dto)) return dto;
             return DateTimeOffset.MinValue;
+        }
+
+        private static bool IsCompatibleWithCurrentSemantics(WinsEntry entry)
+        {
+            if (entry == null)
+            {
+                return false;
+            }
+
+            if (entry.SemanticsVersion >= CurrentSemanticsVersion)
+            {
+                return true;
+            }
+
+            return CanMigrateLegacyEntry(entry);
+        }
+
+        private static WinsEntry NormalizeToCurrentSemantics(WinsEntry entry)
+        {
+            if (entry.SemanticsVersion >= CurrentSemanticsVersion)
+            {
+                return entry;
+            }
+
+            if (!CanMigrateLegacyEntry(entry))
+            {
+                return entry;
+            }
+
+            return entry with { SemanticsVersion = CurrentSemanticsVersion };
+        }
+
+        private static bool CanMigrateLegacyEntry(WinsEntry entry)
+        {
+            var verdict = (entry.VerifiedVerdict ?? string.Empty).Trim();
+            if (!string.Equals(verdict, "OK", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var mode = (entry.VerifiedMode ?? string.Empty).Trim();
+            if (!string.Equals(mode, "enqueue", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var details = (entry.VerifiedDetails ?? string.Empty).Trim();
+            return details.Contains("out=OK", StringComparison.OrdinalIgnoreCase)
+                && details.Contains("probe=", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

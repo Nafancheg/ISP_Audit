@@ -594,6 +594,7 @@ namespace TestNetworkApp.Smoke
                         VerifiedVerdict = "OK",
                         VerifiedMode = "local",
                         VerifiedDetails = "smoke",
+                        SemanticsVersion = 2,
                         AppliedStrategyText = "TLS Fragment",
                         PlanText = "TLS_FRAGMENT",
                         CandidateIpEndpoints = new[] { "1.1.1.1:443" }
@@ -619,6 +620,12 @@ namespace TestNetworkApp.Smoke
                             $"Ожидали VerifiedVerdict=OK, получили '{loadedEntry.VerifiedVerdict}'");
                     }
 
+                    if (loadedEntry.SemanticsVersion < 2)
+                    {
+                        return new SmokeTestResult("REG-028", "REG: wins store persist+reload + best-match", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали SemanticsVersion>=2, получили '{loadedEntry.SemanticsVersion}'");
+                    }
+
                     if (!IspAudit.Utils.WinsStore.TryGetBestMatch(loaded, "a.b.example.com", out var best) || best == null)
                     {
                         return new SmokeTestResult("REG-028", "REG: wins store persist+reload + best-match", SmokeOutcome.Fail, TimeSpan.Zero,
@@ -632,6 +639,98 @@ namespace TestNetworkApp.Smoke
                     }
 
                     return new SmokeTestResult("REG-028", "REG: wins store persist+reload + best-match", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
+                }
+                finally
+                {
+                    try { Environment.SetEnvironmentVariable(envVar, prev); } catch { }
+                    try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { }
+                }
+            }, ct);
+
+        public static Task<SmokeTestResult> REG_WinsStore_LegacyEntries_AreInvalidatedOrMigrated(CancellationToken ct)
+            => RunAsync("REG-031", "REG: wins store invalidates legacy local OK and migrates trusted enqueue OK", () =>
+            {
+                const string envVar = "ISP_AUDIT_WINS_STORE_PATH";
+
+                var prev = Environment.GetEnvironmentVariable(envVar);
+                var tmpDir = Path.Combine(Path.GetTempPath(), "ISP_Audit_smoke");
+                Directory.CreateDirectory(tmpDir);
+                var tmpPath = Path.Combine(tmpDir, $"wins_store_{Guid.NewGuid():N}.json");
+
+                try
+                {
+                    Environment.SetEnvironmentVariable(envVar, tmpPath);
+
+                    var now = DateTimeOffset.UtcNow;
+
+                    var legacyLocal = new IspAudit.Models.WinsEntry
+                    {
+                        HostKey = "legacy-local.example.com",
+                        SniHostname = "legacy-local.example.com",
+                        CorrelationId = "tx_legacy_local",
+                        AppliedAtUtc = now.AddSeconds(-20).ToString("u").TrimEnd(),
+                        VerifiedAtUtc = now.AddSeconds(-10).ToString("u").TrimEnd(),
+                        VerifiedVerdict = "OK",
+                        VerifiedMode = "local",
+                        VerifiedDetails = "summaryOk=True; summaryFail=False",
+                        SemanticsVersion = 0,
+                        AppliedStrategyText = "TLS Fragment",
+                        PlanText = "TLS_FRAGMENT",
+                        CandidateIpEndpoints = new[] { "8.8.8.8:443" }
+                    };
+
+                    var legacyEnqueueTrusted = new IspAudit.Models.WinsEntry
+                    {
+                        HostKey = "legacy-enqueue.example.com",
+                        SniHostname = "legacy-enqueue.example.com",
+                        CorrelationId = "tx_legacy_enqueue",
+                        AppliedAtUtc = now.AddSeconds(-15).ToString("u").TrimEnd(),
+                        VerifiedAtUtc = now.ToString("u").TrimEnd(),
+                        VerifiedVerdict = "OK",
+                        VerifiedMode = "enqueue",
+                        VerifiedDetails = "enqueued; ips=1; out=OK; probe=Success:ok",
+                        SemanticsVersion = 0,
+                        AppliedStrategyText = "TLS Fragment",
+                        PlanText = "TLS_FRAGMENT",
+                        CandidateIpEndpoints = new[] { "1.1.1.1:443" }
+                    };
+
+                    var dict = new System.Collections.Generic.Dictionary<string, IspAudit.Models.WinsEntry>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        [legacyLocal.HostKey] = legacyLocal,
+                        [legacyEnqueueTrusted.HostKey] = legacyEnqueueTrusted
+                    };
+
+                    IspAudit.Utils.WinsStore.PersistByHostKeyBestEffort(dict, log: null);
+
+                    var loaded = IspAudit.Utils.WinsStore.LoadByHostKeyBestEffort(log: null);
+
+                    if (loaded.ContainsKey(legacyLocal.HostKey))
+                    {
+                        return new SmokeTestResult("REG-031", "REG: wins store invalidates legacy local OK and migrates trusted enqueue OK", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Legacy local запись должна быть отброшена, но осталась в store");
+                    }
+
+                    if (!loaded.TryGetValue(legacyEnqueueTrusted.HostKey, out var migrated) || migrated == null)
+                    {
+                        return new SmokeTestResult("REG-031", "REG: wins store invalidates legacy local OK and migrates trusted enqueue OK", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Trusted enqueue legacy запись должна мигрироваться и остаться в store");
+                    }
+
+                    if (migrated.SemanticsVersion < 2)
+                    {
+                        return new SmokeTestResult("REG-031", "REG: wins store invalidates legacy local OK and migrates trusted enqueue OK", SmokeOutcome.Fail, TimeSpan.Zero,
+                            $"Ожидали миграцию до SemanticsVersion>=2, получили '{migrated.SemanticsVersion}'");
+                    }
+
+                    var persistedJson = File.ReadAllText(tmpPath);
+                    if (persistedJson.Contains("legacy-local.example.com", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new SmokeTestResult("REG-031", "REG: wins store invalidates legacy local OK and migrates trusted enqueue OK", SmokeOutcome.Fail, TimeSpan.Zero,
+                            "Ожидали auto-clean persisted файла от legacy local записи");
+                    }
+
+                    return new SmokeTestResult("REG-031", "REG: wins store invalidates legacy local OK and migrates trusted enqueue OK", SmokeOutcome.Pass, TimeSpan.Zero, "OK");
                 }
                 finally
                 {

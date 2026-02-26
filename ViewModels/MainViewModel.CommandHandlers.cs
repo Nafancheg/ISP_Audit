@@ -1641,6 +1641,7 @@ namespace IspAudit.ViewModels
                     VerifiedVerdict = v,
                     VerifiedMode = (mode ?? string.Empty).Trim(),
                     VerifiedDetails = (details ?? string.Empty).Trim(),
+                    SemanticsVersion = 2,
                     AppliedStrategyText = (tx.AppliedStrategyText ?? string.Empty).Trim(),
                     PlanText = (tx.PlanText ?? string.Empty).Trim(),
                     Plan = appliedPlan ?? new BypassPlan(),

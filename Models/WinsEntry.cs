@@ -29,6 +29,7 @@ namespace IspAudit.Models
         public string VerifiedVerdict { get; init; } = string.Empty; // OK/FAIL/PARTIAL/UNKNOWN
         public string VerifiedMode { get; init; } = string.Empty; // enqueue/local
         public string VerifiedDetails { get; init; } = string.Empty;
+        public int SemanticsVersion { get; init; } = 0;
 
         public string AppliedStrategyText { get; init; } = string.Empty;
         public string PlanText { get; init; } = string.Empty;

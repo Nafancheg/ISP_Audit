@@ -1499,7 +1499,7 @@ namespace IspAudit.ViewModels
                         ? "UNKNOWN"
                         : (summaryFail ? "FAILED" : (summaryOk ? "SUCCESS" : "UNKNOWN"));
 
-                    var verdict = (summaryOk && summaryFail)
+                    var summaryVerdict = (summaryOk && summaryFail)
                         ? "PARTIAL"
                         : (summaryFail ? "FAIL" : (summaryOk ? "OK" : "UNKNOWN"));
 
@@ -1521,9 +1521,13 @@ namespace IspAudit.ViewModels
                         localSummaryDetails += $"; guardrailRegression={(regression ? 1 : 0)}; guardrailPolicy=KofM_{latchedPostApplyPolicy.GuardrailSuccessK}of{latchedPostApplyPolicy.GuardrailSampleM}; evalOrder={latchedPostApplyPolicy.EvaluationOrder}";
                     }
 
+                    var (probeVerdict, probeDetails) = await ComputePostApplyProbeVerdictAsync(hostKey, ct).ConfigureAwait(false);
+                    var normalizedProbe = NormalizeUnknownProbeVerdict(probeVerdict, probeDetails);
+                    var semanticDetails = $"local_summary={summaryVerdict}; out={normalizedProbe.Verdict}; probe={normalizedProbe.Details}; {localSummaryDetails}";
+
                     var adjustedLocalSummary = ApplyBaselineFreshnessPolicy(
-                        verdict,
-                        localSummaryDetails,
+                        normalizedProbe.Verdict,
+                        semanticDetails,
                         hasPendingBaseline,
                         isBaselineFresh,
                         baselineAge,
