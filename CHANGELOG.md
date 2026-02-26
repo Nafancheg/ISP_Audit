@@ -2,6 +2,11 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ P2.UI.1 — точечные правки визуальных дефектов Operator UI
+
+- В `Windows/OperatorSettingsWindow.xaml` исправлен layout модального окна: нижняя кнопка `Закрыть` зафиксирована в отдельной строке, содержимое вкладок переведено на прокрутку, чтобы исключить визуальную обрезку элементов.
+- В `Windows/OperatorWindow.xaml` исправлен заголовок элемента истории сессий: вместо `DockPanel` применён `Grid` с явными колонками, что убрало наложение `DurationText` и `Outcome` (склейку вида `7 секOK`).
+
 ### ✅ Phase 4.3 — модульная декомпозиция DiagnosticOrchestrator
 
 - Добавлены модули orchestration-уровня: `ViewModels/Orchestrator/PipelineManager.cs`, `ViewModels/Orchestrator/RecommendationEngine.cs`, `ViewModels/Orchestrator/CardActionHandler.cs`.

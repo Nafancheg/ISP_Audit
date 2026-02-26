@@ -14,11 +14,19 @@
 
     <Grid Margin="12">
         <Border Style="{StaticResource CardStyle}" Padding="12">
-            <StackPanel>
-                <TextBlock Text="Настройки" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10"/>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-                <TabControl>
+                <TextBlock Grid.Row="0" Text="Настройки" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10"/>
+
+                <TabControl Grid.Row="1">
                     <TabItem Header="Общее">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel Margin="0,10,0,0">
                             <TextBlock Text="Операторский режим использует только безопасные параметры. Инженерные тумблеры доступны в расширенном режиме."
                                        Opacity="0.8" TextWrapping="Wrap" Margin="0,0,0,12"/>
@@ -51,9 +59,11 @@
                                     HorizontalAlignment="Left"
                                     Command="{Binding ToggleThemeCommand}"/>
                         </StackPanel>
+                        </ScrollViewer>
                     </TabItem>
 
                     <TabItem Header="Политики">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                         <StackPanel Margin="0,10,0,0">
                             <TextBlock Text="Пользовательские политики применяются в policy-driven execution plane."
                                        Opacity="0.8" TextWrapping="Wrap" Margin="0,0,0,8"/>
@@ -112,19 +122,20 @@
                                        FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
                                        Visibility="{Binding UserFlowPoliciesStatusText, Converter={StaticResource StringToVisibilityConverter}}"/>
                         </StackPanel>
+                        </ScrollViewer>
                     </TabItem>
                 </TabControl>
 
-                <Border Height="1" Background="{DynamicResource MaterialDesignDivider}" Margin="0,14,0,12"/>
+                <Border Grid.Row="2" Height="1" Background="{DynamicResource MaterialDesignDivider}" Margin="0,14,0,12"/>
 
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Content="Закрыть"
                             Style="{StaticResource PrimaryButtonStyle}"
                             Padding="16,6"
                             MinWidth="120"
                             Click="Close_Click"/>
                 </StackPanel>
-            </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>

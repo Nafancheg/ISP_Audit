@@ -269,11 +269,18 @@
                                                         BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}" Background="{DynamicResource MaterialDesignCardBackground}">
                                                     <Expander IsExpanded="False">
                                                         <Expander.Header>
-                                                            <DockPanel LastChildFill="True">
-                                                                <TextBlock Text="{Binding StartedAtLocalText}" Opacity="0.75" FontSize="12" DockPanel.Dock="Left"/>
-                                                                <TextBlock Text="{Binding DurationText}" Opacity="0.65" FontSize="12" Margin="10,0,0,0" DockPanel.Dock="Left"/>
-                                                                <TextBlock Text="{Binding Outcome}" FontWeight="SemiBold" DockPanel.Dock="Right"/>
-                                                            </DockPanel>
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+
+                                                                <TextBlock Grid.Column="0" Text="{Binding StartedAtLocalText}" Opacity="0.75" FontSize="12"/>
+                                                                <TextBlock Grid.Column="1" Text="{Binding DurationText}" Opacity="0.65" FontSize="12" Margin="10,0,0,0"/>
+                                                                <TextBlock Grid.Column="3" Text="{Binding Outcome}" FontWeight="SemiBold" Margin="12,0,0,0"/>
+                                                            </Grid>
                                                         </Expander.Header>
 
                                                         <StackPanel Margin="0,6,0,0">
