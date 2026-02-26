@@ -21,6 +21,7 @@ using IspAudit.Core.Interfaces;
 using IspAudit.Models;
 using System.Windows.Media;
 using System.Net;
+using IspAudit.ViewModels.Orchestrator;
 using IspAudit.ViewModels.OrchestratorState;
 using System.Threading.Tasks.Sources;
 using System.Runtime.CompilerServices;
@@ -87,6 +88,9 @@ namespace IspAudit.ViewModels
         private readonly ITrafficFilter _trafficFilter;
         private readonly ILiveTestingPipelineFactory _pipelineFactory;
         private readonly IBlockageStateStoreFactory _stateStoreFactory;
+        private readonly PipelineManager _pipelineManager;
+        private readonly RecommendationEngine _recommendationEngine;
+        private readonly CardActionHandler _cardActionHandler;
         private TrafficMonitorFilter? _trafficMonitorFilter;
         private TcpRetransmissionTracker? _tcpRetransmissionTracker;
         private HttpRedirectDetector? _httpRedirectDetector;
@@ -240,6 +244,9 @@ namespace IspAudit.ViewModels
             _trafficFilter = trafficFilter ?? throw new ArgumentNullException(nameof(trafficFilter));
             _pipelineFactory = pipelineFactory ?? throw new ArgumentNullException(nameof(pipelineFactory));
             _stateStoreFactory = stateStoreFactory ?? throw new ArgumentNullException(nameof(stateStoreFactory));
+            _pipelineManager = new PipelineManager();
+            _recommendationEngine = new RecommendationEngine();
+            _cardActionHandler = new CardActionHandler();
         }
 
         #region Properties

@@ -115,17 +115,14 @@ namespace IspAudit.ViewModels
                 // Оверлей отключён (UX: не показываем отдельное сервисное окно)
                 OverlayWindow? overlay = null;
 
-                var progress = new Progress<string>(msg =>
+                var progress = _pipelineManager.CreateUiProgress(msg =>
                 {
-                    Application.Current?.Dispatcher.BeginInvoke(() =>
-                    {
-                        DiagnosticStatus = msg;
-                        TrackIntelDiagnosisSummary(msg);
-                        TrackRecommendation(msg, bypassController);
-                        Log($"[Pipeline] {msg}");
-                        OnPipelineMessage?.Invoke(msg);
-                        UpdateOverlayStatus(overlay, msg);
-                    });
+                    DiagnosticStatus = msg;
+                    TrackIntelDiagnosisSummary(msg);
+                    TrackRecommendation(msg, bypassController);
+                    Log($"[Pipeline] {msg}");
+                    OnPipelineMessage?.Invoke(msg);
+                    UpdateOverlayStatus(overlay, msg);
                 });
 
                 // 1. Запуск мониторинговых сервисов
@@ -232,27 +229,21 @@ namespace IspAudit.ViewModels
                 var autoApplyEnabled = enableAutoBypass;
 
                 // Принимаем объектный план напрямую из pipeline.
-                _testingPipeline.OnPlanBuilt += (hostKey, plan) =>
+                _pipelineManager.AttachPlanBuiltListener(_testingPipeline, (hostKey, plan) =>
                 {
-                    Application.Current?.Dispatcher.BeginInvoke(() =>
-                    {
-                        StorePlan(hostKey, plan, bypassController);
+                    StorePlan(hostKey, plan, bypassController);
 
-                        // Auto-apply: инициируем применением плана только если флаг включён пользователем.
-                        // Pipeline сам по себе обход не применяет.
-                        if (autoApplyEnabled)
-                        {
-                            TryStartAutoApplyFromPlan(hostKey, plan, bypassController);
-                        }
-                    });
-                };
+                    // Auto-apply: инициируем применением плана только если флаг включён пользователем.
+                    // Pipeline сам по себе обход не применяет.
+                    if (autoApplyEnabled)
+                    {
+                        TryStartAutoApplyFromPlan(hostKey, plan, bypassController);
+                    }
+                });
 
                 // Повторно флешим pending SNI — на случай, если endpoint->pid уже есть, а событий соединения больше не будет.
                 FlushPendingSniForTrackedPids();
-                while (_pendingSniHosts.TryDequeue(out var sniHost))
-                {
-                    await _testingPipeline.EnqueueHostAsync(sniHost).ConfigureAwait(false);
-                }
+                await _pipelineManager.DrainPendingHostsAsync(_pendingSniHosts, _testingPipeline).ConfigureAwait(false);
                 Log("[Orchestrator] ✓ TrafficCollector + LiveTestingPipeline созданы");
 
                 // Подписываемся на события UDP блокировок для ретеста
@@ -445,16 +436,13 @@ namespace IspAudit.ViewModels
                 DetachAutoBypassTelemetry();
                 ResetAutoBypassUi(false);
 
-                var progress = new Progress<string>(msg =>
+                var progress = _pipelineManager.CreateUiProgress(msg =>
                 {
-                    Application.Current?.Dispatcher.BeginInvoke(() =>
-                    {
-                        DiagnosticStatus = msg;
-                        TrackIntelDiagnosisSummary(msg);
-                        TrackRecommendation(msg, bypassController);
-                        Log($"[Retest][op={opId}] {msg}");
-                        OnPipelineMessage?.Invoke(msg);
-                    });
+                    DiagnosticStatus = msg;
+                    TrackIntelDiagnosisSummary(msg);
+                    TrackRecommendation(msg, bypassController);
+                    Log($"[Retest][op={opId}] {msg}");
+                    OnPipelineMessage?.Invoke(msg);
                 });
 
                 // Создаем pipeline только для тестирования (без сниффера)
@@ -471,13 +459,10 @@ namespace IspAudit.ViewModels
                     stateStore: null,
                     autoHostlist: bypassController.AutoHostlist);
 
-                _testingPipeline.OnPlanBuilt += (hostKey, plan) =>
+                _pipelineManager.AttachPlanBuiltListener(_testingPipeline, (hostKey, plan) =>
                 {
-                    Application.Current?.Dispatcher.BeginInvoke(() =>
-                    {
-                        StorePlan(hostKey, plan, bypassController);
-                    });
-                };
+                    StorePlan(hostKey, plan, bypassController);
+                });
 
                 // Запускаем цели в pipeline
                 foreach (var target in targets)

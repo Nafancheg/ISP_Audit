@@ -308,6 +308,14 @@ UX: режим `QUIC→TCP` выбирается через контекстно
 - Удалены engine-overload конструкторы, которые выполняли скрытую глобальную композицию (`BypassController(TrafficEngine, ...)` и `DiagnosticOrchestrator(TrafficEngine, ...)`).
 - Smoke-наборы `TestNetworkApp` обновлены: `BypassStateManager.GetOrCreate` и engine-конструкторы заменены на фабрику + публичные конструкторы, принимающие `BypassStateManager`.
 
+Актуализация (Dev, 26.02.2026): Phase 4.3 — модульная декомпозиция DiagnosticOrchestrator
+- Без изменения публичного контракта `DiagnosticOrchestrator` выделены внутренние orchestration-модули:
+    - `ViewModels/Orchestrator/PipelineManager.cs` (единый progress-dispatch, plan-listener wiring, drain pending-host queue);
+    - `ViewModels/Orchestrator/RecommendationEngine.cs` (парсинг INTEL-сообщений и нормализация strategy-токенов);
+    - `ViewModels/Orchestrator/CardActionHandler.cs` (resolve hostKey для карточечных apply/retest действий).
+- В `DiagnosticOrchestrator.Core` на модули переведены повторяющиеся участки run/retest контуров (progress wiring, `OnPlanBuilt`, drain очередей).
+- В `DiagnosticOrchestrator.Recommendations*` парсинг сообщений и resolve цели карточечных действий переведены на модульный слой для снижения связности.
+
 
 Актуализация (Docs, 16.02.2026): эталонный сценарий YouTube/Google (P1.11)
 - Добавлен ручной baseline-чеклист: `docs/scenarios/youtube_baseline.md`.

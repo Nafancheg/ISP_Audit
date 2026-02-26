@@ -146,6 +146,10 @@ Wizard из 5 шагов: выбор приложения → источник �
 - При UDP blockage устанавливает цель outcome для селективного `DropUdp443`.
 - Критические секции сериализуются (Start/Cancel/Retest/Apply).
 - Декомпозирован: Core / Monitoring / Recommendations / Recommendations.Apply / System / Private.
+- Phase 4.3 (модульная декомпозиция orchestration):
+    - `ViewModels/Orchestrator/PipelineManager.cs` — orchestration progress-stream, единая подписка `OnPlanBuilt`, дренаж pending-host очередей.
+    - `ViewModels/Orchestrator/RecommendationEngine.cs` — парсинг/нормализация INTEL-recommendation сообщений и strategy token mapping.
+    - `ViewModels/Orchestrator/CardActionHandler.cs` — единый резолв цели карточечных действий (`apply/retest`) без изменения внешнего контракта Orchestrator.
 
 #### LiveTestingPipeline
 

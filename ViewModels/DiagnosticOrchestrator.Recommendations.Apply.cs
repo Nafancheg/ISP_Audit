@@ -1758,10 +1758,7 @@ namespace IspAudit.ViewModels
 
         private string ResolveBestHostKeyForApply(string? preferredHostKey)
         {
-            if (!string.IsNullOrWhiteSpace(preferredHostKey)) return preferredHostKey.Trim();
-            if (!string.IsNullOrWhiteSpace(_lastIntelPlanHostKey)) return _lastIntelPlanHostKey.Trim();
-            if (!string.IsNullOrWhiteSpace(_lastIntelDiagnosisHostKey)) return _lastIntelDiagnosisHostKey.Trim();
-            return string.Empty;
+            return _cardActionHandler.ResolveBestHostKey(preferredHostKey, _lastIntelPlanHostKey, _lastIntelDiagnosisHostKey);
         }
 
         private async Task<System.Collections.Generic.List<HostDiscovered>> BuildPostApplyRetestHostsAsync(

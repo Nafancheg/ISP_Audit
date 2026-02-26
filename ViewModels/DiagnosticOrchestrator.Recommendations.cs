@@ -42,9 +42,7 @@ namespace IspAudit.ViewModels
             if (string.IsNullOrWhiteSpace(msg)) return;
 
             // Intel — главный источник рекомендаций. Legacy сохраняем только как справочное.
-            var isIntel = msg.TrimStart().StartsWith("[INTEL]", StringComparison.OrdinalIgnoreCase)
-                || msg.Contains("plan:", StringComparison.OrdinalIgnoreCase)
-                || msg.Contains("intel:", StringComparison.OrdinalIgnoreCase);
+            var isIntel = _recommendationEngine.IsIntelMessage(msg);
 
             // B5: Intel — единственный источник рекомендаций.
             // Legacy строки допускаются в логах, но не должны влиять на UI рекомендации.
@@ -81,16 +79,7 @@ namespace IspAudit.ViewModels
             // Поддержка списка стратегий в одной строке (одна строка на цель, чтобы не убивать UI шумом).
             // Пример: "[INTEL] 💡 Рекомендация: TLS_FRAGMENT, DROP_RST"
             // Пример: "💡 Рекомендация: plan:TlsFragment + DropRst (conf=78)"
-            var normalized = raw;
-            if (normalized.StartsWith("plan:", StringComparison.OrdinalIgnoreCase)) normalized = normalized.Substring(5);
-            else if (normalized.StartsWith("intel:", StringComparison.OrdinalIgnoreCase)) normalized = normalized.Substring(6);
-
-            var tokens = normalized
-                .Split(new[] { ',', '+', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(MapStrategyToken)
-                .Where(t => !string.IsNullOrWhiteSpace(t))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            var tokens = _recommendationEngine.ParseStrategyTokens(raw);
 
             if (tokens.Count == 0) return;
 
@@ -187,15 +176,9 @@ namespace IspAudit.ViewModels
             UpdateRecommendationTexts(bypassController);
         }
 
-        private static string? TryExtractAfterMarker(string msg, string marker)
+        private string? TryExtractAfterMarker(string msg, string marker)
         {
-            var idx = msg.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            if (idx < 0) return null;
-
-            idx += marker.Length;
-            if (idx >= msg.Length) return null;
-
-            return msg.Substring(idx);
+            return _recommendationEngine.TryExtractAfterMarker(msg, marker);
         }
 
         private void TrackIntelDiagnosisSummary(string msg)
@@ -256,59 +239,21 @@ namespace IspAudit.ViewModels
             }
         }
 
-        private static string? TryExtractInlineToken(string msg, string token)
+        private string? TryExtractInlineToken(string msg, string token)
         {
-            try
-            {
-                var m = Regex.Match(msg, $@"\b{Regex.Escape(token)}=([^\s\|]+)", RegexOptions.IgnoreCase);
-                return m.Success ? m.Groups[1].Value.Trim() : null;
-            }
-            catch
-            {
-                return null;
-            }
+            return _recommendationEngine.TryExtractInlineToken(msg, token);
         }
 
-        private static string FormatStrategyTokenForUi(string token)
+        private string FormatStrategyTokenForUi(string token)
         {
             // Должно совпадать с текстами тумблеров в MainWindow.xaml.
-            return token.ToUpperInvariant() switch
-            {
-                "TLS_FRAGMENT" => "Frag",
-                "TLS_DISORDER" => "Frag+Rev",
-                "TLS_FAKE" => "TLS Fake",
-                "DROP_RST" => "Drop RST",
-                "DROP_UDP_443" => "QUIC→TCP",
-                "ALLOW_NO_SNI" => "No SNI",
-                // Back-compat
-                "QUIC_TO_TCP" => "QUIC→TCP",
-                "NO_SNI" => "No SNI",
-                "DOH" => "🔒 DoH",
-                _ => token
-            };
+            return _recommendationEngine.FormatStrategyTokenForUi(token);
         }
 
-        private static string MapStrategyToken(string token)
+        private string MapStrategyToken(string token)
         {
-            var t = token.Trim();
-            if (string.IsNullOrWhiteSpace(t)) return string.Empty;
-
             // Поддерживаем как legacy-строки, так и enum-названия INTEL.
-            return t switch
-            {
-                "TlsFragment" => "TLS_FRAGMENT",
-                "TlsDisorder" => "TLS_DISORDER",
-                "TlsFakeTtl" => "TLS_FAKE",
-                "DropRst" => "DROP_RST",
-                "UseDoh" => "DOH",
-                "DropUdp443" => "DROP_UDP_443",
-                "AllowNoSni" => "ALLOW_NO_SNI",
-
-                // Back-compat
-                "QUIC_TO_TCP" => "DROP_UDP_443",
-                "NO_SNI" => "ALLOW_NO_SNI",
-                _ => t.ToUpperInvariant()
-            };
+            return _recommendationEngine.MapStrategyToken(token);
         }
 
         #endregion

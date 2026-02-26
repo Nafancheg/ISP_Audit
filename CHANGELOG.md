@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ Phase 4.3 — модульная декомпозиция DiagnosticOrchestrator
+
+- Добавлены модули orchestration-уровня: `ViewModels/Orchestrator/PipelineManager.cs`, `ViewModels/Orchestrator/RecommendationEngine.cs`, `ViewModels/Orchestrator/CardActionHandler.cs`.
+- В `DiagnosticOrchestrator.Core` устранено дублирование run/retest wiring: progress-dispatch, `OnPlanBuilt` подписки и дренаж pending-host очереди переведены в `PipelineManager`.
+- В recommendation/apply контуре парсинг INTEL-токенов и resolve hostKey действий переведены на модульный слой без изменения внешнего контракта `DiagnosticOrchestrator`.
+
 ### ✅ Runtime incidents — чеклист и первый реальный кейс
 
 - Добавлен шаблон разбора runtime-инцидентов: `docs/incidents/RUNTIME_INCIDENT_CHECKLIST.md` (обязательные `±100` строк контекста, классификация фазы, targeted timeout/status fix, валидация).

@@ -24,7 +24,7 @@
 
 ## [LATER]
 
-- [ ] Phase 4.3: декомпозиция `DiagnosticOrchestrator` (`PipelineManager`, `RecommendationEngine`, `CardActionHandler`) — **готово, когда** orchestration разделён на модули без изменения внешнего контракта и smoke PASS.
+- [x] Phase 4.3: декомпозиция `DiagnosticOrchestrator` (`PipelineManager`, `RecommendationEngine`, `CardActionHandler`) — **готово, когда** orchestration разделён на модули без изменения внешнего контракта и smoke PASS.
 - [ ] Phase 5: Native Core (Rust DLL + WinDivert FFI + packet parser + TLS/SNI parser) — **готово, когда** есть рабочий минимальный контур сборки/интеграции и smoke strict PASS.
 
 ---
