@@ -9,8 +9,29 @@ using MessageBoxResult = System.Windows.MessageBoxResult;
 
 namespace IspAudit.Windows;
 
+internal sealed class MainViewModelUiBridgeHandlers
+{
+    public required Action<string, string> ShowError { get; init; }
+    public required Func<string, string, bool> ConfirmOkCancel { get; init; }
+    public required Func<string, string, bool> ConfirmYesNo { get; init; }
+    public required Func<string?> PickExecutablePath { get; init; }
+    public required Action<TestResult, string?> ShowTestDetails { get; init; }
+}
+
 internal static class MainViewModelUiBridge
 {
+    public static MainViewModelUiBridgeHandlers CreateHandlers()
+    {
+        return new MainViewModelUiBridgeHandlers
+        {
+            ShowError = ShowError,
+            ConfirmOkCancel = ConfirmOkCancel,
+            ConfirmYesNo = ConfirmYesNo,
+            PickExecutablePath = PickExecutablePath,
+            ShowTestDetails = ShowTestDetails
+        };
+    }
+
     public static void ShowError(string title, string message)
     {
         MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);

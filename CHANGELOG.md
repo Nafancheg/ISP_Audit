@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ P2.ARCH.3 — унификация UI-bridge wiring в composition root
+
+- В `Windows/MainViewModelUiBridge.cs` добавлен единый контейнер `MainViewModelUiBridgeHandlers` и фабрика `CreateHandlers()`, которая централизует набор UI-операций (`ShowError`, `ConfirmOkCancel`, `ConfirmYesNo`, `PickExecutablePath`, `ShowTestDetails`).
+- `MainViewModel` переведён с набора отдельных полей-делегатов на одну зависимость `_uiBridge`, и wiring `Orchestrator.ShowError/ConfirmAction` теперь выполняется через этот единый объект.
+- В command-handlers обновлены вызовы UI-действий на `_uiBridge.*`, что устраняет дублирование wiring и фиксирует единый composition-root вход для UI bridge.
+
 ### ✅ P2.OBS.1 — устранение silent catch в runtime-коде
 
 - В production runtime-слоях удалены пустые `catch { }` и добавлено best-effort контекстное логирование (тип исключения, сообщение, hresult, действие/fallback) без изменения функционального поведения.

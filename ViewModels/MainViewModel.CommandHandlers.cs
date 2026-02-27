@@ -787,7 +787,7 @@ namespace IspAudit.ViewModels
                 var name = Results.SuggestedDomainGroupDisplayName;
                 if (string.IsNullOrWhiteSpace(name)) name = key;
 
-                var confirmed = _confirmYesNoDialog(
+                var confirmed = _uiBridge.ConfirmYesNo(
                     "Закрепить группу",
                     $"Закрепить learned-группу '{name}' как pinned?\n\n" +
                     "Pinned-группы имеют приоритет и сохраняются в state/domain_groups.json.");
@@ -2401,7 +2401,7 @@ namespace IspAudit.ViewModels
                 targetExePath = GetTestNetworkAppPath() ?? "";
                 if (string.IsNullOrEmpty(targetExePath))
                 {
-                    _showErrorDialog("Ошибка", "Не удалось найти TestNetworkApp.exe");
+                    _uiBridge.ShowError("Ошибка", "Не удалось найти TestNetworkApp.exe");
                     return;
                 }
                 Log($"[Mode] Basic Test: {targetExePath}");
@@ -2410,7 +2410,7 @@ namespace IspAudit.ViewModels
             {
                 if (string.IsNullOrEmpty(ExePath) || !File.Exists(ExePath))
                 {
-                    _showErrorDialog("Ошибка", "Файл не найден.");
+                    _uiBridge.ShowError("Ошибка", "Файл не найден.");
                     return;
                 }
                 targetExePath = ExePath;
@@ -2426,7 +2426,7 @@ namespace IspAudit.ViewModels
 
         private void BrowseExe()
         {
-            var selectedPath = _pickExecutablePathDialog();
+            var selectedPath = _uiBridge.PickExecutablePath();
             if (!string.IsNullOrWhiteSpace(selectedPath))
             {
                 ExePath = selectedPath;
@@ -2481,7 +2481,7 @@ namespace IspAudit.ViewModels
             catch (Exception ex)
             {
                 Log($"[Report] Error: {ex.Message}");
-                _showErrorDialog("Ошибка", $"Ошибка создания отчета: {ex.Message}");
+                _uiBridge.ShowError("Ошибка", $"Ошибка создания отчета: {ex.Message}");
             }
         }
 
@@ -2543,7 +2543,7 @@ namespace IspAudit.ViewModels
                     applyDetailsJson = null;
                 }
 
-                _showTestDetailsDialog(result, applyDetailsJson);
+                _uiBridge.ShowTestDetails(result, applyDetailsJson);
             }
             catch (Exception ex)
             {
