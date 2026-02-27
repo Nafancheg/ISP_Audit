@@ -603,7 +603,14 @@ namespace IspAudit.ViewModels
             }
             finally
             {
-                try { _autoApplyGate.Release(); } catch { }
+                try
+                {
+                    _autoApplyGate.Release();
+                }
+                catch (Exception ex)
+                {
+                    Log($"[WARN][ORCH][END] AutoApply gate release failed: action=continue; type={ex.GetType().Name}; msg={ex.Message}; hresult={ex.HResult}");
+                }
             }
         }
 

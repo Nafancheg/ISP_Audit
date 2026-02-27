@@ -194,7 +194,14 @@ namespace IspAudit.Utils
             if (_disposed) return;
             _disposed = true;
 
-            try { _cts.Cancel(); } catch { }
+            try
+            {
+                _cts.Cancel();
+            }
+            catch (Exception ex)
+            {
+                _progress?.Report($"[WARN][SNIFFER][END] Pipeline CTS cancel failed: action=continue; type={ex.GetType().Name}; msg={ex.Message}; hresult={ex.HResult}");
+            }
 
             _snifferHighQueue.Writer.TryComplete();
             _snifferLowQueue.Writer.TryComplete();
@@ -215,12 +222,27 @@ namespace IspAudit.Utils
                         _progress?.Report($"[Pipeline] WARN dispose async wait failed: {t.Exception.GetBaseException().Message}");
                     }
 
-                    try { _cts.Dispose(); } catch { }
+                    try
+                    {
+                        _cts.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        _progress?.Report($"[WARN][SNIFFER][END] Pipeline CTS dispose failed (continuation): action=continue; type={ex.GetType().Name}; msg={ex.Message}; hresult={ex.HResult}");
+                    }
                 }, TaskScheduler.Default);
             }
-            catch
+            catch (Exception ex)
             {
-                try { _cts.Dispose(); } catch { }
+                _progress?.Report($"[WARN][SNIFFER][END] Pipeline dispose continuation setup failed: action=fallback_dispose; type={ex.GetType().Name}; msg={ex.Message}; hresult={ex.HResult}");
+                try
+                {
+                    _cts.Dispose();
+                }
+                catch (Exception disposeEx)
+                {
+                    _progress?.Report($"[WARN][SNIFFER][END] Pipeline CTS dispose failed (fallback): action=continue; type={disposeEx.GetType().Name}; msg={disposeEx.Message}; hresult={disposeEx.HResult}");
+                }
             }
         }
     }

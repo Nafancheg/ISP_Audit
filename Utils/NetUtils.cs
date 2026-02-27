@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json;
 using System.Linq;
+using System.Diagnostics;
 
 namespace IspAudit.Utils
 {
@@ -33,7 +34,7 @@ namespace IspAudit.Utils
 
             // 1. Пробуем системный DNS
             var systemResult = await SafeDnsGetV4Async(host).ConfigureAwait(false);
-            
+
             if (systemResult.Count == 0)
             {
                 result.SystemDnsFailed = true;
@@ -62,7 +63,10 @@ namespace IspAudit.Utils
                     return result;
                 }
             }
-            catch { /* Ignore DoH errors */ }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[WARN][NET][STEP] ResolveWithFallbackAsync: DoH fallback failed; host={host}; action=continue_with_system_result; type={ex.GetType().Name}; msg={ex.Message}; hresult={ex.HResult}");
+            }
 
             // Возвращаем что есть (даже если это bogus IP от системы, если DoH не сработал)
             result.Addresses = systemResult;
@@ -80,13 +84,13 @@ namespace IspAudit.Utils
 
                 using var req = new HttpRequestMessage(HttpMethod.Get, url);
                 req.Headers.Accept.ParseAdd("application/dns-json");
-                
+
                 using var resp = await http.SendAsync(req).ConfigureAwait(false);
                 resp.EnsureSuccessStatusCode();
-                
+
                 var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(json);
-                
+
                 if (doc.RootElement.TryGetProperty("Answer", out var ans) && ans.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var entry in ans.EnumerateArray())
@@ -102,7 +106,10 @@ namespace IspAudit.Utils
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[WARN][NET][STEP] ResolveWithFallbackAsync: DoH parse failed; host={host}; action=fallback; type={ex.GetType().Name}; msg={ex.Message}; hresult={ex.HResult}");
+            }
             return res;
         }
 
@@ -133,7 +140,10 @@ namespace IspAudit.Utils
                     if (looksVpn) return true;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[WARN][NET][STEP] LikelyVpnActive: adapter scan failed; action=fallback_false; type={ex.GetType().Name}; msg={ex.Message}; hresult={ex.HResult}");
+            }
             return false;
         }
         public static async Task<bool> PingAsync(string host, int timeoutMs)
@@ -155,16 +165,35 @@ namespace IspAudit.Utils
             {
                 sock = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                 var task = sock.ConnectAsync(new IPEndPoint(ip, port));
-                using (cts.Token.Register(() => { try { sock.Close(); } catch { } }))
+                using (cts.Token.Register(() =>
+                {
+                    try
+                    {
+                        sock.Close();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[WARN][NET][STEP] TcpConnectTryAsync: socket close on cancel failed; ip={ip}; port={port}; action=continue; type={ex.GetType().Name}; msg={ex.Message}; hresult={ex.HResult}");
+                    }
+                }))
                 {
                     await task.ConfigureAwait(false);
                     sock.Close();
                     return true;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                try { sock?.Close(); } catch { }
+                try
+                {
+                    sock?.Close();
+                }
+                catch (Exception closeEx)
+                {
+                    Debug.WriteLine($"[WARN][NET][STEP] TcpConnectTryAsync: socket close after failure failed; ip={ip}; port={port}; action=continue; type={closeEx.GetType().Name}; msg={closeEx.Message}; hresult={closeEx.HResult}");
+                }
+
+                Debug.WriteLine($"[WARN][NET][STEP] TcpConnectTryAsync: connect failed; ip={ip}; port={port}; timeoutMs={timeoutMs}; action=return_false; type={ex.GetType().Name}; msg={ex.Message}; hresult={ex.HResult}");
                 return false;
             }
         }
@@ -244,14 +273,20 @@ namespace IspAudit.Utils
                 var s = (await h.GetStringAsync("https://ifconfig.co/ip").ConfigureAwait(false)).Trim();
                 if (!string.IsNullOrWhiteSpace(s)) return s;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[WARN][NET][STEP] TryGetExternalIpAsync: ifconfig.co failed; action=fallback_next_provider; type={ex.GetType().Name}; msg={ex.Message}; hresult={ex.HResult}");
+            }
             try
             {
                 using var h = new HttpClient() { Timeout = TimeSpan.FromSeconds(6) };
                 var s = (await h.GetStringAsync("https://api.ipify.org").ConfigureAwait(false)).Trim();
                 if (!string.IsNullOrWhiteSpace(s)) return s;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[WARN][NET][STEP] TryGetExternalIpAsync: ipify failed; action=return_unknown; type={ex.GetType().Name}; msg={ex.Message}; hresult={ex.HResult}");
+            }
             return "<unknown>";
         }
 

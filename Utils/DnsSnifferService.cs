@@ -748,13 +748,27 @@ namespace IspAudit.Utils
                         System.Diagnostics.Debug.WriteLine($"[DnsParser] StopAsync failed: {t.Exception.GetBaseException().Message}");
                     }
 
-                    try { _cts.Dispose(); } catch { }
+                    try
+                    {
+                        _cts.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DnsParser] CTS dispose failed (continuation): {ex.GetType().Name}; {ex.Message}; hresult={ex.HResult}");
+                    }
                 }, TaskScheduler.Default);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[DnsParser] Dispose failed: {ex.Message}");
-                try { _cts.Dispose(); } catch { }
+                try
+                {
+                    _cts.Dispose();
+                }
+                catch (Exception disposeEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[DnsParser] CTS dispose failed (fallback): {disposeEx.GetType().Name}; {disposeEx.Message}; hresult={disposeEx.HResult}");
+                }
             }
         }
 

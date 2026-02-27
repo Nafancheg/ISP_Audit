@@ -58,7 +58,14 @@ namespace IspAudit.ViewModels
             {
                 var gate = Interlocked.Exchange(ref _gate, null);
                 if (gate == null) return;
-                try { gate.Release(); } catch { }
+                try
+                {
+                    gate.Release();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[WARN][ORCH][END] GateLease release failed; action=continue; type={ex.GetType().Name}; msg={ex.Message}; hresult={ex.HResult}");
+                }
             }
         }
 

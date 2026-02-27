@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ P2.OBS.1 — устранение silent catch в runtime-коде
+
+- В production runtime-слоях удалены пустые `catch { }` и добавлено best-effort контекстное логирование (тип исключения, сообщение, hresult, действие/fallback) без изменения функционального поведения.
+- Обновлены критические зоны shutdown/network/runtime: `NetUtils`, `TrafficCollector`, `DiagnosticOrchestrator` (gate/auto-apply), `LiveTestingPipeline.Orchestration`, `ConnectionMonitorService`, `DnsSnifferService`, `PidTrackerService`, `TrafficEngine`.
+- Проверочный критерий этапа выполнен: в `{Core,Utils,Bypass,ViewModels}` отсутствуют пустые `catch` в production-коде.
+
 ### ✅ P2.RUNTIME.1 — снижение sync-over-async в shutdown/dispose
 
 - В shutdown/dispose путях убраны блокирующие `Wait/Result` на stop-операциях: `ConnectionMonitorService`, `DnsSnifferService`, `PidTrackerService`, `TrafficEngine`, `LiveTestingPipeline`, `ReactiveTargetSyncService`.

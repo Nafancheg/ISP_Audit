@@ -133,12 +133,12 @@ namespace IspAudit.Utils
 
             // Дедуп по цели
             if (!_connections.TryAdd(key, new ConnectionInfo
-                {
-                    RemoteIp = remoteIp,
-                    RemotePort = remotePort,
-                    Protocol = protocol == 6 ? TransportProtocol.TCP : TransportProtocol.UDP,
-                    FirstSeen = DateTime.UtcNow
-                }))
+            {
+                RemoteIp = remoteIp,
+                RemotePort = remotePort,
+                Protocol = protocol == 6 ? TransportProtocol.TCP : TransportProtocol.UDP,
+                FirstSeen = DateTime.UtcNow
+            }))
             {
                 return false;
             }
@@ -452,7 +452,10 @@ namespace IspAudit.Utils
                         Interlocked.Increment(ref fromReverseDns);
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    _progress?.Report($"[WARN][SNIFFER][STEP] Reverse DNS failed: ip={conn.RemoteIp}; action=continue; type={ex.GetType().Name}; msg={ex.Message}; hresult={ex.HResult}");
+                }
             });
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
