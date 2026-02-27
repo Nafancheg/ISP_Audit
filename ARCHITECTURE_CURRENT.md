@@ -62,6 +62,27 @@ graph TD
     TrafficEngine --> WinDivert
 ```
 
+    ### 2.1 Layering contracts
+
+    Этот раздел фиксирует допустимые зависимости между слоями и запрещённые направления вызовов.
+
+    | Слой | Разрешено зависеть от | Запрещено зависеть от |
+    |------|------------------------|------------------------|
+    | UI (`Windows`, `ViewModels`) | Orchestrator, Core abstractions, WPF/MaterialDesign | Прямые runtime-мутации WinDivert/TrafficEngine в обход `BypassController`/`BypassStateManager` |
+    | Orchestration (`DiagnosticOrchestrator`, `ViewModels/Orchestrator/*`) | Core/Services/Utils контракты, DI factory interfaces | `System.Windows.*`, `Application.Current`, code-behind окна |
+    | Core (`Core/*`, `Bypass/*`, `Utils/*` runtime-path) | BCL, WinDivert/PInvoke, внутренние контракты Core | WPF UI типы, `MessageBox`, `OpenFileDialog`, UI-окна |
+
+    Контрактные правила:
+    - UI-specific операции (диалоги/окна/open-file) подключаются только в UI composition root через bridge-слой.
+    - Dispatcher-маршалинг для orchestration задаётся извне (`ConfigureUiDispatcher`), без прямого `Application.Current` в orchestration-модулях.
+    - Пайплайн/тестеры не создают runtime-зависимости скрытым `new` в горячем пути; создание идёт через DI factory contracts.
+    - Изменения состояния bypass выполняются через `BypassController`/`BypassStateManager` как единый SSoT.
+
+    Обязательные smoke-gates для слоя архитектуры:
+    - План и реестр smoke-кейсов: [TestNetworkApp/smoke_tests_plan.md](TestNetworkApp/smoke_tests_plan.md).
+    - Non-admin инфраструктурный gate: `smoke infra (non-admin)` (минимум инфраструктурных инвариантов и lifecycle).
+    - Strict gate: `smoke strict (SmokeLauncher)` (полный прогон, admin/UAC, без skip).
+
 ---
 
 ## 3. Компоненты

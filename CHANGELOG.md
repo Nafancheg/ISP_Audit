@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-02-26
 
+### ✅ P2.ARCH.4 — контракты слоёв в архитектурной документации
+
+- В `ARCHITECTURE_CURRENT.md` добавлен раздел `2.1 Layering contracts` с матрицей допустимых зависимостей для слоёв `UI / Orchestration / Core` и явными запретами на пересечение границ.
+- Зафиксированы архитектурные правила: UI-операции только через bridge/composition root, отсутствие прямой WPF-зависимости (`Application.Current`, `System.Windows.*`) в orchestration/core, bypass-state изменения только через `BypassController/BypassStateManager`.
+- Добавлены ссылки на smoke-gates архитектурной целостности: `TestNetworkApp/smoke_tests_plan.md`, `smoke infra (non-admin)`, `smoke strict (SmokeLauncher)`.
+
 ### ✅ P2.ARCH.3 — унификация UI-bridge wiring в composition root
 
 - В `Windows/MainViewModelUiBridge.cs` добавлен единый контейнер `MainViewModelUiBridgeHandlers` и фабрика `CreateHandlers()`, которая централизует набор UI-операций (`ShowError`, `ConfirmOkCancel`, `ConfirmYesNo`, `PickExecutablePath`, `ShowTestDetails`).

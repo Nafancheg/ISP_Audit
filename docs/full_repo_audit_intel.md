@@ -4,11 +4,16 @@
 
 Примечание: имя файла историческое (`full_repo_audit_intel.md`). В пользовательском UX и в логах проекта не используется маркировка V1/INTEL; основной префикс рекомендаций — `[INTEL]`.
 
-**Дата**: 09.12.2025 (обновлено 10.12.2025, 17.12.2025, 15.01.2026, 16.01.2026, 29.01.2026, 05.02.2026, 11.02.2026, 12.02.2026, 16.02.2026, 17.02.2026)
+**Дата**: 09.12.2025 (обновлено 10.12.2025, 17.12.2025, 15.01.2026, 16.01.2026, 29.01.2026, 05.02.2026, 11.02.2026, 12.02.2026, 16.02.2026, 17.02.2026, 27.02.2026)
 **Версия проекта**: .NET 9, WPF
 **Режим**: GUI-only (WinExe)
 
 > Хронология изменений — в [CHANGELOG.md](../CHANGELOG.md). Архитектурный справочник — в [ARCHITECTURE_CURRENT.md](../ARCHITECTURE_CURRENT.md). Задачи — в [TODO.md](TODO.md).
+
+Актуализация (Architecture, 27.02.2026): Layering contracts + smoke-gates
+- В архитектурном справочнике зафиксирован явный раздел **Layering contracts** с матрицей допустимых зависимостей для `UI / Orchestration / Core`.
+- Зафиксированы архитектурные запреты: отсутствие `System.Windows.*` и `Application.Current` в orchestration/core, а также запрет прямых UI-API (`MessageBox`, `OpenFileDialog`) вне bridge/composition root.
+- Добавлены ссылки на обязательные smoke-gates для проверки архитектурных инвариантов: `smoke infra (non-admin)`, `smoke strict (SmokeLauncher)`, план кейсов `TestNetworkApp/smoke_tests_plan.md`.
 
 ---
 
